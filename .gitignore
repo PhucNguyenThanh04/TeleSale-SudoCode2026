@@ -1,0 +1,72 @@
+# Ignore generated and sensitive files in this application repository.
+
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+service-account*.json
+
+# Python environments, caches, packaging and test output
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+*.whl
+
+# Frontend dependencies and build output
+node_modules/
+.next/
+.nuxt/
+coverage/
+
+# Local runtime output
+*.log
+logs/
+tmp/
+temp/
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+**/data/raw/
+**/data/processed/*.parquet
+**/eval/runs/
+outputs/
+artifacts/
+
+# Downloaded model weights and local object storage
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+minio-data/
+qdrant_storage/
+
+# Editor and operating system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
