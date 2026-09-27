@@ -1,0 +1,38 @@
+# Backend API configuration for the text-to-text phase.
+# *_env values name variables in backend/.env; this file contains no credentials.
+service:
+  name: backend
+  app_name_env: APP_NAME
+  environment_env: APP_ENV
+  host_env: HOST
+  port_env: PORT
+  timezone_env: TIMEZONE
+  log_level_env: LOG_LEVEL
+  health_path: /health
+
+database:
+  provider: postgresql
+  url_env: DATABASE_URL
+  startup_check: "SELECT 1"
+  session_scope: request
+
+cache:
+  provider: redis
+  url_env: REDIS_URL
+  startup_check: ping
+
+ai_service:
+  base_url_env: AI_SERVICE_URL
+  timeout_seconds_env: AI_SERVICE_TIMEOUT_SECONDS
+  client_scope: application_lifespan
+
+catalog:
+  data_dir_env: BTC_DATA_DIR
+
+http:
+  cors_origins_env: CORS_ORIGINS
+
+auth:
+  jwt_secret_key_env: JWT_SECRET_KEY
+  jwt_algorithm_env: JWT_ALGORITHM
+  access_token_expire_minutes_env: ACCESS_TOKEN_EXPIRE_MINUTES

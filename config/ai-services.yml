@@ -1,0 +1,37 @@
+# AI service configuration for the first text-to-text implementation phase.
+# *_env values name variables in ai-services/.env; no API key is stored here.
+service:
+  name: ai-services
+  interface: http
+  mode: text-to-text
+  host: 127.0.0.1
+  port: 8001
+
+llm:
+  model_env: LLM_MODEL
+  api_key_env: LLM_API_KEY
+  response_language: vi
+
+harness:
+  steps:
+    - resolve_identity
+    - retrieve_context
+    - plan
+    - call_tools
+    - observe
+    - respond
+    - persist_memory
+
+memory:
+  canonical_store: postgresql
+  layers:
+    - working
+    - episodic
+    - profile
+  identity_key: customer_id
+  call_brief_on_new_session: true
+
+guardrails:
+  mask_pii_before_external_llm: true
+  price_source: catalog_tool
+  fallback_on_tool_error: true

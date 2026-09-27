@@ -1,0 +1,54 @@
+# TELESALE / AI SERVICE - text-first harness + MCP + memory + knowledge
+# Research date: 2026-09-27. Target: CPython 3.12, preferably Linux containers.
+# Separate virtual environment/image from backend.
+# Shared AI image, separate entrypoints/processes for Agent API, mcp-memory,
+# mcp-catalog, mcp-order, mcp-knowledge and background workers.
+# MCP commerce tools call backend APIs; memory/knowledge own their DB schemas.
+#
+# VALIDATION: PEP 508 syntax checked. Online resolve/install was blocked by
+# HTTP 403 from PyPI. This is a bounded dependency specification, NOT a
+# verified lockfile or a claim that integration tests have passed.
+# Before sharing an environment, run from the repository root:
+# uv pip compile ai-service/requirements.txt --python-version 3.12 --generate-hashes -o ai-service/requirements.lock.txt
+# uv venv --python 3.12 ai-service/.venv
+# uv pip sync --python ai-service/.venv/bin/python ai-service/requirements.lock.txt
+# uv pip check --python ai-service/.venv/bin/python
+# Windows: use ai-service/.venv/Scripts/python.exe instead.
+
+# Agent API and text streaming. SSE can use FastAPI StreamingResponse.
+fastapi>=0.141.1,<0.142
+uvicorn[standard]>=0.35,<1
+pydantic>=2.12,<3
+pydantic-settings>=2.10,<3
+httpx>=0.28.1,<0.29
+PyJWT[crypto]>=2.10,<3
+
+# Explicit StateGraph harness; LangChain models/messages/structured tools.
+# langchain[mcp] supplies the current MCPAdapter integration.
+# CAUTION: langchain.mcp is beta; isolate it in adapters/mcp_gateway.py.
+# Lock the resolved versions and test tool discovery/calls before adoption.
+langchain[mcp]>=1.4.2,<1.5
+langchain-core>=1.3.3,<2
+langgraph>=1.2.12,<1.3
+
+
+# MCP server framework. Import: from fastmcp import FastMCP
+# Do NOT copy old imports from mcp.server.fastmcp without migration.
+# Do not also add archived langchain-mcp-adapters to this chosen stack.
+fastmcp>=4.0.10,<4.1
+
+
+langgraph-checkpoint-postgres>=3.1.2,<3.2
+psycopg[binary,pool]>=3.2.9,<4
+
+# Memory/knowledge services and trace repositories; separate DB ownership.
+SQLAlchemy[asyncio]>=2.0.54,<2.1
+redis>=6.4,<9
+qdrant-client>=1.19.1,<1.20
+
+# Evaluation contracts and operational evidence.
+# BTC reference_eval.py remains authoritative; frameworks do not replace it.
+jsonschema[format]>=4.23,<5
+structlog>=25.1,<27
+tzdata>=2025.2,<2027
+
