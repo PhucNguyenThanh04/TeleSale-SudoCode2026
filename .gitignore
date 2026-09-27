@@ -61,6 +61,7 @@ artifacts/
 *.onnx
 minio-data/
 qdrant_storage/
+/storage/qdrant/
 
 # Editor and operating system files
 .vscode/
