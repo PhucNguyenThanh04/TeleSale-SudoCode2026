@@ -5,9 +5,7 @@
 # mcp-catalog, mcp-order, mcp-knowledge and background workers.
 # MCP commerce tools call backend APIs; memory/knowledge own their DB schemas.
 #
-# VALIDATION: PEP 508 syntax checked. Online resolve/install was blocked by
-# HTTP 403 from PyPI. This is a bounded dependency specification, NOT a
-# verified lockfile or a claim that integration tests have passed.
+# These version ranges are not a lockfile; resolve and test them before deployment.
 # Before sharing an environment, run from the repository root:
 # uv pip compile ai-service/requirements.txt --python-version 3.12 --generate-hashes -o ai-service/requirements.lock.txt
 # uv venv --python 3.12 ai-service/.venv
@@ -38,11 +36,13 @@ langgraph>=1.2.12,<1.3
 fastmcp>=4.0.10,<4.1
 
 
+# LangGraph's Postgres checkpointer requires psycopg; it does not accept asyncpg.
 langgraph-checkpoint-postgres>=3.1.2,<3.2
 psycopg[binary,pool]>=3.2.9,<4
 
-# Memory/knowledge services and trace repositories; separate DB ownership.
+# Memory/knowledge SQLAlchemy services use asyncpg; checkpointing uses psycopg above.
 SQLAlchemy[asyncio]>=2.0.54,<2.1
+asyncpg>=0.30,<1
 redis>=6.4,<9
 qdrant-client>=1.19.1,<1.20
 
@@ -51,4 +51,3 @@ qdrant-client>=1.19.1,<1.20
 jsonschema[format]>=4.23,<5
 structlog>=25.1,<27
 tzdata>=2025.2,<2027
-

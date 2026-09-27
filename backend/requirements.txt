@@ -4,9 +4,7 @@
 # Scope: identity/CRM, calls/sessions, catalog/pricing/orders, UI API, auth.
 # LangChain, MCP servers and Qdrant access belong to the AI deployment.
 #
-# VALIDATION: PEP 508 syntax checked. A full online resolve/install was NOT
-# possible here: PyPI access returned HTTP 403. These version ranges are NOT
-# a tested lockfile, and transitive dependencies are not pinned.
+# These version ranges are not a lockfile; resolve and test them before deployment.
 # Before sharing an environment, run from the repository root:
 # uv pip compile backend/requirements.txt --python-version 3.12 --generate-hashes -o backend/requirements.lock.txt
 # uv venv --python 3.12 backend/.venv
@@ -20,12 +18,12 @@ uvicorn[standard]>=0.35,<1
 pydantic>=2.12,<3
 pydantic-settings>=2.10,<3
 
-# Business data, migrations and ONE PostgreSQL driver (sync + async).
-# DSN for SQLAlchemy: postgresql+psycopg://...
+# Business data and migrations through SQLAlchemy's asyncpg dialect.
+# DSN for SQLAlchemy: postgresql+asyncpg://...
 # Use create_async_engine and one AsyncSession per request/task.
 SQLAlchemy[asyncio]>=2.0.54,<2.1
 alembic>=1.16,<2
-psycopg[binary,pool]>=3.2.9,<4
+asyncpg>=0.30,<1
 
 # Cache, session locks, Streams/outbox consumers; use redis.asyncio.
 # This is a client package. Run Redis server separately.
@@ -60,7 +58,7 @@ tzdata>=2025.2,<2027
 # Primary sources consulted:
 # https://pypi.org/project/fastapi/
 # https://docs.sqlalchemy.org/en/20/dialects/postgresql.html
-# https://www.psycopg.org/psycopg3/docs/basic/install.html
+# https://docs.sqlalchemy.org/en/20/dialects/postgresql.html#module-sqlalchemy.dialects.postgresql.asyncpg
 # https://redis.readthedocs.io/en/stable/examples/asyncio_examples.html
 # https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/
 # https://docs.astral.sh/uv/pip/compile/
