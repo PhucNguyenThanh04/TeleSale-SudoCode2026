@@ -3,6 +3,7 @@
 # Credentials and local configuration
 .env
 .env.*
+/secrets/
 !.env.example
 !.env.sample
 !.env.template
@@ -15,6 +16,7 @@ service-account*.json
 
 # Python environments, caches, packaging and test output
 .venv/
+.venv-dataloader/
 venv/
 env/
 __pycache__/
