@@ -12,12 +12,14 @@ from app.agent.memory import MemoryStore
 from app.agent.observability import log_event
 from app.agent.state import TurnState
 from app.agent.tool_gateway import ToolGateway
+from app.constants import DEFAULT_MAX_TOOL_CALLS, DEFAULT_PROMPT_HISTORY_TURNS
 from app.schemas.agent import TextTurnRequest, TextTurnResponse
 
 
 class HarnessRuntime:
     def __init__(self, llm: BaseChatModel, tools: ToolGateway, memory: MemoryStore,
-                 max_tool_calls: int = 3, prompt_history_turns: int = 6) -> None:
+                 max_tool_calls: int = DEFAULT_MAX_TOOL_CALLS,
+                 prompt_history_turns: int = DEFAULT_PROMPT_HISTORY_TURNS) -> None:
         self.memory = memory
         self.graph = build_graph(llm, tools, self.memory, max_tool_calls=max_tool_calls,
                                  prompt_history_turns=prompt_history_turns)

@@ -7,10 +7,12 @@ from app.agent.memory import MemoryStore
 from app.agent.nodes import AgentNodes
 from app.agent.state import TurnState
 from app.agent.tool_gateway import ToolGateway
+from app.constants import DEFAULT_MAX_TOOL_CALLS, DEFAULT_PROMPT_HISTORY_TURNS
 
 
 def build_graph(llm: BaseChatModel, tools: ToolGateway, memory: MemoryStore,
-                max_tool_calls: int = 3, prompt_history_turns: int = 6):
+                max_tool_calls: int = DEFAULT_MAX_TOOL_CALLS,
+                prompt_history_turns: int = DEFAULT_PROMPT_HISTORY_TURNS):
     nodes = AgentNodes(llm, tools, memory, max_tool_calls, prompt_history_turns)
     graph = StateGraph(TurnState)
     graph.add_node("accept", nodes.accept)

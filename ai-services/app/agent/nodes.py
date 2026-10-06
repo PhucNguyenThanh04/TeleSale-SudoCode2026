@@ -23,6 +23,7 @@ from app.agent.price_intent import detect_price_intent
 from app.agent.prompts import system_prompt
 from app.agent.state import Decision, TurnState, parse_decision
 from app.agent.tool_gateway import ToolGateway
+from app.constants import CATALOG_RESULT_LIMIT
 
 
 def _price_catalog_query(customer_text: str) -> str:
@@ -368,8 +369,8 @@ class AgentNodes:
         catalog = _catalog_for_quote_sweep(state)
         if catalog is None:
             return {"quote_sweep": {"items": [], "total": 0, "promo_question": False}}
-        # Catalog returns at most 20 items; this bounded sweep is separate from model tool steps.
-        items = [item for item in catalog["items"][:20]
+        # This bounded sweep is separate from model tool steps.
+        items = [item for item in catalog["items"][:CATALOG_RESULT_LIMIT]
                  if isinstance(item, dict) and isinstance(item.get("sku"), str)
                  and isinstance(item.get("name"), str)]
         calls = list(state.get("tool_calls", []))

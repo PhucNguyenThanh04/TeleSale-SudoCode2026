@@ -2,6 +2,8 @@
 
 from datetime import date, timedelta
 
+from app.constants import CATALOG_RESULT_LIMIT
+
 
 HOLIDAYS = {"2026-10-26", "2027-01-01"}
 
@@ -49,7 +51,7 @@ def _catalog(products: list[dict], args: dict) -> dict:
         items.append({"sku": p["sku"], "name": p["name"], "category": p["category"],
                       "list_price_vnd": p["list_price_vnd"], "attributes": p["attributes"],
                       "variants": [{key: v[key] for key in ("variant_sku", "size", "color", "price_delta_vnd")} for v in p.get("variants", [])]})
-    return {"items": items[:20], "total": len(items)}
+    return {"items": items[:CATALOG_RESULT_LIMIT], "total": len(items)}
 
 def _inventory(products: list[dict], events: list[dict], sku: str, on: str) -> dict:
     p, v = _parent(products, sku)
