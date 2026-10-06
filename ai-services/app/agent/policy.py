@@ -5,6 +5,7 @@ import re
 from typing import Any, Callable
 
 from app.agent.guardrails import has_money_claim
+from app.agent.skus import known_skus, mentioned_skus
 from app.agent.state import TurnState
 
 
@@ -67,7 +68,7 @@ def response_price_precondition(state: TurnState) -> tuple[str, str | None] | No
                   and "error" not in call.get("result", {})
                   and call.get("result", {}).get("sku", call.get("args", {}).get("sku"))
                   == call.get("args", {}).get("sku")}
-    explicit_skus = set(re.findall(r"\bSKU-[A-Z0-9-]+\b", decision.response))
+    explicit_skus = mentioned_skus(decision.response, known_skus(state.get("tool_calls", [])))
     if len(explicit_skus) > 1:
         return "price_without_quote", None
     if explicit_skus:

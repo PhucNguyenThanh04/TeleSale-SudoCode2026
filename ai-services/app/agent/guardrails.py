@@ -6,6 +6,7 @@ from typing import Any
 
 from app.mcp_servers.mcp_shared.pii import mask_pii
 from app.constants import PROFILE_SLOT_KEYS, TOOL_ONLY_SLOT_KEYS, Slot
+from app.agent.skus import known_skus, mentioned_skus
 
 
 FALLBACK = "Dạ, hiện em chưa kiểm tra được thông tin này. Em sẽ nhờ nhân viên hỗ trợ mình ạ."
@@ -31,7 +32,7 @@ _BUDGET = re.compile(
 )
 _PRODUCT_FEATURE = re.compile(r"(?i)\b(?:HEPA(?:\s*H\d+)?|PM\s*2[.,]5)\b")
 _SUPERLATIVE = re.compile(r"(?i)\b(?:phù hợp nhất|tốt nhất|hiệu quả nhất)\b")
-_SKU = re.compile(r"\bSKU-[A-Z0-9-]+\b")
+_LEGACY_SKU_SIGNAL = re.compile(r"\bSKU-[A-Z0-9-]+\b")
 _PROMOTION = re.compile(r"(?i)\b(?:khuyến mãi|giảm giá|còn giảm|được giảm|mã giảm|freeship|miễn phí (?:ship|vận chuyển))\b")
 _DELIVERY = re.compile(r"(?i)\b(?:dự kiến giao|ngày giao|giao trong|giao vào|giao ngày|giao\s+\d)\b")
 _POLICY = re.compile(r"(?i)\b(?:bảo hành|đổi trả|đổi size|hoàn tiền|chính sách)\b")
@@ -216,11 +217,14 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]]) -> bool:
              for item in call.get("result", {}).get("items", [])
              if isinstance(item, dict) and isinstance(item.get("sku"), str)
              and isinstance(item.get("name"), str)}
+    evidenced_skus = known_skus(successful)
     for clause in re.split(r"[;!?\n]|\.(?!\d)", candidate):
         claims = _money_claims(clause)
         if not claims:
             continue
-        explicit_skus = set(_SKU.findall(clause))
+        explicit_skus = mentioned_skus(clause, evidenced_skus)
+        if set(_LEGACY_SKU_SIGNAL.findall(clause)) - explicit_skus:
+            return False
         if explicit_skus and not explicit_skus <= set(quotes):
             return False
         named_catalog_skus = {sku for sku, name in names.items()
@@ -261,7 +265,9 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         for call in tool_calls
         if "error" not in call.get("result", {})
     ]
-    mentioned_skus = set(_SKU.findall(candidate))
+    evidenced_skus = known_skus(successful)
+    claimed_skus = mentioned_skus(candidate, evidenced_skus)
+    unverified_legacy_skus = set(_LEGACY_SKU_SIGNAL.findall(candidate)) - claimed_skus
     if _SUPERLATIVE.search(candidate):
         return FALLBACK, "unsupported_comparison"
     if _unsupported_feature(candidate, successful):
@@ -272,7 +278,8 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     if _STOCK.search(candidate):
         checks = [call for call in successful if call["name"] == "inventory.check"]
         checked_skus = {call["args"].get("sku") for call in checks}
-        if len(checked_skus) != 1 or (mentioned_skus and mentioned_skus != checked_skus):
+        if len(checked_skus) != 1 or unverified_legacy_skus \
+                or (claimed_skus and claimed_skus != checked_skus):
             return FALLBACK, "stock_sku_mismatch"
         stock = checks[-1]["result"].get("in_stock")
         if stock is None or ("hết hàng" in candidate.lower()) == stock:
@@ -281,7 +288,8 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         checks = [call for call in successful if call["name"] == "inventory.check"]
         signatures = {(call["args"].get("sku"), call["args"].get("on"),
                        call["result"].get("qty")) for call in checks}
-        if len(signatures) != 1 or (mentioned_skus and mentioned_skus != {checks[-1]["args"].get("sku")}) \
+        if len(signatures) != 1 or unverified_legacy_skus \
+                or (claimed_skus and claimed_skus != {checks[-1]["args"].get("sku")}) \
                 or any(int(qty) != checks[-1]["result"].get("qty")
                                     for qty in _STOCK_QTY.findall(candidate)):
             return FALLBACK, "stock_quantity_mismatch"
@@ -292,7 +300,7 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         return FALLBACK, "order_creation_unverified"
     mentioned_codes = {
         code for code in _PROMO_CODE.findall(candidate)
-        if not code.startswith(("SKU-", "OD-"))
+        if code not in claimed_skus and not code.startswith(("SKU-", "OD-"))
     }
     if _PROMOTION.search(candidate) or mentioned_codes:
         quote_calls = [call for call in successful if call["name"] == "pricing.get_quote"]
