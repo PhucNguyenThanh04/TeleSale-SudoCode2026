@@ -11,6 +11,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.agent.context import load_context, prompt_context
+from app.agent.catalog_query import clean_catalog_query
 from app.agent.guardrails import FALLBACK, check_answer, has_money_claim, mask_pii, valid_catalog_quote
 from app.agent.memory import MemoryStore
 from app.agent.observability import (
@@ -25,16 +26,6 @@ from app.agent.prompts import system_prompt
 from app.agent.state import Decision, TurnState, parse_decision
 from app.agent.tool_gateway import ToolGateway
 from app.constants import CATALOG_RESULT_LIMIT
-
-
-def _price_catalog_query(customer_text: str) -> str:
-    text = re.sub(
-        r"(?i)\b(?:có loại nào|có mẫu nào|những loại nào|loại nào|mẫu nào|máy nào|"
-        r"sản phẩm nào|đang khuyến mãi|khuyến mãi|đang giảm giá|giảm giá|ưu đãi|sale|"
-        r"giá bao nhiêu|bao nhiêu tiền|bao nhiêu|mấy tiền|giảm|giá|các|những|cho em hỏi|cho anh hỏi|"
-        r"hiện tại|không em|em ơi|anh ơi|ạ|nhé)\b", " ", customer_text,
-    )
-    return " ".join(re.findall(r"[\w-]+", text, flags=re.UNICODE)).strip()
 
 
 def _single_price_sku(items: list[dict[str, Any]], customer_text: str) -> str | None:
@@ -277,7 +268,7 @@ class AgentNodes:
             items = searches[-1]["result"].get("items", []) if searches else []
             if (not searches and not intent.competitor
                     and state["tool_count"] < self.max_tool_calls):
-                query = _price_catalog_query(state["safe_text"])
+                query = clean_catalog_query(state["safe_text"], generated=True)
                 if query or intent.broad:
                     log_event(state, "plan", "catalog_required")
                     decision = Decision(action="tool", tool_name="catalog.search",

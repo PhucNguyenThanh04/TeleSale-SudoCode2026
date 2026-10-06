@@ -7,8 +7,9 @@ import unittest
 from uuid import UUID
 
 from app.agent.guardrails import check_answer
-from app.agent.nodes import _price_catalog_query, _single_price_sku
-from app.agent.policy import _catalog_query, response_price_precondition
+from app.agent.catalog_query import clean_catalog_query
+from app.agent.nodes import _single_price_sku
+from app.agent.policy import response_price_precondition
 from app.agent.price_intent import detect_price_intent
 from app.agent.state import Decision
 from app.mcp_servers.mcp_shared.commerce_rules import quote
@@ -60,14 +61,13 @@ class DesiredBehavior(unittest.TestCase):
                                          "basket_skus": ["RUN-B"]})
         self.assertEqual(result["final_price_vnd"], 900_000)
 
-    @unittest.expectedFailure
     def test_alternate_price_question_keeps_only_product_terms_for_catalog(self):
-        self.assertEqual(_price_catalog_query("Xin báo chi phí của AirPure X giúp mình?"),
+        self.assertEqual(clean_catalog_query("Xin báo chi phí của AirPure X giúp mình?",
+                                             generated=True),
                          "AirPure X")
 
-    @unittest.expectedFailure
     def test_model_catalog_query_removes_alternate_question_words(self):
-        self.assertEqual(_catalog_query("Xin báo chi phí của AirPure X giúp mình?"),
+        self.assertEqual(clean_catalog_query("Xin báo chi phí của AirPure X giúp mình?"),
                          "AirPure X")
 
     @unittest.expectedFailure

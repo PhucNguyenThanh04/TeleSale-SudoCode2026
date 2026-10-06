@@ -1,10 +1,10 @@
 """Existing deterministic tool boundaries, separate from graph wiring."""
 
 from datetime import datetime
-import re
 from typing import Any, Callable
 
 from app.agent.guardrails import has_money_claim
+from app.agent.catalog_query import clean_catalog_query
 from app.agent.skus import known_skus, mentioned_skus
 from app.agent.state import TurnState
 
@@ -21,21 +21,6 @@ _READ_TOOL_ARGS = {
     "inventory.check": {"sku", "on"},
     "pricing.get_quote": {"sku", "on", "qty", "customer_phone", "address", "basket_skus"},
 }
-_SEARCH_NOISE = {"giá", "của", "bao", "nhiêu", "tiền", "vậy", "shop", "ơi",
-                 "cho", "mình", "tôi", "hỏi", "em", "anh", "chị", "muốn",
-                 "biết", "được", "nhé", "ạ", "là", "sao", "bạn"}
-
-
-def _catalog_query(query: str) -> str:
-    """Remove question words before calling BTC's strict all-word catalog search."""
-    if not re.search(r"(?i)\b(?:bao nhiêu|giá của|shop ơi|cho mình hỏi|giá bao nhiêu)\b", query):
-        return query
-    text = re.sub(r"(?i)\bcòn\s+hàng\s+không\b", " ", query)
-    words = re.findall(r"[\w-]+", text, flags=re.UNICODE)
-    keywords = [word for word in words if word.lower() not in _SEARCH_NOISE]
-    return " ".join(keywords) if keywords else query
-
-
 def _single_catalog_sku(state: TurnState) -> str | None:
     searches = [call for call in state.get("tool_calls", [])
                 if call.get("name") == "catalog.search" and
@@ -107,7 +92,7 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
         return None
     args = dict(decision.tool_args)
     if name == "catalog.search" and isinstance(args.get("query"), str):
-        args["query"] = _catalog_query(args["query"])
+        args["query"] = clean_catalog_query(args["query"])
     if name in {"inventory.check", "pricing.get_quote"} and not args.get("sku"):
         sku = _single_catalog_sku(state)
         if sku:
