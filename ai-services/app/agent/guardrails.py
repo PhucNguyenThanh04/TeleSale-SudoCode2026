@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from app.mcp_servers.mcp_shared.pii import mask_pii
+from app.constants import PROFILE_SLOT_KEYS, TOOL_ONLY_SLOT_KEYS, Slot
 
 
 FALLBACK = "Dạ, hiện em chưa kiểm tra được thông tin này. Em sẽ nhờ nhân viên hỗ trợ mình ạ."
@@ -41,11 +42,6 @@ _ORDER_STATUS = re.compile(r"(?i)\b(?:đơn đang giao|đơn đã giao|đơn đ�
 _PRICE_REFERENCE = re.compile(r"(?i)\bgiá\b[^.!?]{0,40}\b(?:như hôm trước|vẫn vậy|không đổi|còn hiệu lực)\b")
 _STOCK_QTY = re.compile(r"(?i)\bcòn\s+(\d+)\s+(?:cái|chiếc|sản phẩm)\b")
 _ORDER_ID = re.compile(r"\bOD[A-Z0-9-]+\b")
-_PROFILE_KEYS = {
-    "room_area_m2", "has_children", "budget_vnd", "product_advised",
-    "price_quoted_vnd", "promo_code", "promo_expiry", "blocker",
-    "preferred_size", "preferred_color", "order_id", "in_stock",
-}
 
 
 
@@ -351,15 +347,15 @@ def fact_evidence(
     key: str, value: Any, op: str, customer_text: str, tool_calls: list[dict[str, Any]]
 ) -> str | None:
     """Accept only facts traceable to this customer turn or a successful tool result."""
-    if key not in _PROFILE_KEYS or _PII_KEY.search(key) or not isinstance(value, (str, int, float, bool)):
+    if key not in PROFILE_SLOT_KEYS or _PII_KEY.search(key) or not isinstance(value, (str, int, float, bool)):
         return None
     if isinstance(value, str) and (not value.strip() or mask_pii(value) != value):
         return None
-    tool_only_keys = {"price_quoted_vnd", "promo_code", "order_id", "in_stock"}
+    tool_only_keys = TOOL_ONLY_SLOT_KEYS
     if op == "delete":
         return "customer" if re.search(r"(?i)\b(?:xóa|bỏ|không còn)\b", customer_text) and key in customer_text else None
     if isinstance(value, bool) and key not in tool_only_keys:
-        if key == "has_children" and value and re.search(r"(?i)\b(?:bé nhỏ|con nhỏ|có con)\b", customer_text):
+        if key == Slot.HAS_CHILDREN and value and re.search(r"(?i)\b(?:bé nhỏ|con nhỏ|có con)\b", customer_text):
             return "customer"
     elif key not in tool_only_keys:
         direct = str(value).lower() in customer_text.lower()
@@ -368,7 +364,7 @@ def fact_evidence(
             number = float(digits.replace(",", "."))
             normalized_money.add(int(number * (1_000_000 if unit.lower() in {"triệu", "tr"} else 1_000)))
         has_slot_cue = (
-            key != "budget_vnd" or bool(re.search(r"(?i)\b(?:ngân sách|budget|chi khoảng|tầm)\b", customer_text))
+            key != Slot.BUDGET_VND or bool(re.search(r"(?i)\b(?:ngân sách|budget|chi khoảng|tầm)\b", customer_text))
         )
         if has_slot_cue and (direct or value in normalized_money):
             return "customer"
@@ -378,21 +374,21 @@ def fact_evidence(
         name = call["name"]
         result = safe_tool_result(call["result"])
         supported = False
-        if key == "product_advised" and name in {
+        if key == Slot.PRODUCT_ADVISED and name in {
             "catalog.search", "inventory.check", "pricing.get_quote"
         }:
             supported = value == result.get("sku") or (
                 name == "catalog.search"
                 and any(value == item.get("sku") for item in result.get("items", []))
             )
-        elif key == "price_quoted_vnd" and name == "pricing.get_quote":
+        elif key == Slot.PRICE_QUOTED_VND and name == "pricing.get_quote":
             supported = value == result.get("final_price_vnd")
-        elif key == "promo_code" and name == "pricing.get_quote":
+        elif key == Slot.PROMO_CODE and name == "pricing.get_quote":
             supported = any(value == promo.get("promo_code")
                             for promo in result.get("applied_promos", []))
-        elif key == "order_id" and name == "order.create":
+        elif key == Slot.ORDER_ID and name == "order.create":
             supported = result.get("status") == "created" and value == result.get("order_id")
-        elif key == "in_stock" and name == "inventory.check":
+        elif key == Slot.IN_STOCK and name == "inventory.check":
             supported = value is result.get("in_stock")
         if supported:
             return f"tool:{name}"

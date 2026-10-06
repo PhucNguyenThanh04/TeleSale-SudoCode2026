@@ -9,6 +9,7 @@ from app.agent.memory import MemoryStore
 from app.agent.observability import log_event, log_tool_input, log_tool_output
 from app.agent.state import TurnState
 from app.agent.tool_gateway import ToolGateway
+from app.constants import BRIEF_MUST_NOT_ASK_KEYS, Slot
 from app.schemas.brief import CallBrief
 
 
@@ -52,7 +53,7 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
     episodes.sort(key=lambda item: item["on"], reverse=True)
     fresh_calls = []
     warnings = []
-    advised = profile.get("product_advised", {}).get("value")
+    advised = profile.get(Slot.PRODUCT_ADVISED, {}).get("value")
     if episodes and isinstance(advised, str):
         for name, args in (
             ("inventory.check", {"sku": advised, "on": state["request"].on.isoformat()}),
@@ -80,10 +81,10 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
             warnings.append("Sản phẩm đã hết hàng; cần tư vấn lại.")
         elif "error" in stock:
             warnings.append("Chưa kiểm tra được tồn kho hiện tại.")
-        old_price = profile.get("price_quoted_vnd", {}).get("value")
+        old_price = profile.get(Slot.PRICE_QUOTED_VND, {}).get("value")
         if old_price is not None and quote.get("final_price_vnd") != old_price:
             warnings.append("Giá hiện tại khác báo giá cũ hoặc chưa xác minh được.")
-        old_promo = profile.get("promo_code", {}).get("value")
+        old_promo = profile.get(Slot.PROMO_CODE, {}).get("value")
         if old_promo and old_promo not in {
             promo.get("promo_code") for promo in quote.get("applied_promos", [])}:
             warnings.append("Khuyến mãi cũ không còn được áp dụng.")
@@ -98,10 +99,10 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
                           "channel": last["channel"], "summary": last["summary"],
                           "outcome": last["outcome"]},
             products_advised=([{"sku": advised,
-                                "price_quoted_vnd": profile.get("price_quoted_vnd", {}).get("value"),
-                                "promo_code": profile.get("promo_code", {}).get("value")}] if advised else []),
-            open_blockers=([str(profile["blocker"]["value"])] if "blocker" in profile else []),
-            must_not_ask=[key for key in ("room_area_m2", "budget_vnd", "has_children", "product_advised")
+                                Slot.PRICE_QUOTED_VND: profile.get(Slot.PRICE_QUOTED_VND, {}).get("value"),
+                                Slot.PROMO_CODE: profile.get(Slot.PROMO_CODE, {}).get("value")}] if advised else []),
+            open_blockers=([str(profile[Slot.BLOCKER]["value"])] if Slot.BLOCKER in profile else []),
+            must_not_ask=[key for key in BRIEF_MUST_NOT_ASK_KEYS
                           if key in profile],
             suggested_opening="Dạ, em thấy mình đã trao đổi lần trước. Mình muốn tiếp tục phần đó ạ?",
             generated_at=datetime.now(timezone.utc),
