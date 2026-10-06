@@ -4,7 +4,8 @@ import json
 import logging
 import re
 import time
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Callable
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -146,12 +147,14 @@ def _safe_catalog_reply(state: TurnState) -> str | None:
 
 class AgentNodes:
     def __init__(self, llm: BaseChatModel, tools: ToolGateway, memory: MemoryStore,
-                 max_tool_calls: int, prompt_history_turns: int) -> None:
+                 max_tool_calls: int, prompt_history_turns: int,
+                 clock: Callable[[], datetime] | None = None) -> None:
         self.llm = llm
         self.tools = tools
         self.memory = memory
         self.max_tool_calls = max_tool_calls
         self.prompt_history_turns = prompt_history_turns
+        self.clock = clock or (lambda: datetime.now(timezone.utc))
 
     @trace_node("accept")
     async def accept(self, state: TurnState) -> dict[str, Any]:
@@ -208,7 +211,7 @@ class AgentNodes:
 
     @trace_node("retrieve_context")
     async def retrieve_context(self, state: TurnState) -> dict[str, Any]:
-        result = await load_context(state, self.memory, self.tools)
+        result = await load_context(state, self.memory, self.tools, self.clock)
         log_event(state, "retrieve_context", "context_loaded",
                   history_turns=len(result.get("history", [])),
                   profile_facts=len(result.get("profile", {})),
@@ -316,7 +319,7 @@ class AgentNodes:
     @trace_node("call_tool")
     async def call_tool(self, state: TurnState) -> dict[str, Any]:
         request = state["request"]
-        prepared = prepare_tool_call(state)
+        prepared = prepare_tool_call(state, self.clock)
         if prepared is None:
             log_event(state, "call_tool", "blocked", reason="precondition_or_arguments")
             return {"tool_failed": True, "tool_count": state["tool_count"] + 1}
@@ -382,7 +385,7 @@ class AgentNodes:
                 continue
             seen.add(sku)
             prepared = prepare_tool_call({**state, "decision": Decision(
-                action="tool", tool_name="pricing.get_quote", tool_args={"sku": sku})})
+                action="tool", tool_name="pricing.get_quote", tool_args={"sku": sku})}, self.clock)
             if prepared is None:
                 continue
             name, args = prepared

@@ -1,8 +1,8 @@
 """Assemble the small, masked model context for a text turn."""
 
 import time
-from datetime import datetime, timezone
-from typing import Any
+from datetime import datetime
+from typing import Any, Callable
 
 from app.agent.guardrails import mask_pii, safe_tool_result
 from app.agent.memory import MemoryStore
@@ -32,7 +32,8 @@ def prompt_context(state: TurnState, history_turns: int) -> dict[str, Any]:
     }
 
 
-async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway) -> dict[str, Any]:
+async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway,
+                       clock: Callable[[], datetime]) -> dict[str, Any]:
     customer_id = state.get("customer_id")
     session_id = str(state["request"].session_id)
     context = await memory.read_context(session_id, customer_id)
@@ -105,7 +106,7 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
             must_not_ask=[key for key in BRIEF_MUST_NOT_ASK_KEYS
                           if key in profile],
             suggested_opening="Dạ, em thấy mình đã trao đổi lần trước. Mình muốn tiếp tục phần đó ạ?",
-            generated_at=datetime.now(timezone.utc),
+            generated_at=clock(),
             latency_ms=int((time.perf_counter() - state["received_at_monotonic"]) * 1000),
             profile_facts={key: value["value"] for key, value in profile.items()},
             stale_warnings=warnings, precomputed_parts=["episode_summary"],

@@ -1,5 +1,8 @@
 """Wiring for the explicit one-turn LangGraph."""
 
+from datetime import datetime
+from typing import Callable
+
 from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.graph import END, START, StateGraph
 
@@ -12,8 +15,9 @@ from app.constants import DEFAULT_MAX_TOOL_CALLS, DEFAULT_PROMPT_HISTORY_TURNS
 
 def build_graph(llm: BaseChatModel, tools: ToolGateway, memory: MemoryStore,
                 max_tool_calls: int = DEFAULT_MAX_TOOL_CALLS,
-                prompt_history_turns: int = DEFAULT_PROMPT_HISTORY_TURNS):
-    nodes = AgentNodes(llm, tools, memory, max_tool_calls, prompt_history_turns)
+                prompt_history_turns: int = DEFAULT_PROMPT_HISTORY_TURNS,
+                clock: Callable[[], datetime] | None = None):
+    nodes = AgentNodes(llm, tools, memory, max_tool_calls, prompt_history_turns, clock)
     graph = StateGraph(TurnState)
     graph.add_node("accept", nodes.accept)
     graph.add_node("resolve_identity", nodes.resolve_identity)

@@ -1,8 +1,8 @@
 """Existing deterministic tool boundaries, separate from graph wiring."""
 
-from datetime import datetime, timezone
+from datetime import datetime
 import re
-from typing import Any
+from typing import Any, Callable
 
 from app.agent.guardrails import has_money_claim
 from app.agent.state import TurnState
@@ -97,7 +97,7 @@ def response_price_precondition(state: TurnState) -> tuple[str, str | None] | No
     return None if quoted else ("price_without_quote", sku)
 
 
-def prepare_tool_call(state: TurnState) -> tuple[str, dict[str, Any]] | None:
+def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[str, dict[str, Any]] | None:
     """Validate a proposed tool call and supply trusted business arguments."""
     request = state["request"]
     decision = state["decision"]
@@ -136,7 +136,7 @@ def prepare_tool_call(state: TurnState) -> tuple[str, dict[str, Any]] | None:
         brief = dict(brief)
         brief["customer_phone"] = trusted_phone
         brief["customer_name"] = state.get("customer_name")
-        brief["generated_at"] = datetime.now(timezone.utc).isoformat()
+        brief["generated_at"] = clock().isoformat()
         args = {"brief": brief}
     owned_orders = set(state.get("owned_order_ids", [])) | set(state.get("remembered_order_ids", []))
     if name in {"order.status", "order.update"}:

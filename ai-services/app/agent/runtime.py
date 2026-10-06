@@ -4,6 +4,8 @@ import asyncio
 import logging
 import time
 from collections import defaultdict
+from datetime import datetime
+from typing import Callable
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
@@ -19,10 +21,11 @@ from app.schemas.agent import TextTurnRequest, TextTurnResponse
 class HarnessRuntime:
     def __init__(self, llm: BaseChatModel, tools: ToolGateway, memory: MemoryStore,
                  max_tool_calls: int = DEFAULT_MAX_TOOL_CALLS,
-                 prompt_history_turns: int = DEFAULT_PROMPT_HISTORY_TURNS) -> None:
+                 prompt_history_turns: int = DEFAULT_PROMPT_HISTORY_TURNS,
+                 clock: Callable[[], datetime] | None = None) -> None:
         self.memory = memory
         self.graph = build_graph(llm, tools, self.memory, max_tool_calls=max_tool_calls,
-                                 prompt_history_turns=prompt_history_turns)
+                                 prompt_history_turns=prompt_history_turns, clock=clock)
         self._locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._responses: dict[tuple[str, str], TextTurnResponse] = {}
         self._states: dict[tuple[str, str], TurnState] = {}
