@@ -85,7 +85,11 @@ def quote(products: list[dict], promos: list[dict], args: dict,
     qty = args.get("qty", 1)
     for pr in promos:
         targets = pr["applies_to"]
-        if not ("*" in targets or p["sku"] in targets or any(t.startswith("category:") and p["category"].startswith(t.split(":", 1)[1]) for t in targets)):
+        applicable_skus = {item["sku"] for item in products
+                           if "*" in targets or item["sku"] in targets or any(
+                               t.startswith("category:") and item["category"].startswith(t.split(":", 1)[1])
+                               for t in targets)}
+        if p["sku"] not in applicable_skus:
             continue
         if not (pr["start"] <= on <= pr["end"]):
             if pr["end"] < on:
@@ -107,7 +111,7 @@ def quote(products: list[dict], promos: list[dict], args: dict,
         elif pr["type"] == "percent_second_item":
             others = [(_parent(products, other)[0], _parent(products, other)[1]) for other in basket]
             prices = [other[0]["list_price_vnd"] + (other[1]["price_delta_vnd"] if other[1] else 0)
-                      for other in others if other[0] and other[0]["category"].startswith("gia-dung/may-loc-khong-khi")]
+                      for other in others if other[0] and other[0]["sku"] in applicable_skus]
             discount = int(base * pr["discount_percent"] / 100) if prices and base <= min(prices) else 0
             if discount == 0:
                 ineligible.append({"promo_code": pr["promo_code"], "reason": "not_cheapest_item"})

@@ -45,7 +45,6 @@ class DesiredBehavior(unittest.TestCase):
         self.assertEqual(check_answer("AIRPURE-Y còn hàng.", [catalog_call, stock_call])[1],
                          "stock_sku_mismatch")
 
-    @unittest.expectedFailure
     def test_second_item_promotion_uses_promotion_category_data(self):
         products = [
             {"sku": "RUN-A", "category": "giay/chay-bo", "list_price_vnd": 1_000_000,
