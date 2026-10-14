@@ -1,0 +1,131 @@
+<mxfile host="app.diagrams.net" agent="Codex">
+  <diagram id="agent-current-flow" name="Agent - luong 1 luot chat">
+    <mxGraphModel dx="3654" dy="1152" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1450" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="request" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fontStyle=1;" value="ChatRequest" vertex="1">
+          <mxGeometry height="55" width="260" x="360" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="runtime" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=13;" value="&lt;b&gt;HarnessRuntime.run()&lt;/b&gt;&lt;br&gt;khóa session; cache theo session_id + client_msg_id" vertex="1">
+          <mxGeometry height="70" width="350" x="315" y="205" as="geometry" />
+        </mxCell>
+        <mxCell id="accept" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;" value="&lt;b&gt;accept&lt;/b&gt;&lt;br&gt;che PII; khởi tạo state và bộ đếm tool" vertex="1">
+          <mxGeometry height="70" width="340" x="320" y="310" as="geometry" />
+        </mxCell>
+        <mxCell id="identity" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;" value="&lt;b&gt;resolve_identity&lt;/b&gt;&lt;br&gt;tra CRM theo hotline / Facebook / Zalo" vertex="1">
+          <mxGeometry height="70" width="340" x="320" y="415" as="geometry" />
+        </mxCell>
+        <mxCell id="context" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;" value="&lt;b&gt;retrieve_context&lt;/b&gt;&lt;br&gt;đọc lượt trong phiên, profile, episode, đơn" vertex="1">
+          <mxGeometry height="70" width="340" x="320" y="520" as="geometry" />
+        </mxCell>
+        <mxCell id="plan" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;" value="&lt;b&gt;plan&lt;/b&gt;&lt;br&gt;LLM chọn respond / tool; code ép điều kiện giá" vertex="1">
+          <mxGeometry height="70" width="340" x="320" y="625" as="geometry" />
+        </mxCell>
+        <mxCell id="route_plan" parent="1" style="rhombus;whiteSpace=wrap;html=1;fontSize=12;" value="route_plan&lt;br&gt;(hàm điều hướng)" vertex="1">
+          <mxGeometry height="90" width="250" x="365" y="735" as="geometry" />
+        </mxCell>
+        <mxCell id="call_tool" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;" value="&lt;b&gt;call_tool&lt;/b&gt;&lt;br&gt;kiểm precondition / args; gọi MCP; ghi tool result" vertex="1">
+          <mxGeometry height="70" width="330" x="790" y="745" as="geometry" />
+        </mxCell>
+        <mxCell id="route_tool" parent="1" style="rhombus;whiteSpace=wrap;html=1;fontSize=12;" value="route_tool&lt;br&gt;(hàm điều hướng)" vertex="1">
+          <mxGeometry height="90" width="250" x="830" y="865" as="geometry" />
+        </mxCell>
+        <mxCell id="verify" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;" value="&lt;b&gt;verify&lt;/b&gt;&lt;br&gt;guardrail; thử sửa bằng LLM; fallback nếu cần" vertex="1">
+          <mxGeometry height="70" width="340" x="320" y="1085" as="geometry" />
+        </mxCell>
+        <mxCell id="persist" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;" value="&lt;b&gt;persist&lt;/b&gt;&lt;br&gt;ghi lượt khách + câu trả lời vào memory" vertex="1">
+          <mxGeometry height="70" width="340" x="320" y="1190" as="geometry" />
+        </mxCell>
+        <mxCell id="response" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fontStyle=1;" value="ChatResponse" vertex="1">
+          <mxGeometry height="55" width="260" x="360" y="1295" as="geometry" />
+        </mxCell>
+        <mxCell id="crm" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=13;" value="&lt;b&gt;MCP Catalog&lt;/b&gt;&lt;br&gt;crm.get_customer" vertex="1">
+          <mxGeometry height="60" width="250" x="1300" y="420" as="geometry" />
+        </mxCell>
+        <mxCell id="memory_read" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=13;" value="&lt;b&gt;MCP Memory&lt;/b&gt;&lt;br&gt;memory.read" vertex="1">
+          <mxGeometry height="60" width="250" x="1300" y="525" as="geometry" />
+        </mxCell>
+        <mxCell id="llm" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=13;" value="&lt;b&gt;LLM&lt;/b&gt;&lt;br&gt;quyết định / soạn câu trả lời" vertex="1">
+          <mxGeometry height="60" width="250" x="-80" y="630" as="geometry" />
+        </mxCell>
+        <mxCell id="mcp_tools" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=13;" value="&lt;b&gt;MCP&amp;nbsp;&lt;/b&gt;&lt;br&gt;Catalog / Order / Memory" vertex="1">
+          <mxGeometry height="60" width="250" x="1300" y="750" as="geometry" />
+        </mxCell>
+        <mxCell id="memory_write" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=13;" value="&lt;b&gt;MCP Memory&lt;/b&gt;&lt;br&gt;record_turn / memory.write" vertex="1">
+          <mxGeometry height="60" width="250" x="1300" y="1195" as="geometry" />
+        </mxCell>
+        <mxCell id="e01" edge="1" parent="1" source="request" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="runtime">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e02" edge="1" parent="1" source="runtime" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="accept">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e03" edge="1" parent="1" source="accept" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="identity">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e04" edge="1" parent="1" source="identity" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="context">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e05" edge="1" parent="1" source="context" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="plan">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e06" edge="1" parent="1" source="plan" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="route_plan">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e07" edge="1" parent="1" source="route_plan" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=12;" target="call_tool" value="cần tool, còn lượt">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e08" edge="1" parent="1" source="route_plan" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=12;exitX=0.5;exitY=1;entryX=0;entryY=0.5;entryPerimeter=0;" target="verify" value="respond / hết lượt tool">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="180" y="850" />
+              <mxPoint x="180" y="1120" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e09" edge="1" parent="1" source="call_tool" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="route_tool">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" edge="1" parent="1" source="route_tool" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=12;exitX=1;exitY=0.5;entryX=1;entryY=0.5;entryPerimeter=0;" target="plan" value="thành công → quyết định tiếp">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1190" y="910" />
+              <mxPoint x="1190" y="660" />
+              <mxPoint x="730" y="660" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e11" edge="1" parent="1" source="route_tool" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=12;exitX=0;exitY=0.5;entryX=1;entryY=0.35;entryPerimeter=0;" target="verify" value="lỗi tool">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="735" y="910" />
+              <mxPoint x="735" y="1110" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e14" edge="1" parent="1" source="verify" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="persist">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e15" edge="1" parent="1" source="persist" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="response">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s01" edge="1" parent="1" source="identity" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;dashPattern=6 4;endArrow=open;strokeWidth=1.5;" target="crm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s02" edge="1" parent="1" source="context" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;dashPattern=6 4;endArrow=open;strokeWidth=1.5;" target="memory_read">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s03" edge="1" parent="1" source="plan" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;dashPattern=6 4;endArrow=open;strokeWidth=1.5;" target="llm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s04" edge="1" parent="1" source="call_tool" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;dashPattern=6 4;endArrow=open;strokeWidth=1.5;" target="mcp_tools">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s06" edge="1" parent="1" source="persist" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;dashPattern=6 4;endArrow=open;strokeWidth=1.5;" target="memory_write">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

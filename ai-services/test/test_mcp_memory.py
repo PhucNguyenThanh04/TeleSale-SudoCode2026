@@ -122,6 +122,49 @@ class MemoryServiceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(repo.statuses, [(repo.facts[0][0], "superseded")])
         self.assertEqual(repo.facts[1][1], repo.facts[0][0])
 
+    async def test_commit_turn_writes_facts_once_and_supersedes_changed_value(self):
+        class CommitRepo(TurnRepo):
+            def __init__(self):
+                super().__init__()
+                self.values = {}
+
+            async def active_fact_record(self, _conn, customer_id, key):
+                return self.values.get((customer_id, key))
+
+            async def insert_fact(self, _conn, fact_id, customer_id, key, value,
+                                  source, session_id, previous, **metadata):
+                self.facts.append((fact_id, previous, metadata))
+                self.values[(customer_id, key)] = {"fact_id": fact_id, "value": value}
+
+        repo = CommitRepo()
+        session_id = str(uuid4())
+        first_msg, second_msg = str(uuid4()), str(uuid4())
+        base = {"customer_text": "Phòng anh 25 m²", "agent_text": "Dạ, em tư vấn ạ.",
+                "on": "2026-10-15", "channel": "hotline", "client_msg_id": first_msg,
+                "facts": [{"key": "room_area_m2", "value": 25, "op": "set",
+                           "source_kind": "customer"}]}
+        first = await write(repo, "commit_turn", "C001", session_id, base, "commit-1")
+        replay = await write(repo, "commit_turn", "C001", session_id, base, "commit-1")
+        self.assertEqual(first, replay)
+        self.assertEqual(first["memory_writes"][0]["op"], "set")
+        self.assertEqual(first["memory_writes"][0]["source"], f"{session_id}:{first_msg}")
+        self.assertEqual(len(repo.rows[session_id]), 1)
+        self.assertEqual(len(repo.facts), 1)
+        self.assertEqual(repo.facts[0][2]["on_date"].isoformat(), "2026-10-15")
+
+        same = await write(repo, "commit_turn", "C001", session_id,
+                           {**base, "client_msg_id": second_msg}, "commit-2")
+        self.assertEqual(same["memory_writes"], [])
+        changed = await write(repo, "commit_turn", "C001", session_id,
+                              {**base, "client_msg_id": str(uuid4()),
+                               "customer_text": "Phòng anh 28 m²",
+                               "facts": [{"key": "room_area_m2", "value": 28,
+                                          "op": "set", "source_kind": "customer"}]},
+                              "commit-3")
+        self.assertEqual(changed["memory_writes"][0]["op"], "supersede")
+        self.assertEqual(repo.statuses, [(repo.facts[0][0], "superseded")])
+        self.assertEqual(len(repo.facts), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

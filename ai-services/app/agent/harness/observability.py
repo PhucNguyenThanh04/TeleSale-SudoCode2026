@@ -1,34 +1,24 @@
 """Operational logs for a chat turn; callers pass only non-sensitive metadata."""
 
 import logging
-import re
 import time
 from collections.abc import Awaitable, Callable
 from functools import wraps
 from typing import Any
 
-from app.agent.state import TurnState
+from app.agent.harness.state import TurnState
 from app.mcp_servers.mcp_shared.observability import (
-    redact_text, render_payload, safe_tool_input, safe_tool_output,
+    render_payload, safe_tool_input, safe_tool_output,
 )
 from app.schemas.agent import TextTurnRequest
 
 
 logger = logging.getLogger("app.agent")
-_SAFE_MODEL_FIELDS = {
-    "action", "needs_price", "response", "tool_name", "tool_args", "memory_writes", "key", "op",
-    "value", "sku", "on", "qty", "price_vnd", "payment", "query", "limit",
-    "callback_at", "new_variant_sku", "promo_code", "reason", "order_id",
-    "category", "max_price_vnd", "min_room_area_m2", "include_discontinued",
-}
-_PRIVATE_FIELDS = {"order_id", "reason"}
 
 STEP_LABELS = {
     "chat": "Lượt chat", "accept": "Nhận yêu cầu",
     "resolve_identity": "Xác định khách hàng", "retrieve_context": "Đọc ngữ cảnh",
-    "plan": "Quyết định bước tiếp", "route_plan": "Điều hướng sau quyết định",
-    "call_tool": "Gọi công cụ", "route_tool": "Điều hướng sau công cụ",
-    "quote_catalog": "Kiểm tra báo giá danh mục",
+    "call_tool": "Gọi công cụ", "run_deep_agent": "Deep Agent xử lý lượt",
     "verify": "Kiểm tra câu trả lời", "persist": "Lưu bộ nhớ",
 }
 EVENT_LABELS = {
@@ -37,21 +27,10 @@ EVENT_LABELS = {
     "tool_failed": "công cụ gặp lỗi", "tool_result": "kết quả công cụ",
     "context_loaded": "đã tải ngữ cảnh", "memory_unavailable": "không đọc được bộ nhớ",
     "refresh_invoking": "kiểm tra lại bằng công cụ", "refresh_result": "kết quả kiểm tra lại",
-    "fallback": "dùng câu trả lời dự phòng", "model_failed": "model gặp lỗi",
-    "model_retry": "yêu cầu model sửa định dạng JSON",
-    "model_fence_removed": "đã bóc Markdown fence quanh JSON",
-    "decision": "model đề xuất", "routed": "chuyển bước", "blocked": "chặn lời gọi",
-    "invoking": "đang gọi công cụ", "answer_checked": "đã kiểm tra câu trả lời",
-    "repair_attempt": "yêu cầu viết lại câu trả lời",
-    "repair_result": "kết quả viết lại",
-    "repair_failed": "không viết lại được câu trả lời",
-    "safe_catalog_reply": "dùng câu trả lời an toàn từ catalog",
-    "catalog_required": "cần tìm sản phẩm trước khi báo giá",
-    "quote_required": "cần lấy báo giá trước khi trả lời",
+    "model_failed": "model gặp lỗi", "blocked": "chặn lời gọi",
+    "answer_checked": "đã kiểm tra câu trả lời",
+    "answer_check_disabled": "bỏ qua kiểm tra câu trả lời",
     "memory_recorded": "đã lưu lượt chat",
-    "memory_paused": "tạm dừng ghi bộ nhớ",
-    "memory_proposals_ignored": "bỏ qua đề xuất ghi bộ nhớ",
-    "model_output": "model trả về", "model_invalid": "phản hồi JSON không hợp lệ",
     "tool_input": "gửi vào công cụ", "tool_output": "công cụ trả về",
 }
 FIELD_LABELS = {
@@ -62,22 +41,15 @@ FIELD_LABELS = {
     "history_turns": "lượt trước trong phiên", "turn_no": "số lượt trong phiên",
     "profile_facts": "số thông tin đã nhớ",
     "episodes": "phiên trước", "call_brief": "tóm tắt khách quay lại",
-    "action": "hành động", "proposed_memory_writes": "thông tin đề xuất lưu",
-    "next": "bước tiếp", "reason": "lý do", "tool_failed": "công cụ lỗi",
-    "accepted": "câu trả lời", "outcome": "kết quả hội thoại",
+    "reason": "lý do", "accepted": "câu trả lời",
     "accepted_facts": "thông tin đã lưu", "needs_handoff": "chuyển người thật",
     "memory_writes": "số fact đã lưu", "error_type": "loại lỗi",
-    "ignored_facts": "số fact bị bỏ qua",
 }
 VALUE_LABELS = {
     "known": "đã nhận diện", "unknown": "chưa xác định",
     "ambiguous": "có nhiều khách trùng thông tin", "skipped": "bỏ qua",
-    "respond": "trả lời", "tool": "gọi công cụ",
     "tool_limit": "đã đạt giới hạn công cụ", "tool_failed": "công cụ lỗi",
-    "tool_failed_or_no_response": "công cụ lỗi hoặc chưa có câu trả lời",
     "precondition_or_arguments": "thiếu điều kiện hoặc tham số không hợp lệ",
-    "model_fallback": "model không tạo được câu trả lời hợp lệ",
-    "guardrail_rejected": "câu trả lời không khớp bằng chứng tool",
     "empty_answer": "câu trả lời rỗng",
     "unsupported_policy_or_internal_claim": "chính sách hoặc dữ liệu nội bộ chưa có nguồn",
     "unsupported_comparison": "so sánh mức phù hợp chưa có nguồn",
@@ -112,8 +84,6 @@ def _display_value(key: str, value: Any) -> str:
         if key == "accepted":
             return "đạt" if value else "không đạt"
         return "có" if value else "không"
-    if key == "next" and isinstance(value, str):
-        return STEP_LABELS.get(value, value)
     return VALUE_LABELS.get(value, str(value)) if isinstance(value, str) else str(value)
 
 
@@ -143,58 +113,12 @@ def log_event(_turn: TextTurnRequest | TurnState, step: str, event: str,
     logger.log(level, "%s%s", title, f" | {details}" if details else "")
 
 
-def _safe_value(value: Any, allowed: set[str], customer_name: str | None) -> Any:
-    if isinstance(value, dict):
-        return {key: _safe_value(item, allowed, customer_name)
-                for key, item in value.items()
-                if key in allowed and key not in _PRIVATE_FIELDS}
-    if isinstance(value, list):
-        return [_safe_value(item, allowed, customer_name) for item in value[:20]]
-    if isinstance(value, str):
-        return redact_text(value, customer_name)[:500]
-    return value if isinstance(value, (int, float, bool)) or value is None else "[ĐÃ ẨN]"
-
-
 def _write_payload(step: str, event: str, payload: dict[str, Any],
                    level: int = logging.INFO) -> None:
     if not logger.isEnabledFor(level):
         return
     logger.log(level, "%s: %s | %s", STEP_LABELS[step], EVENT_LABELS[event],
                render_payload(payload))
-
-
-def log_model_output(state: TurnState, decision: Any, step: str = "plan") -> None:
-    """Show the validated model decision, omitting identity and private arguments."""
-    if not logger.isEnabledFor(logging.INFO):
-        return
-    payload = decision.model_dump()
-    safe = _safe_value(payload, _SAFE_MODEL_FIELDS, state.get("customer_name"))
-    _write_payload(step, "model_output", safe)
-
-
-def log_invalid_model_output(state: TurnState, content: Any, exc: ValueError,
-                             metadata: dict[str, Any] | None = None,
-                             step: str = "plan") -> None:
-    """Show why parsing failed and a short PII-masked response preview."""
-    if not logger.isEnabledFor(logging.WARNING):
-        return
-    preview = (redact_text(content, state.get("customer_name"))
-               if isinstance(content, str) else "[KHÔNG PHẢI TEXT]")
-    preview = re.sub(
-        r'("(?:customer_name|name|phone|email|address|token|secret|identity|customer_id|session_id|client_msg_id|order_id)"\s*:\s*)"[^"]*"',
-        r'\1"[ĐÃ ẨN]"', preview, flags=re.IGNORECASE,
-    )[:800]
-    payload: dict[str, Any] = {"preview": preview, "content_type": type(content).__name__}
-    if hasattr(exc, "errors"):
-        payload["issues"] = [
-            {"field": ".".join(map(str, issue.get("loc", ()))), "type": issue.get("type")}
-            for issue in exc.errors(include_input=False, include_context=False)[:5]
-        ]
-    if isinstance(metadata, dict):
-        finish = metadata.get("done_reason") or metadata.get("finish_reason")
-        if isinstance(finish, str) and finish in {"stop", "length", "load", "unload"}:
-            payload["finish_reason"] = finish
-    _write_payload(step, "model_invalid", payload, logging.WARNING)
 
 
 def log_tool_input(step: str, name: str, args: dict[str, Any]) -> None:

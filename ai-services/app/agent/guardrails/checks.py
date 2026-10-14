@@ -6,12 +6,11 @@ from typing import Any
 
 from app.mcp_servers.mcp_shared.pii import mask_pii
 from app.constants import PROFILE_SLOT_KEYS, TOOL_ONLY_SLOT_KEYS, Slot
-from app.agent.skus import known_skus, mentioned_skus
+from app.agent.guardrails.skus import known_skus, mentioned_skus
 
 
 FALLBACK = "Dạ, hiện em chưa kiểm tra được thông tin này. Em sẽ nhờ nhân viên hỗ trợ mình ạ."
 
-_MONEY = re.compile(r"(?i)\b(?:\d[\d.,]*\s*(?:triệu|tr|nghìn|ngàn|k|đồng|đ|vnd|₫)|giá\s+(?:là\s+)?\d)")
 _STOCK = re.compile(r"(?i)\b(?:còn hàng|có hàng|sẵn hàng|hết hàng)\b")
 _ORDER = re.compile(r"(?i)\bđã\s+(?:lên|tạo|đặt|chốt)\s+đơn\b")
 _AMOUNT = re.compile(r"(?i)(\d[\d.,]*)\s*(triệu|tr|nghìn|ngàn|k|đồng|đ|vnd|₫)")
@@ -27,7 +26,9 @@ _NEGATIVE_DISCOUNT = re.compile(
 _PRICE_CONTEXT = re.compile(r"(?i)\b(?:giá(?:\s+bán)?|còn|chỉ)\b")
 _COMPETITOR_CONTEXT = re.compile(r"(?i)\b(?:bên kia|bên khác|shop khác|đối thủ)\b")
 _BUDGET = re.compile(
-    r"(?i)\bngân sách\s+(?:(?:tầm|khoảng|chỉ|là|cỡ)\s+)?"
+    r"(?i)\b(?:ngân\s*sách|budget|(?:muốn|định|có thể)\s+chi|chi\s+(?:tầm|khoảng))\s+"
+    r"(?:(?:anh|chị|em|tôi|mình|nhà mình)\s+)?"
+    r"(?:(?:tầm|khoảng|chỉ|là|cỡ)\s+)?"
     r"(?P<amount>\d[\d.,]*\s*(?:triệu|tr|nghìn|ngàn|k|đồng|đ|vnd|₫))"
 )
 _PRODUCT_FEATURE = re.compile(r"(?i)\b(?:HEPA(?:\s*H\d+)?|PM\s*2[.,]5)\b")
@@ -43,6 +44,53 @@ _ORDER_STATUS = re.compile(r"(?i)\b(?:đơn đang giao|đơn đã giao|đơn đ�
 _PRICE_REFERENCE = re.compile(r"(?i)\bgiá\b[^.!?]{0,40}\b(?:như hôm trước|vẫn vậy|không đổi|còn hiệu lực)\b")
 _STOCK_QTY = re.compile(r"(?i)\bcòn\s+(\d+)\s+(?:cái|chiếc|sản phẩm)\b")
 _ORDER_ID = re.compile(r"\bOD[A-Z0-9-]+\b")
+_AREA_UNIT = r"(?:m²|m2|m\s+vuông|mét\s+vuông)"
+_NUMBER_WORDS = {
+    "không": 0, "một": 1, "hai": 2, "ba": 3, "bốn": 4, "tư": 4,
+    "năm": 5, "lăm": 5, "sáu": 6, "bảy": 7, "tám": 8, "chín": 9,
+}
+_AREA_NUMBER_WORD = r"(?:không|một|hai|ba|bốn|tư|năm|lăm|sáu|bảy|tám|chín|mười|mươi|trăm|linh|lẻ)"
+_SPOKEN_AREA = re.compile(
+    rf"(?i)\b({_AREA_NUMBER_WORD}(?:\s+{_AREA_NUMBER_WORD}){{0,6}})\s*{_AREA_UNIT}(?!\w)"
+)
+
+
+def _spoken_integer(words: str) -> int | None:
+    """Parse a spoken Vietnamese room area, up to 999 m²."""
+    parts = words.lower().split()
+    if not parts:
+        return None
+    total = 0
+    if len(parts) >= 2 and parts[1] == "trăm" and parts[0] in _NUMBER_WORDS:
+        total = _NUMBER_WORDS[parts[0]] * 100
+        parts = parts[2:]
+        if parts and parts[0] in {"linh", "lẻ"}:
+            parts = parts[1:]
+            if len(parts) != 1 or parts[0] not in _NUMBER_WORDS:
+                return None
+            return total + _NUMBER_WORDS[parts[0]]
+    if len(parts) >= 2 and parts[1] == "mươi" and parts[0] in _NUMBER_WORDS:
+        if _NUMBER_WORDS[parts[0]] < 2:
+            return None
+        total += _NUMBER_WORDS[parts[0]] * 10
+        parts = parts[2:]
+    elif parts and parts[0] == "mười":
+        total += 10
+        parts = parts[1:]
+    if not parts:
+        return total or None
+    if len(parts) != 1 or parts[0] not in _NUMBER_WORDS:
+        return None
+    return total + _NUMBER_WORDS[parts[0]]
+
+
+def _room_area_evidenced(value: Any, customer_text: str) -> bool:
+    if type(value) is not int or value <= 0:
+        return False
+    if re.search(rf"(?i)\b{value}\s*{_AREA_UNIT}(?!\w)", customer_text):
+        return True
+    return any(_spoken_integer(match.group(1)) == value
+               for match in _SPOKEN_AREA.finditer(customer_text))
 
 
 
@@ -83,13 +131,11 @@ def _money_amount(value: str) -> int | None:
     return int(number)
 
 
-def _without_confirmed_budget(candidate: str, customer_text: str) -> str:
-    customer_budgets = {_money_amount(match.group("amount")) for match in _BUDGET.finditer(customer_text)}
-    customer_budgets.discard(None)
-    return _BUDGET.sub(
-        lambda match: " " if _money_amount(match.group("amount")) in customer_budgets else match.group(),
-        candidate,
-    )
+def customer_budget_amounts(customer_text: str) -> set[int]:
+    """Only amounts explicitly framed as the customer's spending limit."""
+    amounts = {_money_amount(match.group("amount")) for match in _BUDGET.finditer(customer_text)}
+    amounts.discard(None)
+    return amounts
 
 
 def _money_claims(text: str) -> list[tuple[int, str, bool]]:
@@ -163,29 +209,6 @@ def _unsupported_feature(candidate: str, successful: list[dict[str, Any]]) -> bo
                 if needle not in attributes:
                     return True
     return False
-
-
-def valid_catalog_quote(sku: str, result: Any, *, promotions: bool) -> bool:
-    """Check one SKU's dated quote before a catalog-wide answer uses it."""
-    if not isinstance(result, dict) or result.get("sku") != sku \
-            or type(result.get("final_price_vnd")) is not int:
-        return False
-    if not promotions:
-        return True
-    list_price = result.get("list_price_vnd")
-    promos = result.get("applied_promos")
-    final_price = result["final_price_vnd"]
-    if type(list_price) is not int or list_price < final_price \
-            or not isinstance(promos, list) or not isinstance(result.get("freeship"), bool):
-        return False
-    if any(not isinstance(promo, dict) or type(promo.get("discount_vnd")) is not int
-           or promo["discount_vnd"] < 0 for promo in promos):
-        return False
-    return sum(promo["discount_vnd"] for promo in promos) == list_price - final_price
-
-
-def has_money_claim(text: str) -> bool:
-    return bool(_money_claims(text))
 
 
 def _quote_money_values(result: dict[str, Any]) -> set[int]:
@@ -363,18 +386,42 @@ def fact_evidence(
     if op == "delete":
         return "customer" if re.search(r"(?i)\b(?:xóa|bỏ|không còn)\b", customer_text) and key in customer_text else None
     if isinstance(value, bool) and key not in tool_only_keys:
-        if key == Slot.HAS_CHILDREN and value and re.search(r"(?i)\b(?:bé nhỏ|con nhỏ|có con)\b", customer_text):
+        if key == Slot.HAS_CHILDREN and value and re.search(r"(?i)\b(?:bé nhỏ|con nhỏ|có con|có em bé)\b", customer_text):
             return "customer"
     elif key not in tool_only_keys:
         direct = str(value).lower() in customer_text.lower()
+        if key == Slot.ROOM_AREA_M2:
+            direct = _room_area_evidenced(value, customer_text)
+        elif key == Slot.PREFERRED_SIZE:
+            direct = bool(re.search(rf"(?i)\bsize\s*{re.escape(str(value))}\b", customer_text))
+        elif key == Slot.PREFERRED_COLOR:
+            direct = bool(re.search(rf"(?i)\bmàu\s+{re.escape(str(value))}\b", customer_text))
+        elif key == Slot.SIZE:
+            direct = bool(re.search(rf"(?i)\bsize\s*{re.escape(str(value))}\b", customer_text))
+        elif key == Slot.COLOR:
+            direct = bool(re.search(rf"(?i)\bmàu\s+{re.escape(str(value))}\b", customer_text))
+        elif key == Slot.PAYMENT:
+            direct = value == "COD" and bool(re.search(r"(?i)\b(?:thanh toán|trả|ship)\s+COD\b", customer_text))
+        elif key == Slot.OBJECTION:
+            direct = value == "dat_qua" and bool(re.search(r"(?i)\b(?:đắt hơn|đắt quá|giá cao)\b", customer_text))
         normalized_money = set()
         for digits, unit in re.findall(r"(?i)\b(\d+(?:[.,]\d+)?)\s*(triệu|tr|nghìn|ngàn|k)\b", customer_text):
             number = float(digits.replace(",", "."))
             normalized_money.add(int(number * (1_000_000 if unit.lower() in {"triệu", "tr"} else 1_000)))
-        has_slot_cue = (
-            key != Slot.BUDGET_VND or bool(re.search(r"(?i)\b(?:ngân sách|budget|chi khoảng|tầm)\b", customer_text))
-        )
-        if has_slot_cue and (direct or value in normalized_money):
+        if key == Slot.COMPETITOR_PRICE_VND:
+            competitor_amounts = {
+                int(float(digits.replace(",", ".")) *
+                    (1_000_000 if unit.lower() in {"triệu", "tr"} else 1_000))
+                for digits, unit in re.findall(
+                    r"(?i)\b(?:bên kia|bên khác|shop khác|đối thủ)\b[^.!?]{0,80}?\b"
+                    r"(\d+(?:[.,]\d+)?)\s*(triệu|tr|nghìn|ngàn|k)\b", customer_text)
+            }
+            if value in competitor_amounts:
+                return "customer"
+        elif key == Slot.BUDGET_VND:
+            if type(value) is int and value in customer_budget_amounts(customer_text):
+                return "customer"
+        elif direct or (key != Slot.ROOM_AREA_M2 and value in normalized_money):
             return "customer"
     for call in tool_calls:
         if "error" in call.get("result", {}):
@@ -396,6 +443,12 @@ def fact_evidence(
                             for promo in result.get("applied_promos", []))
         elif key == Slot.ORDER_ID and name == "order.create":
             supported = result.get("status") == "created" and value == result.get("order_id")
+        elif key == Slot.VARIANT_SKU and name == "catalog.search":
+            supported = any(value == variant.get("variant_sku")
+                            for item in result.get("items", []) if isinstance(item, dict)
+                            for variant in item.get("variants", []) if isinstance(variant, dict))
+        elif key == Slot.VARIANT_SKU and name == "order.create":
+            supported = result.get("status") == "created" and value == call.get("args", {}).get("sku")
         elif key == Slot.IN_STOCK and name == "inventory.check":
             supported = value is result.get("in_stock")
         if supported:

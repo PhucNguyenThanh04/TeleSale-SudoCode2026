@@ -1,9 +1,10 @@
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.chat import router as chat_router
 from app.api.health import router as health_router
 from app.configs import get_settings
 from app.database.pg_session import check_postgres, create_pg_engine, create_pg_sessionmaker
@@ -24,6 +25,8 @@ async def lifespan(app: FastAPI):
         async with httpx.AsyncClient(
             base_url=settings.ai_service_url,
             timeout=httpx.Timeout(settings.ai_service_timeout_seconds),
+            headers={"X-AI-Internal-Token": settings.ai_internal_token.get_secret_value()}
+                    if settings.ai_internal_token else None,
         ) as ai_http:
             app.state.pg_engine = engine
             app.state.pg_sessionmaker = create_pg_sessionmaker(engine)
@@ -61,14 +64,9 @@ app.add_middleware(
 )
 
 app.include_router(health_router)
+app.include_router(chat_router)
 
 
 @app.get("/")
 async def root():
     return {"message": "Welcome to the TeleSale-SudoCode2026 backend API!"}
-
-
-def get_ai_http(request: Request) -> httpx.AsyncClient:
-    """FastAPI dependency for calls to the AI service."""
-    return request.app.state.ai_http
-    

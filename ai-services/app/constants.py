@@ -18,16 +18,25 @@ class Slot:
     PREFERRED_COLOR = "preferred_color"
     ORDER_ID = "order_id"
     IN_STOCK = "in_stock"
+    COMPETITOR_PRICE_VND = "competitor_price_vnd"
+    OBJECTION = "objection"
+    VARIANT_SKU = "variant_sku"
+    SIZE = "size"
+    COLOR = "color"
+    PAYMENT = "payment"
 
 
 PROFILE_SLOT_KEYS = frozenset({
     Slot.ROOM_AREA_M2, Slot.HAS_CHILDREN, Slot.BUDGET_VND, Slot.PRODUCT_ADVISED,
     Slot.PRICE_QUOTED_VND, Slot.PROMO_CODE, Slot.PROMO_EXPIRY, Slot.BLOCKER,
     Slot.PREFERRED_SIZE, Slot.PREFERRED_COLOR, Slot.ORDER_ID, Slot.IN_STOCK,
+    Slot.COMPETITOR_PRICE_VND, Slot.OBJECTION, Slot.VARIANT_SKU,
+    Slot.SIZE, Slot.COLOR, Slot.PAYMENT,
 })
 BRIEF_MUST_NOT_ASK_KEYS = (
     Slot.ROOM_AREA_M2, Slot.BUDGET_VND, Slot.HAS_CHILDREN, Slot.PRODUCT_ADVISED,
 )
 TOOL_ONLY_SLOT_KEYS = frozenset({
     Slot.PRICE_QUOTED_VND, Slot.PROMO_CODE, Slot.ORDER_ID, Slot.IN_STOCK,
+    Slot.VARIANT_SKU,
 })

@@ -1,43 +1,63 @@
-# Hướng dẫn làm việc trong TeleSale-SudoCode2026
+# TeleSale-SudoCode2026 — hướng dẫn cho coding agent
 
-Áp dụng cho AI coding agent làm việc trong repo này. Đọc file liên quan và kiểm tra trạng thái Git trước khi sửa. Khi người dùng chỉ gửi tài liệu hoặc hỏi ý kiến kiến trúc, hãy phân tích và trao đổi; chỉ viết code khi họ yêu cầu triển khai hoặc chỉnh sửa cụ thể. Không ghi đè thay đổi có sẵn của người dùng.
+Cập nhật: 2026-10-11. Dữ liệu BTC: gói Vòng 1, `reference_date=2026-10-15`; gói không có mã phiên bản độc lập được khai báo. Khi gói hoặc code đổi, kiểm lại các bản chụp ở `docs/`.
 
-## Nguồn yêu cầu
+## Cách làm việc và nguồn chuẩn
 
-- Đề gốc: `/home/thanh-phuc/PyProject/sudocode/SUDO CODE 2026 - Đề Bài Dự Án Cuối Kì.pdf`.
-- Dữ liệu BTC: `/home/thanh-phuc/PyProject/sudocode/BTC-Data-Vong1-TEAMS/`. Đọc `README.md`, `DIEU-CHINH-DE.md`, `GIAI-DAP-MENTOR.md`, `schemas/` và `eval/reference_eval.py` khi làm phần liên quan. Điều chỉnh của BTC được ưu tiên hơn bản PDF ở các điểm đã sửa.
-- Ngày tham chiếu của dữ liệu BTC là `2026-10-15`; trong kịch bản dùng `call_date` hoặc `days_later` để xét giá, khuyến mãi, tồn kho và chính sách. Không lấy ngày hệ thống thay cho ngày kịch bản.
-- Không sửa bộ dữ liệu BTC gốc khi chưa có yêu cầu. Dữ liệu do nhóm tạo phải nhất quán với catalog, chính sách và `eval/mock_tools.py`.
+- Đọc file liên quan và `git status` trước khi sửa; giữ thay đổi sẵn có. Người dùng hỏi kiến trúc/đánh giá thì chỉ phân tích; chỉ viết code khi được yêu cầu triển khai cụ thể.
+- Đề PDF và gói BTC mặc định ở thư mục cha repo: `../SUDO CODE 2026 - Đề Bài Dự Án Cuối Kì.pdf`, `../BTC-Data-Vong1-TEAMS/`. Dataloader có thể nhận `BTC_DATA_DIR`/`--data-dir`; không hard-code `/home/...`. Nếu file không có ở đường dẫn mặc định, tìm đường dẫn thực trước khi kết luận.
+- Thứ tự nguồn: `DIEU-CHINH-DE.md` và `GIAI-DAP-MENTOR.md` của BTC ưu tiên hơn PDF ở điểm đã sửa; `schemas/tools.schema.json` là chuẩn tên/tham số, `eval/mock_tools.py` là chuẩn kết quả, `eval/reference_eval.py` là chuẩn phép chấm. Sample và `asr/ground_truth.json` dùng để kiểm thử, không phải dữ liệu đầu vào runtime. Không sửa dữ liệu BTC gốc khi chưa được yêu cầu.
+- Ngày của cuộc gọi là `2026-10-15` mặc định hoặc tính từ `call_date`/`days_later`; truyền qua `on` cho tool. Không dùng ngày máy để tính giá, KM, tồn kho, chính sách, hẹn hoặc giao hàng.
 
-## Phạm vi và kiến trúc đã chọn
+## Ranh giới hệ thống
 
-- Làm **chat text-to-text và bộ nhớ xuyên phiên** trước. Audio/voice là giai đoạn sau; không để phần đó chặn luồng text.
-- `backend/`: FastAPI, xác thực danh tính, CRM, phiên, catalog/giá/tồn kho/đơn hàng, PostgreSQL và Redis. SQLAlchemy async dùng `asyncpg` với DSN `postgresql+asyncpg://`.
-- `ai-services/`: Agent API và LangGraph `StateGraph` tường minh. LangChain dùng cho model, messages và tool adapters; không giao toàn bộ harness cho agent dựng sẵn.
-- Ba MCP server trong AI service: `mcp-memory`, `mcp-catalog`, `mcp-knowledge`. Agent gọi qua MCP client. Catalog MCP gọi nghiệp vụ backend; không viết lại công thức giá. Knowledge truy hồi tài liệu, lọc bản hết hiệu lực và nội dung nội bộ.
-- `langgraph-checkpoint-postgres` dùng `psycopg` riêng; không thay nó bằng `asyncpg`. `thread_id` nên gắn với `session_id`. Checkpointer giữ state trong phiên, không tự tạo bộ nhớ khách hàng xuyên phiên.
-- PostgreSQL là nguồn chính cho khách, phiên, episode và profile. Redis dùng cache/khóa/queue; Qdrant dùng tìm kiếm ngữ nghĩa, không là nguồn chính cho fact có cấu trúc.
-- `config/*.yml` hiện là cấu hình khai báo; runtime backend đang đọc `backend/.env` qua `app/configs.py`. Đừng giả định YAML đã được nạp tự động.
+- `backend/` xác thực frontend, quản lý phiên và chuẩn hóa request gửi AI; nghiệp vụ CRM/catalog/order nằm ở `ai-services/`. Luồng text-to-text và memory xuyên phiên đi trước audio/voice.
+- `ai-services/` dùng LangGraph `StateGraph` tường minh. Ba MCP hiện có: catalog (CRM/sản phẩm/tồn kho/quote), order (đơn/callback/handoff), memory; mỗi server có repo/pool/role PostgreSQL riêng. Giữ tool mỏng, service chứa nghiệp vụ, SQL ở repo. PostgreSQL là nguồn chính; Redis/Qdrant không thay thế fact có cấu trúc.
+- M1 **cần** tra chính sách có hiệu lực. Hướng triển khai: tool đọc `btc_source.policy_chunks` trong `mcp-catalog`, lọc quyền và ngày trước khi trả cho agent; code chưa có tool này. Không thêm MCP server chỉ để tra chính sách M1. Qdrant và tìm kiếm ngữ nghĩa làm sau khi truy vấn có lọc chạy đúng.
+- Fact/slot và điều kiện gọi tool do code quản lý; LLM diễn đạt và có thể đề xuất ứng viên. Giá đã báo chỉ là lịch sử, mọi giá/KM/tồn kho phải lấy lại từ tool theo ngày gọi. `order_id`/`ticket_id` chỉ lấy từ kết quả tool thành công; không hard-code nhãn sample vào runtime. Xem [harness-spec](docs/harness-spec.md), [tool-contract](docs/tool-contract.md) và [public-sample-traps](docs/public-sample-traps.md) khi sửa phần tương ứng.
+- Địa chỉ/PII có thể đi tới nghiệp vụ giao hàng qua kho có kiểm soát; prompt, checkpoint, vector store và trace chỉ dùng ref/bản che. `address_ref` là thiết kế đề xuất, **chưa triển khai**. Không ghi API key/DSN có mật khẩu; không dùng dữ liệu khách thật chưa được phép.
 
-## Quy tắc nghiệp vụ và bộ nhớ
+## Bản đồ repo và trạng thái hiện tại
 
-- Luồng harness phải thể hiện rõ: nhận đầu vào → xác định danh tính → truy hồi → lập kế hoạch → gọi tool → quan sát kết quả → kiểm tra câu trả lời → ghi nhớ. Nhánh fallback và chuyển người thật phải tường minh.
-- Tách working state (lượt/phiên hiện tại), episodic memory (tóm tắt từng phiên) và profile memory (fact bền vững theo `customer_id`). Khi khách đổi ý, fact cũ phải bị supersede; lưu nguồn, thời điểm và trạng thái hiệu lực.
-- Khách quay lại phải có Call Brief và lời mở đầu tiếp nối. Không hỏi mở lại slot đã biết; chỉ xác nhận khi thật sự cần. Số điện thoại dùng chung không được tự động gộp hai hồ sơ.
-- Giá, khuyến mãi, tồn kho, điều kiện COD và ngày giao hàng phải lấy từ công cụ nghiệp vụ theo ngày của cuộc gọi. Không để LLM tự bịa hoặc xem báo giá cũ là giá hiện tại.
-- Che CCCD, số tài khoản, địa chỉ và PII khác trước khi ghi log/trace hoặc gửi tới model ngoài. CRM có thể lưu thông tin cần thiết để nhận diện/giao hàng trong kho nghiệp vụ có kiểm soát; không đưa PII thô vào prompt, checkpoint, vector store hoặc log. Không log API key hay DSN có mật khẩu.
-- Không dùng ghi âm khách hàng thật chưa ẩn danh và chưa được phép. Không huấn luyện lại hoặc fine-tune model cho bài này.
+| Vị trí | Trách nhiệm / trạng thái ngày 2026-10-11 |
+|---|---|
+| `ai-services/app/agent/` | `chat.py` là entrypoint một lượt; `factory.py` lắp runtime Deep Agent; `graph.py` nối các node trong `harness/`. `memory/` và `guardrails/` là các khối riêng, `mcp/gateway.py` nối tới ba MCP server. Lock/idempotency của runtime chỉ trong một worker. |
+| `ai-services/app/mcp_servers/` | Ba server `mcp_catalog`, `mcp_order`, `mcp_memory` có `tools/`, `services/`, `repos/`; chưa có policy lookup tool. |
+| `ai-services/app/api/`, `backend/app/api/` | AI nhận `/v1/chat/turns`; backend là đầu vào frontend, không sở hữu business tool. |
+| `dataloader_offline/`, `ai-services/migrations/`, `backend/migrations/` | Dataloader hỗ trợ nạp BTC, gồm `policy_chunks`, vào `btc_source`; migration tạo runtime/memory tables. Chưa xác minh DB hiện tại đã nạp đủ. |
+| `eval/`, `run_eval.py` | Trace và runner full/baseline đã có; dùng cùng hàm `chat()` và MCP HTTP, vẫn cần PostgreSQL. Chưa có runner không phụ thuộc server ngoài. |
 
-## Đánh giá và kiểm chứng
+Đây là ảnh chụp, không phải luật: kiểm tra code trước khi dựa vào trạng thái trên. `config/*.yml` là cấu hình khai báo; runtime dùng `.env`/biến môi trường.
 
-- Đặt runner đánh giá ở `eval/` cấp repo; `run_eval.py` là entrypoint theo định dạng BTC: `--scenarios`, `--config full|baseline_no_memory`, `--out`.
-- Trace JSONL phải theo `BTC-Data-Vong1-TEAMS/schemas/trace_log.schema.json`. `questions`, `claims`, `facts_used`, tool calls và memory writes phải phản ánh hành vi thật, không điền theo đáp án kịch bản.
-- Full và baseline chạy trên cùng bộ kịch bản, model, tham số và tool; baseline chỉ tắt nạp bộ nhớ từ phiên trước. Báo RQR, CCR, TSR, HR, WER/CER bằng code. LangSmith/Langfuse hỗ trợ debug, không thay thế `eval/reference_eval.py` của BTC.
-- Với thay đổi ảnh hưởng đến bộ nhớ, tool, giá hoặc routing, kiểm tra kịch bản đa phiên và ca khó liên quan. Với chỉnh sửa nhỏ, chạy kiểm tra tập trung; không tạo test chỉ lặp lại nội dung implementation.
+## Lệnh thực tế
 
-## Cách sửa code
+Chạy từ gốc repo, với Python 3.12 cho AI/backend. `pyproject.toml` ở gốc chưa khai báo dependency của hai service; dùng `requirements.txt` của từng service:
 
-- Giữ API route và MCP tool mỏng; nghiệp vụ nằm trong service/repository hoặc node rõ trách nhiệm. Dùng type hints ở boundary và Pydantic cho schema I/O.
-- Không tạo class chỉ để bọc một hàm thuần; dùng hàm cho chuẩn hóa, masking và kiểm tra dữ liệu. Dùng class khi cần giữ dependency hoặc state có vòng đời rõ ràng.
-- Không thêm service, framework, worker hoặc abstraction chỉ vì sơ đồ có chỗ trống. Bắt đầu bằng lát cắt chạy được cho khách chat lần đầu và quay lại lần hai.
-- Khi báo cáo thay đổi: nêu file đã sửa, hành vi mới, cách đã kiểm tra và giới hạn kiểm chứng. Nếu dịch vụ ngoài chưa chạy, nói rõ phần nào mới kiểm tra bằng mock.
+```bash
+python3.12 -m venv ai-services/.venv
+ai-services/.venv/bin/pip install -r ai-services/requirements.txt
+python3.12 -m venv backend/.venv
+backend/.venv/bin/pip install -r backend/requirements.txt
+docker compose up -d postgres redis
+python3.12 -m venv .venv-dataloader
+.venv-dataloader/bin/pip install -r dataloader_offline/requirements-postgres.txt
+.venv-dataloader/bin/python -m dataloader_offline --only-postgres
+```
+
+Áp migration theo đúng thứ tự và cấu hình môi trường trong `ai-services/README.md`; sau đó chạy `docker compose --env-file .env --env-file ai-services/.env up -d --build mcp-catalog mcp-order mcp-memory` và `(cd ai-services && .venv/bin/python -m app)` cho demo. Lệnh kiểm tra import ở `dataloader_offline/README.md`.
+
+```bash
+(cd ai-services && .venv/bin/python -m unittest discover -s test -v)
+(cd backend && .venv/bin/python -m unittest discover -s test -v)
+ai-services/.venv/bin/python -m unittest discover -s eval -v
+git diff --check
+```
+
+Repo chưa có cấu hình lint thống nhất; `git diff --check` chỉ kiểm tra whitespace. Không báo “lint xanh” nếu chưa chạy linter thật. Với eval, dùng `ai-services/.venv/bin/python run_eval.py --scenarios ../BTC-Data-Vong1-TEAMS/test_set/public_sample --config full --out eval/runs/full.jsonl` và lặp lại với `baseline_no_memory`. Dùng DB eval tách biệt và reset bảng runtime có trạng thái giữa hai cấu hình; chạy `../BTC-Data-Vong1-TEAMS/eval/reference_eval.py` trên hai trace. Chi tiết ở `README.md`.
+
+## Khi coi là xong
+
+- Test tập trung cho phần sửa qua, test của service liên quan qua; thay đổi memory/tool/giá/routing phải chạy public sample đa phiên liên quan. Trace JSONL phải hợp lệ theo `schemas/trace_log.schema.json` và phản ánh tool/memory write thật.
+- Khi sửa hợp đồng tool hoặc clock nghiệp vụ, bổ sung kiểm tra tự động cho tên/tham số BTC và việc không dùng wall clock trong tính toán; khi sửa harness/eval, kiểm tra không có nhánh runtime đọc `scenario_id`/nhãn đáp án. Hiện chưa có gate lint/AST chung, nên không khẳng định các luật này đã được máy enforce.
+- Full và baseline dùng cùng model, dữ liệu, tham số và tool; baseline chỉ bỏ memory từ phiên trước. Đối chiếu RQR/CCR/TSR/HR với `reference_eval.py`; kiểm WER/CER/Entity Accuracy khi sửa ASR.
+- Báo file đã sửa, hành vi mới, lệnh đã chạy và giới hạn kiểm chứng. Nếu chưa chạy PostgreSQL, MCP HTTP hoặc LLM thật thì nói rõ phần nào chỉ kiểm bằng mock.

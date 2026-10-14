@@ -4,16 +4,17 @@ import time
 from datetime import datetime
 from typing import Any, Callable
 
-from app.agent.guardrails import mask_pii, safe_tool_result
-from app.agent.memory import MemoryStore
-from app.agent.observability import log_event, log_tool_input, log_tool_output
-from app.agent.state import TurnState
-from app.agent.tool_gateway import ToolGateway
-from app.constants import BRIEF_MUST_NOT_ASK_KEYS, Slot
+from app.agent.guardrails.checks import mask_pii, safe_tool_result
+from app.agent.memory.store import MemoryStore
+from app.agent.harness.observability import log_event, log_tool_input, log_tool_output
+from app.agent.harness.state import TurnState
+from app.agent.mcp.gateway import ToolGateway
+from app.constants import BRIEF_MUST_NOT_ASK_KEYS, TOOL_ONLY_SLOT_KEYS, Slot
 from app.schemas.brief import CallBrief
 
 
 def prompt_context(state: TurnState, history_turns: int) -> dict[str, Any]:
+    customer_facts, sales_history = _split_facts(state.get("profile", {}))
     observations = [
         {"name": call["name"], "result": safe_tool_result(call["result"])}
         for call in state.get("tool_calls", []) if call["name"] != "crm.get_customer"
@@ -22,7 +23,8 @@ def prompt_context(state: TurnState, history_turns: int) -> dict[str, Any]:
         "on": state["request"].on.isoformat(),
         "input_mode": state["request"].input_mode,
         "identity_status": state["identity_status"],
-        "known_facts": state.get("profile", {}),
+        "customer_facts": customer_facts,
+        "sales_history": sales_history,
         "session_history": state.get("history", [])[-history_turns:],
         "previous_episodes": state.get("episodes", []),
         "call_brief": {key: value for key, value in (state.get("call_brief") or {}).items()
@@ -30,6 +32,20 @@ def prompt_context(state: TurnState, history_turns: int) -> dict[str, Any]:
         "tool_observations": observations,
         "customer_text": state["safe_text"],
     }
+
+
+def _split_facts(profile: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Keep customer-stated limits separate from prices and actions by the shop."""
+    sales_keys = TOOL_ONLY_SLOT_KEYS | {Slot.PRODUCT_ADVISED}
+    customer, sales = {}, {}
+    for key, fact in profile.items():
+        if not isinstance(fact, dict):
+            continue
+        if fact.get("source_kind") == "tool" or key in sales_keys:
+            sales[key] = fact
+        else:
+            customer[key] = fact
+    return customer, sales
 
 
 async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway,
@@ -108,11 +124,11 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
             suggested_opening="Dạ, em thấy mình đã trao đổi lần trước. Mình muốn tiếp tục phần đó ạ?",
             generated_at=clock(),
             latency_ms=int((time.perf_counter() - state["received_at_monotonic"]) * 1000),
-            profile_facts={key: value["value"] for key, value in profile.items()},
+            profile_facts={key: value["value"] for key, value in _split_facts(profile)[0].items()},
             stale_warnings=warnings, precomputed_parts=["episode_summary"],
         ).model_dump(mode="json")
     return {"history": history, "profile": context.get("profile", {}),
             "episodes": episodes, "call_brief": brief,
             "remembered_order_ids": context.get("owned_order_ids", []),
             "tool_calls": [*state.get("tool_calls", []), *fresh_calls],
-            "turn_no": len(history) + 1}
+        "turn_no": context.get("turn_count", len(history)) + 1}

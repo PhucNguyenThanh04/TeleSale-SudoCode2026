@@ -3,9 +3,12 @@
 import unittest
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
 
-from app.agent.tool_gateway import MCPGateway
+from app.agent.mcp.gateway import MCPGateway
+from app.agent.memory.store import MCPMemoryStore
 from app.mcp_servers.mcp_catalog.tools.handlers import create_server as catalog_server
+from app.mcp_servers.mcp_memory.tools.handlers import create_server as memory_server
 from app.mcp_servers.mcp_order.tools.handlers import create_server as order_server
 
 
@@ -16,9 +19,32 @@ class FakeRepo:
 
 
 class GatewayTest(unittest.IsolatedAsyncioTestCase):
+    async def test_commit_turn_uses_memory_mcp_with_evidenced_facts(self):
+        gateway = MCPGateway(None, None, memory_server(FakeRepo()))
+        memory = MCPMemoryStore(gateway)
+        session_id = "22222222-2222-4222-8222-222222222222"
+        message_id = "11111111-1111-4111-8111-111111111111"
+        with (patch("app.mcp_servers.mcp_memory.tools.handlers.get_settings",
+                    return_value=SimpleNamespace(memory_summary_turns=3,
+                                                 memory_summary_max_chars=800)),
+              patch("app.mcp_servers.mcp_memory.tools.handlers.write",
+                    new_callable=AsyncMock) as service):
+            service.return_value = {"turn_no": 1, "memory_writes": [
+                {"key": "room_area_m2", "value": 25, "op": "set",
+                 "source": "turn-1", "customer_id": "C001"}]}
+            result = await memory.commit_turn(
+                session_id, "C001", "Phòng anh 25 m²", "Dạ, em tư vấn ạ.",
+                "2026-10-15", "hotline", message_id,
+                [{"key": "room_area_m2", "value": 25, "op": "set",
+                  "source_kind": "customer"}])
+        self.assertEqual(result["memory_writes"][0]["value"], 25)
+        self.assertEqual(service.await_args.kwargs["action"], "commit_turn")
+        self.assertEqual(service.await_args.kwargs["operation_key"],
+                         f"{session_id}:{message_id}:commit_turn")
+
     async def test_mcp_failure_returns_unavailable(self):
         gateway = MCPGateway("http://127.0.0.1:1/mcp", None, None)
-        with patch("app.agent.tool_gateway.Client", side_effect=RuntimeError("offline")):
+        with patch("app.agent.mcp.gateway.Client", side_effect=RuntimeError("offline")):
             self.assertEqual(await gateway.invoke("catalog.search", {"query": "máy lọc"}),
                              {"error": "mcp_unavailable"})
 

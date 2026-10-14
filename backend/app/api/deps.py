@@ -2,7 +2,8 @@
 
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+import httpx
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.exceptions import InvalidTokenError
 
@@ -34,3 +35,8 @@ async def get_current_user_id(
 
 
 CurrentUserId = Annotated[str, Depends(get_current_user_id)]
+
+
+def get_ai_http(request: Request) -> httpx.AsyncClient:
+    """Reuse the AsyncClient owned by FastAPI lifespan."""
+    return request.app.state.ai_http

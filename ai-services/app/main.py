@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.agent.chat import get_runtime
-from app.agent.observability import configure_agent_logging
+from app.agent.harness.observability import configure_agent_logging
 from app.api.chat import router as chat_router
 from app.configs import get_settings
 
@@ -21,6 +21,8 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        if app.state.harness.tracing:
+            app.state.harness.tracing.shutdown()
         del app.state.harness
 
 

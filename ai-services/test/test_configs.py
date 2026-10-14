@@ -26,11 +26,13 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(str(settings.ollama_base_url), "https://ollama.com/")
 
     def test_process_environment_overrides_file(self) -> None:
-        with patch.dict(os.environ, {"LLM_MODEL": "another-model", "PORT": "9001"}):
+        with patch.dict(os.environ, {"LLM_MODEL": "another-model", "PORT": "9001",
+                                          "AGENT_GUARDRAILS_ENABLED": "false"}):
             settings = Settings()
 
         self.assertEqual(settings.llm_model, "another-model")
         self.assertEqual(settings.port, 9001)
+        self.assertFalse(settings.agent_guardrails_enabled)
 
     def test_invalid_or_missing_required_values_are_rejected(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
@@ -56,6 +58,21 @@ class SettingsTest(unittest.TestCase):
         key = settings.llm_api_key.get_secret_value()
         self.assertNotIn(key, repr(settings))
         self.assertIs(get_settings(), get_settings())
+
+    def test_langfuse_requires_complete_credentials_when_enabled(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(_env_file=None, llm_api_key="model-key", llm_model="model",
+                     langfuse_enabled=True, langfuse_public_key="pk-lf-test")
+        settings = Settings(_env_file=None, llm_api_key="model-key", llm_model="model",
+                            langfuse_enabled=True, langfuse_public_key="pk-lf-test",
+                            langfuse_secret_key="sk-lf-private",
+                            langfuse_base_url="https://cloud.langfuse.com")
+        self.assertNotIn("sk-lf-private", repr(settings))
+
+    def test_raw_langfuse_content_is_limited_to_nonproduction(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(_env_file=None, llm_api_key="model-key", llm_model="model",
+                     app_env="production", langfuse_capture_content=True)
 
     def test_mcp_settings_use_role_secret_files_without_leaking_password(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

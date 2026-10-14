@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     llm_max_tokens: int = Field(default=256, ge=1)
     agent_max_tool_calls: int = Field(default=DEFAULT_MAX_TOOL_CALLS, ge=3, le=20)
     agent_prompt_history_turns: int = Field(default=DEFAULT_PROMPT_HISTORY_TURNS, ge=1, le=20)
+    agent_guardrails_enabled: bool = True
+    langfuse_enabled: bool = False
+    langfuse_capture_content: bool = False
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: SecretStr | None = None
+    langfuse_base_url: AnyHttpUrl | None = None
     memory_max_episodes: int = Field(default=5, ge=0, le=20)
     memory_summary_turns: int = Field(default=3, ge=1, le=20)
     memory_summary_max_chars: int = Field(default=800, ge=100, le=800)
@@ -76,6 +82,12 @@ class Settings(BaseSettings):
     def validate_pool_range(self) -> "Settings":
         if self.memory_db_pool_min_size > self.memory_db_pool_max_size:
             raise ValueError("MEMORY_DB_POOL_MIN_SIZE must not exceed MEMORY_DB_POOL_MAX_SIZE")
+        if self.langfuse_enabled and not all((self.langfuse_public_key,
+                                              self.langfuse_secret_key,
+                                              self.langfuse_base_url)):
+            raise ValueError("LANGFUSE_ENABLED requires public key, secret key and base URL")
+        if self.langfuse_capture_content and self.app_env == "production":
+            raise ValueError("LANGFUSE_CAPTURE_CONTENT cannot be enabled in production")
         return self
 
 

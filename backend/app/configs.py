@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     redis_url: str
     ai_service_url: str
     ai_service_timeout_seconds: float = Field(default=30, gt=0)
+    ai_internal_token: SecretStr | None = None
     btc_data_dir: Path
 
     cors_origins: list[str] = Field(default_factory=list)

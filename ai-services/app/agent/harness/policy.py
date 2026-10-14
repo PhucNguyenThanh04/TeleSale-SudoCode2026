@@ -3,10 +3,8 @@
 from datetime import datetime
 from typing import Any, Callable
 
-from app.agent.guardrails import has_money_claim
-from app.agent.catalog_query import clean_catalog_query
-from app.agent.skus import known_skus, mentioned_skus
-from app.agent.state import TurnState
+from app.agent.harness.catalog_query import clean_catalog_query
+from app.agent.harness.state import TurnState
 
 
 ALLOWED_TOOLS = {
@@ -32,55 +30,6 @@ def _single_catalog_sku(state: TurnState) -> str | None:
         return None
     sku = items[0].get("sku")
     return sku if isinstance(sku, str) and sku else None
-
-
-def response_price_precondition(state: TurnState) -> tuple[str, str | None] | None:
-    """Return a reason and resolvable SKU when a draft amount lacks a current quote."""
-    decision = state["decision"]
-    if decision.action != "respond" or not has_money_claim(decision.response):
-        return None
-    catalogs = [call for call in state.get("tool_calls", [])
-                if call.get("name") == "catalog.search"
-                and "error" not in call.get("result", {})]
-    items = catalogs[-1]["result"].get("items", []) if catalogs else []
-    named = [item for item in items if isinstance(item, dict)
-             and isinstance(item.get("sku"), str)
-             and isinstance(item.get("name"), str)
-             and item["name"].casefold() in decision.response.casefold()]
-    quote_skus = {call.get("args", {}).get("sku") for call in state.get("tool_calls", [])
-                  if call.get("name") == "pricing.get_quote"
-                  and call.get("args", {}).get("on") == state["request"].on.isoformat()
-                  and "error" not in call.get("result", {})
-                  and call.get("result", {}).get("sku", call.get("args", {}).get("sku"))
-                  == call.get("args", {}).get("sku")}
-    explicit_skus = mentioned_skus(decision.response, known_skus(state.get("tool_calls", [])))
-    if len(explicit_skus) > 1:
-        return "price_without_quote", None
-    if explicit_skus:
-        sku = next(iter(explicit_skus))
-    else:
-        item = named[0] if len(named) == 1 else (
-            items[0] if len(items) == 1 and isinstance(items[0], dict) else None)
-        if item is not None:
-            family = {item.get("sku")}
-            variants = item.get("variants")
-            family.update(variant.get("variant_sku") for variant in
-                          (variants if isinstance(variants, list) else [])
-                          if isinstance(variant, dict) and isinstance(variant.get("variant_sku"), str))
-            quoted_family = quote_skus & family
-            if len(quoted_family) > 1:
-                return "price_without_quote", None
-            sku = next(iter(quoted_family)) if quoted_family else item.get("sku")
-        else:
-            sku = next(iter(quote_skus)) if len(quote_skus) == 1 else None
-    if sku is None:
-        return "price_without_quote", None
-    quoted = any(call.get("name") == "pricing.get_quote"
-                 and call.get("args", {}).get("sku") == sku
-                 and call.get("args", {}).get("on") == state["request"].on.isoformat()
-                 and "error" not in call.get("result", {})
-                 for call in state.get("tool_calls", []))
-    return None if quoted else ("price_without_quote", sku)
 
 
 def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[str, dict[str, Any]] | None:

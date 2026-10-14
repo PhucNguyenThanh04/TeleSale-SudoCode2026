@@ -49,6 +49,114 @@ services:
     networks:
       - telesale_network
 
+  mcp-db-roles:
+    image: postgres:16-alpine
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      PGDATABASE: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+    secrets:
+      - postgres_password
+      - mcp_catalog_password
+      - mcp_order_password
+      - mcp_memory_password
+    volumes:
+      - ./ai-services/scripts/provision_mcp_roles.sh:/provision_mcp_roles.sh:ro
+    entrypoint: ["sh", "/provision_mcp_roles.sh"]
+    networks:
+      - telesale_network
+
+  mcp-catalog:
+    build: ./ai-services
+    restart: unless-stopped
+    command: ["python", "-m", "app.mcp_servers.mcp_catalog.server"]
+    depends_on:
+      mcp-db-roles:
+        condition: service_completed_successfully
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LLM_API_KEY: unused-for-mcp
+      LLM_MODEL: unused-for-mcp
+      MCP_HOST: 0.0.0.0
+      MCP_DB_HOST: postgres
+      MCP_DB_NAME: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      MCP_DB_USER: mcp_catalog
+      MCP_DB_PASSWORD_FILE: /run/secrets/mcp_catalog_password
+      MCP_INTERNAL_TOKEN_FILE: /run/secrets/mcp_internal_token
+      MCP_CATALOG_PORT: ${MCP_CATALOG_PORT:-8011}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-0}
+    secrets:
+      - mcp_catalog_password
+      - mcp_internal_token
+    ports:
+      - "127.0.0.1:${MCP_CATALOG_PORT:-8011}:${MCP_CATALOG_PORT:-8011}"
+    networks:
+      - telesale_network
+
+  mcp-order:
+    build: ./ai-services
+    restart: unless-stopped
+    command: ["python", "-m", "app.mcp_servers.mcp_order.server"]
+    depends_on:
+      mcp-db-roles:
+        condition: service_completed_successfully
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LLM_API_KEY: unused-for-mcp
+      LLM_MODEL: unused-for-mcp
+      MCP_HOST: 0.0.0.0
+      MCP_DB_HOST: postgres
+      MCP_DB_NAME: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      MCP_DB_USER: mcp_order
+      MCP_DB_PASSWORD_FILE: /run/secrets/mcp_order_password
+      MCP_INTERNAL_TOKEN_FILE: /run/secrets/mcp_internal_token
+      MCP_ORDER_PORT: ${MCP_ORDER_PORT:-8012}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-0}
+      TIMEZONE: ${TIMEZONE:-Asia/Ho_Chi_Minh}
+    secrets:
+      - mcp_order_password
+      - mcp_internal_token
+    ports:
+      - "127.0.0.1:${MCP_ORDER_PORT:-8012}:${MCP_ORDER_PORT:-8012}"
+    networks:
+      - telesale_network
+
+  mcp-memory:
+    build: ./ai-services
+    restart: unless-stopped
+    command: ["python", "-m", "app.mcp_servers.mcp_memory.server"]
+    depends_on:
+      mcp-db-roles:
+        condition: service_completed_successfully
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LLM_API_KEY: unused-for-mcp
+      LLM_MODEL: unused-for-mcp
+      MCP_HOST: 0.0.0.0
+      MCP_DB_HOST: postgres
+      MCP_DB_NAME: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      MCP_DB_USER: mcp_memory
+      MCP_DB_PASSWORD_FILE: /run/secrets/mcp_memory_password
+      MCP_INTERNAL_TOKEN_FILE: /run/secrets/mcp_internal_token
+      MCP_MEMORY_PORT: ${MCP_MEMORY_PORT:-8013}
+      MEMORY_DB_POOL_MIN_SIZE: ${MEMORY_DB_POOL_MIN_SIZE:-1}
+      MEMORY_DB_POOL_MAX_SIZE: ${MEMORY_DB_POOL_MAX_SIZE:-5}
+      MEMORY_SUMMARY_TURNS: ${MEMORY_SUMMARY_TURNS:-3}
+      MEMORY_SUMMARY_MAX_CHARS: ${MEMORY_SUMMARY_MAX_CHARS:-800}
+    secrets:
+      - mcp_memory_password
+      - mcp_internal_token
+    ports:
+      - "127.0.0.1:${MCP_MEMORY_PORT:-8013}:${MCP_MEMORY_PORT:-8013}"
+    networks:
+      - telesale_network
+
 networks:
   telesale_network:
     driver: bridge
@@ -59,3 +167,11 @@ volumes:
 secrets:
   postgres_password:
     file: ./secrets/postgres_password
+  mcp_catalog_password:
+    file: ./secrets/mcp_catalog_password
+  mcp_order_password:
+    file: ./secrets/mcp_order_password
+  mcp_memory_password:
+    file: ./secrets/mcp_memory_password
+  mcp_internal_token:
+    file: ./secrets/mcp_internal_token

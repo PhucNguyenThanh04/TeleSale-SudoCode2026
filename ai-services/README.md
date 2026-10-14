@@ -1,0 +1,253 @@
+# Text-turn harness
+
+Copy `.env.example` to `.env` and set `LLM_API_KEY` to an Ollama Cloud API key.
+`LLM_MODEL=gemma4:31b` and `OLLAMA_BASE_URL=https://ollama.com` configure
+direct cloud access through `ChatOllama`. `LLM_TEMPERATURE` and
+`LLM_MAX_TOKENS` control sampling and the response length limit. The settings
+are loaded from this directory regardless of
+the current working directory; process environment variables take precedence.
+The API key is not included in `.env.example` and must not be committed.
+Run `python -m app` from `ai-services/` to use `HOST`, `PORT` and `LOG_LEVEL`
+from `.env`. Environment variables set by the shell override the file.
+
+## Runtime settings
+
+All settings below are validated in `app/configs.py`. Copy the grouped
+defaults from `.env.example` into `ai-services/.env` and change only the
+settings needed for your run.
+
+| Group | Variables | Effect |
+|---|---|---|
+| API | `APP_NAME`, `APP_ENV`, `DEBUG`, `HOST`, `PORT`, `LOG_LEVEL`, `TIMEZONE` | API identity, environment label, debug flag, bind address, logging, callback timezone |
+| Ollama Cloud | `LLM_API_KEY`, `LLM_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_TIMEOUT_SECONDS`, `LLM_TEMPERATURE`, `LLM_MAX_TOKENS` | Model, authentication, timeout and response budget |
+| Harness | `AGENT_MAX_TOOL_CALLS`, `AGENT_PROMPT_HISTORY_TURNS`, `AGENT_GUARDRAILS_ENABLED` | Maximum business tool calls, recent conversation turns, and answer check toggle; set the last variable to `false` only when inspecting the raw Deep Agent reply |
+| Memory | `MEMORY_MAX_EPISODES`, `MEMORY_SUMMARY_TURNS`, `MEMORY_SUMMARY_MAX_CHARS` | Prior episodes loaded and episode summary size; baseline still disables prior memory |
+| Langfuse | `LANGFUSE_ENABLED`, `LANGFUSE_CAPTURE_CONTENT`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` | Optional one trace per chat turn, grouped by session; content capture is opt-in for development/test |
+| Internal transport | `AI_INTERNAL_TOKEN`, `MCP_INTERNAL_TOKEN`, `MCP_CATALOG_URL`, `MCP_ORDER_URL`, `MCP_MEMORY_URL` | Backend-to-AI and AI-to-MCP authentication and endpoints |
+| MCP process | `MCP_HOST`, `MCP_CATALOG_PORT`, `MCP_ORDER_PORT`, `MCP_MEMORY_PORT`, `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `MEMORY_DB_POOL_MIN_SIZE`, `MEMORY_DB_POOL_MAX_SIZE` | HTTP listener and PostgreSQL pools |
+| MCP database | `DATABASE_URL` **or** `MCP_DB_HOST`, `MCP_DB_PORT`, `MCP_DB_NAME`, `MCP_DB_USER`, `MCP_DB_PASSWORD_FILE`; `MCP_INTERNAL_TOKEN_FILE` | Local connection or Compose role-specific secret files |
+
+`DATABASE_URL` is held as a secret by the settings object.
+Compose supplies each MCP process with its own DB role and secret file. Run
+Compose with **both** env files so the nonsecret MCP ports and pool settings
+come from `ai-services/.env` without injecting the Ollama key into MCP
+containers. A plain `docker compose up` uses default MCP tuning instead.
+When changing an MCP port, update its `MCP_*_URL` in the same file. `MCP_HOST`
+is overridden to `0.0.0.0` inside Compose so the container can accept traffic;
+it remains loopback-bound on the host. The legacy `BACKEND_URL` and
+`BACKEND_INTERNAL_TOKEN` entries in older local `.env` files are not used by
+this AI service; its inbound credential is `AI_INTERNAL_TOKEN`.
+
+BTC's promotion rules, COD limit, exchange fees, holidays and scenario
+reference date are source-of-truth rules, not tunable settings. Keep them in
+the BTC-compatible business logic and scenario input.
+
+The API invokes an outer one-turn LangGraph. It resolves identity through
+mcp-catalog, reads mcp-memory, and runs a prebuilt Deep Agent for business tool
+calls through the existing MCP gateway. The outer graph checks the reply and
+commits the masked turn, evidenced fact candidates, and successful order links
+through mcp-memory in one transaction. Each model-facing business tool accepts
+an optional `fact_candidates` argument, so Deep Agent can propose facts while
+calling a tool. The internal plan envelope records that tool call and its
+proposals; the candidates are removed before the BTC MCP request. The harness
+does not extract facts from customer text with regex; it accepts only model
+proposals supported by the customer turn or a successful tool. A separate,
+parallel model call proposes customer-stated facts so that a sales reply that
+omits `fact_candidates` does not silently lose them. This adds one model request
+for identified customers. Without a business tool call, Deep Agent can also
+return `{"answer":"...","fact_candidates":[...]}` in its final answer.
+`memory.propose_fact` is an optional model-facing proposal tool;
+it never writes to PostgreSQL. Deep Agent's `memory=` file feature is not the
+customer fact store.
+When `AGENT_GUARDRAILS_ENABLED=false`, the outer graph returns the Deep Agent's
+draft reply without `check_answer` or catalog fallback. PII masking, MCP tool
+preconditions, identity checks, and memory evidence validation still apply.
+Missing MCP URLs or token are a configuration error at runtime startup. Chat response caching remains process-local; writes through the MCP
+services use PostgreSQL operation keys. A PostgreSQL LangGraph checkpointer is
+not connected yet.
+
+### Langfuse Cloud tracing
+
+Create a project in [Langfuse Cloud](https://cloud.langfuse.com/), copy its
+project public and secret API keys into `ai-services/.env`, and set
+`LANGFUSE_BASE_URL` to that project's regional endpoint. Set
+`LANGFUSE_ENABLED=true`, then restart the AI service. The keys are read by the
+AI process only. The application starts without Langfuse when the flag is
+`false`; enabling it without all three connection settings fails startup.
+
+Each uncached `chat()` turn creates a `chat-turn` trace and groups turns by
+`session_id`. The LangGraph callback records the outer graph, nested Deep Agent,
+model generations, and tool steps. Trace names, channel, input mode, handoff
+status, tool and memory write counts, model name and token usage remain visible.
+By default, the export mask removes prompts, responses, customer identifiers,
+tool arguments/results and other arbitrary metadata before transfer. For
+synthetic development data, set `LANGFUSE_CAPTURE_CONTENT=true` to export the
+full chat request, answer, model I/O and tool payloads; known credential
+attributes and configured secret values remain redacted. This flag is rejected
+when `APP_ENV=production`. Previously exported masked traces stay masked.
+Spans carrying OpenTelemetry events or status descriptions are dropped because
+those fields cannot be edited by the SDK export mask.
+The HTTP service flushes on shutdown; the one-turn `python -m app.agent.chat`
+demo flushes before exit. Do not flush after each API request, since that adds
+latency. With credentials configured, check the Langfuse Traces and Sessions
+views after one real turn. No Cloud authentication or remote trace was verified
+by the repository's credential-free tests.
+
+The agent code is grouped by responsibility under `app/agent/`: `chat.py` is
+the public entrypoint, `factory.py` assembles the runtime, `graph.py` wires
+the turn, `implementations/` contains
+the active Deep Agent, `harness/` contains runtime, nodes and tool policy,
+`memory/` contains fact proposals and the MCP memory adapter, `guardrails/`
+contains answer and evidence checks, and `mcp/gateway.py` routes business
+tools to the three servers in `app/mcp_servers/`. ReAct and DeepSeek agent
+implementations, a fourth MCP server and Qdrant retrieval are not connected.
+
+```text
+app/agent/
+  chat.py                 # public chat() and local demo
+  factory.py              # assemble the active implementation and adapters
+  graph.py                # outer LangGraph wiring
+  implementations/        # prebuilt Deep Agent adapter
+  harness/                # runtime, graph nodes, state, tool policy
+  memory/                 # candidate validation and MCP memory adapter
+  guardrails/             # answer and fact evidence checks
+  mcp/                    # client gateway for the three MCP servers
+app/mcp_servers/          # catalog, order, memory, shared infrastructure
+```
+
+## Structured MCP tools
+
+Start PostgreSQL with `docker compose up -d postgres redis`, then import the
+BTC release with `dataloader_offline`. Apply the additive
+runtime SQL migrations in order: `backend/migrations/0001_chat.sql`,
+`backend/migrations/0002_tools.sql`, `backend/migrations/0003_channel_identity.sql`,
+then `ai-services/migrations/0001_memory.sql`,
+`ai-services/migrations/0002_operations.sql`, and
+`ai-services/migrations/0003_memory_provenance.sql`. Apply them before starting
+`mcp-db-roles`. Use the same PostgreSQL database
+for the backend and all three MCP servers. Set matching `AI_INTERNAL_TOKEN`
+values in `backend/.env` and `ai-services/.env`, and a separate
+`MCP_INTERNAL_TOKEN` in `ai-services/.env`. The values in `.env.example` are
+placeholders, not working credentials.
+
+After importing BTC data and applying the migrations, create four ignored
+secret files under `secrets/`: `mcp_catalog_password`, `mcp_order_password`,
+`mcp_memory_password` (hex strings) and `mcp_internal_token` (the same value as
+`MCP_INTERNAL_TOKEN` in `ai-services/.env`). The repository's existing
+`secrets/postgres_password` remains the PostgreSQL admin password. Then run:
+
+```bash
+# From the repository root:
+docker compose --env-file .env --env-file ai-services/.env up -d --build mcp-catalog mcp-order mcp-memory
+# In another terminal, from ai-services/:
+python -m app
+```
+
+For a local run without the three MCP Compose containers, start all three
+MCP processes in one terminal with `python -m app.mcp_servers.run` from
+`ai-services/`. The launcher uses `DATABASE_URL` to locate PostgreSQL, then
+connects each child with its own `mcp_catalog`, `mcp_order` or `mcp_memory`
+role and the corresponding files under `../secrets/`. Provision those roles
+first. Stop the launcher with Ctrl+C. You can then call
+`app.agent.chat.chat(ChatRequest)` from another Python process; the AI HTTP
+server is not required for that call.
+
+`mcp-memory` owns `memory.read` and `memory.write` in PostgreSQL. `mcp-catalog`
+exposes `crm.get_customer`, `catalog.search`, `inventory.check`,
+`pricing.get_quote`; `mcp-order`
+exposes `order.create`, `order.update`, `order.status`, `schedule.callback`,
+`handoff.transfer`. Each MCP has its own PostgreSQL connection pool and role;
+catalog reads `btc_source`, order writes commerce tables in `app_runtime`, and
+memory writes `ai_memory`. All connect to `postgres:5432` on the Compose
+network. The one-shot `mcp-db-roles` service provisions roles on the existing
+database volume. The MCP ports are published only on host loopback and require
+the MCP bearer token. The backend business tool HTTP route is no longer mounted.
+
+The code for each server lives in `app/mcp_servers/mcp_catalog`, `app/mcp_servers/mcp_order` or
+`app/mcp_servers/mcp_memory`: `tools/` validates MCP calls, `services/` holds business
+rules, and `repos/` owns SQL. Shared pure pricing/stock rules, masking and
+connection setup live in `app/mcp_servers/mcp_shared`. Order and memory write services use
+an operation key derived from the chat message to return the same stored result
+when a write is retried.
+
+`run_eval.py` uses the same MCP transport as chat. Full and
+`baseline_no_memory` can read existing same-session history; baseline omits
+prior-session memory. Each completed chat turn is written to `ai_memory.turns`;
+for identified customers, the memory service also updates the session episode.
+Model-proposed facts pass evidence checks before writing. A failed turn write fails the chat
+request so callers can retry with the same session and message IDs. Use an
+isolated eval database and reset mutable business tables between configurations.
+
+`app.infarstructure.llm.build_llm(get_settings())` constructs the LangChain
+chat model used by the graph. Model and tool gateway can be injected in tests.
+
+From `ai-services/`, run `.venv/bin/python -m app`. Use the AI service virtual
+environment even if the shell is currently activated in the backend virtual
+environment. To run the one-turn demo directly, use
+`.venv/bin/python -m app.agent.chat`; it requires the three MCP servers and
+their migrated PostgreSQL database to be running.
+The OpenAPI document is at `/openapi.json`; interactive docs are at `/docs`.
+
+`app.agent.chat.chat(ChatRequest)` can be called directly from Python. It accepts
+`session_id=None`, creates a UUID and returns it with the answer. Keep the
+`DeepHarnessRuntime` instance shared within one process; process-local locks and
+idempotency do not span multiple workers.
+
+`POST /v1/chat/turns` uses the same function and accepts a request with the
+`X-AI-Internal-Token` header:
+
+```json
+{
+  "client_msg_id": "11111111-1111-4111-8111-111111111111",
+  "session_id": null,
+  "channel": "chat_fanpage",
+  "channel_identity": "fb.hạnh.274",
+  "on": "2026-10-15",
+  "text": "shop oi ...",
+  "input_mode": "chat_teencode"
+}
+```
+
+The backend creates `session_id` before calling this endpoint. A frontend's
+first-turn `session_id: null` is not valid here. The response echoes both IDs,
+returns `agent_text`, handoff fields, and an optional `call_brief` on a returning
+customer's new session. The brief includes refreshed quote and stock warnings
+when an existing profile has an advised SKU. New chat turns may create profile
+facts from validated model proposals grounded in customer text or verified
+tool results.
+
+## Theo dõi một lượt chat
+
+Đặt `LOG_LEVEL=INFO` trong `ai-services/.env` rồi chạy `python -m app`.
+Outer graph ghi log các bước nhận yêu cầu, xác định khách, đọc ngữ cảnh,
+chạy Deep Agent, kiểm tra câu trả lời và ghi bộ nhớ. Deep Agent tự lặp giữa
+model và tool. Harness ghi tên tool, kết quả, thời gian và số fact đã ghi.
+Nếu kiểm tra câu trả lời không đạt, harness chỉ trả câu trả lời có thể xác minh
+từ catalog hoặc câu fallback. Giá bán vẫn cần `pricing.get_quote` cùng ngày.
+
+Ví dụ: `Gọi công cụ: kết quả công cụ | công cụ: inventory.check, kết quả: thành công`.
+Với `LOG_LEVEL=INFO`, log có tham số đã gửi cho tool và kết quả nghiệp vụ đã
+lọc PII. Ba MCP process cũng ghi từng tên tool, tham số nhận vào,
+kết quả trả ra và thời gian thực thi. Chạy qua `python -m app.mcp_servers.run` thì
+xem cùng terminal; với Compose, dùng `docker compose logs -f mcp-catalog mcp-order mcp-memory`.
+Log chỉ hiện các trường được phép; thông tin định danh, số điện thoại,
+địa chỉ và trường tự do nhạy cảm được lược bỏ hoặc che. Mỗi payload tối đa 3.000
+ký tự. Kết quả CRM chỉ hiện `found`, `ambiguous` và số đơn/phiên; không hiện hồ sơ.
+Log không hiện UUID của phiên hoặc message; khi nhiều lượt chat chạy đồng thời,
+các dòng của chúng có thể xen kẽ nhau.
+Log không ghi prompt hoặc request gốc. Kết quả memory chỉ hiện số lượt, tên fact
+và thao tác, không hiện nội dung hội thoại hay giá trị fact. Để xem trace đầy đủ,
+dùng eval trong môi trường kiểm soát.
+
+Run contract checks from `ai-services/` with
+`.venv/bin/python -m unittest discover -s test -v` after installing `requirements.txt`.
+For an isolated smoke test without changing the active Python environment:
+
+```bash
+uv run --no-project --with 'langgraph>=1.2.12,<1.3' \
+  --with 'deepagents>=0.7.23,<0.8' \
+  --with 'langchain-ollama>=1.1,<2' --with 'fastapi>=0.141.1,<0.142' \
+  --with 'httpx>=0.28.1,<0.29' --with 'pydantic-settings>=2.10,<3' \
+  --with 'fastmcp>=4.0.10,<4.1' --with 'asyncpg>=0.30,<1' \
+  python -m unittest discover -s test -v
+```
