@@ -39,6 +39,10 @@ def create_server(repo, token: str | None = None) -> FastMCP:
     auth = StaticTokenVerifier({token: {"client_id": "harness", "scopes": ["tools"]}}) if token else None
     mcp = FastMCP("telesale-order", auth=auth)
 
+    @mcp.tool(name="eval.database_identity")
+    async def eval_database_identity() -> dict:
+        return await repo.database_identity()
+
     @mcp.tool(name="order.create")
     async def order_create(customer_phone: str, sku: str, qty: int, price_vnd: int,
                            payment: str, on: str, promo_code: str | None = None,

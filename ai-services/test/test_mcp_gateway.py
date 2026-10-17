@@ -17,8 +17,20 @@ class FakeRepo:
     async def transaction(self):
         yield object()
 
+    async def database_identity(self):
+        return {"database": "telesale_eval", "host": "eval-postgres", "port": 5432,
+                "server_address": "172.30.0.2", "server_port": 5432}
+
 
 class GatewayTest(unittest.IsolatedAsyncioTestCase):
+    async def test_database_identity_uses_each_configured_mcp_server(self):
+        repo = FakeRepo()
+        gateway = MCPGateway(catalog_server(repo), order_server(repo), memory_server(repo))
+        for service in ("catalog", "order", "memory"):
+            result = await gateway.database_identity(service)
+            self.assertEqual(result["database"], "telesale_eval")
+            self.assertEqual(result["host"], "eval-postgres")
+
     async def test_commit_turn_uses_memory_mcp_with_evidenced_facts(self):
         gateway = MCPGateway(None, None, memory_server(FakeRepo()))
         memory = MCPMemoryStore(gateway)

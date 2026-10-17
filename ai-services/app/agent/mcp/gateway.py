@@ -15,6 +15,20 @@ class MCPGateway:
         self.transports = {"catalog": catalog, "order": order, "memory": memory}
         self.token = token
 
+    async def database_identity(self, service: str) -> dict[str, Any]:
+        """Read the database actually reached by one configured MCP endpoint."""
+        if service not in self.transports:
+            return {"error": "unknown_service"}
+        try:
+            async with Client(self.transports[service], auth=self.token) as client:
+                response = await client.call_tool("eval.database_identity", {})
+            if response.is_error:
+                return {"error": "mcp_tool_error"}
+            result = response.data if isinstance(response.data, dict) else response.structured_content
+            return result if isinstance(result, dict) else {"error": "invalid_tool_result"}
+        except Exception:
+            return {"error": "mcp_unavailable"}
+
     async def invoke(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
         key = args.get("operation_key") if name == "memory.write" else None
         return await self.invoke_trusted(name, args, None, operation_key=key)

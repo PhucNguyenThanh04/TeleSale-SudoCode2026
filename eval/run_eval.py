@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import json
+import os
 import re
 import sys
 import time
@@ -21,6 +22,39 @@ from app.configs import get_settings  # noqa: E402
 from app.schemas.agent import TextTurnRequest  # noqa: E402
 from app.schemas.trace import AgentTraceLine  # noqa: E402
 from eval.catalog_search_benchmark import catalog_search_metrics  # noqa: E402
+
+
+async def _require_eval_database(runtime, isolated_db: bool) -> None:
+    """Fail before the first turn unless all three MCP pools reach one allowed eval DB."""
+    if not isolated_db:
+        raise ValueError("Pass --isolated-db after configuring a dedicated eval database")
+    allowed = {name.strip() for name in os.getenv("EVAL_DB_ALLOWLIST", "telesale_eval").split(",")}
+    allowed.discard("")
+    allowed = {name for name in allowed if re.fullmatch(r"[a-z][a-z0-9_]*", name)
+               and re.search(r"(^|_)eval($|_)", name)}
+    if not allowed:
+        raise ValueError("EVAL_DB_ALLOWLIST must contain an eval-named database")
+    probe = getattr(getattr(runtime, "tools", None), "database_identity", None)
+    if not callable(probe):
+        raise RuntimeError("Eval database identity probe is unavailable")
+    identities = []
+    for service in ("catalog", "order", "memory"):
+        identity = await probe(service)
+        if not isinstance(identity, dict) or identity.get("error"):
+            raise RuntimeError(f"Cannot verify {service} MCP database identity")
+        name = identity.get("database")
+        if name not in allowed:
+            raise RuntimeError(f"{service} MCP database is not in the eval allowlist")
+        endpoint = tuple(identity.get(key) for key in
+                         ("host", "port", "server_address", "server_port"))
+        if (not isinstance(endpoint[0], str) or not endpoint[0]
+                or type(endpoint[1]) is not int
+                or not isinstance(endpoint[2], str) or not endpoint[2]
+                or type(endpoint[3]) is not int):
+            raise RuntimeError(f"{service} MCP database host is unverified")
+        identities.append((name, *endpoint))
+    if len(set(identities)) != 1:
+        raise RuntimeError("MCP services do not share one eval database endpoint")
 
 
 def _scenario_inputs(folder: Path):
@@ -129,9 +163,8 @@ async def run(args, runtime=None) -> int:
     schema_path = args.scenarios.resolve().parents[1] / "schemas" / "trace_log.schema.json"
     validator = Draft202012Validator(json.loads(schema_path.read_text(encoding="utf-8")))
     if runtime is None:
-        if not args.isolated_db:
-            raise ValueError("Pass --isolated-db after configuring MCP services with an isolated eval DB")
         runtime = build_runtime(get_settings())
+    await _require_eval_database(runtime, args.isolated_db)
     runtime.memory.include_prior = args.config == "full"
     run_id = str(uuid4())
     rows = []

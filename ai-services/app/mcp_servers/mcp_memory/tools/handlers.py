@@ -39,6 +39,10 @@ def create_server(repo, token: str | None = None) -> FastMCP:
     auth = StaticTokenVerifier({token: {"client_id": "harness", "scopes": ["tools"]}}) if token else None
     mcp = FastMCP("telesale-memory", auth=auth)
 
+    @mcp.tool(name="eval.database_identity")
+    async def eval_database_identity() -> dict:
+        return await repo.database_identity()
+
     @mcp.tool(name="memory.read")
     async def memory_read(customer_id: str | None, session_id: str,
                           max_episodes: int = 5, include_prior: bool = True) -> dict:

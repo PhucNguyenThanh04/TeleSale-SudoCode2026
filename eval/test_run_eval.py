@@ -18,9 +18,15 @@ class _Memory:
 
 
 class _Runtime:
-    def __init__(self):
+    def __init__(self, database="telesale_eval"):
         self.memory = _Memory()
+        self.tools = self
+        self.database = database
         self.requests = []
+
+    async def database_identity(self, service):
+        return {"database": self.database, "host": "eval-postgres", "port": 5432,
+                "server_address": "172.30.0.2", "server_port": 5432}
 
     async def run(self, request):
         self.requests.append(request)
@@ -62,7 +68,7 @@ class EvalRunnerTest(unittest.TestCase):
             runtime = _Runtime()
             count = asyncio.run(run(SimpleNamespace(
                 scenarios=scenario_dir, config="baseline_no_memory",
-                out=output, isolated_db=False), runtime))
+                out=output, isolated_db=True), runtime))
             rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
             report = json.loads(output.with_suffix(".report.json").read_text(
                 encoding="utf-8"))
@@ -98,7 +104,7 @@ class EvalRunnerTest(unittest.TestCase):
             output = Path(folder) / "trace.jsonl"
             asyncio.run(run(SimpleNamespace(
                 scenarios=scenario_dir, config="full", out=output,
-                isolated_db=False), _BlockedRuntime()))
+                isolated_db=True), _BlockedRuntime()))
             events_path = output.with_suffix(".events.json")
             raw = events_path.read_text(encoding="utf-8")
             events = json.loads(raw)
@@ -107,6 +113,30 @@ class EvalRunnerTest(unittest.TestCase):
         self.assertIn("claims", events[0]["checks"][0])
         self.assertIn("source_evidence", events[0]["checks"][0])
         self.assertNotIn("0912345678", raw)
+
+    def test_live_database_name_is_checked_before_any_turn(self):
+        scenario_dir = Path(__file__).resolve().parents[2] / "BTC-Data-Vong1-TEAMS" / \
+            "test_set" / "public_sample"
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / "trace.jsonl"
+            runtime = _Runtime(database="telesale")
+            with self.assertRaisesRegex(RuntimeError, "not in the eval allowlist"):
+                asyncio.run(run(SimpleNamespace(
+                    scenarios=scenario_dir, config="full", out=output,
+                    isolated_db=True), runtime))
+            self.assertEqual(runtime.requests, [])
+            self.assertFalse(output.exists())
+
+    def test_missing_isolated_flag_is_rejected_even_for_eval_database(self):
+        scenario_dir = Path(__file__).resolve().parents[2] / "BTC-Data-Vong1-TEAMS" / \
+            "test_set" / "public_sample"
+        with tempfile.TemporaryDirectory() as folder:
+            runtime = _Runtime(database="telesale_eval")
+            with self.assertRaisesRegex(ValueError, "--isolated-db"):
+                asyncio.run(run(SimpleNamespace(
+                    scenarios=scenario_dir, config="full",
+                    out=Path(folder) / "trace.jsonl", isolated_db=False), runtime))
+            self.assertEqual(runtime.requests, [])
 
 
 if __name__ == "__main__":

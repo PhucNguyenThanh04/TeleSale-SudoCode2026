@@ -7,6 +7,7 @@ from datetime import date
 from uuid import UUID
 
 import asyncpg
+from sqlalchemy.engine import make_url
 
 
 class MemoryRepo:
@@ -33,6 +34,19 @@ class MemoryRepo:
     async def close(self) -> None:
         if self.pool:
             await self.pool.close()
+
+    async def database_identity(self) -> dict:
+        """Report the database reached by this pool, without exposing credentials."""
+        async with self.transaction() as conn:
+            row = await conn.fetchrow(
+                "SELECT current_database() AS database, "
+                "inet_server_addr()::text AS server_address, "
+                "inet_server_port() AS server_port"
+            )
+        url = make_url(self.dsn)
+        return {"database": row["database"], "host": url.host,
+                "port": url.port or 5432,
+                "server_address": row["server_address"], "server_port": row["server_port"]}
 
     async def owner(self, conn, session_id: str) -> str | None:
         return await conn.fetchval("SELECT customer_id FROM ai_memory.turns WHERE session_id=$1 AND customer_id IS NOT NULL LIMIT 1", UUID(session_id))

@@ -43,6 +43,10 @@ def create_server(repo, token: str | None = None) -> FastMCP:
     auth = StaticTokenVerifier({token: {"client_id": "harness", "scopes": ["tools"]}}) if token else None
     mcp = FastMCP("telesale-catalog", auth=auth)
 
+    @mcp.tool(name="eval.database_identity")
+    async def eval_database_identity() -> dict:
+        return await repo.database_identity()
+
     @mcp.tool(name="crm.get_customer")
     async def crm_get_customer(phone: str | None = None, zalo_id: str | None = None,
                                fb_id: str | None = None) -> dict:

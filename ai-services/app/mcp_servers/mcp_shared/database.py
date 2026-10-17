@@ -2,6 +2,7 @@
 
 from contextlib import asynccontextmanager
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 
@@ -18,3 +19,15 @@ class Database:
 
     async def close(self) -> None:
         await self.engine.dispose()
+
+    async def database_identity(self) -> dict:
+        """Report the database reached by this pool, without exposing credentials."""
+        async with self.transaction() as session:
+            row = (await session.execute(text(
+                "SELECT current_database() AS database, "
+                "inet_server_addr()::text AS server_address, "
+                "inet_server_port() AS server_port"
+            ))).one()
+        return {"database": row.database, "host": self.engine.url.host,
+                "port": self.engine.url.port or 5432,
+                "server_address": row.server_address, "server_port": row.server_port}
