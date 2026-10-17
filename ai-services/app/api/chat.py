@@ -5,22 +5,24 @@ import hmac
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.agent.chat import chat
-from app.agent.harness.runtime import DeepHarnessRuntime
+from app.agent.harness.runtime import AgentHarnessRuntime
 from app.configs import get_settings
 from app.schemas.agent import ChatRequest, ChatResponse
 
 router = APIRouter(prefix="/v1/chat", tags=["chat"])
 
 
-async def get_harness(request: Request) -> DeepHarnessRuntime:
+async def get_harness(request: Request) -> AgentHarnessRuntime:
     return request.app.state.harness
 
 
 @router.post("/turns", response_model=ChatResponse)
 async def create_text_turn(
-    turn: ChatRequest, request: Request, harness: DeepHarnessRuntime = Depends(get_harness)
+    turn: ChatRequest, request: Request, harness: AgentHarnessRuntime = Depends(get_harness)
 ) -> ChatResponse:
     expected = get_settings().ai_internal_token
+    if ((turn.verified_customer_id or turn.verified_phone) and not expected):
+        raise HTTPException(401, "Verified identity requires the internal token")
     if expected and not hmac.compare_digest(
         request.headers.get("X-AI-Internal-Token", ""), expected.get_secret_value()
     ):

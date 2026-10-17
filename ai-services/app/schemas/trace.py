@@ -32,7 +32,7 @@ class Latency(BaseModel):
 class TraceMemoryWrite(BaseModel):
     customer_id: str
     key: str
-    value: Any
+    value: Any = None
     op: Literal["set", "supersede", "delete"]
     source: str
 

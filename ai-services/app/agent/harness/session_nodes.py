@@ -1,6 +1,5 @@
-"""Identity and context nodes shared by the production one-turn graph."""
+"""Acceptance and context nodes shared by the production one-turn graph."""
 
-import logging
 import re
 import time
 from datetime import datetime, timezone
@@ -11,7 +10,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from app.agent.harness.context import load_context
 from app.agent.guardrails.checks import mask_pii
 from app.agent.memory.store import MemoryStore
-from app.agent.harness.observability import log_event, log_tool_input, log_tool_output, trace_node
+from app.agent.harness.observability import log_event, trace_node
 from app.agent.harness.state import TurnState
 from app.agent.mcp.gateway import ToolGateway
 
@@ -53,54 +52,10 @@ class SessionNodes:
         return {
             "safe_text": mask_pii(state["request"].text),
             "received_at_monotonic": time.perf_counter(),
-            "tool_calls": [], "tool_count": 0, "tool_failed": False,
+            "tool_calls": state.get("tool_calls", []), "tool_count": 0,
+            "tool_failed": False,
             "needs_handoff": False, "handoff_ticket_id": None,
         }
-
-    @trace_node("resolve_identity")
-    async def resolve_identity(self, state: TurnState) -> dict[str, Any]:
-        request = state["request"]
-        key = {"hotline": "phone", "chat_fanpage": "fb_id",
-               "zalo_oa": "zalo_id"}.get(request.channel)
-        if not key or not request.channel_identity:
-            log_event(state, "resolve_identity", "identity_resolved", status="unknown",
-                      lookup="skipped")
-            return {"identity_status": "unknown", "customer_id": None,
-                    "customer_phone": None, "customer_name": None,
-                    "honorific": None, "crm_sessions": [], "owned_order_ids": []}
-        args = {key: request.channel_identity}
-        log_tool_input("resolve_identity", "crm.get_customer", args)
-        try:
-            result = await self.tools.invoke("crm.get_customer", args)
-        except Exception as exc:
-            log_event(state, "resolve_identity", "tool_failed", level=logging.WARNING,
-                      tool="crm.get_customer", error_type=type(exc).__name__)
-            result = {"error": "tool_error"}
-        log_event(state, "resolve_identity", "tool_result", tool="crm.get_customer",
-                  success="error" not in result)
-        log_tool_output(state, "resolve_identity", "crm.get_customer", result)
-        calls = [{"name": "crm.get_customer", "args": args, "result": result}]
-        if result.get("ambiguous"):
-            log_event(state, "resolve_identity", "identity_resolved", status="ambiguous")
-            return {"identity_status": "ambiguous", "customer_id": None,
-                    "customer_phone": None, "customer_name": None,
-                    "honorific": None, "crm_sessions": [], "owned_order_ids": [],
-                    "tool_calls": calls}
-        if result.get("found") and result.get("customer_id"):
-            owned_ids = [order["order_id"] for order in result.get("orders", [])
-                         if isinstance(order, dict) and isinstance(order.get("order_id"), str)]
-            log_event(state, "resolve_identity", "identity_resolved", status="known",
-                      owned_orders=len(owned_ids))
-            return {"identity_status": "known", "customer_id": result["customer_id"],
-                    "customer_phone": result.get("phone"),
-                    "customer_name": result.get("name"), "honorific": result.get("honorific"),
-                    "crm_sessions": result.get("sessions", []),
-                    "owned_order_ids": owned_ids, "tool_calls": calls}
-        log_event(state, "resolve_identity", "identity_resolved", status="unknown")
-        return {"identity_status": "unknown", "customer_id": None,
-                "customer_phone": None, "customer_name": None,
-                "honorific": None, "crm_sessions": [], "owned_order_ids": [],
-                "tool_calls": calls}
 
     @trace_node("retrieve_context")
     async def retrieve_context(self, state: TurnState) -> dict[str, Any]:

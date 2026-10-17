@@ -14,7 +14,7 @@ class ReadInput(BaseModel):
 
 
 class WriteInput(BaseModel):
-    action: Literal["turn", "fact", "order", "seed_episode", "commit_turn"]
+    action: Literal["turn", "fact", "order", "seed_episode", "commit_turn", "claim_pending"]
     customer_id: str | None = None
     session_id: UUID
     data: dict
@@ -28,6 +28,7 @@ class WriteInput(BaseModel):
             "fact": {"key", "op", "source"},
             "order": {"order_id"},
             "seed_episode": {"on"},
+            "claim_pending": set(),
         }[self.action]
         if not fields <= self.data.keys():
             raise ValueError("missing memory data fields")

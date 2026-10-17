@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.chat import AITextTurnResponse, ChatRequest, ChatResponse
+from app.schemas.chat import AITextTurnResponse, ChatRequest, ChatResponse, VerifyIdentityRequest
 
 
 _PHONE = re.compile(r"(?<!\d)0\d{9}(?!\d)")
@@ -60,27 +60,24 @@ async def handle_chat_turn(db: AsyncSession, ai_http: httpx.AsyncClient,
         turn_no = next_turn.scalar_one()
         safe_text = _mask(request.text)
         client_msg_id = request.client_msg_id or uuid4()
-        if identity_status == "ambiguous":
-            agent_text = "Dạ, để tránh nhầm thông tin, mình vui lòng xác nhận thêm danh tính ạ."
-            needs_handoff, handoff_ticket_id = False, None
-            call_brief = None
-        else:
-            try:
-                ai_response = await ai_http.post("/v1/chat/turns", json={
-                    "client_msg_id": str(client_msg_id), "session_id": str(session_id),
-                    "channel": channel, "channel_identity": channel_identity,
-                    "on": call_date.isoformat(), "text": safe_text,
-                    "input_mode": request.customer_input_mode,
-                })
-                ai_response.raise_for_status()
-                parsed = AITextTurnResponse.model_validate(ai_response.json())
-                if parsed.session_id != session_id or parsed.client_msg_id != client_msg_id:
-                    raise ValueError("AI response identifier mismatch")
-            except (httpx.HTTPError, ValueError) as exc:
-                raise HTTPException(503, "AI service unavailable") from exc
-            agent_text = parsed.agent_text
-            needs_handoff, handoff_ticket_id = parsed.needs_handoff, parsed.handoff_ticket_id
-            call_brief = parsed.call_brief
+        try:
+            ai_response = await ai_http.post("/v1/chat/turns", json={
+                "client_msg_id": str(client_msg_id), "session_id": str(session_id),
+                "channel": channel, "channel_identity": channel_identity,
+                "on": call_date.isoformat(), "text": safe_text,
+                "input_mode": request.customer_input_mode,
+                "verified_customer_id": customer_id if identity_status == "known" else None,
+                "verified_phone": caller_phone if identity_status == "known" else None,
+            })
+            ai_response.raise_for_status()
+            parsed = AITextTurnResponse.model_validate(ai_response.json())
+            if parsed.session_id != session_id or parsed.client_msg_id != client_msg_id:
+                raise ValueError("AI response identifier mismatch")
+        except (httpx.HTTPError, ValueError) as exc:
+            raise HTTPException(503, "AI service unavailable") from exc
+        agent_text = parsed.agent_text
+        needs_handoff, handoff_ticket_id = parsed.needs_handoff, parsed.handoff_ticket_id
+        call_brief = parsed.call_brief
         for role, content in (("customer", safe_text), ("agent", _mask(agent_text))):
             await db.execute(text("""INSERT INTO app_runtime.chat_messages
                 (session_id,turn_no,role,content) VALUES (:session_id,:turn_no,:role,:content)"""),
@@ -91,3 +88,27 @@ async def handle_chat_turn(db: AsyncSession, ai_http: httpx.AsyncClient,
         return ChatResponse(client_msg_id=client_msg_id, session_id=session_id, agent_text=agent_text,
                             identity_status=identity_status, needs_handoff=needs_handoff,
                             handoff_ticket_id=handoff_ticket_id, call_brief=call_brief)
+
+
+async def verify_session_identity(db: AsyncSession, operator_id: str, session_id: UUID,
+                                  payload: VerifyIdentityRequest) -> dict:
+    """Bind an open session after the operator has verified the caller separately."""
+    async with db.begin():
+        result = await db.execute(text("""SELECT created_by,customer_id,status FROM
+            app_runtime.chat_sessions WHERE id=:id FOR UPDATE"""), {"id": str(session_id)})
+        row = result.one_or_none()
+        if row is None or row.created_by != operator_id or row.status != "open":
+            raise HTTPException(404, "Session not found")
+        if row.customer_id and row.customer_id != payload.customer_id:
+            raise HTTPException(409, "Session is bound to another customer")
+        matches = await db.execute(text("""SELECT customer_id FROM btc_source.customers
+            WHERE customer_id=:customer_id AND phone=:phone"""),
+            {"customer_id": payload.customer_id, "phone": payload.phone})
+        if matches.one_or_none() is None:
+            raise HTTPException(422, "Customer and phone do not match CRM")
+        await db.execute(text("""UPDATE app_runtime.chat_sessions
+            SET customer_id=:customer_id, caller_phone=:phone, identity_status='known',
+                updated_at=now() WHERE id=:id"""),
+            {"id": str(session_id), "customer_id": payload.customer_id,
+             "phone": payload.phone})
+    return {"session_id": session_id, "identity_status": "known"}

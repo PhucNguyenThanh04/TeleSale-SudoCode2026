@@ -25,7 +25,8 @@ class MCPGateway:
                              channel_identity: str | None = None,
                              operation_key: str | None = None) -> dict[str, Any]:
         group = "memory" if name.startswith("memory.") else (
-            "catalog" if name in {"crm.get_customer", "catalog.search", "inventory.check", "pricing.get_quote"} else "order")
+            "catalog" if name in {"crm.get_customer", "catalog.search", "inventory.check",
+                                  "pricing.get_quote", "policy.search"} else "order")
         if group == "order" and name not in {"order.create", "order.status", "order.update",
                                                 "schedule.callback", "handoff.transfer"}:
             return {"error": "unknown_tool"}

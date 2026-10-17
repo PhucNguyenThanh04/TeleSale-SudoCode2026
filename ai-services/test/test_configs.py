@@ -34,6 +34,15 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(settings.port, 9001)
         self.assertFalse(settings.agent_guardrails_enabled)
 
+    def test_agent_selection_and_fact_extraction_modes_are_validated(self) -> None:
+        settings = Settings(_env_file=None, llm_api_key="model-key", llm_model="model",
+                            agent_kind="react", fact_extraction_mode="off")
+        self.assertEqual(settings.agent_kind, "react")
+        self.assertEqual(settings.fact_extraction_mode, "off")
+        with self.assertRaises(ValidationError):
+            Settings(_env_file=None, llm_api_key="model-key", llm_model="model",
+                     agent_kind="unknown")
+
     def test_invalid_or_missing_required_values_are_rejected(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ValidationError):
@@ -46,6 +55,7 @@ class SettingsTest(unittest.TestCase):
             {"LLM_MAX_TOKENS": "0"},
             {"AGENT_MAX_TOOL_CALLS": "2"},
             {"AGENT_PROMPT_HISTORY_TURNS": "0"},
+            {"AGENT_PROMPT_HISTORY_TURNS": "13"},
             {"MEMORY_DB_POOL_MIN_SIZE": "6", "MEMORY_DB_POOL_MAX_SIZE": "5"},
             {"TIMEZONE": "not-a-time-zone"},
         ):

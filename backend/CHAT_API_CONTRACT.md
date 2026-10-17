@@ -10,7 +10,8 @@ is still required before exposing this API as a public widget.
 Import the BTC release into `btc_source`, then apply these additive migrations
 in order: `backend/migrations/0001_chat.sql`, `backend/migrations/0002_tools.sql`,
 `backend/migrations/0003_channel_identity.sql`, and
-`ai-services/migrations/0001_memory.sql`. The first schema is the immutable BTC
+`ai-services/migrations/0001_memory.sql` through
+`ai-services/migrations/0004_pending_facts.sql`. The first schema is the immutable BTC
 snapshot; `app_runtime` holds chat, orders, callbacks and handoffs; `ai_memory`
 holds turns, episodes and facts. Set the same `AI_INTERNAL_TOKEN` in
 `backend/.env` and `ai-services/.env` for the backend-to-AI request header.
@@ -34,8 +35,12 @@ The first turn has no `session_id` and provides a trusted channel identity:
 For `hotline`, use `caller_phone` or `channel_identity` containing the caller
 number. Subsequent turns send `session_id`, `text`, and optionally a new
 `client_msg_id`. A return interaction starts a **new** session. A shared phone
-is ambiguous and no profile is sent to the AI service until identity is
-resolved. The response includes `client_msg_id`, `session_id`, `agent_text`, `identity_status`,
+is ambiguous; AI may stage masked fact candidates but cannot read or write a
+customer profile until identity is resolved. An authenticated operator who has
+checked the caller separately can call
+`POST /api/chat/{session_id}/verify-identity` with `customer_id`, `phone`, and
+`confirmation: "operator_verified"`. A phone stated in chat is not proof by
+itself. The response includes `client_msg_id`, `session_id`, `agent_text`, `identity_status`,
 `needs_handoff`, `handoff_ticket_id`, and optionally `call_brief`.
 
 ## Backend to AI service

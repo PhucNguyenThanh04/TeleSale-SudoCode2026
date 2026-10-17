@@ -17,8 +17,8 @@ logger = logging.getLogger("app.agent")
 
 STEP_LABELS = {
     "chat": "Lượt chat", "accept": "Nhận yêu cầu",
-    "resolve_identity": "Xác định khách hàng", "retrieve_context": "Đọc ngữ cảnh",
-    "call_tool": "Gọi công cụ", "run_deep_agent": "Deep Agent xử lý lượt",
+    "session_identity": "Khởi tạo danh tính phiên", "retrieve_context": "Đọc ngữ cảnh",
+    "call_tool": "Gọi công cụ", "run_agent": "Agent xử lý lượt",
     "verify": "Kiểm tra câu trả lời", "persist": "Lưu bộ nhớ",
 }
 EVENT_LABELS = {
@@ -41,7 +41,7 @@ FIELD_LABELS = {
     "history_turns": "lượt trước trong phiên", "turn_no": "số lượt trong phiên",
     "profile_facts": "số thông tin đã nhớ",
     "episodes": "phiên trước", "call_brief": "tóm tắt khách quay lại",
-    "reason": "lý do", "accepted": "câu trả lời",
+    "operation": "thao tác", "reason": "lý do", "accepted": "câu trả lời",
     "accepted_facts": "thông tin đã lưu", "needs_handoff": "chuyển người thật",
     "memory_writes": "số fact đã lưu", "error_type": "loại lỗi",
 }

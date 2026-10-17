@@ -113,7 +113,11 @@ class TracingTest(unittest.IsolatedAsyncioTestCase):
                 self.turns += 1
                 yield ("callback", self.span)
 
-        runtime = DeepHarnessRuntime(None, None, None)
+        class FakeGateway:
+            async def invoke(self, name, args):
+                return {"found": False}
+
+        runtime = DeepHarnessRuntime(None, FakeGateway(), None)
         runtime.graph = FakeGraph()
         runtime.tracing = FakeTracing()
         turn = TextTurnRequest(client_msg_id=uuid4(), session_id=uuid4(),

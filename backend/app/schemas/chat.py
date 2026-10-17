@@ -53,3 +53,11 @@ class AITextTurnResponse(BaseModel):
     needs_handoff: bool = False
     handoff_ticket_id: str | None = None
     call_brief: dict | None = None
+
+
+class VerifyIdentityRequest(BaseModel):
+    """An authenticated operator attests an out-of-band customer check."""
+
+    customer_id: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    phone: PhoneNumber
+    confirmation: Literal["operator_verified"]

@@ -24,6 +24,10 @@ QUERY_TERMS = {
     "xin": "m", "báo": "m", "chi": "m", "phí": "m", "giúp": "m",
 }
 
+# A product phrase followed by a purpose clause is a common model output. The
+# catalog matches every query word literally, so keep the product phrase only.
+_PURPOSE_CLAUSE = re.compile(r"(?i)\b(?:dành\s+)?cho\b")
+
 
 def clean_catalog_query(query: str, *, generated: bool = False) -> str:
     """Keep product terms while preserving each caller's existing cleanup timing."""
@@ -33,6 +37,10 @@ def clean_catalog_query(query: str, *, generated: bool = False) -> str:
             if "a" in flags:
                 text = re.sub(rf"(?i)\b{re.escape(term)}\b", " ", text)
         return " ".join(re.findall(r"[\w-]+", text, flags=re.UNICODE)).strip()
+    purpose = _PURPOSE_CLAUSE.search(query)
+    if purpose and len(query[:purpose.start()].split()) >= 2:
+        query = query[:purpose.start()]
+    query = " ".join(query.split())
     if not any("t" in flags and re.search(rf"(?i)\b{re.escape(term)}\b", query)
                for term, flags in QUERY_TERMS.items()):
         return query
