@@ -14,7 +14,7 @@ FALLBACK = "Dạ, hiện em chưa kiểm tra được thông tin này. Em sẽ n
 
 _STOCK = re.compile(r"(?i)\b(?:còn hàng|có hàng|sẵn hàng|hết hàng)\b")
 _ORDER = re.compile(r"(?i)\bđã\s+(?:lên|tạo|đặt|chốt)\s+đơn\b")
-_AMOUNT = re.compile(r"(?i)(?<![\w])(\d[\d.,]*)\s*(triệu|tr|nghìn|ngàn|k|đồng|đ|vnd|₫)")
+_AMOUNT = re.compile(r"(?i)(\d[\d.,]*)\s*(triệu|tr|nghìn|ngàn|k|đồng|đ|vnd|₫)")
 _MILLION_SHORTHAND = re.compile(r"(?i)\b(\d{1,3})\s*tr\s*(\d{1,3})(?!\d)")
 _PRICE_NUMBER = re.compile(r"(?i)\bgiá\s+(?:là\s+)?(\d[\d.,]*)")
 _BARE_MONEY = re.compile(r"\b(?:\d{1,3}(?:[.,]\d{3})+|\d{6,})\b")
@@ -395,21 +395,6 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]]) -> bool:
     return True
 
 
-def _empty_catalog_budget_evidenced(candidate: str, customer_text: str,
-                                   money_claims: list[tuple[int, str, bool]],
-                                   successful: list[dict[str, Any]]) -> bool:
-    """Allow repeating the customer's budget when reporting a verified empty search."""
-    searches = [call for call in successful if call.get("name") == "catalog.search"]
-    if not searches or searches[-1].get("result", {}).get("items") != []:
-        return False
-    budget = searches[-1].get("args", {}).get("max_price_vnd")
-    if budget not in customer_budget_amounts(customer_text):
-        return False
-    if not re.search(r"\b(?:khong|chua)\s+(?:co|tim thay)\b", _fold_text(candidate)):
-        return False
-    return bool(money_claims) and all(amount == budget for amount, _, _ in money_claims)
-
-
 def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
                  customer_text: str = "") -> tuple[str, str | None]:
     """Return a verified answer and a stable, non-sensitive rejection reason."""
@@ -446,9 +431,7 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     policy_values = {amount for amount, _, _ in policy_amounts}
     if money_claims and not (_money_evidenced(candidate, successful) or
                              policy_claim and all(amount in policy_values
-                                                  for amount, _, _ in money_claims) or
-                             _empty_catalog_budget_evidenced(candidate, customer_text,
-                                                              money_claims, successful)):
+                                                  for amount, _, _ in money_claims)):
         return FALLBACK, "price_without_quote"
     if _STOCK.search(candidate):
         checks = [call for call in successful if call["name"] == "inventory.check"]

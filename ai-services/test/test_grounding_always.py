@@ -5,7 +5,7 @@ import logging
 
 import pytest
 
-from app.agent.guardrails.checks import FALLBACK, attribute_feature_status, check_answer
+from app.agent.guardrails.checks import FALLBACK, attribute_feature_status
 from app.agent.harness.agent_nodes import AgentNodes
 from app.agent.harness.runtime import AgentHarnessRuntime
 
@@ -119,14 +119,3 @@ def test_text_feature_claim_polarity_uses_catalog_evidence(answer, accepted):
     nodes.guardrails_enabled = False
     result = asyncio.run(nodes.verify_agent(_state({"features": "HEPA H13"}, answer)))
     assert (result["agent_text"] == answer) is accepted
-
-
-def test_empty_catalog_can_repeat_verified_customer_budget_without_inventing_price():
-    calls = [{"name": "catalog.search", "args": {"query": "máy lọc không khí",
-              "max_price_vnd": 1_000_000, "min_room_area_m2": 25},
-              "result": {"items": [], "total": 0}}]
-    customer = "Tư vấn máy lọc không khí cho phòng 25m2, ngân sách tối đa 1 triệu."
-    answer = "Dạ, chưa có mẫu phù hợp phòng 25m2 trong ngân sách 1 triệu ạ."
-    assert check_answer(answer, calls, customer) == (answer, None)
-    invented = "Dạ, chưa có mẫu phù hợp trong ngân sách 2 triệu ạ."
-    assert check_answer(invented, calls, customer)[1] == "price_without_quote"
