@@ -17,6 +17,7 @@ from app.agent.memory.fact_candidates import (
 from app.agent.memory.reported_facts import reported_tool_candidates
 from app.agent.memory.store import memory_error_code
 from app.agent.guardrails.checks import FALLBACK, check_answer, check_grounding, mask_pii
+from app.agent.guardrails.diagnostics import rejected_draft
 from app.agent.harness.session_nodes import SessionNodes, safe_catalog_reply
 from app.agent.harness.observability import log_event, trace_node
 from app.agent.harness.state import TurnState
@@ -93,7 +94,8 @@ class AgentNodes(SessionNodes):
         log_event(state, "verify", "grounding_checked", accepted=grounding_reason is None,
                   **({"reason": grounding_reason} if grounding_reason else {}))
         if grounding_reason:
-            return {"agent_text": FALLBACK}
+            return {"agent_text": FALLBACK,
+                    "verifier_events": [rejected_draft(state, grounding_reason, draft)]}
         if not self.guardrails_enabled:
             log_event(state, "verify", "answer_check_disabled",
                       reason="AGENT_GUARDRAILS_ENABLED=false; kiểm tra bằng chứng vẫn chạy")
@@ -103,13 +105,15 @@ class AgentNodes(SessionNodes):
                   **({"reason": reason} if reason else {}))
         if reason is None:
             return {"agent_text": answer}
+        rejected = [rejected_draft(state, reason, draft)]
         safe = safe_catalog_reply(state)
         if safe:
             checked, safe_reason = check_answer(safe, state.get("tool_calls", []),
                                                 state["safe_text"])
             if safe_reason is None:
-                return {"agent_text": checked}
-        return {"agent_text": FALLBACK}
+                return {"agent_text": checked, "verifier_events": rejected}
+            rejected.append(rejected_draft(state, safe_reason, safe))
+        return {"agent_text": FALLBACK, "verifier_events": rejected}
 
     @trace_node("persist")
     async def persist_agent(self, state: TurnState) -> dict[str, Any]:

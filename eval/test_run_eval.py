@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 from eval.catalog_search_benchmark import catalog_search_metrics
 from eval.run_eval import _claims, run
+from app.agent.guardrails.diagnostics import rejected_draft
 from app.schemas.agent import TextTurnResponse
 
 
@@ -30,6 +31,15 @@ class _Runtime:
     def state_for(self, request):
         return {"request": request, "profile": {}, "tool_calls": [],
                 "memory_writes": []}
+
+
+class _BlockedRuntime(_Runtime):
+    def state_for(self, request):
+        state = super().state_for(request)
+        state.update({"agent_draft": "Giá 4.890.000đ. Gọi 0912345678.",
+                      "safe_text": request.text})
+        state["verifier_events"] = [rejected_draft(state, "price_without_quote")]
+        return state
 
 
 class EvalRunnerTest(unittest.TestCase):
@@ -80,6 +90,23 @@ class EvalRunnerTest(unittest.TestCase):
         self.assertEqual(metric["calls_per_turn"], [1, 2, 0])
         self.assertEqual(metric["one_search_turns"], 1)
         self.assertEqual(metric["one_search_rate_among_search_turns"], 0.5)
+
+    def test_rejected_drafts_go_to_redacted_events_sidecar(self):
+        scenario_dir = Path(__file__).resolve().parents[2] / "BTC-Data-Vong1-TEAMS" / \
+            "test_set" / "public_sample"
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / "trace.jsonl"
+            asyncio.run(run(SimpleNamespace(
+                scenarios=scenario_dir, config="full", out=output,
+                isolated_db=False), _BlockedRuntime()))
+            events_path = output.with_suffix(".events.json")
+            raw = events_path.read_text(encoding="utf-8")
+            events = json.loads(raw)
+        self.assertTrue(events)
+        self.assertEqual(events[0]["checks"][0]["reason"], "price_without_quote")
+        self.assertIn("claims", events[0]["checks"][0])
+        self.assertIn("source_evidence", events[0]["checks"][0])
+        self.assertNotIn("0912345678", raw)
 
 
 if __name__ == "__main__":

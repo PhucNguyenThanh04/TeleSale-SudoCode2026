@@ -37,6 +37,7 @@ class TurnState(TypedDict, total=False):
     memory_failure: str
     agent_text: str
     agent_draft: str
+    verifier_events: list[dict[str, Any]]
     fact_candidates: list[dict[str, Any]]
     model_fact_candidates: list[dict[str, Any]]
     plan_envelopes: list[dict[str, Any]]

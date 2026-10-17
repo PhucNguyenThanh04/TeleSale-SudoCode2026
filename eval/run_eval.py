@@ -135,6 +135,7 @@ async def run(args, runtime=None) -> int:
     runtime.memory.include_prior = args.config == "full"
     run_id = str(uuid4())
     rows = []
+    events = []
     for scenario_id, call_name, on, channel, identity, mode, turns in _scenario_inputs(args.scenarios):
         session_id = uuid4()
         for turn_no, customer_text in enumerate(turns, 1):
@@ -163,9 +164,15 @@ async def run(args, runtime=None) -> int:
             ).model_dump(mode="json")
             validator.validate(row)
             rows.append(row)
+            checks = state.get("verifier_events", [])
+            if checks:
+                events.append({"scenario_id": scenario_id, "call": call_name,
+                               "turn": turn_no, "checks": checks})
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
                         encoding="utf-8")
+    args.out.with_suffix(".events.json").write_text(
+        json.dumps(events, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     report_out = getattr(args, "report_out", None) or args.out.with_suffix(".report.json")
     report_out.parent.mkdir(parents=True, exist_ok=True)
     report_out.write_text(json.dumps({
