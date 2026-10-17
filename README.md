@@ -25,3 +25,17 @@ The runner emits real harness turns. Restore the same seed and clear mutable
 runtime state before baseline. `--isolated-db` is an operator assertion; it
 does not reset or isolate PostgreSQL itself. The model is configured in
 `ai-services/.env`. See [memory policy](docs/memory-policy.md).
+
+Each trace also gets a `.report.json` sidecar containing `catalog_search`:
+`calls_per_turn`, total calls, and the share of search turns with exactly one
+call. To measure N independent turns with the configured model and either the
+BTC adapter or the deployed catalog MCP, run:
+
+```bash
+ai-services/.venv/bin/python eval/catalog_search_benchmark.py --source adapter --runs 10 --fact-extraction-mode off --text 'Tư vấn máy lọc không khí có khóa trẻ em cho phòng 25m2, giá tối đa 5 triệu.' --out eval/runs/catalog-adapter.json
+ai-services/.venv/bin/python eval/catalog_search_benchmark.py --source mcp --runs 10 --fact-extraction-mode off --text 'Tư vấn máy lọc không khí có khóa trẻ em cho phòng 25m2, giá tối đa 5 triệu.' --out eval/runs/catalog-mcp.json
+```
+
+The benchmark uses a fresh session and in-process memory for each turn. MCP
+mode reads the deployed catalog through HTTP; other business tools are disabled
+in this measurement. The report stores a hash of the question, not its text.

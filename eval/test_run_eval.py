@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
+from eval.catalog_search_benchmark import catalog_search_metrics
 from eval.run_eval import _claims, run
 from app.schemas.agent import TextTurnResponse
 
@@ -53,7 +54,11 @@ class EvalRunnerTest(unittest.TestCase):
                 scenarios=scenario_dir, config="baseline_no_memory",
                 out=output, isolated_db=False), runtime))
             rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+            report = json.loads(output.with_suffix(".report.json").read_text(
+                encoding="utf-8"))
         self.assertEqual(count, len(rows))
+        self.assertEqual(report["catalog_search"]["turns"], count)
+        self.assertEqual(report["catalog_search"]["total_calls"], 0)
         self.assertFalse(runtime.memory.include_prior)
         self.assertTrue(all(row["agent_text"] == "Dạ, em kiểm tra ạ." for row in rows))
         self.assertTrue(all("facts_established" not in request.model_dump()
@@ -65,6 +70,16 @@ class EvalRunnerTest(unittest.TestCase):
                        if str(item.session_id) == str(runtime.requests[4].session_id))
         self.assertEqual(request.on.isoformat(), "2026-10-17")
         self.assertEqual(sample["latency"]["ttft_ms"], sample["latency"]["total_ms"])
+
+    def test_catalog_search_metric_counts_each_turn(self):
+        rows = [{"tool_calls": [{"name": "catalog.search"}]},
+                {"tool_calls": [{"name": "catalog.search"},
+                                {"name": "catalog.search"}]},
+                {"tool_calls": [{"name": "inventory.check"}]}]
+        metric = catalog_search_metrics(rows)
+        self.assertEqual(metric["calls_per_turn"], [1, 2, 0])
+        self.assertEqual(metric["one_search_turns"], 1)
+        self.assertEqual(metric["one_search_rate_among_search_turns"], 0.5)
 
 
 if __name__ == "__main__":

@@ -64,6 +64,9 @@ class FactCandidateProposal(BaseModel):
     source: Literal["customer", "tool"]
 
 _TOOL_DESCRIPTION = {
+    # Keep "no speculative retry" and "use attributes" together: removing
+    # retry wording alone gave 0/10 one-search turns, adding attributes alone
+    # gave 2/10, and the combined description gave 10/10.
     "catalog.search": (
         "Tìm sản phẩm theo tên, loại hoặc SKU. query chỉ chứa loại sản phẩm; "
         "truyền giá tối đa và diện tích tối thiểu bằng các tham số riêng. "

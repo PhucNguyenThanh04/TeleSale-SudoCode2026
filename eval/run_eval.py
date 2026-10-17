@@ -20,6 +20,7 @@ from app.agent.guardrails.checks import _money_claims, mask_pii, safe_tool_resul
 from app.configs import get_settings  # noqa: E402
 from app.schemas.agent import TextTurnRequest  # noqa: E402
 from app.schemas.trace import AgentTraceLine  # noqa: E402
+from eval.catalog_search_benchmark import catalog_search_metrics  # noqa: E402
 
 
 def _scenario_inputs(folder: Path):
@@ -165,6 +166,12 @@ async def run(args, runtime=None) -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
                         encoding="utf-8")
+    report_out = getattr(args, "report_out", None) or args.out.with_suffix(".report.json")
+    report_out.parent.mkdir(parents=True, exist_ok=True)
+    report_out.write_text(json.dumps({
+        "run_id": run_id, "config": args.config,
+        "catalog_search": catalog_search_metrics(rows),
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return len(rows)
 
 
@@ -173,6 +180,8 @@ def main() -> None:
     parser.add_argument("--scenarios", required=True, type=Path)
     parser.add_argument("--config", required=True, choices=("full", "baseline_no_memory"))
     parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument("--report-out", type=Path,
+                        help="JSON report path (default: trace path with .report.json suffix)")
     parser.add_argument("--isolated-db", action="store_true",
                         help="Confirm MCP servers use a dedicated, freshly seeded eval DB")
     args = parser.parse_args()
