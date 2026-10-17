@@ -1,5 +1,6 @@
 """Pure BTC catalog, inventory, pricing and delivery rules shared by two services."""
 
+import unicodedata
 from datetime import date, timedelta
 
 from app.constants import CATALOG_RESULT_LIMIT
@@ -33,24 +34,37 @@ def _delivery(on: str, address: str | None) -> str:
             days -= 1
     return current.isoformat()
 
+def _search_text(value: str) -> str:
+    """Fold Vietnamese accents while retaining separators in category paths and SKUs."""
+    value = value.casefold().replace("đ", "d")
+    return "".join(char for char in unicodedata.normalize("NFD", value)
+                   if unicodedata.category(char) != "Mn")
+
+
 def _catalog(products: list[dict], args: dict) -> dict:
-    items = []
+    ranked = []
+    query_terms = _search_text(args.get("query") or "").split()
     for p in products:
         if args.get("sku") and p["sku"] != args["sku"] and not any(v["variant_sku"] == args["sku"] for v in p.get("variants", [])):
             continue
-        if args.get("category") and not p["category"].startswith(args["category"]):
+        if args.get("category") and not _search_text(p["category"]).startswith(
+                _search_text(args["category"])):
             continue
         if args.get("max_price_vnd") and p["list_price_vnd"] > args["max_price_vnd"]:
             continue
         if args.get("min_room_area_m2") and p["attributes"].get("room_area_m2", 0) < args["min_room_area_m2"]:
             continue
-        if args.get("query") and not all(word in (p["name"] + " " + p["brand"] + " " + p["category"] + " " + p["sku"]).lower() for word in args["query"].lower().split()):
+        searchable = _search_text(" ".join((p["name"], p["brand"], p["category"], p["sku"])))
+        score = sum(term in searchable for term in query_terms)
+        if query_terms and score == 0:
             continue
         if p["attributes"].get("discontinued") and not args.get("include_discontinued") and not args.get("sku"):
             continue
-        items.append({"sku": p["sku"], "name": p["name"], "category": p["category"],
+        ranked.append((score, {"sku": p["sku"], "name": p["name"], "category": p["category"],
                       "list_price_vnd": p["list_price_vnd"], "attributes": p["attributes"],
-                      "variants": [{key: v[key] for key in ("variant_sku", "size", "color", "price_delta_vnd")} for v in p.get("variants", [])]})
+                      "variants": [{key: v[key] for key in ("variant_sku", "size", "color", "price_delta_vnd")} for v in p.get("variants", [])]}))
+    ranked.sort(key=lambda entry: -entry[0])
+    items = [item for _, item in ranked]
     return {"items": items[:CATALOG_RESULT_LIMIT], "total": len(items)}
 
 def _inventory(products: list[dict], events: list[dict], sku: str, on: str) -> dict:
