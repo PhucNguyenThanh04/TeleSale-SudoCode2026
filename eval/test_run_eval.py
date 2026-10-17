@@ -6,9 +6,10 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from eval.catalog_search_benchmark import catalog_search_metrics
-from eval.run_eval import _claims, run
+from eval.run_eval import _claims, _require_eval_database, run
 from app.agent.guardrails.diagnostics import rejected_draft
 from app.schemas.agent import TextTurnResponse
 
@@ -25,8 +26,7 @@ class _Runtime:
         self.requests = []
 
     async def database_identity(self, service):
-        return {"database": self.database, "host": "eval-postgres", "port": 5432,
-                "server_address": "172.30.0.2", "server_port": 5432}
+        return {"database": self.database, "host": "eval-postgres", "port": 5432}
 
     async def run(self, request):
         self.requests.append(request)
@@ -126,6 +126,29 @@ class EvalRunnerTest(unittest.TestCase):
                     isolated_db=True), runtime))
             self.assertEqual(runtime.requests, [])
             self.assertFalse(output.exists())
+
+    def test_allowlist_rejects_similar_and_unrelated_names(self):
+        for name in ("telesale_evaluation", "medieval", "telesale"):
+            with self.subTest(database=name):
+                runtime = _Runtime(database=name)
+                with self.assertRaisesRegex(RuntimeError, "not in the eval allowlist"):
+                    asyncio.run(_require_eval_database(runtime, True))
+                self.assertEqual(runtime.requests, [])
+        asyncio.run(_require_eval_database(_Runtime(database="telesale_eval"), True))
+        with patch.dict("os.environ", {"EVAL_DB_ALLOWLIST": "telesale_evaluation"}):
+            with self.assertRaisesRegex(ValueError, "EVAL_DB_ALLOWLIST"):
+                asyncio.run(_require_eval_database(_Runtime(), True))
+
+    def test_unavailable_database_probe_fails_closed(self):
+        runtime = _Runtime()
+
+        async def unavailable(_service):
+            return {"error": "mcp_tool_error"}
+
+        runtime.database_identity = unavailable
+        with self.assertRaisesRegex(RuntimeError, "Cannot verify catalog"):
+            asyncio.run(_require_eval_database(runtime, True))
+        self.assertEqual(runtime.requests, [])
 
     def test_missing_isolated_flag_is_rejected_even_for_eval_database(self):
         scenario_dir = Path(__file__).resolve().parents[2] / "BTC-Data-Vong1-TEAMS" / \

@@ -13,7 +13,9 @@ Ba MCP eval phải là process riêng, dùng cổng khác MCP demo đang chạy.
    `createdb`/`dropdb` sẽ yêu cầu mật khẩu qua cơ chế PostgreSQL thông thường.
 
    ```bash
+   set -euo pipefail
    eval_db=telesale_eval
+   [[ "$eval_db" =~ ^telesale_eval(_[a-z0-9]+)?$ ]] || { echo "Tên DB eval không hợp lệ" >&2; exit 1; }
    admin_user=$(sed -n 's/^POSTGRES_USER=//p' .env)
    dropdb --if-exists --force -h 127.0.0.1 -p 5432 -U "$admin_user" "$eval_db"
    createdb -h 127.0.0.1 -p 5432 -U "$admin_user" "$eval_db"
@@ -23,16 +25,26 @@ Ba MCP eval phải là process riêng, dùng cổng khác MCP demo đang chạy.
    không in DSN/mật khẩu ra terminal:
 
    ```bash
-   eval_dsn=$(ai-services/.venv/bin/python - <<'PY'
+   eval_dsn=$(EVAL_DB_EXPECTED="$eval_db" ai-services/.venv/bin/python - <<'PY'
+import os
 import sys
 sys.path.insert(0, "ai-services")
 from sqlalchemy.engine import make_url
 from app.configs import get_settings
 url = make_url(get_settings().database_url.get_secret_value())
-print(url.set(database="telesale_eval").render_as_string(hide_password=False))
+print(url.set(database=os.environ["EVAL_DB_EXPECTED"]).render_as_string(hide_password=False))
 PY
    )
    eval_psql_dsn=${eval_dsn/postgresql+asyncpg/postgresql}
+   EVAL_DB_EXPECTED="$eval_db" DATABASE_URL="$eval_dsn" ai-services/.venv/bin/python - <<'PY'
+import os
+import re
+from sqlalchemy.engine import make_url
+expected = os.environ["EVAL_DB_EXPECTED"]
+actual = make_url(os.environ["DATABASE_URL"]).database
+if not re.fullmatch(r"telesale_eval(?:_[a-z0-9]+)?", expected) or actual != expected:
+    raise SystemExit("DSN không trỏ đúng DB eval")
+PY
    ```
 
 3. Nạp seed BTC vào DB eval rồi áp migration theo đúng thứ tự:
@@ -43,7 +55,7 @@ PY
    for migration in backend/migrations/0001_chat.sql backend/migrations/0002_tools.sql backend/migrations/0003_channel_identity.sql ai-services/migrations/0001_memory.sql ai-services/migrations/0002_operations.sql ai-services/migrations/0003_memory_provenance.sql ai-services/migrations/0004_pending_facts.sql; do
        psql "$eval_psql_dsn" -X -v ON_ERROR_STOP=1 -f "$migration"
    done
-   docker compose run --rm -e PGDATABASE=telesale_eval mcp-db-roles
+   docker compose run --rm -e PGDATABASE="$eval_db" mcp-db-roles
    ```
 
    Lệnh cấp role dùng secret files có sẵn và cấp quyền trên **DB eval**. Kiểm tra
@@ -65,7 +77,7 @@ PY
    ```
 
    Runner hỏi từng MCP về DB thực sự đã kết nối và từ chối trước lượt đầu nếu
-   tên DB ngoài allowlist, host/port không xác minh được, hoặc ba server không
+   tên DB ngoài allowlist `^telesale_eval(_[a-z0-9]+)?$`, host/port không xác minh được, hoặc ba server không
    cùng endpoint. Cờ `--isolated-db` vẫn bắt buộc nhưng một mình cờ này không
    đủ để qua chốt chặn.
 

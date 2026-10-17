@@ -39,14 +39,11 @@ class MemoryRepo:
         """Report the database reached by this pool, without exposing credentials."""
         async with self.transaction() as conn:
             row = await conn.fetchrow(
-                "SELECT current_database() AS database, "
-                "inet_server_addr()::text AS server_address, "
-                "inet_server_port() AS server_port"
+                "SELECT current_database() AS database"
             )
         url = make_url(self.dsn)
         return {"database": row["database"], "host": url.host,
-                "port": url.port or 5432,
-                "server_address": row["server_address"], "server_port": row["server_port"]}
+                "port": url.port or 5432}
 
     async def owner(self, conn, session_id: str) -> str | None:
         return await conn.fetchval("SELECT customer_id FROM ai_memory.turns WHERE session_id=$1 AND customer_id IS NOT NULL LIMIT 1", UUID(session_id))

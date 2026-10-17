@@ -30,8 +30,8 @@ async def _require_eval_database(runtime, isolated_db: bool) -> None:
         raise ValueError("Pass --isolated-db after configuring a dedicated eval database")
     allowed = {name.strip() for name in os.getenv("EVAL_DB_ALLOWLIST", "telesale_eval").split(",")}
     allowed.discard("")
-    allowed = {name for name in allowed if re.fullmatch(r"[a-z][a-z0-9_]*", name)
-               and re.search(r"(^|_)eval($|_)", name)}
+    allowed = {name for name in allowed
+               if re.fullmatch(r"telesale_eval(?:_[a-z0-9]+)?", name)}
     if not allowed:
         raise ValueError("EVAL_DB_ALLOWLIST must contain an eval-named database")
     probe = getattr(getattr(runtime, "tools", None), "database_identity", None)
@@ -45,12 +45,9 @@ async def _require_eval_database(runtime, isolated_db: bool) -> None:
         name = identity.get("database")
         if name not in allowed:
             raise RuntimeError(f"{service} MCP database is not in the eval allowlist")
-        endpoint = tuple(identity.get(key) for key in
-                         ("host", "port", "server_address", "server_port"))
+        endpoint = tuple(identity.get(key) for key in ("host", "port"))
         if (not isinstance(endpoint[0], str) or not endpoint[0]
-                or type(endpoint[1]) is not int
-                or not isinstance(endpoint[2], str) or not endpoint[2]
-                or type(endpoint[3]) is not int):
+                or type(endpoint[1]) is not int):
             raise RuntimeError(f"{service} MCP database host is unverified")
         identities.append((name, *endpoint))
     if len(set(identities)) != 1:

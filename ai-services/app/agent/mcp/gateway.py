@@ -1,5 +1,6 @@
 """Single MCP tool boundary with an injectable protocol."""
 
+import asyncio
 from typing import Any, Protocol
 
 from fastmcp import Client
@@ -20,12 +21,15 @@ class MCPGateway:
         if service not in self.transports:
             return {"error": "unknown_service"}
         try:
-            async with Client(self.transports[service], auth=self.token) as client:
-                response = await client.call_tool("eval.database_identity", {})
+            async with asyncio.timeout(10):
+                async with Client(self.transports[service], auth=self.token) as client:
+                    response = await client.call_tool("eval.database_identity", {})
             if response.is_error:
                 return {"error": "mcp_tool_error"}
             result = response.data if isinstance(response.data, dict) else response.structured_content
-            return result if isinstance(result, dict) else {"error": "invalid_tool_result"}
+            if not isinstance(result, dict) or "error" in result:
+                return {"error": "invalid_tool_result"}
+            return {key: result.get(key) for key in ("database", "host", "port")}
         except Exception:
             return {"error": "mcp_unavailable"}
 

@@ -1,10 +1,12 @@
 """MCP discovery and trusted context remain BTC-compatible."""
 
+import asyncio
 import unittest
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
 from types import SimpleNamespace
 
+from fastmcp import FastMCP
 from app.agent.mcp.gateway import MCPGateway
 from app.agent.memory.store import MCPMemoryStore
 from app.mcp_servers.mcp_catalog.tools.handlers import create_server as catalog_server
@@ -18,8 +20,7 @@ class FakeRepo:
         yield object()
 
     async def database_identity(self):
-        return {"database": "telesale_eval", "host": "eval-postgres", "port": 5432,
-                "server_address": "172.30.0.2", "server_port": 5432}
+        return {"database": "telesale_eval", "host": "eval-postgres", "port": 5432}
 
 
 class GatewayTest(unittest.IsolatedAsyncioTestCase):
@@ -28,8 +29,40 @@ class GatewayTest(unittest.IsolatedAsyncioTestCase):
         gateway = MCPGateway(catalog_server(repo), order_server(repo), memory_server(repo))
         for service in ("catalog", "order", "memory"):
             result = await gateway.database_identity(service)
-            self.assertEqual(result["database"], "telesale_eval")
-            self.assertEqual(result["host"], "eval-postgres")
+            self.assertEqual(result, {"database": "telesale_eval",
+                                      "host": "eval-postgres", "port": 5432})
+        self.assertEqual(await gateway.invoke("eval.database_identity", {}),
+                         {"error": "unknown_tool"})
+
+    async def test_old_mcp_without_identity_tool_fails_closed(self):
+        gateway = MCPGateway(FastMCP("old-catalog"), None, None)
+        result = await gateway.database_identity("catalog")
+        self.assertIn(result.get("error"), {"mcp_tool_error", "mcp_unavailable"})
+
+    async def test_identity_response_discards_any_extra_connection_details(self):
+        class LeakyRepo(FakeRepo):
+            async def database_identity(self):
+                return {**await super().database_identity(),
+                        "dsn": "postgresql://user:secret@eval-postgres:5432/telesale_eval",
+                        "password": "secret"}
+
+        gateway = MCPGateway(catalog_server(LeakyRepo()), None, None)
+        result = await gateway.database_identity("catalog")
+        self.assertEqual(result, {"database": "telesale_eval", "host": "eval-postgres",
+                                  "port": 5432})
+
+    async def test_database_identity_timeout_fails_closed(self):
+        class SlowRepo(FakeRepo):
+            async def database_identity(self):
+                await asyncio.sleep(0.1)
+                return await super().database_identity()
+
+        gateway = MCPGateway(catalog_server(SlowRepo()), None, None)
+        real_timeout = asyncio.timeout
+        with patch("app.agent.mcp.gateway.asyncio.timeout",
+                   side_effect=lambda _seconds: real_timeout(0.01)):
+            self.assertEqual(await gateway.database_identity("catalog"),
+                             {"error": "mcp_unavailable"})
 
     async def test_commit_turn_uses_memory_mcp_with_evidenced_facts(self):
         gateway = MCPGateway(None, None, memory_server(FakeRepo()))
