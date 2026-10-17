@@ -10,14 +10,17 @@ from app.agent.harness.state import TurnState
 ALLOWED_TOOLS = {
     "catalog.search", "inventory.check", "pricing.get_quote", "order.create",
     "order.update", "order.status", "schedule.callback", "handoff.transfer",
+    "policy.search",
 }
-DATED_TOOLS = {"inventory.check", "pricing.get_quote", "order.create", "order.update"}
+DATED_TOOLS = {"inventory.check", "pricing.get_quote", "order.create", "order.update",
+               "policy.search"}
 PHONE_REQUIRED_TOOLS = {"order.create", "schedule.callback"}
 _READ_TOOL_ARGS = {
     "catalog.search": {"query", "category", "sku", "max_price_vnd",
                        "min_room_area_m2", "include_discontinued"},
     "inventory.check": {"sku", "on"},
     "pricing.get_quote": {"sku", "on", "qty", "customer_phone", "address", "basket_skus"},
+    "policy.search": {"query", "on", "order_id", "order_date"},
 }
 def _single_catalog_sku(state: TurnState) -> str | None:
     searches = [call for call in state.get("tool_calls", [])
@@ -42,6 +45,20 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
     args = dict(decision.tool_args)
     if name == "catalog.search" and isinstance(args.get("query"), str):
         args["query"] = clean_catalog_query(args["query"])
+        # A wider second search should not silently drop the customer's filters.
+        for call in reversed(state.get("tool_calls", [])):
+            if call.get("name") != "catalog.search":
+                continue
+            previous = call.get("args", {})
+            prior_query = previous.get("query")
+            new_query = args["query"].casefold()
+            old_query = prior_query.casefold() if isinstance(prior_query, str) else ""
+            if (new_query and (old_query == new_query or old_query.startswith(new_query + " "))
+                    and call.get("result", {}).get("items") == []):
+                for key in ("min_room_area_m2", "max_price_vnd", "category"):
+                    if args.get(key) is None and previous.get(key) is not None:
+                        args[key] = previous[key]
+            break
     if name in {"inventory.check", "pricing.get_quote"} and not args.get("sku"):
         sku = _single_catalog_sku(state)
         if sku:
@@ -52,6 +69,21 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
         return None
     if name in DATED_TOOLS:
         args["on"] = request.on.isoformat()
+    if name == "policy.search":
+        order_id = args.pop("order_id", None)
+        args.pop("order_date", None)
+        if order_id:
+            orders = [order for call in state.get("tool_calls", [])
+                      if call.get("name") == "order.status"
+                      and "error" not in call.get("result", {})
+                      for order in call["result"].get("orders", [])
+                      if isinstance(order, dict) and order.get("order_id") == order_id]
+            if len(orders) != 1:
+                return None
+            created = orders[0].get("created_on") or orders[0].get("created_at")
+            if not created:
+                return None
+            args["order_date"] = str(created)[:10]
     if name == "pricing.get_quote":
         args.pop("customer_phone", None)
         if state.get("customer_phone"):

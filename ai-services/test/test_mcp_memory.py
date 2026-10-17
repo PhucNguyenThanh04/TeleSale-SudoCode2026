@@ -76,6 +76,56 @@ class TurnRepo(FakeRepo):
 
 
 class MemoryServiceTest(unittest.IsolatedAsyncioTestCase):
+    async def test_anonymous_fact_is_claimed_only_after_verified_identity(self):
+        class PendingRepo(TurnRepo):
+            def __init__(self):
+                super().__init__()
+                self.pending = []
+                self.values = {}
+
+            async def stage_fact(self, _conn, session_id, source_turn_id,
+                                 turn_no, fact, on):
+                self.pending.append({"source_turn_id": source_turn_id,
+                    "turn_no": turn_no, "key": fact["key"], "value": fact.get("value"),
+                    "op": fact["op"], "source_kind": fact["source_kind"],
+                    "source_tool": fact.get("source_tool"), "on_date": on})
+
+            async def pending_facts(self, _conn, _session_id):
+                return sorted(self.pending, key=lambda item: item["turn_no"])
+
+            async def clear_pending(self, _conn, _session_id):
+                self.pending.clear()
+
+            async def bind_owner(self, _conn, session_id, customer_id):
+                for row in self.rows[session_id]:
+                    row["customer_id"] = customer_id
+
+            async def active_fact_record(self, _conn, customer_id, key):
+                return self.values.get((customer_id, key))
+
+            async def insert_fact(self, _conn, fact_id, customer_id, key, value,
+                                  source, session_id, previous, **metadata):
+                self.values[(customer_id, key)] = {"fact_id": fact_id, "value": value}
+                self.facts.append((source, value, metadata))
+
+        repo = PendingRepo()
+        session_id, message_id = str(uuid4()), str(uuid4())
+        data = {"customer_text": "Phòng anh 25 m²", "agent_text": "Dạ, em ghi nhận ạ.",
+                "on": "2026-10-15", "channel": "hotline", "client_msg_id": message_id,
+                "facts": [{"key": "room_area_m2", "value": 25, "op": "set",
+                           "source_kind": "customer"}]}
+        staged = await write(repo, "commit_turn", None, session_id, data, "anonymous-turn")
+        self.assertEqual(staged["memory_writes"], [])
+        self.assertEqual(repo.facts, [])
+        self.assertEqual(len(repo.pending), 1)
+        claimed = await write(repo, "claim_pending", "C001", session_id, {}, "claim-1")
+        self.assertEqual(claimed["memory_writes"][0]["value"], 25)
+        self.assertEqual(repo.facts[0][0], f"{session_id}:{message_id}")
+        self.assertEqual(repo.rows[session_id][0]["customer_id"], "C001")
+        self.assertEqual((await write(repo, "claim_pending", "C001", session_id, {}, "claim-1")),
+                         claimed)
+        self.assertEqual(len(repo.facts), 1)
+
     async def test_turn_write_creates_history_without_prior_session_and_replays_retry(self):
         repo = TurnRepo()
         session_id = str(uuid4())

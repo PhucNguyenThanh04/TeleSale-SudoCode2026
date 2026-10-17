@@ -7,14 +7,11 @@
         <mxCell id="request" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fontStyle=1;" value="ChatRequest" vertex="1">
           <mxGeometry height="55" width="260" x="360" y="120" as="geometry" />
         </mxCell>
-        <mxCell id="runtime" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=13;" value="&lt;b&gt;HarnessRuntime.run()&lt;/b&gt;&lt;br&gt;khóa session; cache theo session_id + client_msg_id" vertex="1">
+        <mxCell id="runtime" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=13;" value="&lt;b&gt;HarnessRuntime.run()&lt;/b&gt;&lt;br&gt;khóa session; tra CRM một lần mỗi phiên trong worker" vertex="1">
           <mxGeometry height="70" width="350" x="315" y="205" as="geometry" />
         </mxCell>
         <mxCell id="accept" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;" value="&lt;b&gt;accept&lt;/b&gt;&lt;br&gt;che PII; khởi tạo state và bộ đếm tool" vertex="1">
           <mxGeometry height="70" width="340" x="320" y="310" as="geometry" />
-        </mxCell>
-        <mxCell id="identity" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;" value="&lt;b&gt;resolve_identity&lt;/b&gt;&lt;br&gt;tra CRM theo hotline / Facebook / Zalo" vertex="1">
-          <mxGeometry height="70" width="340" x="320" y="415" as="geometry" />
         </mxCell>
         <mxCell id="context" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fontSize=14;" value="&lt;b&gt;retrieve_context&lt;/b&gt;&lt;br&gt;đọc lượt trong phiên, profile, episode, đơn" vertex="1">
           <mxGeometry height="70" width="340" x="320" y="520" as="geometry" />
@@ -61,10 +58,7 @@
         <mxCell id="e02" edge="1" parent="1" source="runtime" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="accept">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e03" edge="1" parent="1" source="accept" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="identity">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e04" edge="1" parent="1" source="identity" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="context">
+        <mxCell id="e03" edge="1" parent="1" source="accept" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="context">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e05" edge="1" parent="1" source="context" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="plan">
@@ -110,7 +104,7 @@
         <mxCell id="e15" edge="1" parent="1" source="persist" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="response">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="s01" edge="1" parent="1" source="identity" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;dashPattern=6 4;endArrow=open;strokeWidth=1.5;" target="crm">
+        <mxCell id="s01" edge="1" parent="1" source="runtime" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;dashPattern=6 4;endArrow=open;strokeWidth=1.5;" target="crm" value="lượt đầu trong worker">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="s02" edge="1" parent="1" source="context" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;dashPattern=6 4;endArrow=open;strokeWidth=1.5;" target="memory_read">

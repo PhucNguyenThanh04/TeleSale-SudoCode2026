@@ -39,6 +39,7 @@ node_modules/
 coverage/
 
 # Local runtime output
+/postgres_data/
 *.log
 logs/
 tmp/

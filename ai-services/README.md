@@ -20,7 +20,7 @@ settings needed for your run.
 |---|---|---|
 | API | `APP_NAME`, `APP_ENV`, `DEBUG`, `HOST`, `PORT`, `LOG_LEVEL`, `TIMEZONE` | API identity, environment label, debug flag, bind address, logging, callback timezone |
 | Ollama Cloud | `LLM_API_KEY`, `LLM_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_TIMEOUT_SECONDS`, `LLM_TEMPERATURE`, `LLM_MAX_TOKENS` | Model, authentication, timeout and response budget |
-| Harness | `AGENT_MAX_TOOL_CALLS`, `AGENT_PROMPT_HISTORY_TURNS`, `AGENT_GUARDRAILS_ENABLED` | Maximum business tool calls, recent conversation turns, and answer check toggle; set the last variable to `false` only when inspecting the raw Deep Agent reply |
+| Harness | `AGENT_KIND`, `FACT_EXTRACTION_MODE`, `AGENT_MAX_TOOL_CALLS`, `AGENT_PROMPT_HISTORY_TURNS`, `AGENT_GUARDRAILS_ENABLED` | Select `deep` or `react`, choose fact extraction behavior, set tool and context limits, and toggle answer checks |
 | Memory | `MEMORY_MAX_EPISODES`, `MEMORY_SUMMARY_TURNS`, `MEMORY_SUMMARY_MAX_CHARS` | Prior episodes loaded and episode summary size; baseline still disables prior memory |
 | Langfuse | `LANGFUSE_ENABLED`, `LANGFUSE_CAPTURE_CONTENT`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` | Optional one trace per chat turn, grouped by session; content capture is opt-in for development/test |
 | Internal transport | `AI_INTERNAL_TOKEN`, `MCP_INTERNAL_TOKEN`, `MCP_CATALOG_URL`, `MCP_ORDER_URL`, `MCP_MEMORY_URL` | Backend-to-AI and AI-to-MCP authentication and endpoints |
@@ -43,28 +43,33 @@ reference date are source-of-truth rules, not tunable settings. Keep them in
 the BTC-compatible business logic and scenario input.
 
 The API invokes an outer one-turn LangGraph. It resolves identity through
-mcp-catalog, reads mcp-memory, and runs a prebuilt Deep Agent for business tool
+mcp-catalog, reads mcp-memory, and runs the selected Deep or ReAct agent for business tool
 calls through the existing MCP gateway. The outer graph checks the reply and
 commits the masked turn, evidenced fact candidates, and successful order links
 through mcp-memory in one transaction. Each model-facing business tool accepts
-an optional `fact_candidates` argument, so Deep Agent can propose facts while
+an optional `fact_candidates` argument, so either agent can propose facts while
 calling a tool. The internal plan envelope records that tool call and its
 proposals; the candidates are removed before the BTC MCP request. The harness
-does not extract facts from customer text with regex; it accepts only model
-proposals supported by the customer turn or a successful tool. A separate,
-parallel model call proposes customer-stated facts so that a sales reply that
-omits `fact_candidates` does not silently lose them. This adds one model request
-for identified customers. Without a business tool call, Deep Agent can also
+accepts model proposals only with evidence from the current customer turn or a
+successful tool. In `fallback` mode, a small slot-cue detector triggers an
+extra customer-only extraction when the agent omitted a likely slot. `off`
+relies only on the agent; `always` invokes the extractor every turn. Without a business tool call, either agent can also
 return `{"answer":"...","fact_candidates":[...]}` in its final answer.
 `memory.propose_fact` is an optional model-facing proposal tool;
 it never writes to PostgreSQL. Deep Agent's `memory=` file feature is not the
 customer fact store.
-When `AGENT_GUARDRAILS_ENABLED=false`, the outer graph returns the Deep Agent's
+When `AGENT_GUARDRAILS_ENABLED=false`, the outer graph returns the selected agent's
 draft reply without `check_answer` or catalog fallback. PII masking, MCP tool
 preconditions, identity checks, and memory evidence validation still apply.
 Missing MCP URLs or token are a configuration error at runtime startup. Chat response caching remains process-local; writes through the MCP
 services use PostgreSQL operation keys. A PostgreSQL LangGraph checkpointer is
 not connected yet.
+
+Policy questions use `policy.search` on mcp-catalog. PostgreSQL filters
+`btc_source.policy_chunks` for public access and the applicable call or verified
+order date before lexical ranking. Qdrant is not connected to chat. The answer
+guard checks that a policy lookup succeeded and rejects day counts absent from
+the returned chunks; it is not a general semantic proof of every policy claim.
 
 ### Langfuse Cloud tracing
 
@@ -76,7 +81,7 @@ AI process only. The application starts without Langfuse when the flag is
 `false`; enabling it without all three connection settings fails startup.
 
 Each uncached `chat()` turn creates a `chat-turn` trace and groups turns by
-`session_id`. The LangGraph callback records the outer graph, nested Deep Agent,
+`session_id`. The LangGraph callback records the outer graph, selected nested agent,
 model generations, and tool steps. Trace names, channel, input mode, handoff
 status, tool and memory write counts, model name and token usage remain visible.
 By default, the export mask removes prompts, responses, customer identifiers,
@@ -87,8 +92,7 @@ attributes and configured secret values remain redacted. This flag is rejected
 when `APP_ENV=production`. Previously exported masked traces stay masked.
 Spans carrying OpenTelemetry events or status descriptions are dropped because
 those fields cannot be edited by the SDK export mask.
-The HTTP service flushes on shutdown; the one-turn `python -m app.agent.chat`
-demo flushes before exit. Do not flush after each API request, since that adds
+The HTTP service flushes on shutdown. Do not flush after each API request, since that adds
 latency. With credentials configured, check the Langfuse Traces and Sessions
 views after one real turn. No Cloud authentication or remote trace was verified
 by the repository's credential-free tests.
@@ -96,18 +100,19 @@ by the repository's credential-free tests.
 The agent code is grouped by responsibility under `app/agent/`: `chat.py` is
 the public entrypoint, `factory.py` assembles the runtime, `graph.py` wires
 the turn, `implementations/` contains
-the active Deep Agent, `harness/` contains runtime, nodes and tool policy,
+the selectable Deep and ReAct agents plus shared business tools, `harness/` contains runtime, nodes and tool policy,
 `memory/` contains fact proposals and the MCP memory adapter, `guardrails/`
 contains answer and evidence checks, and `mcp/gateway.py` routes business
-tools to the three servers in `app/mcp_servers/`. ReAct and DeepSeek agent
-implementations, a fourth MCP server and Qdrant retrieval are not connected.
+tools to the three servers in `app/mcp_servers/`. DeepSeek is a possible model
+choice through `LLM_MODEL` if supported by the configured endpoint, not a
+separate agent architecture. A fourth MCP server and Qdrant retrieval are not connected.
 
 ```text
 app/agent/
-  chat.py                 # public chat() and local demo
+  chat.py                 # public chat() entrypoint
   factory.py              # assemble the active implementation and adapters
   graph.py                # outer LangGraph wiring
-  implementations/        # prebuilt Deep Agent adapter
+  implementations/        # selectable Deep/ReAct agents and shared business tools
   harness/                # runtime, graph nodes, state, tool policy
   memory/                 # candidate validation and MCP memory adapter
   guardrails/             # answer and fact evidence checks
@@ -122,8 +127,9 @@ BTC release with `dataloader_offline`. Apply the additive
 runtime SQL migrations in order: `backend/migrations/0001_chat.sql`,
 `backend/migrations/0002_tools.sql`, `backend/migrations/0003_channel_identity.sql`,
 then `ai-services/migrations/0001_memory.sql`,
-`ai-services/migrations/0002_operations.sql`, and
-`ai-services/migrations/0003_memory_provenance.sql`. Apply them before starting
+`ai-services/migrations/0002_operations.sql`,
+`ai-services/migrations/0003_memory_provenance.sql`, and
+`ai-services/migrations/0004_pending_facts.sql`. Apply them before starting
 `mcp-db-roles`. Use the same PostgreSQL database
 for the backend and all three MCP servers. Set matching `AI_INTERNAL_TOKEN`
 values in `backend/.env` and `ai-services/.env`, and a separate
@@ -154,7 +160,7 @@ server is not required for that call.
 
 `mcp-memory` owns `memory.read` and `memory.write` in PostgreSQL. `mcp-catalog`
 exposes `crm.get_customer`, `catalog.search`, `inventory.check`,
-`pricing.get_quote`; `mcp-order`
+`pricing.get_quote`, `policy.search`; `mcp-order`
 exposes `order.create`, `order.update`, `order.status`, `schedule.callback`,
 `handoff.transfer`. Each MCP has its own PostgreSQL connection pool and role;
 catalog reads `btc_source`, order writes commerce tables in `app_runtime`, and
@@ -170,9 +176,9 @@ connection setup live in `app/mcp_servers/mcp_shared`. Order and memory write se
 an operation key derived from the chat message to return the same stored result
 when a write is retried.
 
-`run_eval.py` uses the same MCP transport as chat. Full and
-`baseline_no_memory` can read existing same-session history; baseline omits
-prior-session memory. Each completed chat turn is written to `ai_memory.turns`;
+The repository's `run_eval.py` currently cannot run because this checkout lacks
+the imported `eval/` package. Restore the runner before comparing full with
+`baseline_no_memory`. Each completed chat turn is written to `ai_memory.turns`;
 for identified customers, the memory service also updates the session episode.
 Model-proposed facts pass evidence checks before writing. A failed turn write fails the chat
 request so callers can retry with the same session and message IDs. Use an
@@ -183,14 +189,13 @@ chat model used by the graph. Model and tool gateway can be injected in tests.
 
 From `ai-services/`, run `.venv/bin/python -m app`. Use the AI service virtual
 environment even if the shell is currently activated in the backend virtual
-environment. To run the one-turn demo directly, use
-`.venv/bin/python -m app.agent.chat`; it requires the three MCP servers and
-their migrated PostgreSQL database to be running.
+environment. The HTTP API and `app.agent.chat.chat()` use the same runtime and
+require the three MCP servers and their migrated PostgreSQL database.
 The OpenAPI document is at `/openapi.json`; interactive docs are at `/docs`.
 
 `app.agent.chat.chat(ChatRequest)` can be called directly from Python. It accepts
 `session_id=None`, creates a UUID and returns it with the answer. Keep the
-`DeepHarnessRuntime` instance shared within one process; process-local locks and
+`AgentHarnessRuntime` instance shared within one process; process-local locks and
 idempotency do not span multiple workers.
 
 `POST /v1/chat/turns` uses the same function and accepts a request with the
@@ -220,7 +225,7 @@ tool results.
 
 Đặt `LOG_LEVEL=INFO` trong `ai-services/.env` rồi chạy `python -m app`.
 Outer graph ghi log các bước nhận yêu cầu, xác định khách, đọc ngữ cảnh,
-chạy Deep Agent, kiểm tra câu trả lời và ghi bộ nhớ. Deep Agent tự lặp giữa
+chạy agent đã chọn, kiểm tra câu trả lời và ghi bộ nhớ. Agent tự lặp giữa
 model và tool. Harness ghi tên tool, kết quả, thời gian và số fact đã ghi.
 Nếu kiểm tra câu trả lời không đạt, harness chỉ trả câu trả lời có thể xác minh
 từ catalog hoặc câu fallback. Giá bán vẫn cần `pricing.get_quote` cùng ngày.
@@ -251,3 +256,49 @@ uv run --no-project --with 'langgraph>=1.2.12,<1.3' \
   --with 'fastmcp>=4.0.10,<4.1' --with 'asyncpg>=0.30,<1' \
   python -m unittest discover -s test -v
 ```
+
+### Memory demo and manual preflight
+
+Before starting the existing MCP services, apply migrations through
+`0004_pending_facts.sql` to their PostgreSQL database, then rerun role provisioning.
+A table created after provisioning does not inherit the earlier table grants.
+With the administrative `psql` connection (never put passwords in the command), verify:
+
+```sql
+SELECT to_regclass('ai_memory.pending_facts');
+SELECT has_table_privilege('mcp_memory', 'ai_memory.pending_facts',
+                          'SELECT,INSERT,UPDATE,DELETE');
+```
+
+If only this table lacks grants, the administrator can run:
+
+```sql
+GRANT SELECT, INSERT, UPDATE, DELETE ON ai_memory.pending_facts TO mcp_memory;
+```
+
+These are deployment operations; chat continues to access PostgreSQL through MCP.
+The servers do not automatically apply migrations or check the full schema on startup.
+
+From `ai-services/`, edit the `ChatRequest` in `app/agent/chat.py`, then run one turn:
+
+```bash
+.venv/bin/python -m app.agent.chat
+```
+
+The script prints the full response, including `session_id`. To continue a session,
+reuse that UUID in the request and set a new `client_msg_id`. Set `on` to the call's
+business date. Without `channel_identity`, the conversation is anonymous and facts
+stay pending.
+
+Short-term history is read from MCP for each turn, including after process restart.
+`AGENT_PROMPT_HISTORY_TURNS` accepts 1–12 (default 6), matching the existing MCP read
+limit. Long-term profile facts are customer-scoped. Previous episodes are deduplicated
+by session, preferring memory over CRM, then limited by `MEMORY_MAX_EPISODES`.
+`claim_pending` uses a per-turn operation key, so a later turn cannot replay an earlier
+turn's claimed writes. A failed claim/read skips the model and returns a neutral outage
+message; logs identify the operation. Failed commits still fail the request.
+
+Run regression tests with `python -m unittest discover -s test -v`. HTTP memory tests
+are opt-in: set `MEMORY_TEST_URL` and `MEMORY_TEST_TOKEN` to a dedicated eval MCP memory
+instance, then run `python -m unittest discover -s test -p test_memory_http.py -v`.
+They write synthetic namespaced data and must not target a production database.

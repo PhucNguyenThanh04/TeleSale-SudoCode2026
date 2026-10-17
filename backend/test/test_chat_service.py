@@ -9,8 +9,8 @@ from uuid import UUID
 import httpx
 from fastapi import HTTPException
 
-from app.schemas.chat import ChatRequest
-from app.services.chat_service import handle_chat_turn
+from app.schemas.chat import ChatRequest, VerifyIdentityRequest
+from app.services.chat_service import handle_chat_turn, verify_session_identity
 
 
 class _Result:
@@ -63,7 +63,7 @@ class _Database:
                 channel=values["channel"], call_date=values["call_date"], status="open",
             )
             return _Result()
-        if "FROM app_runtime.chat_sessions" in sql:
+        if "app_runtime.chat_sessions WHERE id=:id" in sql:
             session = self.sessions.get(values["id"])
             return _Result([session] if session else [])
         if "MAX(turn_no)" in sql:
@@ -72,6 +72,11 @@ class _Database:
             self.messages.append(values)
             return _Result()
         if "UPDATE app_runtime.chat_sessions" in sql:
+            if values and "customer_id" in values:
+                row = self.sessions[values["id"]]
+                row.customer_id = values["customer_id"]
+                row.caller_phone = values["phone"]
+                row.identity_status = "known"
             return _Result()
         raise AssertionError(sql)
 
@@ -109,14 +114,43 @@ class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("caller_phone", calls[0])
         self.assertIn("***6714", calls[0]["text"])
 
-    async def test_shared_phone_does_not_reach_ai(self):
+    async def test_shared_phone_reaches_ai_without_customer_binding(self):
         db = _Database(["C034", "C035"])
-        def unexpected(_request):
-            raise AssertionError("AI should not receive an ambiguous identity")
-        async with httpx.AsyncClient(base_url="http://ai", transport=httpx.MockTransport(unexpected)) as client:
+        calls = []
+        def answer(request):
+            payload = json.loads(request.content)
+            calls.append(payload)
+            return httpx.Response(200, json={
+                "client_msg_id": payload["client_msg_id"],
+                "session_id": payload["session_id"],
+                "agent_text": "Dạ, mình vui lòng xác nhận thêm danh tính ạ.",
+            })
+        async with httpx.AsyncClient(base_url="http://ai", transport=httpx.MockTransport(answer)) as client:
             result = await handle_chat_turn(db, client, "operator", self.first_turn)
         self.assertEqual(result.identity_status, "ambiguous")
         self.assertEqual(len(db.messages), 2)
+        self.assertIsNone(calls[0]["verified_customer_id"])
+
+    async def test_operator_verification_binds_later_turn(self):
+        db = _Database(["C034", "C035"])
+        calls = []
+        def answer(request):
+            payload = json.loads(request.content)
+            calls.append(payload)
+            return httpx.Response(200, json={
+                "client_msg_id": payload["client_msg_id"],
+                "session_id": payload["session_id"], "agent_text": "Dạ, em đã ghi nhận ạ.",
+            })
+        async with httpx.AsyncClient(base_url="http://ai", transport=httpx.MockTransport(answer)) as client:
+            first = await handle_chat_turn(db, client, "operator", self.first_turn)
+            await verify_session_identity(db, "operator", first.session_id,
+                VerifyIdentityRequest(customer_id="C034", phone="0984726714",
+                                      confirmation="operator_verified"))
+            second = await handle_chat_turn(db, client, "operator",
+                ChatRequest(session_id=first.session_id, text="Phòng anh 25 m²"))
+        self.assertEqual(second.identity_status, "known")
+        self.assertIsNone(calls[0]["verified_customer_id"])
+        self.assertEqual(calls[1]["verified_customer_id"], "C034")
 
     async def test_fanpage_identity_reaches_ai_without_phone(self):
         payloads = []

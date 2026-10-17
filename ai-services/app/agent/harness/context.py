@@ -1,11 +1,12 @@
 """Assemble the small, masked model context for a text turn."""
 
 import time
+import logging
 from datetime import datetime
 from typing import Any, Callable
 
 from app.agent.guardrails.checks import mask_pii, safe_tool_result
-from app.agent.memory.store import MemoryStore
+from app.agent.memory.store import MemoryStore, memory_error_code
 from app.agent.harness.observability import log_event, log_tool_input, log_tool_output
 from app.agent.harness.state import TurnState
 from app.agent.mcp.gateway import ToolGateway
@@ -52,11 +53,36 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
                        clock: Callable[[], datetime]) -> dict[str, Any]:
     customer_id = state.get("customer_id")
     session_id = str(state["request"].session_id)
-    context = await memory.read_context(session_id, customer_id)
+    claimed_writes = []
+
+    async def read_memory(operation, callback):
+        try:
+            result = await callback()
+        except Exception as exc:
+            log_event(state, "retrieve_context", "memory_unavailable", level=logging.WARNING,
+                      operation=operation, error_type=type(exc).__name__)
+            return {"error": "memory_exception"}
+        if not isinstance(result, dict):
+            result = {"error": "invalid_tool_result"}
+        if "error" in result:
+            log_event(state, "retrieve_context", "memory_unavailable", level=logging.WARNING,
+                      operation=operation, reason=memory_error_code(result))
+        return result
+
+    def failed(operation):
+        return {"history": [], "profile": {}, "episodes": [], "call_brief": None,
+                "remembered_order_ids": [], "turn_no": 1, "tool_failed": True,
+                "memory_failure": operation, "claimed_memory_writes": claimed_writes}
+
+    if customer_id and hasattr(memory, "claim_pending"):
+        claimed = await read_memory("claim_pending", lambda: memory.claim_pending(
+            session_id, customer_id, str(state["request"].client_msg_id)))
+        if "error" in claimed:
+            return failed("claim_pending")
+        claimed_writes = claimed.get("memory_writes", [])
+    context = await read_memory("memory.read", lambda: memory.read_context(session_id, customer_id))
     if "error" in context:
-        log_event(state, "retrieve_context", "memory_unavailable")
-        return {"history": [], "profile": {}, "episodes": [],
-                "remembered_order_ids": [], "turn_no": 1, "tool_failed": True}
+        return failed("memory.read")
     history = context.get("history", [])
     profile = context.get("profile", {})
     episodes = list(context.get("episodes", []))
@@ -67,7 +93,16 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
                         for item in state.get("crm_sessions", [])
                         if isinstance(item, dict) and all(k in item for k in
                             ("session_id", "channel", "date", "summary")))
-    episodes.sort(key=lambda item: item["on"], reverse=True)
+    # Prefer the memory summary over CRM when both describe the same session.
+    unique_episodes = {}
+    for item in episodes:
+        key = str(item["session_id"])
+        if key != session_id:
+            unique_episodes.setdefault(key, item)
+    episodes = sorted(unique_episodes.values(), key=lambda item: item["on"], reverse=True)
+    episodes = episodes[:getattr(memory, "max_episodes", 5)]
+    if not getattr(memory, "include_prior", True):
+        episodes = []
     fresh_calls = []
     warnings = []
     advised = profile.get(Slot.PRODUCT_ADVISED, {}).get("value")
@@ -129,6 +164,7 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
         ).model_dump(mode="json")
     return {"history": history, "profile": context.get("profile", {}),
             "episodes": episodes, "call_brief": brief,
+            "claimed_memory_writes": claimed_writes,
             "remembered_order_ids": context.get("owned_order_ids", []),
             "tool_calls": [*state.get("tool_calls", []), *fresh_calls],
         "turn_no": context.get("turn_count", len(history)) + 1}

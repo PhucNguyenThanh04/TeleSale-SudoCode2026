@@ -1,10 +1,10 @@
 # Harness text: trạng thái và bằng chứng
 
-Cập nhật: 2026-10-03. Đây là thiết kế mục tiêu, không phải cam kết rằng code hiện tại đã triển khai đủ. Nguồn BTC: `../BTC-Data-Vong1-TEAMS` tính từ gốc repo; có thể chỉ định `BTC_DATA_DIR` khi chạy dataloader.
+Cập nhật: 2026-10-15. Đây là thiết kế mục tiêu, không phải cam kết rằng code hiện tại đã triển khai đủ. Nguồn BTC: `../BTC-Data-Vong1-TEAMS` tính từ gốc repo; có thể chỉ định `BTC_DATA_DIR` khi chạy dataloader.
 
 ## Luồng mỗi lượt
 
-`TextTurnRequest` → xác minh danh tính → chuẩn hóa ASR/teencode và trích ứng viên slot/ý định → reducer trong code → quyết định stage/precondition → gọi tool → lắp context ngắn → LLM diễn đạt → kiểm chứng claim → ghi memory → một câu trả lời cuối.
+`TextTurnRequest` → runtime khởi tạo danh tính phiên khi cần → `accept` → `retrieve_context` → `run_agent` (Deep hoặc ReAct; gọi tool theo precondition) → `verify` → `persist` → một câu trả lời cuối. Runtime khóa theo `session_id`, dùng lại danh tính cho các lượt tiếp theo trong cùng worker và từ chối đổi channel hoặc channel identity. Khi worker khởi động lại hoặc phiên chuyển worker, CRM được tra lại một lần; backend vẫn giữ định danh phiên trong PostgreSQL. Đây là luồng hiện tại; các bước stage/slot bên dưới là thiết kế mục tiêu.
 
 - LLM đề xuất ý định, slot, câu nói và hành động; code xác nhận giá trị, resolve SKU với catalog và chặn tool không đủ điều kiện. Không đưa nhãn `facts_established`, `ground_truth_facts`, `success_if` của kịch bản vào runtime.
 - Stage gợi ý: `IDENTIFY`, `DISCOVER`, `RECOMMEND`, `OBJECTION`, `CLOSE`, `WRAPUP`; `RETURNING` và `AFTER_SALES` là nhánh. Cho phép đi lùi hoặc đổi nhánh khi khách đổi ý. Stage không thay điều kiện cụ thể của từng tool.
@@ -28,10 +28,10 @@ Cập nhật: 2026-10-03. Đây là thiết kế mục tiêu, không phải cam 
 
 ## Chính sách M1
 
-- Truy hồi có lọc thời gian là cần cho M1. Hướng triển khai: thêm tool đọc chính sách trong `mcp-catalog`, dùng `btc_source.policy_chunks` mà dataloader nạp vào PostgreSQL; cấp quyền `SELECT` bảng này cho role `mcp_catalog` khi triển khai. Không mở MCP process thứ tư chỉ để giải SAMPLE-03/07. Đây là việc **chưa triển khai**; Qdrant/semantic ranking có thể làm sau.
+- M1 dùng `policy.search` trong `mcp-catalog`, đọc `btc_source.policy_chunks` với quyền `SELECT` của role `mcp_catalog`. PostgreSQL lọc quyền `public` và hiệu lực theo ngày trước khi service xếp hạng từ khóa. Với đơn cũ, harness chỉ truyền `order_date` lấy từ kết quả `order.status` đã xác minh. Qdrant/semantic ranking chưa nối vào runtime.
 - Lọc `access_level=public` trước khi đưa nội dung cho model. Dùng đúng metadata `effective_from`, `effective_until`, `date_basis`: `call_date` cho chính sách hiện hành theo cuộc gọi; `order_date` cho đổi trả/bảo hành của đơn cũ. Sau lọc mới xếp hạng/chọn chunk. Nếu không có nguồn hợp lệ thì nói chưa đủ thông tin.
 
 ## Eval
 
-- Dùng cùng service nghiệp vụ cho demo và eval. Runner gọi harness trực tiếp theo lượt và giữ memory trong kịch bản; `direct` hiện bỏ ba MCP HTTP server nhưng vẫn cần PostgreSQL, nên chưa phải runner độc lập hoàn toàn.
+- Dùng cùng service nghiệp vụ cho demo và eval. Checkout hiện thiếu package `eval/` mà `run_eval.py` import; cần khôi phục runner trước khi chạy chấm public sample đa phiên.
 - Chấm cả hai cấu hình trên cùng model/tool/dữ liệu; baseline chỉ bỏ nạp memory từ phiên trước. Dùng trace thật và `reference_eval.py` kiểm `must_not_ask`, `must_carry_over`, `success_if`, `ground_truth_facts`, memory writes và guardrail. Không sửa lời agent/trace theo nhãn đáp án.

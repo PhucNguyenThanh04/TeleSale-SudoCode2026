@@ -30,10 +30,11 @@ GRANT USAGE ON SCHEMA ai_memory TO mcp_memory;
 GRANT SELECT ON btc_source.products, btc_source.variants, btc_source.promotions,
     btc_source.inventory_events, btc_source.customers, btc_source.crm_orders,
     btc_source.crm_sessions TO mcp_catalog, mcp_order;
+GRANT SELECT ON btc_source.policy_chunks TO mcp_catalog;
 GRANT SELECT ON app_runtime.tool_orders, app_runtime.promo_uses TO mcp_catalog;
 GRANT SELECT, INSERT, UPDATE ON app_runtime.tool_orders, app_runtime.tool_updates,
     app_runtime.tool_callbacks, app_runtime.tool_handoffs, app_runtime.promo_uses TO mcp_order;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA app_runtime TO mcp_order;
-GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA ai_memory TO mcp_memory;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ai_memory TO mcp_memory;
 GRANT SELECT, INSERT, UPDATE ON app_runtime.tool_operations TO mcp_order;
 SQL

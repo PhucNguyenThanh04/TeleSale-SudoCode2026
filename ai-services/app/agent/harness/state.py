@@ -34,6 +34,7 @@ class TurnState(TypedDict, total=False):
     tool_calls: list[dict[str, Any]]
     tool_count: int
     tool_failed: bool
+    memory_failure: str
     agent_text: str
     agent_draft: str
     fact_candidates: list[dict[str, Any]]
@@ -42,3 +43,4 @@ class TurnState(TypedDict, total=False):
     needs_handoff: bool
     handoff_ticket_id: str | None
     memory_writes: list[dict[str, Any]]
+    claimed_memory_writes: list[dict[str, Any]]

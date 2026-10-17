@@ -5,10 +5,24 @@ from typing import Any, Protocol
 from app.agent.mcp.gateway import ToolGateway
 
 
+def memory_error_code(result: Any) -> str:
+    """Keep operational error metadata bounded and free of arbitrary payloads."""
+    if not isinstance(result, dict):
+        return "invalid_tool_result"
+    code = result.get("error")
+    return code if isinstance(code, str) and code in {
+        "mcp_unavailable", "mcp_tool_error", "tool_unavailable", "invalid_args",
+        "invalid_tool_result", "session_owner_mismatch", "operation_key_conflict",
+        "invalid_turn_data", "invalid_facts_or_identity", "invalid_orders_or_identity",
+    } else "memory_error"
+
+
 class MemoryStore(Protocol):
     include_prior: bool
 
     async def read_context(self, session_id: str, customer_id: str | None) -> dict: ...
+
+    async def claim_pending(self, session_id: str, customer_id: str, client_msg_id: str) -> dict: ...
     async def commit_turn(self, session_id: str, customer_id: str | None,
                           customer_text: str, agent_text: str, on: str, channel: str,
                           client_msg_id: str, facts: list[dict[str, Any]],
@@ -33,6 +47,13 @@ class MCPMemoryStore:
                                                           "customer_id": self._id(customer_id),
                                                           "max_episodes": self.max_episodes,
                                                           "include_prior": self.include_prior})
+
+    async def claim_pending(self, session_id: str, customer_id: str, client_msg_id: str) -> dict:
+        return await self.gateway.invoke("memory.write", {
+            "action": "claim_pending", "session_id": session_id,
+            "customer_id": self._id(customer_id), "data": {},
+            "operation_key": f"{session_id}:{customer_id}:{client_msg_id}:claim_pending",
+        })
 
     async def commit_turn(self, session_id: str, customer_id: str | None,
                           customer_text: str, agent_text: str, on: str, channel: str,

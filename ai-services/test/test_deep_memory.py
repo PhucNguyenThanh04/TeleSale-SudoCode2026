@@ -18,6 +18,7 @@ from app.schemas.agent import TextTurnRequest
 class FakeToolModel(BaseChatModel):
     replies: list[AIMessage]
     extraction_replies: list[AIMessage] = []
+    extraction_calls: int = 0
     seen: list[str] = []
 
     @property
@@ -29,6 +30,7 @@ class FakeToolModel(BaseChatModel):
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
         if "MEMORY_FACT_EXTRACTION" in str(messages):
+            self.extraction_calls += 1
             reply = (self.extraction_replies.pop(0) if self.extraction_replies else
                      AIMessage(content='{"fact_candidates":[]}'))
             return ChatResult(generations=[ChatGeneration(message=reply)])
@@ -61,6 +63,22 @@ class FakeMemory:
         self.writes = []
         self.operations = {}
         self.turns = {}
+        self.pending = {}
+
+    async def claim_pending(self, session_id, customer_id, client_msg_id):
+        written = []
+        for fact, source in self.pending.pop(session_id, []):
+            old = self.profile.get(fact["key"])
+            if old and old["value"] == fact.get("value"):
+                continue
+            self.profile[fact["key"]] = {"key": fact["key"],
+                "value": fact.get("value"), "source": source,
+                "source_kind": fact["source_kind"], "status": "active"}
+            written.append({"key": fact["key"], "value": fact.get("value"),
+                "op": "supersede" if old else "set", "source": source,
+                "customer_id": customer_id})
+        self.writes.extend(written)
+        return {"memory_writes": written}
 
     async def read_context(self, session_id, customer_id):
         return {"history": self.turns.get(session_id, []),
@@ -75,6 +93,12 @@ class FakeMemory:
         self.turns.setdefault(session_id, []).append(
             {"customer": customer_text, "agent": agent_text})
         written = []
+        if not customer_id:
+            self.pending.setdefault(session_id, []).extend(
+                (fact, f"{session_id}:{client_msg_id}") for fact in facts)
+            result = {"turn_no": len(self.turns[session_id]), "memory_writes": []}
+            self.operations[key] = result
+            return result
         for fact in facts:
             old = self.profile.get(fact["key"])
             if old and old["value"] == fact["value"]:
@@ -99,12 +123,104 @@ def turn(text, session_id=None):
 
 
 class DeepMemoryTest(unittest.IsolatedAsyncioTestCase):
+    async def test_fallback_extracts_second_fact_when_agent_proposes_first(self):
+        model = FakeToolModel(replies=[
+            AIMessage(content='{"answer":"Dạ, em ghi nhận ạ.","fact_candidates":'
+                              '[{"key":"room_area_m2","value":25,"source":"customer"}]}'),
+        ], extraction_replies=[AIMessage(content='{"fact_candidates":['
+            '{"key":"budget_vnd","value":5000000,"source":"customer"}]}')])
+        memory = FakeMemory()
+        runtime = DeepHarnessRuntime(model, FakeGateway(), memory)
+        await runtime.run(turn("Phòng anh 25 m², ngân sách anh 5 triệu."))
+        self.assertEqual(model.extraction_calls, 1)
+        self.assertEqual(memory.profile["room_area_m2"]["value"], 25)
+        self.assertEqual(memory.profile["budget_vnd"]["value"], 5_000_000)
+
+    async def test_pending_fact_flushes_after_late_verified_identity(self):
+        class SharedPhoneGateway(FakeGateway):
+            async def invoke(self, name, args):
+                self.calls.append((name, args))
+                if name == "crm.get_customer":
+                    return {"found": True, "ambiguous": True, "candidates": [
+                        {"customer_id": "C001", "name": "Hoa", "orders": [], "sessions": []},
+                        {"customer_id": "C002", "name": "Nam", "orders": [], "sessions": []}]}
+                return {"error": "unavailable"}
+
+        model = FakeToolModel(replies=[
+            AIMessage(content='{"answer":"Dạ, em ghi nhận ạ.","fact_candidates":'
+                              '[{"key":"room_area_m2","value":25,"source":"customer"}]}'),
+            AIMessage(content="Dạ, mình tiếp tục nhé."),
+        ])
+        memory = FakeMemory()
+        runtime = DeepHarnessRuntime(model, SharedPhoneGateway(), memory)
+        session_id = uuid4()
+        first = turn("Phòng anh 25 m²", session_id)
+        await runtime.run(first)
+        self.assertEqual(memory.profile, {})
+        self.assertEqual(len(memory.pending[str(session_id)]), 1)
+        second = turn("Mình tiếp tục nhé", session_id).model_copy(update={
+            "verified_customer_id": "C001", "verified_phone": "0984726714"})
+        await runtime.run(second)
+        self.assertEqual(memory.profile["room_area_m2"]["value"], 25)
+        self.assertEqual(runtime.state_for(second)["memory_writes"][0]["op"], "set")
+
     def test_production_graph_has_one_agent_step(self):
         runtime = DeepHarnessRuntime(FakeToolModel(replies=[]), FakeGateway(), FakeMemory())
         self.assertEqual(set(runtime.graph.nodes), {
-            "__start__", "accept", "resolve_identity", "retrieve_context",
-            "run_deep_agent", "verify", "persist",
+            "__start__", "accept", "retrieve_context",
+            "run_agent", "verify", "persist",
         })
+
+    async def test_identity_is_initialized_once_for_multiple_turns(self):
+        for agent_kind in ("deep", "react"):
+            with self.subTest(agent_kind=agent_kind):
+                session_id = uuid4()
+                gateway, memory = FakeGateway(), FakeMemory()
+                runtime = DeepHarnessRuntime(FakeToolModel(replies=[
+                    AIMessage(content="Dạ, em đã ghi nhận ạ."),
+                    AIMessage(content="Dạ, mình tiếp tục nhé."),
+                ]), gateway, memory, agent_kind=agent_kind)
+                first = turn("Tôi cần tư vấn", session_id)
+                second = turn("Tư vấn tiếp", session_id)
+                await runtime.run(first)
+                await runtime.run(second)
+                self.assertEqual([name for name, _ in gateway.calls], ["crm.get_customer"])
+                self.assertEqual(runtime.state_for(first)["customer_id"], "C001")
+                self.assertEqual(runtime.state_for(second)["customer_id"], "C001")
+                self.assertEqual(len(memory.turns[str(session_id)]), 2)
+
+    async def test_session_rejects_changed_channel_identity(self):
+        session_id = uuid4()
+        gateway = FakeGateway()
+        runtime = DeepHarnessRuntime(FakeToolModel(replies=[
+            AIMessage(content="Dạ, em đã ghi nhận ạ."),
+        ]), gateway, FakeMemory())
+        await runtime.run(turn("Xin chào", session_id))
+        changed = turn("Xin chào", session_id).model_copy(
+            update={"channel_identity": "0999999999"})
+        with self.assertRaisesRegex(ValueError, "Session channel identity mismatch"):
+            await runtime.run(changed)
+        self.assertEqual([name for name, _ in gateway.calls], ["crm.get_customer"])
+
+    async def test_crm_failure_does_not_cache_unknown_identity(self):
+        class FlakyGateway(FakeGateway):
+            failures = 1
+
+            async def invoke(self, name, args):
+                if name == "crm.get_customer" and self.failures:
+                    self.failures -= 1
+                    return {"error": "unavailable"}
+                return await super().invoke(name, args)
+
+        gateway = FlakyGateway()
+        runtime = DeepHarnessRuntime(FakeToolModel(replies=[
+            AIMessage(content="Dạ, em đã ghi nhận ạ."),
+        ]), gateway, FakeMemory())
+        request = turn("Xin chào")
+        with self.assertRaisesRegex(RuntimeError, "CRM identity lookup failed"):
+            await runtime.run(request)
+        await runtime.run(request)
+        self.assertEqual(runtime.state_for(request)["customer_id"], "C001")
 
     def test_business_tool_schema_exposes_fact_candidates(self):
         business = BusinessTools(FakeGateway(), {}, 3, lambda: None)
@@ -286,6 +402,7 @@ class DeepMemoryTest(unittest.IsolatedAsyncioTestCase):
         response = await runtime.run(turn("Phòng anh 25 m²"))
         self.assertEqual(response.agent_text, "Dạ, em ghi nhận phòng 25 m² ạ.")
         self.assertEqual(memory.profile["room_area_m2"]["value"], 25)
+        self.assertEqual(model.extraction_calls, 1)
 
     async def test_fenced_final_answer_and_fact_candidates_are_parsed(self):
         model = FakeToolModel(replies=[AIMessage(content=(
@@ -297,6 +414,30 @@ class DeepMemoryTest(unittest.IsolatedAsyncioTestCase):
         response = await runtime.run(turn("Phòng anh 28 m²"))
         self.assertEqual(response.agent_text, "Dạ em ghi nhận phòng 28 m² ạ.")
         self.assertEqual(memory.profile["room_area_m2"]["value"], 28)
+        self.assertEqual(model.extraction_calls, 0)
+
+    async def test_react_agent_uses_same_fact_and_memory_path(self):
+        model = FakeToolModel(replies=[AIMessage(content=(
+            '{"answer":"Dạ em đã ghi nhận 28 m² ạ.",'
+            '"fact_candidates":[{"key":"room_area_m2","value":28,'
+            '"source":"customer"}]}'))])
+        memory = FakeMemory()
+        runtime = DeepHarnessRuntime(model, FakeGateway(), memory,
+                                     agent_kind="react", fact_extraction_mode="off")
+        response = await runtime.run(turn("Phòng anh 28 m²"))
+        self.assertEqual(response.agent_text, "Dạ em đã ghi nhận 28 m² ạ.")
+        self.assertEqual(memory.profile["room_area_m2"]["value"], 28)
+
+    async def test_json_fact_does_not_require_a_second_model_call(self):
+        model = FakeToolModel(replies=[AIMessage(content=(
+            '{"answer":"Dạ em đã ghi nhận 28 m² ạ.",'
+            '"fact_candidates":[{"key":"room_area_m2","value":28,'
+            '"source":"customer"}]}'))])
+        runtime = DeepHarnessRuntime(model, FakeGateway(), FakeMemory(),
+                                     fact_extraction_mode="fallback")
+        await runtime.run(turn("Phòng anh 28 m²"))
+        self.assertEqual(len(model.seen), 1)
+        self.assertEqual(model.extraction_calls, 0)
 
     async def test_tool_call_rejects_unsupported_model_fact_candidate(self):
         model = FakeToolModel(replies=[

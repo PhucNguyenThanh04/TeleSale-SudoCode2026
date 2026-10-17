@@ -3,6 +3,7 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
+from datetime import date
 from uuid import UUID
 
 import asyncpg
@@ -34,7 +35,30 @@ class MemoryRepo:
             await self.pool.close()
 
     async def owner(self, conn, session_id: str) -> str | None:
-        return await conn.fetchval("SELECT customer_id FROM ai_memory.turns WHERE session_id=$1 LIMIT 1", UUID(session_id))
+        return await conn.fetchval("SELECT customer_id FROM ai_memory.turns WHERE session_id=$1 AND customer_id IS NOT NULL LIMIT 1", UUID(session_id))
+
+    async def bind_owner(self, conn, session_id: str, customer_id: str) -> None:
+        await conn.execute("UPDATE ai_memory.turns SET customer_id=$2 WHERE session_id=$1 AND customer_id IS NULL",
+                           UUID(session_id), customer_id)
+
+    async def stage_fact(self, conn, session_id: str, source_turn_id: UUID,
+                         turn_no: int, fact: dict, on: date) -> None:
+        await conn.execute("""INSERT INTO ai_memory.pending_facts
+            (session_id,source_turn_id,turn_no,key,value,op,source_kind,source_tool,on_date)
+            VALUES($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9)
+            ON CONFLICT(session_id,source_turn_id,key) DO NOTHING""",
+            UUID(session_id), source_turn_id, turn_no, fact["key"],
+            json.dumps(fact.get("value"), ensure_ascii=False), fact["op"],
+            fact["source_kind"], fact.get("source_tool"), on)
+
+    async def pending_facts(self, conn, session_id: str) -> list:
+        return await conn.fetch("""SELECT source_turn_id,key,value,op,source_kind,
+            source_tool,on_date FROM ai_memory.pending_facts
+            WHERE session_id=$1 AND expires_at>now()
+            ORDER BY turn_no,key FOR UPDATE""", UUID(session_id))
+
+    async def clear_pending(self, conn, session_id: str) -> None:
+        await conn.execute("DELETE FROM ai_memory.pending_facts WHERE session_id=$1", UUID(session_id))
 
     async def turns(self, conn, session_id: str) -> list:
         return await conn.fetch("""SELECT customer_text,agent_text FROM ai_memory.turns

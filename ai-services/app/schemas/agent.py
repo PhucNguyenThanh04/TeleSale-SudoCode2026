@@ -21,6 +21,8 @@ class ChatRequest(BaseModel):
     on: date
     text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=8000)]
     input_mode: InputMode
+    verified_customer_id: str | None = None
+    verified_phone: str | None = None
 
 
 class TextTurnRequest(ChatRequest):

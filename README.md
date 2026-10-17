@@ -16,17 +16,12 @@ root, with an **isolated evaluation database/backend** so mutable orders and
 one-time promotions do not affect demo data, run:
 
 ```bash
-python run_eval.py --scenarios ../BTC-Data-Vong1-TEAMS/test_set/public_sample --config full --out eval/runs/full.jsonl
-python run_eval.py --scenarios ../BTC-Data-Vong1-TEAMS/test_set/public_sample --config baseline_no_memory --out eval/runs/baseline.jsonl
+python run_eval.py --scenarios ../BTC-Data-Vong1-TEAMS/test_set/public_sample --config full --out eval/runs/full.jsonl --isolated-db
+python run_eval.py --scenarios ../BTC-Data-Vong1-TEAMS/test_set/public_sample --config baseline_no_memory --out eval/runs/baseline.jsonl --isolated-db
 python ../BTC-Data-Vong1-TEAMS/eval/reference_eval.py --scenarios ../BTC-Data-Vong1-TEAMS/test_set/public_sample --trace eval/runs/full.jsonl --baseline eval/runs/baseline.jsonl
 ```
 
-Reset the isolated database's `app_runtime` tool tables between full and
-baseline. The runner namespaces customer memory per scenario/run; baseline
-retains same-session turns and facts but does not load earlier sessions. Its
-`ttft_ms` is the total latency as a conservative upper bound because the text
-API does not stream first tokens yet. The runner derives questions/claims from
-agent text with transparent rules in `eval/run_eval.py`; review these
-extractors against BTC's manual audit before reporting metrics. The default
-model is Ollama Cloud Gemma 4 as configured in `ai-services/.env`.
-Evaluation uses the same three MCP servers as chat.
+The runner emits real harness turns. Restore the same seed and clear mutable
+runtime state before baseline. `--isolated-db` is an operator assertion; it
+does not reset or isolate PostgreSQL itself. The model is configured in
+`ai-services/.env`. See [memory policy](docs/memory-policy.md).

@@ -1,5 +1,7 @@
 """Catalog business rules independent of FastMCP and SQL transport."""
 
+import re
+
 from app.mcp_servers.mcp_shared.commerce_rules import _catalog, _inventory, quote
 
 
@@ -47,5 +49,27 @@ async def get_quote(repo, session, args: dict) -> dict:
         customer = next((c for c in customers if c["customer_id"] == matches[0]["customer_id"]), None)
         if customer:
             owned = {o["sku"] for o in customer.get("orders", []) if o.get("status") == "delivered"}
-    return quote(await repo.rows(session, "products"), await repo.rows(session, "promotions"),
-                 payload, owned, await repo.used_promos(session))
+    promotions = await repo.rows(session, "promotions")
+    result = quote(await repo.rows(session, "products"), promotions,
+                   payload, owned, await repo.used_promos(session))
+    if "error" not in result:
+        ends = {promo.get("promo_code"): promo.get("end") for promo in promotions}
+        for applied in result.get("applied_promos", []):
+            until = ends.get(applied.get("promo_code"))
+            if until:
+                applied["valid_until"] = str(until)
+    return result
+
+
+async def search_policy(repo, session, args: dict) -> dict:
+    """Rank only public chunks already filtered to the applicable business date."""
+    chunks = await repo.public_policy_chunks(session, args["on"], args.get("order_date"))
+    words = set(re.findall(r"\w+", args["query"].casefold()))
+    ranked = []
+    for chunk in chunks:
+        haystack = f"{chunk['title']} {chunk['body']}".casefold()
+        score = sum(word in haystack for word in words if len(word) > 1)
+        if score:
+            ranked.append((score, chunk))
+    ranked.sort(key=lambda item: (-item[0], item[1]["chunk_id"]))
+    return {"chunks": [chunk for _, chunk in ranked[:5]]}

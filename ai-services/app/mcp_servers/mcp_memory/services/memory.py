@@ -103,7 +103,7 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
             return {"error": "invalid_turn_data"}
         if (not isinstance(facts, list) or len(facts) > 20
                 or any(not isinstance(f, dict) or not _valid_fact(f) for f in facts)
-                or (facts and not customer_id)):
+                ):
             return {"error": "invalid_facts_or_identity"}
         orders = data.get("orders", [])
         if (not isinstance(orders, list) or len(orders) > 10
@@ -140,13 +140,39 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
                     writes = []
                     source = f"{session_id}:{source_turn_id}"
                     for fact in facts:
-                        written = await _write_fact(repo, conn, customer_id, session_id,
-                                                    fact, source, source_turn_id, on)
-                        if written["op"] != "unchanged":
-                            writes.append(written)
+                        if customer_id:
+                            written = await _write_fact(repo, conn, customer_id, session_id,
+                                                        fact, source, source_turn_id, on)
+                            if written["op"] != "unchanged":
+                                writes.append(written)
+                        elif hasattr(repo, "stage_fact"):
+                            await repo.stage_fact(conn, session_id, source_turn_id,
+                                                  number, fact, on)
                     for order_id in orders:
                         await repo.link_order(conn, customer_id, order_id)
                     result["memory_writes"] = writes
+        elif action == "claim_pending" and customer_id:
+            await repo.lock_key(conn, session_id)
+            owner = await repo.owner(conn, session_id)
+            if owner not in (None, customer_id):
+                result = {"error": "session_owner_mismatch"}
+            else:
+                writes = []
+                for pending in await repo.pending_facts(conn, session_id):
+                    value = pending["value"]
+                    fact = {"key": pending["key"],
+                            "value": json.loads(value) if isinstance(value, str) else value,
+                            "op": pending["op"], "source_kind": pending["source_kind"],
+                            "source_tool": pending["source_tool"]}
+                    source_turn_id = pending["source_turn_id"]
+                    written = await _write_fact(repo, conn, customer_id, session_id,
+                                                fact, f"{session_id}:{source_turn_id}",
+                                                source_turn_id, pending["on_date"])
+                    if written["op"] != "unchanged":
+                        writes.append(written)
+                await repo.clear_pending(conn, session_id)
+                await repo.bind_owner(conn, session_id, customer_id)
+                result = {"memory_writes": writes}
         elif not customer_id:
             result = {"error": "identity_required"}
         elif action == "seed_episode":
