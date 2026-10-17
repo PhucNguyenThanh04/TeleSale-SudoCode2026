@@ -16,7 +16,7 @@ from app.agent.memory.fact_candidates import (
 )
 from app.agent.memory.reported_facts import reported_tool_candidates
 from app.agent.memory.store import memory_error_code
-from app.agent.guardrails.checks import FALLBACK, check_answer, mask_pii
+from app.agent.guardrails.checks import FALLBACK, check_answer, check_grounding, mask_pii
 from app.agent.harness.session_nodes import SessionNodes, safe_catalog_reply
 from app.agent.harness.observability import log_event, trace_node
 from app.agent.harness.state import TurnState
@@ -89,8 +89,14 @@ class AgentNodes(SessionNodes):
     @trace_node("verify")
     async def verify_agent(self, state: TurnState) -> dict[str, Any]:
         draft = state.get("agent_draft", FALLBACK)
+        grounding_reason = check_grounding(draft, state.get("tool_calls", []))
+        log_event(state, "verify", "grounding_checked", accepted=grounding_reason is None,
+                  **({"reason": grounding_reason} if grounding_reason else {}))
+        if grounding_reason:
+            return {"agent_text": FALLBACK}
         if not self.guardrails_enabled:
-            log_event(state, "verify", "answer_check_disabled")
+            log_event(state, "verify", "answer_check_disabled",
+                      reason="AGENT_GUARDRAILS_ENABLED=false; kiểm tra bằng chứng vẫn chạy")
             return {"agent_text": mask_pii(draft.strip()) if draft.strip() else FALLBACK}
         answer, reason = check_answer(draft, state.get("tool_calls", []), state["safe_text"])
         log_event(state, "verify", "answer_checked", accepted=reason is None,

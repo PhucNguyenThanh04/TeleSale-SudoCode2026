@@ -241,6 +241,17 @@ def _unsupported_feature(candidate: str, successful: list[dict[str, Any]]) -> bo
     return False
 
 
+def check_grounding(candidate: str, tool_calls: list[dict[str, Any]]) -> str | None:
+    """Checks that must run even when optional answer checks are disabled.
+
+    The broader product, SKU and price evidence checks are added separately.
+    """
+    successful = [call for call in tool_calls if "error" not in call.get("result", {})]
+    if _unsupported_feature(candidate, successful):
+        return "unsupported_product_spec"
+    return None
+
+
 def _quote_money_values(result: dict[str, Any]) -> set[int]:
     values = {result.get("final_price_vnd"), result.get("list_price_vnd")}
     promos = result.get("applied_promos")

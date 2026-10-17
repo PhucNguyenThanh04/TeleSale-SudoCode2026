@@ -37,6 +37,9 @@ class AgentHarnessRuntime:
         self.memory = memory
         self.tools = tools
         self.tracing = tracing
+        if not guardrails_enabled:
+            log_event(None, "verify", "answer_check_disabled", level=logging.WARNING,
+                      reason="cấu hình tắt kiểm tra bổ sung; kiểm tra bằng chứng vẫn chạy")
         self.graph = build_graph(llm, tools, memory, max_tool_calls,
                                  prompt_history_turns, clock, guardrails_enabled,
                                  agent_kind, fact_extraction_mode)

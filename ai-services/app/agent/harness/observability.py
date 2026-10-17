@@ -29,6 +29,7 @@ EVENT_LABELS = {
     "refresh_invoking": "kiểm tra lại bằng công cụ", "refresh_result": "kết quả kiểm tra lại",
     "model_failed": "model gặp lỗi", "blocked": "chặn lời gọi",
     "answer_checked": "đã kiểm tra câu trả lời",
+    "grounding_checked": "đã kiểm tra bằng chứng",
     "answer_check_disabled": "bỏ qua kiểm tra câu trả lời",
     "memory_recorded": "đã lưu lượt chat",
     "tool_input": "gửi vào công cụ", "tool_output": "công cụ trả về",
