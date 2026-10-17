@@ -14,7 +14,7 @@ FALLBACK = "Dạ, hiện em chưa kiểm tra được thông tin này. Em sẽ n
 
 _STOCK = re.compile(r"(?i)\b(?:còn hàng|có hàng|sẵn hàng|hết hàng)\b")
 _ORDER = re.compile(r"(?i)\bđã\s+(?:lên|tạo|đặt|chốt)\s+đơn\b")
-_AMOUNT = re.compile(r"(?i)(\d[\d.,]*)\s*(triệu|tr|nghìn|ngàn|k|đồng|đ|vnd|₫)")
+_AMOUNT = re.compile(r"(?i)(?<![\w])(\d[\d.,]*)\s*(triệu|tr|nghìn|ngàn|k|đồng|đ|vnd|₫)")
 _MILLION_SHORTHAND = re.compile(r"(?i)\b(\d{1,3})\s*tr\s*(\d{1,3})(?!\d)")
 _PRICE_NUMBER = re.compile(r"(?i)\bgiá\s+(?:là\s+)?(\d[\d.,]*)")
 _BARE_MONEY = re.compile(r"\b(?:\d{1,3}(?:[.,]\d{3})+|\d{6,})\b")
@@ -33,6 +33,10 @@ _BUDGET = re.compile(
     r"(?P<amount>\d[\d.,]*\s*(?:triệu|tr|nghìn|ngàn|k|đồng|đ|vnd|₫))"
 )
 _PRODUCT_FEATURE = re.compile(r"(?i)\b(?:HEPA(?:\s*H\d+)?|PM\s*2[.,]5)\b")
+# Public catalog attribute names and their customer-facing expressions.
+_BOOLEAN_FEATURE_ALIASES = {
+    "child_safe_lock": (r"\bkhoa (?:an toan )?tre em\b",),
+}
 _SUPERLATIVE = re.compile(r"(?i)\b(?:phù hợp nhất|tốt nhất|hiệu quả nhất)\b")
 _LEGACY_SKU_SIGNAL = re.compile(r"\bSKU-[A-Z0-9-]+\b")
 _PROMOTION = re.compile(r"(?i)\b(?:khuyến mãi|giảm giá|còn giảm|được giảm|mã giảm|freeship|miễn phí (?:ship|vận chuyển))\b")
@@ -210,11 +214,81 @@ def _money_claims(text: str) -> list[tuple[int, str, bool]]:
     return claims
 
 
+def attribute_feature_status(item: dict[str, Any], key: str) -> str:
+    """Interpret explicit boolean evidence; absent or non-boolean data is unknown."""
+    attributes = item.get("attributes")
+    if not isinstance(attributes, dict):
+        return "chưa biết"
+    value = attributes.get(key)
+    if value is True:
+        return "có"
+    if value is False:
+        return "không có"
+    # Free-text features can assert presence, but their silence cannot prove absence.
+    features = attributes.get("features")
+    if isinstance(features, str):
+        folded = _fold_text(features)
+        if any(re.search(alias, folded) for alias in _BOOLEAN_FEATURE_ALIASES.get(key, ())):
+            return "có"
+    return "chưa biết"
+
+
+def _attribute_claim(sentence: str, start: int, end: int) -> str | None:
+    """Read the assertion around a named feature, ignoring customer questions."""
+    if sentence.rstrip().endswith("?"):
+        return None
+    before = sentence[max(0, start - 70):start]
+    after = sentence[end:end + 25]
+    if re.search(r"(?:chua|khong) (?:co )?(?:thong tin|du lieu)|chua ro|khong ro", before):
+        return "chưa biết"
+    if re.search(r"(?:khong|chua) (?:co|ho tro|duoc trang bi)\s*$", before):
+        return "không có"
+    if re.search(r"(?:co|ho tro|duoc trang bi)\s*$", before):
+        return "có"
+    if re.match(r"\s*[:,-]?\s*(?:chua co thong tin|chua ro)", after):
+        return "chưa biết"
+    if re.match(r"\s*[:,-]?\s*khong co\b", after):
+        return "không có"
+    if re.match(r"\s*[:,-]?\s*co\b", after):
+        return "có"
+    return None
+
+
+def _unsupported_attribute_feature(candidate: str, catalog_items: list[dict[str, Any]]) -> bool:
+    for sentence in re.split(r"(?<=[!?])|(?<!\d)\.(?!\d)", candidate):
+        folded = _fold_text(sentence)
+        for key, aliases in _BOOLEAN_FEATURE_ALIASES.items():
+            for alias in aliases:
+                for match in re.finditer(alias, folded):
+                    claim = _attribute_claim(folded, match.start(), match.end())
+                    if claim is None:
+                        continue
+                    named = []
+                    for item in catalog_items:
+                        name = item.get("name")
+                        if not isinstance(name, str):
+                            continue
+                        names = (name, " ".join(name.split()[-2:]), item.get("sku"))
+                        if any(isinstance(part, str) and part and
+                               _fold_text(part) in folded for part in names):
+                            named.append(item)
+                    targets = named or (catalog_items if len(catalog_items) == 1 or
+                                        re.search(r"\b(?:ca hai|tat ca|cac mau)\b", folded)
+                                        else [])
+                    if not targets or any(attribute_feature_status(item, key) != claim
+                                          for item in targets):
+                        return True
+    return False
+
+
 def _unsupported_feature(candidate: str, successful: list[dict[str, Any]]) -> bool:
     catalog_items = [item for call in successful if call["name"] == "catalog.search"
                      for item in call["result"].get("items", []) if isinstance(item, dict)]
+    if _unsupported_attribute_feature(candidate, catalog_items):
+        return True
     for sentence in re.split(r"[.!?](?!\d)", candidate):
-        features = _PRODUCT_FEATURE.findall(sentence)
+        folded_sentence = _fold_text(sentence)
+        features = list(_PRODUCT_FEATURE.finditer(folded_sentence))
         if not features:
             continue
         named = []
@@ -232,11 +306,15 @@ def _unsupported_feature(candidate: str, successful: list[dict[str, Any]]) -> bo
         if not supported_items:
             return True
         for feature in features:
-            needle = re.sub(r"\s+", "", feature).casefold().replace(",", ".")
+            needle = re.sub(r"\s+", "", feature.group()).casefold().replace(",", ".")
+            claim = _attribute_claim(folded_sentence, feature.start(), feature.end())
             for item in supported_items:
                 attributes = json.dumps(item.get("attributes", {}), ensure_ascii=False).casefold()
                 attributes = re.sub(r"\s+", "", attributes).replace(",", ".")
-                if needle not in attributes:
+                present = needle in _fold_text(attributes)
+                if (claim == "không có" or claim == "có" and not present
+                        or claim == "chưa biết" and present
+                        or claim is None and not present):
                     return True
     return False
 
@@ -317,6 +395,21 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]]) -> bool:
     return True
 
 
+def _empty_catalog_budget_evidenced(candidate: str, customer_text: str,
+                                   money_claims: list[tuple[int, str, bool]],
+                                   successful: list[dict[str, Any]]) -> bool:
+    """Allow repeating the customer's budget when reporting a verified empty search."""
+    searches = [call for call in successful if call.get("name") == "catalog.search"]
+    if not searches or searches[-1].get("result", {}).get("items") != []:
+        return False
+    budget = searches[-1].get("args", {}).get("max_price_vnd")
+    if budget not in customer_budget_amounts(customer_text):
+        return False
+    if not re.search(r"\b(?:khong|chua)\s+(?:co|tim thay)\b", _fold_text(candidate)):
+        return False
+    return bool(money_claims) and all(amount == budget for amount, _, _ in money_claims)
+
+
 def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
                  customer_text: str = "") -> tuple[str, str | None]:
     """Return a verified answer and a stable, non-sensitive rejection reason."""
@@ -353,7 +446,9 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     policy_values = {amount for amount, _, _ in policy_amounts}
     if money_claims and not (_money_evidenced(candidate, successful) or
                              policy_claim and all(amount in policy_values
-                                                  for amount, _, _ in money_claims)):
+                                                  for amount, _, _ in money_claims) or
+                             _empty_catalog_budget_evidenced(candidate, customer_text,
+                                                              money_claims, successful)):
         return FALLBACK, "price_without_quote"
     if _STOCK.search(candidate):
         checks = [call for call in successful if call["name"] == "inventory.check"]

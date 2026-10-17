@@ -54,8 +54,7 @@ _MODEL_TOOLS = ALLOWED_TOOLS | {"memory.propose_fact"}
 _CATALOG_FIELD_DESCRIPTION = {
     "query": ("Từ khóa nhận diện sản phẩm trong tên, hãng, danh mục hoặc SKU; "
               "không chép nguyên câu hỏi hay mục đích sử dụng của khách."),
-    "min_room_area_m2": ("Diện tích phòng khách cần phục vụ, tính bằng m²; "
-                         "giữ giá trị này khi tìm lại với từ khóa rộng hơn."),
+    "min_room_area_m2": "Diện tích phòng khách cần phục vụ, tính bằng m²; luôn giữ ràng buộc này.",
 }
 
 
@@ -66,10 +65,10 @@ class FactCandidateProposal(BaseModel):
 
 _TOOL_DESCRIPTION = {
     "catalog.search": (
-        "Tìm sản phẩm theo tên, loại hoặc SKU. query chỉ gồm từ xuất hiện trong tên, "
-        "hãng, danh mục hoặc SKU; bỏ mục đích sử dụng và câu hỏi khỏi query. "
-        "Diện tích phòng tối thiểu truyền bằng min_room_area_m2 và giữ điều kiện này "
-        "nếu tìm lại với query rộng hơn."
+        "Tìm sản phẩm theo tên, loại hoặc SKU. query chỉ chứa loại sản phẩm; "
+        "truyền giá tối đa và diện tích tối thiểu bằng các tham số riêng. "
+        "Nếu items đã có sản phẩm, dùng attributes để kiểm tính năng và trả lời; "
+        "chỉ tìm lại khi khách đổi điều kiện hoặc cần loại sản phẩm khác."
     ),
     "inventory.check": "Kiểm tra tồn kho của SKU theo ngày cuộc gọi.",
     "pricing.get_quote": "Lấy giá cuối, khuyến mãi và freeship theo ngày cuộc gọi.",
@@ -234,6 +233,8 @@ _SYSTEM_PROMPT = (
     "Nếu danh tính mơ hồ, không dùng hồ sơ hay đơn của ứng viên. "
     "Không tự tạo order_id/ticket_id, giá, chính sách hoặc ngày giao. "
     "Chỉ mô tả tính năng sản phẩm khi thuộc tính đó có trong kết quả công cụ. "
+    "Với thuộc tính tính năng dạng boolean: true là có, false là không có; "
+    "nếu thiếu thuộc tính thì chỉ nói chưa có thông tin, không đoán. "
     "Khi khách hỏi chính sách, gọi policy.search trước khi trả lời. "
     "Chỉ tạo đơn khi khách đã đồng ý, có SKU, tồn kho, báo giá và payment; "
     "không mặc định COD. Khi thiếu dữ liệu hãy hỏi một câu ngắn. "

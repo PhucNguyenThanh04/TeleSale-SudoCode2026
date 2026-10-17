@@ -1,9 +1,13 @@
 """Catalog search keeps customer constraints while ranking descriptive words."""
 
+import asyncio
 import json
 from pathlib import Path
+from uuid import uuid4
 
+from app.agent.implementations.business_agent import BusinessTools
 from app.mcp_servers.mcp_shared.commerce_rules import _catalog
+from app.schemas.agent import TextTurnRequest
 
 
 PRODUCTS = json.loads((Path(__file__).resolve().parents[3] /
@@ -54,4 +58,34 @@ def test_other_category_respects_hard_price_and_type():
     assert result["items"]
     assert all(item["list_price_vnd"] <= 2_000_000 for item in result["items"])
     assert all(item["category"].startswith("thoi-trang/giay")
+               for item in result["items"])
+
+
+def test_agent_catalog_boundary_returns_products_in_one_call_without_new_args():
+    class Gateway:
+        def __init__(self):
+            self.calls = []
+
+        async def invoke_trusted(self, name, args, *_):
+            self.calls.append((name, args))
+            return _catalog(PRODUCTS, args)
+
+    gateway = Gateway()
+    request = TextTurnRequest(client_msg_id=uuid4(), session_id=uuid4(),
+                              channel="web_chat", channel_identity=None,
+                              on="2026-10-15", input_mode="clean",
+                              text="Tư vấn máy lọc không khí có khóa trẻ em cho phòng 25m2, giá tối đa 5 triệu.")
+    state = {"request": request, "tool_calls": [], "tool_count": 0}
+    business = BusinessTools(gateway, state, 3, lambda: None)
+    search = next(tool for tool in business.langchain_tools()
+                  if tool.name == "catalog.search")
+    assert "required_features" not in search.args_schema.model_fields
+    assert "unmatched_terms" not in search.args_schema.model_fields
+    result = asyncio.run(business.invoke("catalog.search", {
+        "query": "máy lọc không khí khóa trẻ em",
+        "max_price_vnd": 5_000_000, "min_room_area_m2": 25,
+    }))
+    assert len(gateway.calls) == 1
+    assert [item["sku"] for item in result["items"]] == ["SKU-AP-X", "SKU-XM-4L"]
+    assert all(item["attributes"]["child_safe_lock"] is False
                for item in result["items"])
