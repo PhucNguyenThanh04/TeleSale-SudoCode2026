@@ -14,7 +14,8 @@ FALLBACK = "Dạ, hiện em chưa kiểm tra được thông tin này. Em sẽ n
 
 _STOCK = re.compile(r"(?i)\b(?:còn hàng|có hàng|sẵn hàng|hết hàng)\b")
 _ORDER = re.compile(r"(?i)\bđã\s+(?:lên|tạo|đặt|chốt)\s+đơn\b")
-_AMOUNT = re.compile(r"(?i)(\d[\d.,]*)\s*(triệu|tr|nghìn|ngàn|k|đồng|đ|vnd|₫)")
+# A digit inside an area such as "25m2 trong" must not become "2 tr".
+_AMOUNT = re.compile(r"(?i)(?<!\w)(\d[\d.,]*)\s*(triệu|tr|nghìn|ngàn|k|đồng|đ|vnd|₫)")
 _MILLION_SHORTHAND = re.compile(r"(?i)\b(\d{1,3})\s*tr\s*(\d{1,3})(?!\d)")
 _PRICE_NUMBER = re.compile(r"(?i)\bgiá\s+(?:là\s+)?(\d[\d.,]*)")
 _BARE_MONEY = re.compile(r"\b(?:\d{1,3}(?:[.,]\d{3})+|\d{6,})\b")
@@ -31,6 +32,11 @@ _BUDGET = re.compile(
     r"(?:(?:anh|chị|em|tôi|mình|nhà mình)\s+)?"
     r"(?:(?:tầm|khoảng|chỉ|là|cỡ)\s+)?"
     r"(?P<amount>\d[\d.,]*\s*(?:triệu|tr|nghìn|ngàn|k|đồng|đ|vnd|₫))"
+)
+_REPEATED_BUDGET = re.compile(
+    r"\b(?:ngan sach|tam gia|muc gia|gioi han|toi da|duoi)\s+"
+    r"(?:(?:toi da|tam|khoang|la|duoi)\s+)?"
+    r"\d[\d.,]*\s*(?:trieu|tr|nghin|ngan|k|dong|d|vnd)\b"
 )
 _PRODUCT_FEATURE = re.compile(r"(?i)\b(?:HEPA(?:\s*H\d+)?|PM\s*2[.,]5)\b")
 # Public catalog attribute names and their customer-facing expressions.
@@ -395,6 +401,29 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]]) -> bool:
     return True
 
 
+def _empty_catalog_budget_evidenced(candidate: str, customer_text: str,
+                                   money_claims: list[tuple[int, str, bool]],
+                                   successful: list[dict[str, Any]]) -> bool:
+    """Permit one repeated budget, never a product price, after an empty search."""
+    searches = [call for call in successful if call.get("name") == "catalog.search"]
+    if not searches or any(call.get("name") == "pricing.get_quote" for call in successful):
+        return False
+    last = searches[-1]
+    result = last.get("result", {})
+    if result.get("items") != [] or result.get("total") != 0:
+        return False
+    budget = last.get("args", {}).get("max_price_vnd")
+    if type(budget) is not int or budget not in customer_budget_amounts(customer_text):
+        return False
+    folded = _fold_text(candidate)
+    if not re.search(r"\b(?:khong|chua)\s+(?:co|tim thay)\b", folded):
+        return False
+    if not _REPEATED_BUDGET.search(folded):
+        return False
+    # A second amount could be a product price even if it equals the budget.
+    return len(money_claims) == 1 and money_claims[0] == (budget, "price", False)
+
+
 def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
                  customer_text: str = "") -> tuple[str, str | None]:
     """Return a verified answer and a stable, non-sensitive rejection reason."""
@@ -431,7 +460,9 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     policy_values = {amount for amount, _, _ in policy_amounts}
     if money_claims and not (_money_evidenced(candidate, successful) or
                              policy_claim and all(amount in policy_values
-                                                  for amount, _, _ in money_claims)):
+                                                  for amount, _, _ in money_claims) or
+                             _empty_catalog_budget_evidenced(candidate, customer_text,
+                                                              money_claims, successful)):
         return FALLBACK, "price_without_quote"
     if _STOCK.search(candidate):
         checks = [call for call in successful if call["name"] == "inventory.check"]
