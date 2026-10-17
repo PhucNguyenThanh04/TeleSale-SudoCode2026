@@ -8,8 +8,10 @@ import argparse
 import asyncio
 import hashlib
 import json
+import re
 import sys
 import time
+import unicodedata
 from collections import Counter
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -20,12 +22,13 @@ from uuid import uuid4
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "ai-services"))
 
-from app.agent.guardrails.checks import FALLBACK, mask_pii  # noqa: E402
+from app.agent.guardrails.checks import FALLBACK, fact_evidence, mask_pii  # noqa: E402
 from app.agent.harness.agent_nodes import AgentNodes  # noqa: E402
 from app.agent.memory.fact_candidates import accepted_candidates  # noqa: E402
 from app.configs import get_settings  # noqa: E402
 from app.infarstructure.llm import build_llm  # noqa: E402
 from app.schemas.agent import TextTurnRequest  # noqa: E402
+from app.constants import PROFILE_SLOT_KEYS  # noqa: E402
 
 
 class ReadOnlyTools:
@@ -81,6 +84,96 @@ def score(rows: list[dict]) -> dict:
             "by_key": {key: dict(values) for key, values in sorted(by_key.items())}}
 
 
+def _metrics(tp: int, fp: int, fn: int) -> dict:
+    return {"tp": tp, "fp": fp, "fn": fn,
+            "precision": tp / (tp + fp) if tp + fp else None,
+            "recall": tp / (tp + fn) if tp + fn else None}
+
+
+def score_keys(rows: list[dict]) -> dict:
+    """Score a correct slot name even when its value differs."""
+    tp = fp = fn = 0
+    for row in rows:
+        expected, predicted = set(row["expected_slots"]), set(row["predicted_slots"])
+        tp += len(expected & predicted)
+        fp += len(predicted - expected)
+        fn += len(expected - predicted)
+    return _metrics(tp, fp, fn)
+
+
+def _fold(value: str) -> str:
+    value = value.casefold().replace("đ", "d")
+    value = "".join(c for c in unicodedata.normalize("NFD", value)
+                    if unicodedata.category(c) != "Mn")
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", value)).strip()
+
+
+def _blocker_value(value: object) -> object:
+    """Narrow scorer-only normalization for the same spouse decision blocker."""
+    if not isinstance(value, str):
+        return value
+    folded = _fold(value)
+    for person in ("vo", "chong"):
+        if re.search(rf"\bhoi\s+{person}\b", folded):
+            return f"hoi {person}"
+    return folded
+
+
+def score_normalized_blocker(rows: list[dict]) -> dict:
+    normalized = []
+    for row in rows:
+        expected, predicted = dict(row["expected_slots"]), dict(row["predicted_slots"])
+        if "blocker" in expected:
+            expected["blocker"] = _blocker_value(expected["blocker"])
+        if "blocker" in predicted:
+            predicted["blocker"] = _blocker_value(predicted["blocker"])
+        normalized.append({"expected_slots": expected, "predicted_slots": predicted})
+    return score(normalized)
+
+
+def _safe_scalar(value: object) -> object:
+    if type(value) in {int, float, bool} or value is None:
+        return value
+    if isinstance(value, str):
+        return value[:200] if mask_pii(value) == value else "[REDACTED_PII]"
+    return "[UNSUPPORTED_TYPE]"
+
+
+def candidate_diagnostics(customer_text: str, tool_calls: list[dict],
+                          agent_proposals: list[dict], extractor_proposals: list[dict]) -> dict:
+    """Observe the existing validator; do not change its acceptance decision."""
+    proposals = [("agent", p) for p in agent_proposals] + [
+        ("extractor", p) for p in extractor_proposals]
+    accepted = accepted_candidates(customer_text, tool_calls, [p for _, p in proposals])
+    accepted_by_key = {p["key"]: p["value"] for p in accepted}
+    evidenced = []
+    for origin, item in proposals:
+        key, value = item.get("key"), item.get("value")
+        source = fact_evidence(key, value, "set", customer_text, tool_calls) \
+            if isinstance(key, str) else None
+        if not isinstance(key, str):
+            reason = "invalid_key_type"
+        elif key not in PROFILE_SLOT_KEYS:
+            reason = "unsupported_key"
+        elif type(value) not in {str, int, float, bool}:
+            reason = "invalid_value_type"
+        elif isinstance(value, str) and mask_pii(value) != value:
+            reason = "pii_value"
+        elif not source:
+            reason = "no_fact_evidence"
+        elif key not in accepted_by_key:
+            reason = "conflicting_values"
+        else:
+            reason = "accepted"
+        evidenced.append({"origin": origin, "key": _safe_scalar(key),
+                          "value": _safe_scalar(value), "source_hint": _safe_scalar(item.get("source")),
+                          "fact_evidence": source, "decision": reason})
+    return {"before_fact_evidence": evidenced,
+            "after_fact_evidence": [
+                {"key": _safe_scalar(p["key"]), "value": _safe_scalar(p["value"]),
+                 "source_kind": p["source_kind"]} for p in accepted]}
+
+
 async def evaluate(cases: list[dict]) -> dict:
     settings = get_settings()
     model = build_llm(settings)
@@ -102,18 +195,25 @@ async def evaluate(cases: list[dict]) -> dict:
                              for key, value in case.get("prior_slots", {}).items()},
                  "history": [], "episodes": [], "tool_calls": [], "tool_count": 0}
         extraction_calls = 0
+        extractor_proposals = []
         original = agent_nodes.extract_customer_candidates
 
         async def tracked(model_arg, text_arg):
             nonlocal extraction_calls
             extraction_calls += 1
-            return await original(model_arg, text_arg)
+            extracted = await original(model_arg, text_arg)
+            extractor_proposals.extend(extracted)
+            return extracted
 
         started = time.perf_counter()
         with patch.object(agent_nodes, "extract_customer_candidates", tracked):
             result = await nodes.run_agent(state)
         accepted = accepted_candidates(case["text"], result.get("tool_calls", []),
                                        result.get("fact_candidates", []))
+        agent_proposals = result.get("fact_candidates", [])[:-len(extractor_proposals)] \
+            if extractor_proposals else result.get("fact_candidates", [])
+        diagnostics = candidate_diagnostics(case["text"], result.get("tool_calls", []),
+                                            agent_proposals, extractor_proposals)
         predicted = {item["key"]: item["value"] for item in accepted
                      if item["source_kind"] == "customer"}
         rows.append({"id": case["id"], "expected_slots": case["expected_slots"],
@@ -121,6 +221,7 @@ async def evaluate(cases: list[dict]) -> dict:
                      "extraction_calls": extraction_calls,
                      "tool_calls": result.get("tool_count", 0),
                      "agent_fallback": result.get("agent_draft") == FALLBACK,
+                     "diagnostics": diagnostics,
                      "duration_ms": round((time.perf_counter() - started) * 1000)})
         print(f"{case['id']}: {len(predicted)} slot, {extraction_calls} lần trích, "
               f"{rows[-1]['duration_ms']} ms", flush=True)
@@ -130,6 +231,8 @@ async def evaluate(cases: list[dict]) -> dict:
                 "max_tokens": settings.llm_max_tokens, "agent_kind": settings.agent_kind,
                 "fact_extraction_mode": "fallback", "business_tools": "read_only_mock"},
             "typed_slots": score(rows),
+            "key_only_slots": score_keys(rows),
+            "normalized_blocker_slots": score_normalized_blocker(rows),
             "open_facts": {"expected": sum(r["expected_open_count"] for r in rows),
                            "predicted": 0,
                            "note": "Current allowlist has no open-fact output"},

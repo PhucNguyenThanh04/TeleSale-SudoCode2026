@@ -2,7 +2,8 @@
 
 from pathlib import Path
 
-from eval.memory_facts_baseline import load_cases, score
+from eval.memory_facts_baseline import (candidate_diagnostics, load_cases, score,
+                                        score_keys, score_normalized_blocker)
 
 
 DATASET = Path(__file__).with_name("memory_facts_v1.jsonl")
@@ -28,3 +29,31 @@ def test_memory_scorer_counts_wrong_value_as_both_false_positive_and_miss():
     ]
     result = score(rows)
     assert (result["tp"], result["fp"], result["fn"]) == (1, 2, 1)
+    assert (score_keys(rows)["tp"], score_keys(rows)["fp"], score_keys(rows)["fn"]) == (2, 1, 0)
+
+
+def test_blocker_normalization_is_reported_alongside_strict_score():
+    rows = [{"expected_slots": {"blocker": "hỏi vợ", "objection": "dat_qua"},
+             "predicted_slots": {"blocker": "Tôi phải hỏi vợ đã", "objection": "gia_cao"}}]
+    assert (score(rows)["tp"], score(rows)["fp"], score(rows)["fn"]) == (0, 2, 2)
+    assert (score_normalized_blocker(rows)["tp"],
+            score_normalized_blocker(rows)["fp"],
+            score_normalized_blocker(rows)["fn"]) == (1, 1, 1)
+    unrelated = [{"expected_slots": {"blocker": "hỏi vợ"},
+                  "predicted_slots": {"blocker": "cho vợ"}}]
+    assert score_normalized_blocker(unrelated)["tp"] == 0
+
+
+def test_candidate_diagnostics_reports_rejection_and_masks_pii():
+    detail = candidate_diagnostics("Tôi muốn size 42.", [], [
+        {"key": "size", "value": "42", "source": "customer"},
+        {"key": "blocker", "value": "Gọi 0901234567", "source": "customer"},
+    ], [{"key": "size", "value": "43", "source": "customer"}])
+    before = detail["before_fact_evidence"]
+    assert before[0]["fact_evidence"] == "customer"
+    assert before[0]["decision"] == "accepted"
+    assert before[1]["value"] == "[REDACTED_PII]"
+    assert before[1]["decision"] == "pii_value"
+    assert before[2]["decision"] == "no_fact_evidence"
+    assert detail["after_fact_evidence"] == [{"key": "size", "value": "42",
+                                               "source_kind": "customer"}]
