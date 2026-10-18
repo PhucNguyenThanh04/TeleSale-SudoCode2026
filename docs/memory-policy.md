@@ -52,6 +52,13 @@ dài hạn và có thể không được mang sang cuộc sau. Chưa có categor
 triển khai; không dùng `blocker` làm chỗ lưu tạm vì sẽ làm sai Call Brief và
 điều kiện giải quyết blocker.
 
+`objection` chỉ nhận lời e ngại hoặc từ chối việc mua, với bằng chứng ở đúng
+mệnh đề khách nói. O01 (đi công tác nhiều ngày) là hoàn cảnh; O02/O08 và phần
+không thích giày có dây của M03 là sở thích. Cổng theo `SlotSpec` chủ đích từ
+chối ghi chúng thành `objection=khac` với `circumstance_not_objection` hoặc
+`preference_not_objection`. Chúng chưa có chỗ lưu dài hạn cho đến khi thiết kế
+fact mở được duyệt; không dùng `objection` làm chỗ lưu tạm.
+
 Agent chỉ đề xuất; `fact_evidence` kiểm lời khách hoặc kết quả tool. Với các
 fact về điều shop đã **nói** (`product_advised`, `price_quoted_vnd`, KM), bước
 ghi còn kiểm trên `agent_text` cuối sau guardrail. Nếu không chuẩn hóa được giá

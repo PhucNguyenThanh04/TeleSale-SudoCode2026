@@ -630,6 +630,8 @@ class FactRejectReason(StrEnum):
     PAST_CONSULTATION_NOT_BLOCKER = "past_consultation_not_blocker"
     RESOLVED_BLOCKER = "resolved_blocker"
     NEUTRAL_CHOICE_NOT_OBJECTION = "neutral_choice_not_objection"
+    PREFERENCE_NOT_OBJECTION = "preference_not_objection"
+    CIRCUMSTANCE_NOT_OBJECTION = "circumstance_not_objection"
     PATTERN_NOT_MATCHED = "pattern_not_matched"
     VALUE_OUT_OF_DOMAIN = "value_out_of_domain"
     TYPE_INVALID = "type_invalid"
@@ -670,6 +672,25 @@ _OBJECTION_NEGATION = re.compile(
 )
 _NEUTRAL_CHOICE = re.compile(
     r"\b(?:can nhac|phan van|dang chon|so sanh)\s+giua\b"
+)
+# Expressions of a purchase concern or refusal, scoped to objection admission.
+_OBJECTION_PURCHASE_CONCERN = re.compile(
+    r"\b(?:so|lo|ngai|e ngai|chua tin|khong tin|khong yen tam|"
+    r"khong muon mua|chua muon mua|khong mua|khong lay|tu choi)\b|"
+    r"\bkhong thich\s+(?:mau|san pham|cai|chiec|con)\s+nay\b|"
+    r"\b(?:giao|ship|van chuyen|nhan hang)\b[^.!?;,]{0,35}\b(?:lau|cham|tre|dat|kem)\b|"
+    r"\bphi\s+(?:giao|ship|van chuyen)\b[^.!?;,]{0,25}\b(?:cao|dat|mac)\b|"
+    r"\b(?:chay on|qua on|on qua|khong ben|de hong|de loi|chat luong kem|"
+    r"bao hanh ngan|gia khong hop ly)\b|"
+    r"\b(?:ben kia|ben khac|doi thu|shop khac)\b[^.!?;,]{0,60}"
+    r"\b(?:re hon|tot hon|gia thap hon|giao nhanh hon|bao hanh lau hon)\b"
+)
+_OBJECTION_PREFERENCE = re.compile(
+    r"\b(?:thich|khong thich|ua|uu tien|muon|khong muon|can)\b"
+)
+_OBJECTION_HYPOTHETICAL = re.compile(
+    r"\b(?:neu|gia su|vi du|thu)\b|^nho\b|"
+    r"\blo\s+(?:toi|anh|chi|em|minh|nha toi)\b"
 )
 _PAYMENT_PHRASES = {
     "COD": r"cod|ship\s+cod",
@@ -970,6 +991,22 @@ def _blocker_rejection(value: Any, customer_text: str) -> FactRejectReason | Non
     return reasons[0] if reasons else None
 
 
+def _objection_rejection(customer_text: str, quote: str) -> FactRejectReason | None:
+    """Require the quoted clause to express a purchase concern or refusal."""
+    reasons: list[FactRejectReason] = []
+    for clause in _CONTEXT_CLAUSE.split(unicodedata.normalize("NFC", customer_text)):
+        if not clause.strip() or not _quote_overlaps_clause(quote, clause):
+            continue
+        folded = _fold_text(clause)
+        if _EXPENSIVE_PHRASE.search(quote) or _OBJECTION_PURCHASE_CONCERN.search(folded):
+            return None
+        if _OBJECTION_PREFERENCE.search(folded):
+            reasons.append(FactRejectReason.PREFERENCE_NOT_OBJECTION)
+        else:
+            reasons.append(FactRejectReason.CIRCUMSTANCE_NOT_OBJECTION)
+    return reasons[0] if reasons else FactRejectReason.QUOTE_NOT_FOUND
+
+
 def _context_rejection(key: str, value: Any, op: str, customer_text: str,
                        evidence_quote: str | None = None) -> FactRejectReason | None:
     """Reject a proposed customer fact only when all matching clauses lack an assertion.
@@ -988,7 +1025,14 @@ def _context_rejection(key: str, value: Any, op: str, customer_text: str,
         if _fact_evidence_source(key, value, op, clause, [], evidence_quote) != "customer":
             continue
         folded = _fold_text(clause)
-        if _HYPOTHETICAL_CUE.search(folded) or re.search(r"\bnhỡ\b", clause.casefold()):
+        hypothetical = (_HYPOTHETICAL_CUE.search(folded)
+                        or re.search(r"\bnhỡ\b", clause.casefold()))
+        if spec.semantic_gate == "purchase_objection":
+            # Accent folding makes the concern "lo" identical to hypothetical
+            # "lỡ". Keep the explicit accented cue and a narrow ASR form.
+            hypothetical = (_OBJECTION_HYPOTHETICAL.search(folded)
+                            or re.search(r"\b(?:lỡ|nhỡ)\b", clause.casefold()))
+        if hypothetical:
             reasons.append(FactRejectReason.HYPOTHETICAL_CONTEXT)
         elif "?" in clause or _QUESTION_CUE.search(folded):
             reasons.append(FactRejectReason.QUESTION_CONTEXT)
@@ -1040,6 +1084,10 @@ def fact_evidence(
         blocker_reason = _blocker_rejection(value, customer_text)
         if blocker_reason is not None:
             return FactEvidence(source=None, reason=blocker_reason)
+    if op == "set" and SLOT_SPEC_BY_KEY[key].semantic_gate == "purchase_objection":
+        objection_reason = _objection_rejection(customer_text, evidence_quote or "")
+        if objection_reason is not None:
+            return FactEvidence(source=None, reason=objection_reason)
     source = _fact_evidence_source(key, value, op, customer_text, tool_calls,
                                    evidence_quote)
     return FactEvidence(source=source, reason=None if source is not None else

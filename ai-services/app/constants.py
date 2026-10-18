@@ -40,6 +40,7 @@ class SlotSpec:
     brief_must_not_ask: bool = False
     supersede: Literal["replace", "append"] = "replace"
     context_negation: Literal["none", "polar", "selection", "obstacle", "objection"] = "none"
+    semantic_gate: Literal["none", "purchase_objection"] = "none"
     value_domain: Literal["free", "closed", "open"] = "free"
     allowed_values: tuple[str, ...] = ()
     value_format: Literal["plain", "date"] = "plain"
@@ -67,6 +68,7 @@ SLOT_REGISTRY = (
              value_domain="closed"),
     SlotSpec(Slot.COMPETITOR_PRICE_VND, int, "customer", value_domain="closed"),
     SlotSpec(Slot.OBJECTION, str, "customer", context_negation="objection",
+             semantic_gate="purchase_objection",
              value_domain="open", allowed_values=("dat_qua", "khac")),
     SlotSpec(Slot.VARIANT_SKU, str, "tool"),
     SlotSpec(Slot.SIZE, (str, int), "customer", context_negation="selection"),

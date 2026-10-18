@@ -52,6 +52,50 @@ class SlotValueDomainTests(unittest.TestCase):
                 self.assertEqual(fact_evidence(Slot.OBJECTION, "đắt", "set",
                                                text, []).reason, reason)
 
+    def test_objection_requires_a_purchase_concern_in_the_quoted_clause(self):
+        rejected = (
+            ("đi công tác nhiều ngày", FactRejectReason.CIRCUMSTANCE_NOT_OBJECTION),
+            ("thích đồ dễ vệ sinh", FactRejectReason.PREFERENCE_NOT_OBJECTION),
+            ("không thích giày có dây", FactRejectReason.PREFERENCE_NOT_OBJECTION),
+            ("nhà không có thang máy", FactRejectReason.CIRCUMSTANCE_NOT_OBJECTION),
+            ("tôi thích máy gọn nhẹ", FactRejectReason.PREFERENCE_NOT_OBJECTION),
+            ("nhà tôi ở tầng cao", FactRejectReason.CIRCUMSTANCE_NOT_OBJECTION),
+        )
+        for text, reason in rejected:
+            with self.subTest(text=text):
+                evidence = fact_evidence(Slot.OBJECTION, text, "set", text, [])
+                self.assertEqual(evidence.reason, reason)
+                self.assertEqual(accepted_candidates(text, [], [
+                    {"key": Slot.OBJECTION, "value": text,
+                     "evidence_quote": text}]), [])
+
+        accepted = (
+            ("sợ hàng không bền", "khac"),
+            ("chưa tin hàng này", "khac"),
+            ("giao lâu quá", "khac"),
+            ("bên kia rẻ hơn", "khac"),
+            ("đắt quá", "dat_qua"),
+            ("tôi lo bảo hành", "khac"),
+            ("máy sấy chạy ồn quá", "khac"),
+            ("phí giao hàng cao quá", "khac"),
+        )
+        for text, normalized in accepted:
+            with self.subTest(text=text):
+                evidence = fact_evidence(Slot.OBJECTION, text, "set", text, [], text)
+                self.assertEqual(evidence.source, "customer")
+                self.assertEqual(evidence.normalized_value, normalized)
+
+        customer = "Tôi thích máy gọn nhẹ, nhưng lo chất lượng không bền."
+        self.assertEqual(fact_evidence(Slot.OBJECTION, "thích máy gọn nhẹ", "set",
+                                       customer, [], "thích máy gọn nhẹ").reason,
+                         FactRejectReason.PREFERENCE_NOT_OBJECTION)
+        self.assertEqual(fact_evidence(Slot.OBJECTION, "lo chất lượng không bền",
+                                       "set", customer, [],
+                                       "lo chất lượng không bền").source, "customer")
+        self.assertEqual(fact_evidence(Slot.OBJECTION, "lo bảo hành", "set",
+                                       "Nếu tôi lo bảo hành thì sao?", []).reason,
+                         FactRejectReason.HYPOTHETICAL_CONTEXT)
+
     def test_payment_and_color_use_value_window(self):
         payment = fact_evidence(Slot.PAYMENT, "MoMo", "set",
                                 "Tôi thanh toán qua MoMo", [])
