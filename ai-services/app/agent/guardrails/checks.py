@@ -617,6 +617,9 @@ class FactRejectReason(StrEnum):
     UNSUPPORTED_FLOOR = "unsupported_floor"
     PREFERENCE_NOT_BLOCKER = "preference_not_blocker"
     DELIVERY_CONSTRAINT_NOT_BLOCKER = "delivery_constraint_not_blocker"
+    DELIVERY_STATUS_NOT_BLOCKER = "delivery_status_not_blocker"
+    PAST_CONSULTATION_NOT_BLOCKER = "past_consultation_not_blocker"
+    RESOLVED_BLOCKER = "resolved_blocker"
     PATTERN_NOT_MATCHED = "pattern_not_matched"
     VALUE_OUT_OF_DOMAIN = "value_out_of_domain"
     TYPE_INVALID = "type_invalid"
@@ -815,6 +818,15 @@ _BLOCKER_DECISION = re.compile(
 _BLOCKER_DELIVERY = re.compile(r"\b(?:giao|nhan hang|ship|van chuyen)\b")
 _BLOCKER_PREFERENCE = re.compile(r"\b(?:khong thich|thich|uu tien|khong muon|muon|can)\b")
 _BLOCKER_REJECTED_CONSULT = re.compile(r"\bkhong\s+(?:thich|muon|can)\b[^.!?;,]{0,25}\bhoi\b")
+_BLOCKER_PAST_CONSULT = re.compile(
+    rf"\bda\b[^.!?;,]{{0,30}}\b(?:ban|trao doi|hoi)\b[^.!?;,]{{0,30}}\b{_BLOCKER_DECISION_PERSON}\b|"
+    rf"\b(?:ban|trao doi|hoi)\b[^.!?;,]{{0,25}}\b{_BLOCKER_DECISION_PERSON}\s+roi\s*[.!?]?$"
+)
+_BLOCKER_RESOLVED_APPROVAL = re.compile(
+    rf"\b{_BLOCKER_DECISION_PERSON}\b(?:\s+(?:toi|minh|nha toi))?\s+"
+    r"(?:da\s+)?(?:dong y|chap nhan|ung ho)\s*(?:roi)?\b")
+_BLOCKER_DELIVERY_STATUS = re.compile(
+    r"\b(?:cho|doi)\s+(?:giao\s+)?hang\b[^.!?;,]{0,35}\b(?:ngay|tuan|chua thay|chua toi)\b")
 
 
 def _blocker_rejection(value: Any, customer_text: str) -> FactRejectReason | None:
@@ -828,6 +840,15 @@ def _blocker_rejection(value: Any, customer_text: str) -> FactRejectReason | Non
     for clause in clauses:
         folded = _fold_text(clause)
         if folded_value not in folded:
+            continue
+        if _BLOCKER_PAST_CONSULT.search(folded):
+            reasons.append(FactRejectReason.PAST_CONSULTATION_NOT_BLOCKER)
+            continue
+        if _BLOCKER_RESOLVED_APPROVAL.search(folded):
+            reasons.append(FactRejectReason.RESOLVED_BLOCKER)
+            continue
+        if _BLOCKER_DELIVERY_STATUS.search(folded):
+            reasons.append(FactRejectReason.DELIVERY_STATUS_NOT_BLOCKER)
             continue
         if _BLOCKER_REJECTED_CONSULT.search(folded):
             reasons.append(FactRejectReason.PREFERENCE_NOT_BLOCKER)

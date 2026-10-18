@@ -80,6 +80,34 @@ class BlockerPolicyTests(unittest.TestCase):
                 self.assertEqual(fact_evidence(Slot.BLOCKER, value, "set", text, []).reason,
                                  reason)
 
+    def test_completed_actions_and_delivery_updates_are_not_new_blockers(self):
+        rejected = (
+            ("chờ giao hàng mấy ngày vậy?", "chờ giao hàng", FactRejectReason.QUESTION_CONTEXT),
+            ("tôi chờ hàng ba ngày rồi chưa thấy", "chờ hàng ba ngày",
+             FactRejectReason.DELIVERY_STATUS_NOT_BLOCKER),
+            ("xem lại giỏ hàng giúp tôi", "xem lại giỏ hàng",
+             FactRejectReason.PATTERN_NOT_MATCHED),
+            ("chồng tôi đồng ý rồi", "chồng tôi đồng ý rồi",
+             FactRejectReason.RESOLVED_BLOCKER),
+            ("tôi đã bàn với chồng rồi", "bàn với chồng",
+             FactRejectReason.PAST_CONSULTATION_NOT_BLOCKER),
+            ("tôi hỏi thêm về bảo hành", "hỏi thêm về bảo hành",
+             FactRejectReason.PATTERN_NOT_MATCHED),
+            ("vợ tôi đã đồng ý", "vợ tôi đã đồng ý",
+             FactRejectReason.RESOLVED_BLOCKER),
+            ("tôi đã hỏi mẹ xong", "hỏi mẹ",
+             FactRejectReason.PAST_CONSULTATION_NOT_BLOCKER),
+        )
+        for text, value, reason in rejected:
+            with self.subTest(text=text):
+                self.assertEqual(fact_evidence(Slot.BLOCKER, value, "set", text, []).reason,
+                                 reason)
+                self.assertEqual(accepted_candidates(text, [], [
+                    {"key": Slot.BLOCKER, "value": value}]), [])
+        self.assertEqual(fact_evidence(Slot.BLOCKER, "bàn với chồng", "set",
+                                       "tôi sẽ bàn với chồng rồi quyết định", []).source,
+                         "customer")
+
 
 if __name__ == "__main__":
     unittest.main()
