@@ -36,9 +36,9 @@ class SlotRegistryTests(unittest.TestCase):
 
     def test_customer_and_tool_evidence_gates_are_unchanged(self):
         self.assertEqual(fact_evidence(Slot.BUDGET_VND, 5_000_000, "set",
-                                       "Ngân sách tôi 5 triệu", []), "customer")
+                                       "Ngân sách tôi 5 triệu", []).source, "customer")
         self.assertIsNone(fact_evidence(Slot.PRODUCT_ADVISED, "SKU-AP-X", "set",
-                                        "Tôi thích SKU-AP-X", []))
+                                        "Tôi thích SKU-AP-X", []).source)
         calls = [{"name": "catalog.search", "args": {"query": "máy lọc"},
                   "result": {"items": [{"sku": "SKU-AP-X", "name": "AirPure X"}]}}]
         proposals = [{"key": Slot.PRODUCT_ADVISED, "value": "SKU-AP-X"}]

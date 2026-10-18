@@ -22,13 +22,13 @@ from uuid import uuid4
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "ai-services"))
 
-from app.agent.guardrails.checks import FALLBACK, fact_evidence, mask_pii  # noqa: E402
+from app.agent.guardrails.checks import (FALLBACK, FactRejectReason,
+                                         fact_evidence, mask_pii)  # noqa: E402
 from app.agent.harness.agent_nodes import AgentNodes  # noqa: E402
 from app.agent.memory.fact_candidates import accepted_candidates  # noqa: E402
 from app.configs import get_settings  # noqa: E402
 from app.infarstructure.llm import build_llm  # noqa: E402
 from app.schemas.agent import TextTurnRequest  # noqa: E402
-from app.constants import PROFILE_SLOT_KEYS  # noqa: E402
 
 
 class ReadOnlyTools:
@@ -149,25 +149,23 @@ def candidate_diagnostics(customer_text: str, tool_calls: list[dict],
     evidenced = []
     for origin, item in proposals:
         key, value = item.get("key"), item.get("value")
-        source = fact_evidence(key, value, "set", customer_text, tool_calls) \
+        evidence = fact_evidence(key, value, "set", customer_text, tool_calls) \
             if isinstance(key, str) else None
+        source = evidence.source if evidence else None
         if not isinstance(key, str):
-            reason = "invalid_key_type"
-        elif key not in PROFILE_SLOT_KEYS:
-            reason = "unsupported_key"
-        elif type(value) not in {str, int, float, bool}:
-            reason = "invalid_value_type"
-        elif isinstance(value, str) and mask_pii(value) != value:
-            reason = "pii_value"
+            reason = FactRejectReason.UNKNOWN_KEY
         elif not source:
-            reason = "no_fact_evidence"
+            reason = evidence.reason
         elif key not in accepted_by_key:
-            reason = "conflicting_values"
+            reason = FactRejectReason.CONFLICT
         else:
-            reason = "accepted"
+            reason = None
+        if source is None and reason is None:
+            raise AssertionError("Rejected fact has no diagnostic reason")
         evidenced.append({"origin": origin, "key": _safe_scalar(key),
                           "value": _safe_scalar(value), "source_hint": _safe_scalar(item.get("source")),
-                          "fact_evidence": source, "decision": reason})
+                          "fact_evidence": source,
+                          "decision": reason.value if reason else "accepted"})
     return {"before_fact_evidence": evidenced,
             "after_fact_evidence": [
                 {"key": _safe_scalar(p["key"]), "value": _safe_scalar(p["value"]),

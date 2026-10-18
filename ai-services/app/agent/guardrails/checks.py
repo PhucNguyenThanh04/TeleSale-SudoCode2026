@@ -3,6 +3,8 @@
 import json
 import re
 import unicodedata
+from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 from app.mcp_servers.mcp_shared.pii import mask_pii
@@ -540,10 +542,40 @@ def verified_answer(candidate: str, tool_calls: list[dict[str, Any]],
     return check_answer(candidate, tool_calls, customer_text)[0]
 
 
-def fact_evidence(
+class FactRejectReason(StrEnum):
+    """Closed diagnostic vocabulary; these codes never decide fact admission."""
+
+    QUOTE_NOT_FOUND = "quote_not_found"
+    VALUE_NOT_IN_QUOTE_WINDOW = "value_not_in_quote_window"
+    PATTERN_NOT_MATCHED = "pattern_not_matched"
+    VALUE_OUT_OF_DOMAIN = "value_out_of_domain"
+    TYPE_INVALID = "type_invalid"
+    NEGATED_OR_HYPOTHETICAL = "negated_or_hypothetical"
+    QUESTION_CONTEXT = "question_context"
+    CONFLICT = "conflict"
+    UNKNOWN_KEY = "unknown_key"
+    PII_KEY = "pii_key"
+    PII_VALUE = "pii_value"
+    EMPTY_VALUE = "empty_value"
+    THIRD_PARTY_CONTEXT = "third_party_context"
+    TOOL_EVIDENCE_MISSING = "tool_evidence_missing"
+    REPORTED_FACT_MISSING = "reported_fact_missing"
+
+
+@dataclass(frozen=True)
+class FactEvidence:
+    source: str | None
+    reason: FactRejectReason | None
+
+    def __post_init__(self) -> None:
+        if (self.source is None) == (self.reason is None):
+            raise ValueError("Fact evidence needs exactly one of source or reject reason")
+
+
+def _fact_evidence_source(
     key: str, value: Any, op: str, customer_text: str, tool_calls: list[dict[str, Any]]
 ) -> str | None:
-    """Accept only facts traceable to this customer turn or a successful tool result."""
+    """Original admission rule. Keep this independent of diagnostic classification."""
     if key not in PROFILE_SLOT_KEYS or _PII_KEY.search(key) or type(value) not in {str, int, float, bool}:
         return None
     if isinstance(value, str) and (not value.strip() or mask_pii(value) != value):
@@ -638,3 +670,59 @@ def fact_evidence(
         if supported:
             return f"tool:{name}"
     return None
+
+
+def _fact_reject_reason(key: str, value: Any, op: str, customer_text: str,
+                        tool_calls: list[dict[str, Any]]) -> FactRejectReason:
+    """Classify an existing rejection; this function cannot admit a candidate."""
+    if key not in PROFILE_SLOT_KEYS:
+        return FactRejectReason.UNKNOWN_KEY
+    if _PII_KEY.search(key):
+        return FactRejectReason.PII_KEY
+    if type(value) not in {str, int, float, bool}:
+        return FactRejectReason.TYPE_INVALID
+    if isinstance(value, str):
+        if not value.strip():
+            return FactRejectReason.EMPTY_VALUE
+        if mask_pii(value) != value:
+            return FactRejectReason.PII_VALUE
+    if op == "delete":
+        return FactRejectReason.PATTERN_NOT_MATCHED
+    folded = _fold_text(customer_text)
+    if re.search(r"\b(?:ban toi|ban minh|hang xom|dong nghiep|khach khac)\b", folded):
+        return FactRejectReason.THIRD_PARTY_CONTEXT
+    if key in TOOL_ONLY_SLOT_KEYS:
+        return FactRejectReason.TOOL_EVIDENCE_MISSING
+    if key == Slot.OBJECTION and value != "dat_qua":
+        return FactRejectReason.VALUE_OUT_OF_DOMAIN
+    if re.search(r"\bneu\b", folded):
+        return FactRejectReason.NEGATED_OR_HYPOTHETICAL
+    if "?" in customer_text or re.search(r"\b(?:duoc khong|phai khong)\b", folded):
+        return FactRejectReason.QUESTION_CONTEXT
+    if key == Slot.BUDGET_VND and type(value) is int:
+        amounts = {
+            int(float(digits.replace(",", ".")) *
+                (1_000_000 if unit.lower() in {"triệu", "tr"} else 1_000))
+            for digits, unit in re.findall(
+                r"(?i)\b(\d+(?:[.,]\d+)?)\s*(triệu|tr|nghìn|ngàn|k)\b", customer_text)
+        }
+        if value in amounts and value not in customer_budget_amounts(customer_text):
+            return FactRejectReason.VALUE_NOT_IN_QUOTE_WINDOW
+    if key in {Slot.ROOM_AREA_M2, Slot.BUDGET_VND, Slot.HAS_CHILDREN,
+               Slot.PREFERRED_SIZE, Slot.SIZE, Slot.PREFERRED_COLOR, Slot.COLOR,
+               Slot.PAYMENT, Slot.OBJECTION, Slot.COMPETITOR_PRICE_VND}:
+        return FactRejectReason.PATTERN_NOT_MATCHED
+    if isinstance(value, str) and value.casefold() not in customer_text.casefold():
+        return FactRejectReason.QUOTE_NOT_FOUND
+    if type(value) in {int, float} and str(value) not in customer_text:
+        return FactRejectReason.VALUE_NOT_IN_QUOTE_WINDOW
+    return FactRejectReason.PATTERN_NOT_MATCHED
+
+
+def fact_evidence(
+    key: str, value: Any, op: str, customer_text: str, tool_calls: list[dict[str, Any]]
+) -> FactEvidence:
+    """Return the unchanged admission decision plus exactly one rejection code."""
+    source = _fact_evidence_source(key, value, op, customer_text, tool_calls)
+    return FactEvidence(source=source, reason=None if source is not None else
+                        _fact_reject_reason(key, value, op, customer_text, tool_calls))

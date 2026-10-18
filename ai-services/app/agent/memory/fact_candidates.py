@@ -101,7 +101,7 @@ def accepted_candidates(customer_text: str, tool_calls: list[dict[str, Any]],
         key, value = item.get("key"), item.get("value")
         if not isinstance(key, str):
             continue
-        source = fact_evidence(key, value, "set", customer_text, tool_calls)
+        source = fact_evidence(key, value, "set", customer_text, tool_calls).source
         if source and final_answer is not None and source.startswith("tool:"):
             from app.agent.memory.reported_facts import reported_tool_fact
             if not reported_tool_fact(key, value, final_answer, tool_calls):

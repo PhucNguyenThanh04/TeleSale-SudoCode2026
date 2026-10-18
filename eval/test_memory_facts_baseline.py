@@ -54,6 +54,16 @@ def test_candidate_diagnostics_reports_rejection_and_masks_pii():
     assert before[0]["decision"] == "accepted"
     assert before[1]["value"] == "[REDACTED_PII]"
     assert before[1]["decision"] == "pii_value"
-    assert before[2]["decision"] == "no_fact_evidence"
+    assert before[2]["decision"] == "pattern_not_matched"
     assert detail["after_fact_evidence"] == [{"key": "size", "value": "42",
                                                "source_kind": "customer"}]
+
+
+def test_conflicting_evidenced_values_use_closed_reason_code():
+    detail = candidate_diagnostics("Tôi hỏi vợ rồi hỏi chồng.", [], [
+        {"key": "blocker", "value": "hỏi vợ", "source": "customer"},
+        {"key": "blocker", "value": "hỏi chồng", "source": "customer"},
+    ], [])
+    assert [item["decision"] for item in detail["before_fact_evidence"]] == [
+        "conflict", "conflict"]
+    assert detail["after_fact_evidence"] == []
