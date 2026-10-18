@@ -7,11 +7,14 @@ from uuid import uuid4
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
+from pydantic import ValidationError
 
+from app.constants import PROFILE_SLOT_KEYS
 from app.agent.harness.runtime import DeepHarnessRuntime
 from app.agent.memory.fact_candidates import accepted_candidates
 from app.agent.harness.context import _split_facts
 from app.agent.implementations.deep_agent import BusinessTools
+from app.agent.implementations.business_agent import FactCandidateProposal
 from app.schemas.agent import TextTurnRequest
 
 
@@ -227,6 +230,17 @@ class DeepMemoryTest(unittest.IsolatedAsyncioTestCase):
         search = next(tool for tool in business.langchain_tools()
                       if tool.name == "catalog.search")
         self.assertIn("fact_candidates", search.args_schema.model_fields)
+        proposal_schema = FactCandidateProposal.model_json_schema()
+        self.assertEqual(set(proposal_schema["properties"]["key"]["enum"]),
+                         PROFILE_SLOT_KEYS)
+        memory_tool = next(tool for tool in business.langchain_tools()
+                           if tool.name == "memory.propose_fact")
+        self.assertEqual(set(memory_tool.args_schema.model_json_schema()
+                             ["properties"]["key"]["enum"]), PROFILE_SLOT_KEYS)
+        with self.assertRaises(ValidationError):
+            FactCandidateProposal(key="favorite_color", value="xanh", source="customer")
+        self.assertEqual(FactCandidateProposal(key="color", value="xanh",
+                                               source="customer").key, "color")
 
     async def test_answer_guardrail_can_be_disabled_for_raw_agent_testing(self):
         text = "Dạ, giá là 9.999.999đ ạ."

@@ -19,6 +19,11 @@ from app.agent.mcp.gateway import ToolGateway
 from app.constants import PROFILE_SLOT_KEYS
 
 
+# Pydantic emits a JSON Schema enum for every business tool that accepts facts.
+# Derive it from the registry so a slot addition has one source of truth.
+FactCandidateKey = Literal.__getitem__(tuple(sorted(PROFILE_SLOT_KEYS)))
+
+
 _TOOL_FIELDS: dict[str, dict[str, tuple[Any, Any]]] = {
     "catalog.search": {
         "query": (str | None, None), "category": (str | None, None),
@@ -44,7 +49,7 @@ _TOOL_FIELDS: dict[str, dict[str, tuple[Any, Any]]] = {
     "handoff.transfer": {"brief": (dict[str, Any], ...)},
     "policy.search": {"query": (str, ...), "order_id": (str | None, None)},
     "memory.propose_fact": {
-        "key": (str, ...), "value": (str | int | float | bool, ...),
+        "key": (FactCandidateKey, ...), "value": (str | int | float | bool, ...),
         "source": (str, "customer"),
     },
 }
@@ -59,7 +64,7 @@ _CATALOG_FIELD_DESCRIPTION = {
 
 
 class FactCandidateProposal(BaseModel):
-    key: str
+    key: FactCandidateKey
     value: str | int | float | bool
     source: Literal["customer", "tool"]
 
