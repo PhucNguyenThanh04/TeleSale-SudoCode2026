@@ -283,15 +283,15 @@ class DeepMemoryTest(unittest.IsolatedAsyncioTestCase):
             text, [], [{"key": "competitor_price_vnd", "value": 4_590_000},
                        {"key": "objection", "value": "dat_qua"}])}
         self.assertEqual(facts["competitor_price_vnd"], 4_590_000)
-        self.assertEqual(facts["objection"], "dat_qua")
+        self.assertNotIn("objection", facts)  # The objection appears only in a question.
         self.assertNotIn("budget_vnd", facts)
         text = "Giày còn size 39 màu den không? Em lên đơn, thanh toán COD nhé."
         facts = {item["key"]: item["value"] for item in accepted_candidates(
             text, [], [{"key": "size", "value": 39},
                        {"key": "color", "value": "den"},
                        {"key": "payment", "value": "COD"}])}
-        self.assertEqual(facts["size"], 39)
-        self.assertEqual(facts["color"], "den")
+        self.assertNotIn("size", facts)
+        self.assertNotIn("color", facts)
         self.assertEqual(facts["payment"], "COD")
 
     def test_variant_is_saved_only_when_selected_from_catalog(self):
@@ -312,7 +312,9 @@ class DeepMemoryTest(unittest.IsolatedAsyncioTestCase):
     def test_spoken_room_area_proposal_requires_matching_customer_evidence(self):
         text = "phòng anh ba mươi lăm mét vuông có được không"
         proposed = [{"key": "room_area_m2", "value": 35, "source": "customer"}]
-        self.assertEqual(accepted_candidates(text, [], proposed)[0]["value"], 35)
+        self.assertEqual(accepted_candidates(text, [], proposed), [])
+        self.assertEqual(accepted_candidates("phòng anh ba mươi lăm mét vuông, tư vấn giúp", [],
+                                             proposed)[0]["value"], 35)
         self.assertEqual(accepted_candidates(text, [], [
             {"key": "room_area_m2", "value": 25, "source": "customer"}]), [])
         self.assertEqual(accepted_candidates("Ngân sách 35k", [], [
@@ -331,9 +333,8 @@ class DeepMemoryTest(unittest.IsolatedAsyncioTestCase):
         runtime = DeepHarnessRuntime(model, FakeGateway(), memory)
         request = turn("phòng anh ba mươi lăm mét vuông có được không")
         await runtime.run(request)
-        self.assertEqual(memory.profile["room_area_m2"]["value"], 35)
-        self.assertEqual(runtime.state_for(request)["memory_writes"][0]["key"],
-                         "room_area_m2")
+        self.assertNotIn("room_area_m2", memory.profile)
+        self.assertEqual(runtime.state_for(request)["memory_writes"], [])
 
     async def test_model_proposal_is_validated_without_exposing_memory_write(self):
         model = FakeToolModel(replies=[

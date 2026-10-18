@@ -8,7 +8,7 @@ from enum import StrEnum
 from typing import Any
 
 from app.mcp_servers.mcp_shared.pii import mask_pii
-from app.constants import PROFILE_SLOT_KEYS, TOOL_ONLY_SLOT_KEYS, Slot
+from app.constants import PROFILE_SLOT_KEYS, SLOT_SPEC_BY_KEY, TOOL_ONLY_SLOT_KEYS, Slot
 from app.agent.guardrails.skus import known_skus, mentioned_skus
 
 
@@ -543,14 +543,15 @@ def verified_answer(candidate: str, tool_calls: list[dict[str, Any]],
 
 
 class FactRejectReason(StrEnum):
-    """Closed diagnostic vocabulary; these codes never decide fact admission."""
+    """Closed rejection vocabulary shared by diagnostics and context admission."""
 
     QUOTE_NOT_FOUND = "quote_not_found"
     VALUE_NOT_IN_QUOTE_WINDOW = "value_not_in_quote_window"
     PATTERN_NOT_MATCHED = "pattern_not_matched"
     VALUE_OUT_OF_DOMAIN = "value_out_of_domain"
     TYPE_INVALID = "type_invalid"
-    NEGATED_OR_HYPOTHETICAL = "negated_or_hypothetical"
+    HYPOTHETICAL_CONTEXT = "hypothetical_context"
+    NEGATED_CONTEXT = "negated_context"
     QUESTION_CONTEXT = "question_context"
     CONFLICT = "conflict"
     UNKNOWN_KEY = "unknown_key"
@@ -696,7 +697,7 @@ def _fact_reject_reason(key: str, value: Any, op: str, customer_text: str,
     if key == Slot.OBJECTION and value != "dat_qua":
         return FactRejectReason.VALUE_OUT_OF_DOMAIN
     if re.search(r"\bneu\b", folded):
-        return FactRejectReason.NEGATED_OR_HYPOTHETICAL
+        return FactRejectReason.HYPOTHETICAL_CONTEXT
     if "?" in customer_text or re.search(r"\b(?:duoc khong|phai khong)\b", folded):
         return FactRejectReason.QUESTION_CONTEXT
     if key == Slot.BUDGET_VND and type(value) is int:
@@ -719,10 +720,54 @@ def _fact_reject_reason(key: str, value: Any, op: str, customer_text: str,
     return FactRejectReason.PATTERN_NOT_MATCHED
 
 
+_CONTEXT_CLAUSE = re.compile(r"[;,](?!\d)|\b(?:nhưng|nhung|và|va|mà|ma)\b", re.IGNORECASE)
+_HYPOTHETICAL_CUE = re.compile(r"\b(?:neu|gia su|lo|vi du|thu)\b|^nho\b")
+_QUESTION_CUE = re.compile(r"\b(?:duoc khong|khong a|phai khong|the nao|thi sao|hay sao)\b|\b(?:a|ha|nhi|chua)\s*$")
+_POLAR_CHILD_NEGATION = re.compile(r"\b(?:khong|chua)\s+(?:co\s+)?(?:con|be|em be)\b")
+_SELECTION_NEGATION = re.compile(r"\bkhong\s+(?:(?:can|muon)\s+)?(?:thanh toan|tra|chon|lay|thich|mua|dung)\b|\bkhong\s+(?:can|muon)\b")
+_OBSTACLE_NEGATION = re.compile(r"\bkhong\s+can\b")
+
+
+def _context_rejection(key: str, value: Any, op: str, customer_text: str) -> FactRejectReason | None:
+    """Reject a proposed customer fact only when all matching clauses lack an assertion.
+
+    Current proposals have no evidence_quote. The existing slot matcher identifies
+    clauses that could support this exact key/value; ambiguous unmatched clauses
+    remain governed by the existing whole-turn evidence rule.
+    """
+    spec = SLOT_SPEC_BY_KEY.get(key)
+    if op != "set" or spec is None or spec.evidence_source != "customer":
+        return None
+    clauses = [part.strip() for part in _CONTEXT_CLAUSE.split(unicodedata.normalize("NFC", customer_text))
+               if part.strip()]
+    reasons: list[FactRejectReason] = []
+    for clause in clauses:
+        if _fact_evidence_source(key, value, op, clause, []) != "customer":
+            continue
+        folded = _fold_text(clause)
+        if _HYPOTHETICAL_CUE.search(folded) or re.search(r"\bnhỡ\b", clause.casefold()):
+            reasons.append(FactRejectReason.HYPOTHETICAL_CONTEXT)
+        elif "?" in clause or _QUESTION_CUE.search(folded):
+            reasons.append(FactRejectReason.QUESTION_CONTEXT)
+        elif spec.context_negation == "polar" and key == Slot.HAS_CHILDREN \
+                and value is True and _POLAR_CHILD_NEGATION.search(folded):
+            reasons.append(FactRejectReason.NEGATED_CONTEXT)
+        elif spec.context_negation == "selection" and _SELECTION_NEGATION.search(folded):
+            reasons.append(FactRejectReason.NEGATED_CONTEXT)
+        elif spec.context_negation == "obstacle" and _OBSTACLE_NEGATION.search(folded):
+            reasons.append(FactRejectReason.NEGATED_CONTEXT)
+        else:
+            return None
+    return reasons[0] if reasons else None
+
+
 def fact_evidence(
     key: str, value: Any, op: str, customer_text: str, tool_calls: list[dict[str, Any]]
 ) -> FactEvidence:
-    """Return the unchanged admission decision plus exactly one rejection code."""
+    """Apply clause context before the existing slot evidence decision."""
+    context_reason = _context_rejection(key, value, op, customer_text)
+    if context_reason is not None:
+        return FactEvidence(source=None, reason=context_reason)
     source = _fact_evidence_source(key, value, op, customer_text, tool_calls)
     return FactEvidence(source=source, reason=None if source is not None else
                         _fact_reject_reason(key, value, op, customer_text, tool_calls))

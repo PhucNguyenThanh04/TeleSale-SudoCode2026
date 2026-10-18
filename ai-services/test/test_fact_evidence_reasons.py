@@ -21,7 +21,7 @@ class FactEvidenceReasonTests(unittest.TestCase):
             (Slot.PREFERRED_COLOR, "xanh dương", "Màu tôi muốn là xanh dương.",
              FactRejectReason.PATTERN_NOT_MATCHED),
             (Slot.HAS_CHILDREN, False, "Nếu tôi có con nhỏ thì sao?",
-             FactRejectReason.NEGATED_OR_HYPOTHETICAL),
+             FactRejectReason.HYPOTHETICAL_CONTEXT),
             (Slot.PAYMENT, "MoMo", "Thanh toán bằng MoMo được không?",
              FactRejectReason.QUESTION_CONTEXT),
             (Slot.HAS_CHILDREN, True, "Bạn tôi có con nhỏ.",
