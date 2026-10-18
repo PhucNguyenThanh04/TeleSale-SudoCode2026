@@ -149,7 +149,8 @@ def candidate_diagnostics(customer_text: str, tool_calls: list[dict],
     evidenced = []
     for origin, item in proposals:
         key, value = item.get("key"), item.get("value")
-        evidence = fact_evidence(key, value, "set", customer_text, tool_calls) \
+        evidence = fact_evidence(key, value, "set", customer_text, tool_calls,
+                                 item.get("evidence_quote")) \
             if isinstance(key, str) else None
         source = evidence.source if evidence else None
         if not isinstance(key, str):
@@ -164,12 +165,20 @@ def candidate_diagnostics(customer_text: str, tool_calls: list[dict],
             raise AssertionError("Rejected fact has no diagnostic reason")
         evidenced.append({"origin": origin, "key": _safe_scalar(key),
                           "value": _safe_scalar(value), "source_hint": _safe_scalar(item.get("source")),
+                          "normalized_value": _safe_scalar(evidence.normalized_value)
+                          if evidence else None,
+                          "evidence_quote": _safe_scalar(evidence.evidence_quote)
+                          if evidence else None,
                           "fact_evidence": source,
                           "decision": reason.value if reason else "accepted"})
     return {"before_fact_evidence": evidenced,
             "after_fact_evidence": [
                 {"key": _safe_scalar(p["key"]), "value": _safe_scalar(p["value"]),
-                 "source_kind": p["source_kind"]} for p in accepted]}
+                 "source_kind": p["source_kind"],
+                 **({"evidence_quote": _safe_scalar(p["evidence_quote"])}
+                    if p.get("evidence_quote") else {})} for p in accepted],
+            "other_objection_count": sum(p["key"] == "objection" and p["value"] == "khac"
+                                         for p in accepted)}
 
 
 async def evaluate(cases: list[dict]) -> dict:

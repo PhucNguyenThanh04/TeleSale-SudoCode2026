@@ -125,6 +125,10 @@ class AgentNodes(SessionNodes):
                                     proposals, state["agent_text"])
         facts = [*resolved_blockers(state["safe_text"], state.get("profile", {}), facts),
                  *facts]
+        other_objections = sum(fact["key"] == "objection" and fact.get("value") == "khac"
+                               for fact in facts)
+        if other_objections:
+            log_event(state, "persist", "open_objection_other", count=other_objections)
         try:
             result = await self.memory.commit_turn(
                 str(request.session_id), state.get("customer_id"), state["safe_text"],

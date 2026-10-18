@@ -11,10 +11,16 @@ from app.agent.guardrails.checks import fact_evidence, mask_pii
 from app.agent.memory.decision_makers import (
     BlockerResolutionReason, PERSON_PATTERN, person_mentions, roles_mentioned,
 )
-from app.constants import PROFILE_SLOT_KEYS, TOOL_ONLY_SLOT_KEYS, Slot
+from app.constants import PROFILE_SLOT_KEYS, SLOT_REGISTRY, TOOL_ONLY_SLOT_KEYS, Slot
 
 
 _CUSTOMER_KEYS = sorted(PROFILE_SLOT_KEYS - TOOL_ONLY_SLOT_KEYS - {"product_advised"})
+_CLOSED_CUSTOMER_DOMAINS = "; ".join(
+    f"{spec.key}=" + ("|".join(spec.allowed_values) if spec.allowed_values
+                       else spec.value_type.__name__)
+    for spec in SLOT_REGISTRY if spec.key in _CUSTOMER_KEYS
+    and spec.value_domain == "closed"
+)
 
 
 def _fold(value: str) -> str:
@@ -54,6 +60,10 @@ _EXTRACTION_PROMPT = (
     "chỉ đề xuất giá trị mới nhất. Ngân sách chỉ có khi khách nói giới hạn chi tiêu "
     "của chính họ; hỏi giá sản phẩm không phải ngân sách. "
     "Chỉ dùng key trong danh sách: " + ", ".join(_CUSTOMER_KEYS) + ". "
+    "Miền đóng: " + _CLOSED_CUSTOMER_DOMAINS + ". "
+    "objection: dùng dat_qua cho lời chê giá đắt/mắc/cao/chát; các phản đối "
+    "khác dùng khac và giữ evidence_quote nguyên văn. Không gọi do dự trung tính "
+    "là phản đối. "
     "Với blocker, chỉ đề xuất trở ngại thực sự đang ngăn hoặc trì hoãn quyết định mua; "
     "không dùng blocker cho sở thích sản phẩm hay thời gian giao/nhận hàng. "
     "Giá trị blocker là cụm ngắn như 'hỏi chồng', 'đợi lương'; "
@@ -120,15 +130,20 @@ def accepted_candidates(customer_text: str, tool_calls: list[dict[str, Any]],
         key, value = item.get("key"), item.get("value")
         if not isinstance(key, str):
             continue
-        source = fact_evidence(key, value, "set", customer_text, tool_calls).source
+        evidence = fact_evidence(key, value, "set", customer_text, tool_calls,
+                                 item.get("evidence_quote"))
+        source = evidence.source
         if source and final_answer is not None and source.startswith("tool:"):
             from app.agent.memory.reported_facts import reported_tool_fact
             if not reported_tool_fact(key, value, final_answer, tool_calls):
                 source = None
         if source:
+            value = evidence.normalized_value
             candidate = {"key": key, "value": value, "op": "set",
                          "source_kind": "customer" if source == "customer" else "tool",
                          **({"source_tool": source[5:]} if source.startswith("tool:") else {})}
+            if evidence.evidence_quote:
+                candidate["evidence_quote"] = evidence.evidence_quote
             if key in accepted and accepted[key]["value"] != value:
                 conflicting.add(key)
             else:

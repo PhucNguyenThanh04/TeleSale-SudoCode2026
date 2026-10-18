@@ -21,6 +21,16 @@ Mỗi lượt được ghi qua `mcp-memory`; `source_session_id`, `source_turn_i
 | `order_id` | Chỉ từ `order.create` trả `status: created` và ID | Giữ lịch sử, đọc trạng thái từ order tool |
 | `in_stock` | Kết quả `inventory.check` thành công | Quan sát có ngày; kiểm lại trước khi báo/tạo đơn |
 
+Miền đóng trong `SlotSpec` hiện được kiểm trước khi ghi: `payment` dùng đúng
+`COD|bank|momo|zalopay` của tool đặt đơn; `has_children`/`in_stock` là bool;
+tiền và diện tích là số nguyên dương; `promo_expiry` là ngày ISO hợp lệ. Giá
+trị ngoài miền bị từ chối có mã lý do, không được ghi dưới dạng text tự do.
+`objection` là miền mở: cụm chê giá đã biết thành `dat_qua`; phản đối khác có
+quote nguyên văn thành `khac`. Quote được kiểm trong lời khách, che PII và lưu
+ở `ai_memory.facts.evidence_quote` (hoặc `pending_facts` khi chưa xác minh danh
+tính); số `khac` được log riêng. Cân nhắc trung tính giữa các lựa chọn không
+phải phản đối. `blocker` vẫn giữ cụm ngắn, chưa ép enum vì BTC chưa công bố.
+
 ## Khoản nợ thiết kế: trạng thái của blocker
 
 Hiện blocker chỉ có fact active; khi khách xác nhận người ra quyết định đã đồng

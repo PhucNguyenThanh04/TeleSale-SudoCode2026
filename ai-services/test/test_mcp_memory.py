@@ -77,6 +77,29 @@ class TurnRepo(FakeRepo):
 
 
 class MemoryServiceTest(unittest.IsolatedAsyncioTestCase):
+    async def test_other_objection_quote_is_checked_and_passed_to_storage(self):
+        class QuoteRepo(TurnRepo):
+            async def insert_fact(self, _conn, fact_id, customer_id, key, value,
+                                  source, session_id, previous, **metadata):
+                self.facts.append((key, value, metadata))
+
+        repo = QuoteRepo()
+        session_id = str(uuid4())
+        base = {"customer_text": "Máy này chạy ồn quá", "agent_text": "Dạ em hiểu.",
+                "on": "2026-10-15", "channel": "hotline", "client_msg_id": str(uuid4())}
+        bad = await write(repo, "commit_turn", "C001", session_id, {
+            **base, "facts": [{"key": "objection", "op": "set", "value": "khac",
+                               "source_kind": "customer",
+                               "evidence_quote": "máy chạy quá nóng"}]}, "bad-quote")
+        self.assertEqual(bad, {"error": "invalid_facts_or_identity"})
+        self.assertEqual(repo.facts, [])
+        good = await write(repo, "commit_turn", "C001", session_id, {
+            **base, "facts": [{"key": "objection", "op": "set", "value": "khac",
+                               "source_kind": "customer",
+                               "evidence_quote": "chạy ồn quá"}]}, "good-quote")
+        self.assertEqual(repo.facts[0][2]["evidence_quote"], "chạy ồn quá")
+        self.assertEqual(good["memory_writes"][0]["evidence_quote"], "chạy ồn quá")
+
     async def test_failed_replacement_rolls_back_blocker_retraction(self):
         class FailingRepo(TurnRepo):
             def __init__(self):
@@ -191,7 +214,8 @@ class MemoryServiceTest(unittest.IsolatedAsyncioTestCase):
                 self.pending.append({"source_turn_id": source_turn_id,
                     "turn_no": turn_no, "key": fact["key"], "value": fact.get("value"),
                     "op": fact["op"], "source_kind": fact["source_kind"],
-                    "source_tool": fact.get("source_tool"), "on_date": on})
+                    "source_tool": fact.get("source_tool"), "on_date": on,
+                    "evidence_quote": fact.get("evidence_quote")})
 
             async def pending_facts(self, _conn, _session_id):
                 return sorted(self.pending, key=lambda item: item["turn_no"])
@@ -216,7 +240,7 @@ class MemoryServiceTest(unittest.IsolatedAsyncioTestCase):
         data = {"customer_text": "Phòng anh 25 m²", "agent_text": "Dạ, em ghi nhận ạ.",
                 "on": "2026-10-15", "channel": "hotline", "client_msg_id": message_id,
                 "facts": [{"key": "room_area_m2", "value": 25, "op": "set",
-                           "source_kind": "customer"}]}
+                           "source_kind": "customer", "evidence_quote": "25 m²"}]}
         staged = await write(repo, "commit_turn", None, session_id, data, "anonymous-turn")
         self.assertEqual(staged["memory_writes"], [])
         self.assertEqual(repo.facts, [])
@@ -224,6 +248,7 @@ class MemoryServiceTest(unittest.IsolatedAsyncioTestCase):
         claimed = await write(repo, "claim_pending", "C001", session_id, {}, "claim-1")
         self.assertEqual(claimed["memory_writes"][0]["value"], 25)
         self.assertEqual(repo.facts[0][0], f"{session_id}:{message_id}")
+        self.assertEqual(repo.facts[0][2]["evidence_quote"], "25 m²")
         self.assertEqual(repo.rows[session_id][0]["customer_id"], "C001")
         self.assertEqual((await write(repo, "claim_pending", "C001", session_id, {}, "claim-1")),
                          claimed)

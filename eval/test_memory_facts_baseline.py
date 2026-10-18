@@ -67,3 +67,13 @@ def test_conflicting_evidenced_values_use_closed_reason_code():
     assert [item["decision"] for item in detail["before_fact_evidence"]] == [
         "conflict", "conflict"]
     assert detail["after_fact_evidence"] == []
+
+
+def test_other_objection_is_counted_with_redacted_quote():
+    detail = candidate_diagnostics("Máy này chạy ồn quá", [], [], [
+        {"key": "objection", "value": "ồn quá", "source": "customer",
+         "evidence_quote": "chạy ồn quá"},
+    ])
+    assert detail["other_objection_count"] == 1
+    assert detail["before_fact_evidence"][0]["normalized_value"] == "khac"
+    assert detail["after_fact_evidence"][0]["evidence_quote"] == "chạy ồn quá"

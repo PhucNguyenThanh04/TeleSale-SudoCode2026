@@ -129,7 +129,8 @@ runtime SQL migrations in order: `backend/migrations/0001_chat.sql`,
 then `ai-services/migrations/0001_memory.sql`,
 `ai-services/migrations/0002_operations.sql`,
 `ai-services/migrations/0003_memory_provenance.sql`, and
-`ai-services/migrations/0004_pending_facts.sql`. Apply them before starting
+`ai-services/migrations/0004_pending_facts.sql`, and
+`ai-services/migrations/0005_memory_evidence_quote.sql`. Apply them before starting
 `mcp-db-roles`. Use the same PostgreSQL database
 for the backend and all three MCP servers. Set matching `AI_INTERNAL_TOKEN`
 values in `backend/.env` and `ai-services/.env`, and a separate
@@ -260,7 +261,7 @@ uv run --no-project --with 'langgraph>=1.2.12,<1.3' \
 ### Memory demo and manual preflight
 
 Before starting the existing MCP services, apply migrations through
-`0004_pending_facts.sql` to their PostgreSQL database, then rerun role provisioning.
+`0005_memory_evidence_quote.sql` to their PostgreSQL database, then rerun role provisioning.
 A table created after provisioning does not inherit the earlier table grants.
 With the administrative `psql` connection (never put passwords in the command), verify:
 

@@ -4,6 +4,7 @@ import json
 import re
 import unicodedata
 from dataclasses import dataclass
+from datetime import date
 from enum import StrEnum
 from typing import Any
 
@@ -166,6 +167,8 @@ _BUDGET_CEILING = re.compile(
     rf"(?:la\s+)?(?P<amount>{_BUDGET_AMOUNT_FOLDED})\b")
 _REPORTED_PRICE_SUBJECT = re.compile(r"\b(?:shop|cua hang|ben kia|ben khac|doi thu)\b[^.!?;,]{0,32}"
                                      r"\b(?:bao gia|gia ban|gia)\b")
+_BUDGET_CUE = re.compile(r"\b(?:ngan sach|budget|muon chi|dinh chi|co the chi|chi tam|chi khoang)\b")
+_PRICE_AFTER_BUDGET_CUE = re.compile(r"\b(?:gia|shop|cua hang|ben kia|ben khac|doi thu)\b")
 
 
 def _folded_budget_amount(raw: str) -> int | None:
@@ -222,19 +225,24 @@ def customer_budget_amounts(customer_text: str) -> set[int]:
         high = _folded_budget_amount(match.group("high") + match.group("high_unit"))
         if low is not None and high is not None and low <= high:
             amounts.add(high)
-    for match in re.finditer(
-        rf"\b(?:ngan sach|budget|muon chi|dinh chi|co the chi|chi tam|chi khoang)\b"
-        rf"[^.!?;]{{0,28}}?\b(?P<amount>{_BUDGET_AMOUNT_FOLDED})\b", folded
-    ):
-        if any(floor.start("amount") <= match.start("amount") < floor.end("amount")
-               for floor in floors):
-            continue
-        if any(price_range.start() <= match.start("amount") < price_range.end()
-               for price_range in ranges):
-            continue
-        amount = _folded_budget_amount(match.group("amount"))
-        if amount is not None:
-            amounts.add(amount)
+    # Keep separators inside 4,5 or 4.000.000 intact while bounding each cue.
+    bounded = re.sub(r"(?<!\d)[,.]|[,.](?!\d)|[;!?]", "|", folded)
+    for clause in re.finditer(r"[^|]+", bounded):
+        for cue in _BUDGET_CUE.finditer(clause.group()):
+            tail = clause.group()[cue.end():]
+            money = re.search(rf"\b{_BUDGET_AMOUNT_FOLDED}\b", tail)
+            if money is None or len(tail[:money.start()].split()) > 14:
+                continue
+            if _PRICE_AFTER_BUDGET_CUE.search(tail[:money.start()]):
+                continue
+            start = clause.start() + cue.end() + money.start()
+            if any(floor.start("amount") <= start < floor.end("amount") for floor in floors):
+                continue
+            if any(price_range.start() <= start < price_range.end() for price_range in ranges):
+                continue
+            amount = _folded_budget_amount(money.group())
+            if amount is not None:
+                amounts.add(amount)
     for match in _BUDGET_CEILING.finditer(folded):
         # "khong duoi" is a floor; the trailing "duoi" is not a ceiling.
         if match.group().startswith("duoi") and re.search(r"\bkhong\s+$", folded[:match.start()]):
@@ -621,6 +629,7 @@ class FactRejectReason(StrEnum):
     DELIVERY_STATUS_NOT_BLOCKER = "delivery_status_not_blocker"
     PAST_CONSULTATION_NOT_BLOCKER = "past_consultation_not_blocker"
     RESOLVED_BLOCKER = "resolved_blocker"
+    NEUTRAL_CHOICE_NOT_OBJECTION = "neutral_choice_not_objection"
     PATTERN_NOT_MATCHED = "pattern_not_matched"
     VALUE_OUT_OF_DOMAIN = "value_out_of_domain"
     TYPE_INVALID = "type_invalid"
@@ -641,14 +650,101 @@ class FactRejectReason(StrEnum):
 class FactEvidence:
     source: str | None
     reason: FactRejectReason | None
+    normalized_value: Any = None
+    evidence_quote: str | None = None
 
     def __post_init__(self) -> None:
         if (self.source is None) == (self.reason is None):
             raise ValueError("Fact evidence needs exactly one of source or reject reason")
 
 
+# These are semantic price-objection expressions, not a complete BTC enum.
+_EXPENSIVE_PHRASE = re.compile(
+    r"(?i)\b(?:đắt(?:\s+(?:quá|thế|hơn))?|mắc(?:\s+quá)?|chát|"
+    r"giá\s+(?:hơi\s+|khá\s+)?cao|dat\s+(?:qua|the|hon)|"
+    r"mac\s+qua|gia\s+(?:hoi\s+|kha\s+)?cao)\b"
+)
+_OBJECTION_NEGATION = re.compile(
+    r"\b(?:khong|chua)\s+(?:he\s+|qua\s+)?(?:dat|mac|chat|cao)\b|"
+    r"\bgia\s+(?:khong|chua)\s+cao\b"
+)
+_NEUTRAL_CHOICE = re.compile(
+    r"\b(?:can nhac|phan van|dang chon|so sanh)\s+giua\b"
+)
+_PAYMENT_PHRASES = {
+    "COD": r"cod|ship\s+cod",
+    "bank": r"bank|chuyen\s+khoan|ngan\s+hang",
+    "momo": r"momo",
+    "zalopay": r"zalopay",
+}
+
+
+def _quote_present(quote: str, customer_text: str) -> bool:
+    def light(text: str) -> str:
+        return " ".join(unicodedata.normalize("NFC", text).casefold().split())
+    return light(quote) in light(customer_text)
+
+
+def _quote_overlaps_clause(quote: str, clause: str) -> bool:
+    return _quote_present(quote, clause) or _quote_present(clause.strip(), quote)
+
+
+def _normalize_slot_value(key: str, value: Any, customer_text: str,
+                          evidence_quote: str | None) -> tuple[Any, str | None, FactRejectReason | None]:
+    """Apply the SlotSpec domain before testing evidence for a candidate."""
+    spec = SLOT_SPEC_BY_KEY.get(key)
+    if spec is None:
+        return value, None, FactRejectReason.UNKNOWN_KEY
+    types = spec.value_type if isinstance(spec.value_type, tuple) else (spec.value_type,)
+    if key != Slot.OBJECTION and type(value) not in types:
+        return value, None, FactRejectReason.TYPE_INVALID
+    if isinstance(value, str) and (not value.strip() or mask_pii(value) != value):
+        return value, None, (FactRejectReason.EMPTY_VALUE if not value.strip()
+                             else FactRejectReason.PII_VALUE)
+    if evidence_quote is not None:
+        if (not isinstance(evidence_quote, str) or not evidence_quote.strip()
+                or len(evidence_quote) > 200 or mask_pii(evidence_quote) != evidence_quote
+                or not _quote_present(evidence_quote, customer_text)):
+            return value, None, FactRejectReason.QUOTE_NOT_FOUND
+    if key == Slot.OBJECTION:
+        if not isinstance(value, str):
+            return value, None, FactRejectReason.TYPE_INVALID
+        quote = evidence_quote
+        if quote is None and value not in spec.allowed_values and _quote_present(value, customer_text):
+            quote = value
+        if quote is None:
+            match = _EXPENSIVE_PHRASE.search(customer_text)
+            if match:
+                quote = match.group()
+        if quote is None:
+            return value, None, FactRejectReason.QUOTE_NOT_FOUND
+        expensive = bool(_EXPENSIVE_PHRASE.search(quote))
+        if not expensive and _NEUTRAL_CHOICE.search(_fold_text(quote)):
+            return value, quote, FactRejectReason.NEUTRAL_CHOICE_NOT_OBJECTION
+        if value == "dat_qua" and not expensive:
+            return value, quote, FactRejectReason.VALUE_NOT_IN_QUOTE_WINDOW
+        return ("dat_qua" if expensive else "khac"), quote, None
+    if spec.value_domain == "closed":
+        if spec.allowed_values:
+            canonical = next((item for item in spec.allowed_values
+                              if isinstance(value, str) and item.casefold() == value.casefold()), None)
+            if canonical is None:
+                return value, evidence_quote, FactRejectReason.VALUE_OUT_OF_DOMAIN
+            value = canonical
+        elif type(value) is int and value <= 0:
+            return value, evidence_quote, FactRejectReason.VALUE_OUT_OF_DOMAIN
+        elif spec.value_format == "date":
+            try:
+                if date.fromisoformat(value).isoformat() != value:
+                    raise ValueError("noncanonical date")
+            except ValueError:
+                return value, evidence_quote, FactRejectReason.VALUE_OUT_OF_DOMAIN
+    return value, evidence_quote, None
+
+
 def _fact_evidence_source(
-    key: str, value: Any, op: str, customer_text: str, tool_calls: list[dict[str, Any]]
+    key: str, value: Any, op: str, customer_text: str, tool_calls: list[dict[str, Any]],
+    evidence_quote: str | None = None,
 ) -> str | None:
     """Original admission rule. Keep this independent of diagnostic classification."""
     if key not in PROFILE_SLOT_KEYS or _PII_KEY.search(key) or type(value) not in {str, int, float, bool}:
@@ -680,17 +776,24 @@ def _fact_evidence_source(
         elif key == Slot.PREFERRED_SIZE:
             direct = bool(re.search(rf"(?i)\bsize\s*{re.escape(str(value))}\b", customer_text))
         elif key == Slot.PREFERRED_COLOR:
-            direct = bool(re.search(rf"\bmau\s+{re.escape(_fold_text(str(value)))}\b", folded_customer))
+            direct = bool(re.search(rf"\bmau\b(?:\s+\w+){{0,5}}\s+"
+                                    rf"{re.escape(_fold_text(str(value)))}\b", folded_customer))
         elif key == Slot.SIZE:
             direct = bool(re.search(rf"(?i)\bsize\s*{re.escape(str(value))}\b", customer_text))
         elif key == Slot.COLOR:
-            direct = bool(re.search(rf"\bmau\s+{re.escape(_fold_text(str(value)))}\b", folded_customer))
+            direct = bool(re.search(rf"\bmau\b(?:\s+\w+){{0,5}}\s+"
+                                    rf"{re.escape(_fold_text(str(value)))}\b", folded_customer))
         elif key == Slot.PAYMENT:
-            payment = str(value).casefold()
-            direct = bool(re.search(r"\b(?:thanh toan|tra|ship)\s+" +
-                                    re.escape(payment) + r"\b", folded_customer))
+            phrase = _PAYMENT_PHRASES.get(str(value))
+            direct = bool(phrase and re.search(
+                r"\b(?:thanh toan|tra|chuyen khoan|ship)\s+"
+                r"(?:(?:bang|qua|vi)\s+)?(?:" + phrase + r")\b", folded_customer))
+            if value == "bank" and re.search(r"\bchuyen khoan\b", folded_customer):
+                direct = True
         elif key == Slot.OBJECTION:
-            direct = value == "dat_qua" and bool(re.search(r"(?i)\b(?:đắt hơn|đắt quá|giá cao)\b", customer_text))
+            direct = bool(evidence_quote and _quote_overlaps_clause(evidence_quote, customer_text)) and (
+                bool(_EXPENSIVE_PHRASE.search(customer_text)) if value == "dat_qua"
+                else value == "khac")
         normalized_money = set()
         for digits, unit in re.findall(r"(?i)\b(\d+(?:[.,]\d+)?)\s*(triệu|tr|nghìn|ngàn|k)\b", customer_text):
             number = float(digits.replace(",", "."))
@@ -768,7 +871,7 @@ def _fact_reject_reason(key: str, value: Any, op: str, customer_text: str,
         return FactRejectReason.THIRD_PARTY_CONTEXT
     if key in TOOL_ONLY_SLOT_KEYS:
         return FactRejectReason.TOOL_EVIDENCE_MISSING
-    if key == Slot.OBJECTION and value != "dat_qua":
+    if key == Slot.OBJECTION and value not in SLOT_SPEC_BY_KEY[Slot.OBJECTION].allowed_values:
         return FactRejectReason.VALUE_OUT_OF_DOMAIN
     if re.search(r"\bneu\b", folded):
         return FactRejectReason.HYPOTHETICAL_CONTEXT
@@ -798,7 +901,7 @@ _CONTEXT_CLAUSE = re.compile(r"[;,](?!\d)|\b(?:nhưng|nhung|và|va|mà|ma)\b", r
 _HYPOTHETICAL_CUE = re.compile(r"\b(?:neu|gia su|lo|vi du|thu)\b|^nho\b")
 _QUESTION_CUE = re.compile(r"\b(?:duoc khong|khong a|phai khong|the nao|thi sao|hay sao)\b|\b(?:a|ha|nhi|chua)\s*$")
 _POLAR_CHILD_NEGATION = re.compile(r"\b(?:khong|chua)\s+(?:co\s+)?(?:con|be|em be)\b")
-_SELECTION_NEGATION = re.compile(r"\bkhong\s+(?:(?:can|muon)\s+)?(?:thanh toan|tra|chon|lay|thich|mua|dung)\b|\bkhong\s+(?:can|muon)\b")
+_SELECTION_NEGATION = re.compile(r"\bkhong\s+(?:(?:can|muon)\s+)?(?:thanh toan|tra|chuyen khoan|chon|lay|thich|mua|dung|phai)\b|\bkhong\s+(?:can|muon)\b")
 _OBSTACLE_NEGATION = re.compile(r"\bkhong\s+can\b")
 _BLOCKER_DECISION_PERSON = PERSON_PATTERN
 _BLOCKER_CONSULT = re.compile(
@@ -867,7 +970,8 @@ def _blocker_rejection(value: Any, customer_text: str) -> FactRejectReason | Non
     return reasons[0] if reasons else None
 
 
-def _context_rejection(key: str, value: Any, op: str, customer_text: str) -> FactRejectReason | None:
+def _context_rejection(key: str, value: Any, op: str, customer_text: str,
+                       evidence_quote: str | None = None) -> FactRejectReason | None:
     """Reject a proposed customer fact only when all matching clauses lack an assertion.
 
     Current proposals have no evidence_quote. The existing slot matcher identifies
@@ -881,7 +985,7 @@ def _context_rejection(key: str, value: Any, op: str, customer_text: str) -> Fac
                if part.strip()]
     reasons: list[FactRejectReason] = []
     for clause in clauses:
-        if _fact_evidence_source(key, value, op, clause, []) != "customer":
+        if _fact_evidence_source(key, value, op, clause, [], evidence_quote) != "customer":
             continue
         folded = _fold_text(clause)
         if _HYPOTHETICAL_CUE.search(folded) or re.search(r"\bnhỡ\b", clause.casefold()):
@@ -893,6 +997,8 @@ def _context_rejection(key: str, value: Any, op: str, customer_text: str) -> Fac
             reasons.append(FactRejectReason.NEGATED_CONTEXT)
         elif spec.context_negation == "selection" and _SELECTION_NEGATION.search(folded):
             reasons.append(FactRejectReason.NEGATED_CONTEXT)
+        elif spec.context_negation == "objection" and _OBJECTION_NEGATION.search(folded):
+            reasons.append(FactRejectReason.NEGATED_CONTEXT)
         elif spec.context_negation == "obstacle" and _OBSTACLE_NEGATION.search(folded):
             reasons.append(FactRejectReason.NEGATED_CONTEXT)
         else:
@@ -901,20 +1007,42 @@ def _context_rejection(key: str, value: Any, op: str, customer_text: str) -> Fac
 
 
 def fact_evidence(
-    key: str, value: Any, op: str, customer_text: str, tool_calls: list[dict[str, Any]]
+    key: str, value: Any, op: str, customer_text: str, tool_calls: list[dict[str, Any]],
+    evidence_quote: str | None = None,
 ) -> FactEvidence:
     """Apply clause context before the existing slot evidence decision."""
+    if key not in PROFILE_SLOT_KEYS:
+        return FactEvidence(source=None, reason=FactRejectReason.UNKNOWN_KEY)
+    if _PII_KEY.search(key):
+        return FactEvidence(source=None, reason=FactRejectReason.PII_KEY)
+    if op == "set":
+        value, evidence_quote, domain_reason = _normalize_slot_value(
+            key, value, customer_text, evidence_quote)
+        if domain_reason is not None:
+            return FactEvidence(source=None, reason=domain_reason)
+        if evidence_quote and SLOT_SPEC_BY_KEY[key].evidence_source == "customer":
+            quoted_clauses = [clause.strip() for clause in
+                              _CONTEXT_CLAUSE.split(unicodedata.normalize("NFC", customer_text))
+                              if _quote_overlaps_clause(evidence_quote, clause)]
+            if not quoted_clauses:
+                return FactEvidence(source=None, reason=FactRejectReason.QUOTE_NOT_FOUND)
+            if not any(_fact_evidence_source(key, value, op, clause, [], evidence_quote)
+                       == "customer" for clause in quoted_clauses):
+                return FactEvidence(source=None, reason=FactRejectReason.VALUE_NOT_IN_QUOTE_WINDOW)
     if key == Slot.BUDGET_VND and type(value) is int \
             and value in customer_budget_floor_amounts(customer_text) \
             and value not in customer_budget_amounts(customer_text):
         return FactEvidence(source=None, reason=FactRejectReason.UNSUPPORTED_FLOOR)
-    context_reason = _context_rejection(key, value, op, customer_text)
+    context_reason = _context_rejection(key, value, op, customer_text, evidence_quote)
     if context_reason is not None:
         return FactEvidence(source=None, reason=context_reason)
     if key == Slot.BLOCKER and op == "set":
         blocker_reason = _blocker_rejection(value, customer_text)
         if blocker_reason is not None:
             return FactEvidence(source=None, reason=blocker_reason)
-    source = _fact_evidence_source(key, value, op, customer_text, tool_calls)
+    source = _fact_evidence_source(key, value, op, customer_text, tool_calls,
+                                   evidence_quote)
     return FactEvidence(source=source, reason=None if source is not None else
-                        _fact_reject_reason(key, value, op, customer_text, tool_calls))
+                        _fact_reject_reason(key, value, op, customer_text, tool_calls),
+                        normalized_value=value if source else None,
+                        evidence_quote=evidence_quote if source else None)

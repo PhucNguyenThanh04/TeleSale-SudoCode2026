@@ -52,7 +52,7 @@ PY
    ```bash
    DATABASE_URL="$eval_dsn" .venv-dataloader/bin/python -m dataloader_offline --only-postgres
    DATABASE_URL="$eval_dsn" .venv-dataloader/bin/python -m dataloader_offline --verify-postgres
-   for migration in backend/migrations/0001_chat.sql backend/migrations/0002_tools.sql backend/migrations/0003_channel_identity.sql ai-services/migrations/0001_memory.sql ai-services/migrations/0002_operations.sql ai-services/migrations/0003_memory_provenance.sql ai-services/migrations/0004_pending_facts.sql; do
+   for migration in backend/migrations/0001_chat.sql backend/migrations/0002_tools.sql backend/migrations/0003_channel_identity.sql ai-services/migrations/0001_memory.sql ai-services/migrations/0002_operations.sql ai-services/migrations/0003_memory_provenance.sql ai-services/migrations/0004_pending_facts.sql ai-services/migrations/0005_memory_evidence_quote.sql; do
        psql "$eval_psql_dsn" -X -v ON_ERROR_STOP=1 -f "$migration"
    done
    docker compose run --rm -e PGDATABASE="$eval_db" mcp-db-roles

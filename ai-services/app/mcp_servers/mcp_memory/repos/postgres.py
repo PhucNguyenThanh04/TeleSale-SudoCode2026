@@ -55,16 +55,16 @@ class MemoryRepo:
     async def stage_fact(self, conn, session_id: str, source_turn_id: UUID,
                          turn_no: int, fact: dict, on: date) -> None:
         await conn.execute("""INSERT INTO ai_memory.pending_facts
-            (session_id,source_turn_id,turn_no,key,value,op,source_kind,source_tool,on_date)
-            VALUES($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9)
+            (session_id,source_turn_id,turn_no,key,value,op,source_kind,source_tool,on_date,evidence_quote)
+            VALUES($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10)
             ON CONFLICT(session_id,source_turn_id,key) DO NOTHING""",
             UUID(session_id), source_turn_id, turn_no, fact["key"],
             json.dumps(fact.get("value"), ensure_ascii=False), fact["op"],
-            fact["source_kind"], fact.get("source_tool"), on)
+            fact["source_kind"], fact.get("source_tool"), on, fact.get("evidence_quote"))
 
     async def pending_facts(self, conn, session_id: str) -> list:
         return await conn.fetch("""SELECT source_turn_id,key,value,op,source_kind,
-            source_tool,on_date FROM ai_memory.pending_facts
+            source_tool,on_date,evidence_quote FROM ai_memory.pending_facts
             WHERE session_id=$1 AND expires_at>now()
             ORDER BY turn_no,key FOR UPDATE""", UUID(session_id))
 
@@ -85,7 +85,7 @@ class MemoryRepo:
                                    UUID(session_id))
 
     async def facts(self, conn, customer_id: str, session_id: str, include_prior: bool) -> list:
-        return await conn.fetch("""SELECT key,value,source,observed_at,on_date,source_kind,source_tool
+        return await conn.fetch("""SELECT key,value,source,observed_at,on_date,source_kind,source_tool,evidence_quote
             FROM ai_memory.facts
             WHERE customer_id=$1 AND status='active' AND ($2::boolean OR source_session_id=$3)""",
             customer_id, include_prior, UUID(session_id))
@@ -142,13 +142,15 @@ class MemoryRepo:
 
     async def insert_fact(self, conn, fact_id, customer_id: str, key: str, value,
                           source: str, session_id: str, previous, *, source_turn_id=None,
-                          on_date=None, source_kind=None, source_tool=None) -> None:
+                          on_date=None, source_kind=None, source_tool=None,
+                          evidence_quote=None) -> None:
         await conn.execute("""INSERT INTO ai_memory.facts
             (fact_id,customer_id,key,value,source,source_session_id,status,supersedes_fact_id,
-             source_turn_id,on_date,source_kind,source_tool)
-            VALUES($1,$2,$3,$4::jsonb,$5,$6,'active',$7,$8,$9,$10,$11)""", fact_id,
+             source_turn_id,on_date,source_kind,source_tool,evidence_quote)
+            VALUES($1,$2,$3,$4::jsonb,$5,$6,'active',$7,$8,$9,$10,$11,$12)""", fact_id,
             customer_id, key, json.dumps(value, ensure_ascii=False), source,
-            UUID(session_id), previous, source_turn_id, on_date, source_kind, source_tool)
+            UUID(session_id), previous, source_turn_id, on_date, source_kind,
+            source_tool, evidence_quote)
 
     async def claim_operation(self, conn, key: str, args_hash: str) -> dict | None:
         await conn.execute("""INSERT INTO ai_memory.write_operations(operation_key,args_hash)

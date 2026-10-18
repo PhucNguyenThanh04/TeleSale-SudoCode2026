@@ -4,10 +4,12 @@ import hashlib
 import json
 import math
 import re
+import unicodedata
 from datetime import date
 from uuid import UUID, uuid4
 
 from app.mcp_servers.mcp_shared.pii import mask_pii
+from app.constants import Slot
 
 
 _FACT_KEY = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
@@ -19,6 +21,12 @@ def _valid_fact(fact: dict) -> bool:
             and bool(_FACT_KEY.fullmatch(fact["key"]))
             and fact.get("op") in {"set", "supersede", "delete"}
             and fact.get("source_kind") in {"customer", "tool"}
+            and (fact.get("key") != Slot.OBJECTION or fact.get("value") != "khac"
+                 or fact.get("evidence_quote"))
+            and (fact.get("evidence_quote") is None or
+                 (isinstance(fact["evidence_quote"], str)
+                  and 0 < len(fact["evidence_quote"]) <= 200
+                  and mask_pii(fact["evidence_quote"]) == fact["evidence_quote"]))
             and (fact["source_kind"] != "tool" or
                  (isinstance(fact.get("source_tool"), str)
                   and 1 <= len(fact["source_tool"]) <= 64))
@@ -56,9 +64,13 @@ async def _write_fact(repo, conn, customer_id: str, session_id: str, fact: dict,
                   "source_kind": fact.get("source_kind"),
                   "source_tool": fact.get("source_tool")}
                  if source_turn_id else {})
+        if fact.get("evidence_quote"):
+            extra["evidence_quote"] = fact["evidence_quote"]
         await repo.insert_fact(conn, fact_id, customer_id, key, fact["value"],
                                source, session_id, previous, **extra)
         result.update(value=fact["value"], fact_id=str(fact_id))
+        if fact.get("evidence_quote"):
+            result["evidence_quote"] = fact["evidence_quote"]
     return result
 
 
@@ -81,7 +93,8 @@ async def read(repo, customer_id: str | None, session_id: str,
             "value": json.loads(row["value"]) if isinstance(row["value"], str) else row["value"],
             "source": row["source"], "status": "active",
             "on": row.get("on_date").isoformat() if row.get("on_date") else None,
-            "source_kind": row.get("source_kind"), "source_tool": row.get("source_tool")}
+            "source_kind": row.get("source_kind"), "source_tool": row.get("source_tool"),
+            "evidence_quote": row.get("evidence_quote")}
             for row in facts}
         episodes = await repo.episodes(conn, customer_id, session_id, max_episodes) if include_prior else []
         result["episodes"] = [{"session_id": str(row["session_id"]), "channel": row["channel"],
@@ -104,6 +117,12 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
         if (not isinstance(facts, list) or len(facts) > 20
                 or any(not isinstance(f, dict) or not _valid_fact(f) for f in facts)
                 ):
+            return {"error": "invalid_facts_or_identity"}
+        source_text = " ".join(unicodedata.normalize("NFC", data["customer_text"])
+                               .casefold().split())
+        if any(fact.get("evidence_quote") and
+               " ".join(unicodedata.normalize("NFC", fact["evidence_quote"])
+                        .casefold().split()) not in source_text for fact in facts):
             return {"error": "invalid_facts_or_identity"}
         orders = data.get("orders", [])
         if (not isinstance(orders, list) or len(orders) > 10
@@ -163,7 +182,8 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
                     fact = {"key": pending["key"],
                             "value": json.loads(value) if isinstance(value, str) else value,
                             "op": pending["op"], "source_kind": pending["source_kind"],
-                            "source_tool": pending["source_tool"]}
+                            "source_tool": pending["source_tool"],
+                            "evidence_quote": pending.get("evidence_quote")}
                     source_turn_id = pending["source_turn_id"]
                     written = await _write_fact(repo, conn, customer_id, session_id,
                                                 fact, f"{session_id}:{source_turn_id}",
@@ -190,10 +210,16 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
             result = {"order_id": data["order_id"]}
         elif action == "fact":
             key, op = data["key"], data["op"]
+            quote = data.get("evidence_quote")
             if op not in {"set", "supersede", "delete"}:
                 result = {"error": "invalid_op"}
             elif isinstance(data.get("value"), str) and mask_pii(data["value"]) != data["value"]:
                 result = {"error": "pii_rejected"}
+            elif quote is not None and (not isinstance(quote, str) or not quote.strip()
+                                        or len(quote) > 200 or mask_pii(quote) != quote):
+                result = {"error": "pii_rejected"}
+            elif key == Slot.OBJECTION and data.get("value") == "khac" and not quote:
+                result = {"error": "invalid_facts_or_identity"}
             else:
                 result = await _write_fact(repo, conn, customer_id, session_id, data,
                                            data["source"])

@@ -39,31 +39,40 @@ class SlotSpec:
     store_in_profile: bool = True
     brief_must_not_ask: bool = False
     supersede: Literal["replace", "append"] = "replace"
-    context_negation: Literal["none", "polar", "selection", "obstacle"] = "none"
+    context_negation: Literal["none", "polar", "selection", "obstacle", "objection"] = "none"
+    value_domain: Literal["free", "closed", "open"] = "free"
+    allowed_values: tuple[str, ...] = ()
+    value_format: Literal["plain", "date"] = "plain"
 
 
-# Keep brief-marked entries in their existing display order. Types and supersede
-# are descriptive until the validator and storage are migrated in later steps.
+# Keep brief-marked entries in their existing display order. Value types/domains
+# are enforced by fact_evidence; supersede remains descriptive metadata.
 SLOT_REGISTRY = (
-    SlotSpec(Slot.ROOM_AREA_M2, int, "customer", brief_must_not_ask=True),
-    SlotSpec(Slot.BUDGET_VND, int, "customer", brief_must_not_ask=True),
+    SlotSpec(Slot.ROOM_AREA_M2, int, "customer", brief_must_not_ask=True,
+             value_domain="closed"),
+    SlotSpec(Slot.BUDGET_VND, int, "customer", brief_must_not_ask=True,
+             value_domain="closed"),
     SlotSpec(Slot.HAS_CHILDREN, bool, "customer", brief_must_not_ask=True,
-             context_negation="polar"),
+             context_negation="polar", value_domain="closed"),
     SlotSpec(Slot.PRODUCT_ADVISED, str, "tool", brief_must_not_ask=True),
-    SlotSpec(Slot.PRICE_QUOTED_VND, int, "tool"),
+    SlotSpec(Slot.PRICE_QUOTED_VND, int, "tool", value_domain="closed"),
     SlotSpec(Slot.PROMO_CODE, str, "tool"),
-    SlotSpec(Slot.PROMO_EXPIRY, str, "tool"),
+    SlotSpec(Slot.PROMO_EXPIRY, str, "tool", value_domain="closed",
+             value_format="date"),
     SlotSpec(Slot.BLOCKER, str, "customer", context_negation="obstacle"),
     SlotSpec(Slot.PREFERRED_SIZE, (str, int), "customer", context_negation="selection"),
     SlotSpec(Slot.PREFERRED_COLOR, str, "customer", context_negation="selection"),
     SlotSpec(Slot.ORDER_ID, str, "tool"),
-    SlotSpec(Slot.IN_STOCK, bool, "tool", context_negation="polar"),
-    SlotSpec(Slot.COMPETITOR_PRICE_VND, int, "customer"),
-    SlotSpec(Slot.OBJECTION, str, "customer"),
+    SlotSpec(Slot.IN_STOCK, bool, "tool", context_negation="polar",
+             value_domain="closed"),
+    SlotSpec(Slot.COMPETITOR_PRICE_VND, int, "customer", value_domain="closed"),
+    SlotSpec(Slot.OBJECTION, str, "customer", context_negation="objection",
+             value_domain="open", allowed_values=("dat_qua", "khac")),
     SlotSpec(Slot.VARIANT_SKU, str, "tool"),
     SlotSpec(Slot.SIZE, (str, int), "customer", context_negation="selection"),
     SlotSpec(Slot.COLOR, str, "customer", context_negation="selection"),
-    SlotSpec(Slot.PAYMENT, str, "customer", context_negation="selection"),
+    SlotSpec(Slot.PAYMENT, str, "customer", context_negation="selection",
+             value_domain="closed", allowed_values=("COD", "bank", "momo", "zalopay")),
 )
 
 SLOT_SPEC_BY_KEY = {spec.key: spec for spec in SLOT_REGISTRY}
