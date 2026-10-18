@@ -7,7 +7,10 @@ import unittest
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
+from pydantic import ValidationError
+
 from app.mcp_servers.mcp_memory.services.memory import read, write
+from app.mcp_servers.mcp_memory.schemas import WriteInput
 
 
 class FakeRepo:
@@ -93,12 +96,41 @@ class MemoryServiceTest(unittest.IsolatedAsyncioTestCase):
                                "evidence_quote": "máy chạy quá nóng"}]}, "bad-quote")
         self.assertEqual(bad, {"error": "invalid_facts_or_identity"})
         self.assertEqual(repo.facts, [])
+        for private_quote in ("chạy ồn quá, gọi 0912345678",
+                              "chạy ồn quá, địa chỉ 12 đường Hoa Mai"):
+            with self.subTest(quote=private_quote):
+                blocked = await write(repo, "commit_turn", "C001", session_id, {
+                    **base, "customer_text": f"Máy này {private_quote}",
+                    "facts": [{"key": "objection", "op": "set",
+                                       "value": "khac", "source_kind": "customer",
+                                       "evidence_quote": private_quote}]})
+                self.assertEqual(blocked, {"error": "invalid_facts_or_identity"})
+                self.assertEqual(repo.facts, [])
+                direct = await write(repo, "fact", "C001", session_id, {
+                    "key": "objection", "op": "set", "value": "khac",
+                    "source": "synthetic-test", "evidence_quote": private_quote})
+                self.assertEqual(direct, {"error": "pii_rejected"})
+                self.assertEqual(repo.facts, [])
         good = await write(repo, "commit_turn", "C001", session_id, {
             **base, "facts": [{"key": "objection", "op": "set", "value": "khac",
                                "source_kind": "customer",
                                "evidence_quote": "chạy ồn quá"}]}, "good-quote")
         self.assertEqual(repo.facts[0][2]["evidence_quote"], "chạy ồn quá")
         self.assertEqual(good["memory_writes"][0]["evidence_quote"], "chạy ồn quá")
+
+    async def test_customer_purge_is_not_a_supported_memory_action(self):
+        repo = TurnRepo()
+        session_id = str(uuid4())
+        await write(repo, "fact", "C001", session_id,
+                    {"key": "budget_vnd", "value": 5_000_000, "op": "set",
+                     "source": "synthetic-test"})
+        stored_before = list(repo.facts)
+        with self.assertRaises(ValidationError):
+            WriteInput(action="delete_customer", customer_id="C001",
+                       session_id=session_id, data={})
+        result = await write(repo, "delete_customer", "C001", session_id, {})
+        self.assertEqual(result, {"error": "unknown_memory_action"})
+        self.assertEqual(repo.facts, stored_before)
 
     async def test_failed_replacement_rolls_back_blocker_retraction(self):
         class FailingRepo(TurnRepo):
