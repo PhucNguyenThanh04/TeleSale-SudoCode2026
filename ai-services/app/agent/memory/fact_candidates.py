@@ -138,9 +138,17 @@ def accepted_candidates(customer_text: str, tool_calls: list[dict[str, Any]],
     return list(accepted.values())
 
 
-_APPROVAL_TAIL = (r"(?:\s+(?:toi|anh|chi|em|minh|nha toi))?\s+"
-                  r"(?:da\s+)?(?:(chua|khong)\s+)?"
-                  r"(?:dong y|chap nhan|ung ho|ok)\b")
+_APPROVAL_TAIL = re.compile(
+    r"(?:\s+(?:toi|anh|chi|em|minh|nha toi))?\s+"
+    r"(?:da\s+)?(?:(chua|khong|tam)\s+)?"
+    r"(?:dong y|chap nhan|ung ho|ok|gat dau|cho\s+roi)\b"
+)
+_RESOLUTION_CLAUSE = re.compile(r"[;,]|\b(?:nhung|va|ma)\b")
+_RESOLUTION_HYPOTHETICAL = re.compile(r"\b(?:neu|gia su|lo|nho|vi du)\b")
+_RESOLUTION_UNCERTAIN = re.compile(r"\b(?:khong biet|chua ro|chua biet)\b")
+_RESOLUTION_QUESTION = re.compile(
+    r"[?]|\b(?:duoc khong|phai khong|chua|khong a|a|ha|nhi)\s*$"
+)
 
 
 def blocker_resolution(customer_text: str, profile: dict[str, dict[str, Any]]
@@ -152,17 +160,33 @@ def blocker_resolution(customer_text: str, profile: dict[str, dict[str, Any]]
     old, current = _fold(prior), _fold(customer_text)
     old_roles = roles_mentioned(old)
     mentioned_approval = False
-    for role, mention in person_mentions(current):
-        match = re.match(_APPROVAL_TAIL, current[mention.end():])
-        if not match:
-            continue
-        if match.group(1):
-            if role in old_roles:
+    deferred_reason = None
+    for clause in _RESOLUTION_CLAUSE.split(current):
+        for role, mention in person_mentions(clause):
+            match = _APPROVAL_TAIL.match(clause, mention.end())
+            if not match:
+                continue
+            if role not in old_roles:
+                if match.group(1) not in {"chua", "khong"}:
+                    mentioned_approval = True
+                continue
+            if match.group(1) in {"chua", "khong"}:
                 return False, BlockerResolutionReason.APPROVAL_NEGATED
-            continue
-        mentioned_approval = True
-        if role in old_roles:
+            if match.group(1) == "tam":
+                deferred_reason = BlockerResolutionReason.TENTATIVE_APPROVAL
+                continue
+            if _RESOLUTION_HYPOTHETICAL.search(clause):
+                deferred_reason = BlockerResolutionReason.HYPOTHETICAL_CONTEXT
+                continue
+            if _RESOLUTION_UNCERTAIN.search(clause):
+                deferred_reason = BlockerResolutionReason.UNCERTAIN_APPROVAL
+                continue
+            if _RESOLUTION_QUESTION.search(clause.strip()):
+                deferred_reason = BlockerResolutionReason.QUESTION_CONTEXT
+                continue
             return True, BlockerResolutionReason.DECISION_MAKER_APPROVED
+    if deferred_reason:
+        return False, deferred_reason
     if mentioned_approval and old_roles:
         return False, BlockerResolutionReason.DIFFERENT_DECISION_MAKER
     price_ok = ("gia" in old or "dat" in old) and bool(re.search(

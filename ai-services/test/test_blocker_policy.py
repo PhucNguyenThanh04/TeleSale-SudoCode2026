@@ -152,6 +152,37 @@ class BlockerPolicyTests(unittest.TestCase):
                     self.assertEqual(accepted[0]["value"], new_value)
                     self.assertEqual([*deletes, *accepted][0]["op"], "delete")
 
+    def test_resolution_requires_a_final_assertion(self):
+        cases = (
+            ("nếu chồng đồng ý thì tôi mua", False,
+             BlockerResolutionReason.HYPOTHETICAL_CONTEXT),
+            ("không biết chồng đồng ý chưa", False,
+             BlockerResolutionReason.UNCERTAIN_APPROVAL),
+            ("chồng tôi đồng ý chưa nhỉ?", False,
+             BlockerResolutionReason.QUESTION_CONTEXT),
+            ("chồng bảo để xem đã", False,
+             BlockerResolutionReason.NO_RESOLUTION_EVIDENCE),
+            ("chồng tôi không đồng ý", False,
+             BlockerResolutionReason.APPROVAL_NEGATED),
+            ("chồng tạm đồng ý", False,
+             BlockerResolutionReason.TENTATIVE_APPROVAL),
+            ("chồng tôi gật đầu rồi", True,
+             BlockerResolutionReason.DECISION_MAKER_APPROVED),
+            ("ông xã ok rồi", True,
+             BlockerResolutionReason.DECISION_MAKER_APPROVED),
+            ("nhà tôi cho rồi", True,
+             BlockerResolutionReason.DECISION_MAKER_APPROVED),
+            ("ba bé đồng ý rồi", True,
+             BlockerResolutionReason.DECISION_MAKER_APPROVED),
+        )
+        profile = {Slot.BLOCKER: {"value": "hỏi chồng"}}
+        for text, expected_delete, reason in cases:
+            with self.subTest(text=text):
+                self.assertEqual(blocker_resolution(text, profile),
+                                 (expected_delete, reason))
+                self.assertEqual(bool(resolved_blockers(text, profile, [])),
+                                 expected_delete)
+
 
 if __name__ == "__main__":
     unittest.main()

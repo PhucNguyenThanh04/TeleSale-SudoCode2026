@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import copy
 import unittest
 from contextlib import asynccontextmanager
 from uuid import uuid4
@@ -76,6 +77,64 @@ class TurnRepo(FakeRepo):
 
 
 class MemoryServiceTest(unittest.IsolatedAsyncioTestCase):
+    async def test_failed_replacement_rolls_back_blocker_retraction(self):
+        class FailingRepo(TurnRepo):
+            def __init__(self):
+                super().__init__()
+                self.values = {}
+
+            @asynccontextmanager
+            async def transaction(self):
+                snapshot = copy.deepcopy((self.values, self.rows,
+                                          self.episode_summaries, self.statuses,
+                                          self.operations))
+                try:
+                    yield object()
+                except Exception:
+                    (self.values, self.rows, self.episode_summaries,
+                     self.statuses, self.operations) = snapshot
+                    raise
+
+            async def active_fact_record(self, _conn, customer_id, key):
+                return self.values.get((customer_id, key))
+
+            async def set_fact_status(self, _conn, fact_id, status):
+                self.statuses.append((fact_id, status))
+                for entry in list(self.values):
+                    if self.values[entry]["fact_id"] == fact_id:
+                        del self.values[entry]
+
+            async def insert_fact(self, _conn, fact_id, customer_id, key, value,
+                                  source, session_id, previous, **metadata):
+                if value == "chờ lương":
+                    raise RuntimeError("simulated_insert_failure")
+                self.values[(customer_id, key)] = {"fact_id": fact_id,
+                                                    "value": json.dumps(value)}
+
+        repo = FailingRepo()
+        session_id = str(uuid4())
+        base = {"agent_text": "Dạ, em ghi nhận ạ.", "on": "2026-10-15",
+                "channel": "hotline"}
+        await write(repo, "commit_turn", "C001", session_id, {
+            **base, "client_msg_id": str(uuid4()),
+            "customer_text": "Tôi cần hỏi chồng", "facts": [
+                {"key": "blocker", "op": "set", "value": "hỏi chồng",
+                 "source_kind": "customer"}],
+        }, "old")
+        old = copy.deepcopy(repo.values[("C001", "blocker")])
+        with self.assertRaisesRegex(RuntimeError, "simulated_insert_failure"):
+            await write(repo, "commit_turn", "C001", session_id, {
+                **base, "client_msg_id": str(uuid4()),
+                "customer_text": "Chồng đồng ý nhưng phải chờ lương",
+                "facts": [
+                    {"key": "blocker", "op": "delete", "source_kind": "customer"},
+                    {"key": "blocker", "op": "set", "value": "chờ lương",
+                     "source_kind": "customer"}],
+            }, "failed-replacement")
+        self.assertEqual(repo.values[("C001", "blocker")], old)
+        self.assertEqual(len(repo.rows[session_id]), 1)
+        self.assertEqual(repo.statuses, [])
+
     async def test_resolved_blocker_is_retracted_before_new_blocker_is_opened(self):
         class BlockerRepo(TurnRepo):
             def __init__(self):
