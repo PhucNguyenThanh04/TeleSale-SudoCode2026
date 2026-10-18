@@ -154,29 +154,69 @@ def _money_amount(value: str) -> int | None:
     return int(number)
 
 
+_BUDGET_AMOUNT_FOLDED = (r"(?:\d[\d.,]*\s*(?:trieu|tr|nghin|ngan|k|dong|d|vnd)"
+                         r"|[a-z]+\s+trieu(?:\s+(?:ruoi|mot|hai|ba|bon|nam|sau|bay|tam|chin))?)")
+_BUDGET_FLOOR = re.compile(
+    rf"\b(?:khong\s+duoi|khong\s+thap\s+hon|toi\s+thieu|it\s+nhat)\s+"
+    rf"(?:la\s+)?(?P<amount>{_BUDGET_AMOUNT_FOLDED})\b")
+_BUDGET_CEILING = re.compile(
+    rf"\b(?:khong\s+(?:qua|hon|vuot)|toi\s+da|duoi)\s+"
+    rf"(?:la\s+)?(?P<amount>{_BUDGET_AMOUNT_FOLDED})\b")
+_REPORTED_PRICE_SUBJECT = re.compile(r"\b(?:shop|cua hang|ben kia|ben khac|doi thu)\b[^.!?;,]{0,32}"
+                                     r"\b(?:bao gia|gia ban|gia)\b")
+
+
+def _folded_budget_amount(raw: str) -> int | None:
+    """Parse a folded money expression without changing the existing amount parser."""
+    number = re.fullmatch(r"(\d[\d.,]*)\s*(trieu|tr|nghin|ngan|k|dong|d|vnd)", raw)
+    if number:
+        unit = {"trieu": "triệu", "nghin": "nghìn", "ngan": "ngàn",
+                "dong": "đồng", "d": "đ"}.get(number.group(2), number.group(2))
+        return _money_amount(number.group(1) + unit)
+    words = {"mot": 1, "hai": 2, "ba": 3, "bon": 4, "nam": 5,
+             "sau": 6, "bay": 7, "tam": 8, "chin": 9}
+    spoken = re.fullmatch(r"([a-z]+)\s+trieu(?:\s+(ruoi|[a-z]+))?", raw)
+    if spoken and spoken.group(1) in words:
+        tail = spoken.group(2)
+        if tail is None or tail == "ruoi" or tail in words:
+            return words[spoken.group(1)] * 1_000_000 + (
+                500_000 if tail == "ruoi" else words.get(tail, 0) * 100_000)
+    return None
+
+
+def customer_budget_floor_amounts(customer_text: str) -> set[int]:
+    """Recognize stated spending floors, which budget_vnd cannot represent."""
+    folded = _fold_text(customer_text)
+    return {amount for match in _BUDGET_FLOOR.finditer(folded)
+            if (amount := _folded_budget_amount(match.group("amount"))) is not None}
+
+
 def customer_budget_amounts(customer_text: str) -> set[int]:
     """Only amounts explicitly framed as the customer's spending limit."""
     amounts = {_money_amount(match.group("amount")) for match in _BUDGET.finditer(customer_text)}
     amounts.discard(None)
     folded = _fold_text(customer_text)
-    for match in re.finditer(r"\b(?:ngan sach|budget|muon chi|dinh chi|co the chi|chi tam|chi khoang)\b"
-                             r"[^.!?;]{0,28}?\b(\d+(?:[.,]\d+)?\s*(?:trieu|tr|nghin|ngan|k)|"
-                             r"[a-z]+\s+trieu(?:\s+(?:ruoi|[a-z]+))?)\b", folded):
-        raw = match.group(1)
-        number = re.fullmatch(r"(\d+(?:[.,]\d+)?)\s*(trieu|tr|nghin|ngan|k)", raw)
-        if number:
-            scale = 1_000_000 if number.group(2) in {"trieu", "tr"} else 1_000
-            amounts.add(int(float(number.group(1).replace(",", ".")) * scale))
-        else:
-            words = {"mot": 1, "hai": 2, "ba": 3, "bon": 4, "nam": 5,
-                     "sau": 6, "bay": 7, "tam": 8, "chin": 9}
-            spoken = re.fullmatch(r"([a-z]+)\s+trieu(?:\s+(ruoi|[a-z]+))?", raw)
-            if spoken and spoken.group(1) in words:
-                tail = spoken.group(2)
-                if tail is None or tail == "ruoi" or tail in words:
-                    amounts.add(words[spoken.group(1)] * 1_000_000 +
-                                (500_000 if tail == "ruoi" else
-                                 words.get(tail, 0) * 100_000))
+    floors = list(_BUDGET_FLOOR.finditer(folded))
+    for match in re.finditer(
+        rf"\b(?:ngan sach|budget|muon chi|dinh chi|co the chi|chi tam|chi khoang)\b"
+        rf"[^.!?;]{{0,28}}?\b(?P<amount>{_BUDGET_AMOUNT_FOLDED})\b", folded
+    ):
+        if any(floor.start("amount") <= match.start("amount") < floor.end("amount")
+               for floor in floors):
+            continue
+        amount = _folded_budget_amount(match.group("amount"))
+        if amount is not None:
+            amounts.add(amount)
+    for match in _BUDGET_CEILING.finditer(folded):
+        # "khong duoi" is a floor; the trailing "duoi" is not a ceiling.
+        if match.group().startswith("duoi") and re.search(r"\bkhong\s+$", folded[:match.start()]):
+            continue
+        clause_start = max(folded.rfind(mark, 0, match.start()) for mark in ".!?;,") + 1
+        if _REPORTED_PRICE_SUBJECT.search(folded[clause_start:match.start()]):
+            continue
+        amount = _folded_budget_amount(match.group("amount"))
+        if amount is not None:
+            amounts.add(amount)
     return amounts
 
 
@@ -547,6 +587,7 @@ class FactRejectReason(StrEnum):
 
     QUOTE_NOT_FOUND = "quote_not_found"
     VALUE_NOT_IN_QUOTE_WINDOW = "value_not_in_quote_window"
+    UNSUPPORTED_FLOOR = "unsupported_floor"
     PATTERN_NOT_MATCHED = "pattern_not_matched"
     VALUE_OUT_OF_DOMAIN = "value_out_of_domain"
     TYPE_INVALID = "type_invalid"
@@ -765,6 +806,10 @@ def fact_evidence(
     key: str, value: Any, op: str, customer_text: str, tool_calls: list[dict[str, Any]]
 ) -> FactEvidence:
     """Apply clause context before the existing slot evidence decision."""
+    if key == Slot.BUDGET_VND and type(value) is int \
+            and value in customer_budget_floor_amounts(customer_text) \
+            and value not in customer_budget_amounts(customer_text):
+        return FactEvidence(source=None, reason=FactRejectReason.UNSUPPORTED_FLOOR)
     context_reason = _context_rejection(key, value, op, customer_text)
     if context_reason is not None:
         return FactEvidence(source=None, reason=context_reason)

@@ -39,11 +39,10 @@ class FactContextPolicyTests(unittest.TestCase):
                          FactRejectReason.NEGATED_CONTEXT)
         self.assertEqual(fact_evidence(Slot.BUDGET_VND, 4_000_000, "set", "tôi muốn chi không quá 4 triệu", []).source,
                          "customer")
-        # The existing budget parser does not represent a floor or recognize these short forms.
-        for text in ("không hơn 4 triệu", "không dưới 4 triệu"):
-            with self.subTest(text=text):
-                self.assertEqual(fact_evidence(Slot.BUDGET_VND, 4_000_000, "set", text, []).reason,
-                                 FactRejectReason.VALUE_NOT_IN_QUOTE_WINDOW)
+        self.assertEqual(fact_evidence(Slot.BUDGET_VND, 4_000_000, "set", "không hơn 4 triệu", []).source,
+                         "customer")
+        self.assertEqual(fact_evidence(Slot.BUDGET_VND, 4_000_000, "set", "không dưới 4 triệu", []).reason,
+                         FactRejectReason.UNSUPPORTED_FLOOR)
 
 
 if __name__ == "__main__":
