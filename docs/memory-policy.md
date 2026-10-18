@@ -21,6 +21,16 @@ Mỗi lượt được ghi qua `mcp-memory`; `source_session_id`, `source_turn_i
 | `order_id` | Chỉ từ `order.create` trả `status: created` và ID | Giữ lịch sử, đọc trạng thái từ order tool |
 | `in_stock` | Kết quả `inventory.check` thành công | Quan sát có ngày; kiểm lại trước khi báo/tạo đơn |
 
+## Khoản nợ thiết kế: trạng thái của blocker
+
+Hiện blocker chỉ có fact active; khi khách xác nhận người ra quyết định đã đồng
+ý, runtime phát lệnh `delete`. Nếu cùng lượt xuất hiện trở ngại mới, lệnh gỡ
+được ghi trước fact mới. Chưa có trạng thái `open/resolved` hay lịch sử giải
+quyết riêng trong Call Brief. Chỉ thiết kế trạng thái này khi phép đo end-to-end
+cho thấy blocker cũ còn active khiến agent hỏi lại hoặc trì hoãn chốt đơn.
+Bí danh “nhà tôi” có thể mơ hồ giữa vợ/chồng; cần kiểm lời khách trong đánh giá
+end-to-end trước khi dựa vào nó để tự động gỡ.
+
 ## Khoản nợ thiết kế: sở thích và điều kiện giao nhận
 
 O04 (không thích lắp ráp phức tạp), M03 (không thích giày có dây) là sở thích;

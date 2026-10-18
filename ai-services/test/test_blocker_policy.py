@@ -5,7 +5,10 @@ import unittest
 from langchain_core.messages import AIMessage
 
 from app.agent.guardrails.checks import FactRejectReason, fact_evidence
-from app.agent.memory.fact_candidates import accepted_candidates, model_candidates
+from app.agent.memory.fact_candidates import (
+    _fold, accepted_candidates, blocker_resolution, model_candidates, resolved_blockers,
+)
+from app.agent.memory.decision_makers import BlockerResolutionReason, roles_mentioned
 from app.constants import Slot
 
 
@@ -107,6 +110,47 @@ class BlockerPolicyTests(unittest.TestCase):
         self.assertEqual(fact_evidence(Slot.BLOCKER, "bàn với chồng", "set",
                                        "tôi sẽ bàn với chồng rồi quyết định", []).source,
                          "customer")
+
+    def test_shared_role_aliases_open_obstacles_and_resolve_only_matching_role(self):
+        examples = (
+            ("ông xã", "husband"), ("anh nhà", "husband"),
+            ("ba bé", "husband"), ("bà xã", "wife"),
+            ("mẹ bé", "wife"), ("bố mẹ", "parents"),
+        )
+        for alias, role in examples:
+            with self.subTest(alias=alias):
+                text = f"Tôi phải hỏi {alias} đã"
+                self.assertEqual(roles_mentioned(_fold(alias)), {role})
+                self.assertEqual(fact_evidence(Slot.BLOCKER, f"hỏi {alias}",
+                                               "set", text, []).source, "customer")
+
+    def test_resolution_retracts_prior_role_then_allows_new_delay(self):
+        cases = (
+            ("hỏi chồng", "ông xã chị đồng ý rồi", True,
+             BlockerResolutionReason.DECISION_MAKER_APPROVED, None),
+            ("hỏi chồng", "mẹ tôi đồng ý rồi", False,
+             BlockerResolutionReason.DIFFERENT_DECISION_MAKER, None),
+            ("hỏi chồng", "chồng tôi chưa đồng ý", False,
+             BlockerResolutionReason.APPROVAL_NEGATED, None),
+            ("hỏi chồng", "chồng đồng ý nhưng phải chờ lương", True,
+             BlockerResolutionReason.DECISION_MAKER_APPROVED, "chờ lương"),
+            ("hỏi chồng", "ông xã chị đồng ý rồi, giá vẫn như hôm trước đúng không?",
+             True, BlockerResolutionReason.DECISION_MAKER_APPROVED, None),
+            ("hỏi vợ", "ông xã đồng ý rồi", False,
+             BlockerResolutionReason.DIFFERENT_DECISION_MAKER, None),
+        )
+        for old, text, expected_delete, reason, new_value in cases:
+            with self.subTest(text=text):
+                profile = {Slot.BLOCKER: {"value": old}}
+                accepted = (accepted_candidates(text, [], [{"key": Slot.BLOCKER,
+                            "value": new_value}]) if new_value else [])
+                self.assertEqual(blocker_resolution(text, profile),
+                                 (expected_delete, reason))
+                deletes = resolved_blockers(text, profile, accepted)
+                self.assertEqual(bool(deletes), expected_delete)
+                if new_value:
+                    self.assertEqual(accepted[0]["value"], new_value)
+                    self.assertEqual([*deletes, *accepted][0]["op"], "delete")
 
 
 if __name__ == "__main__":

@@ -8,6 +8,9 @@ from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.agent.guardrails.checks import fact_evidence, mask_pii
+from app.agent.memory.decision_makers import (
+    BlockerResolutionReason, PERSON_PATTERN, person_mentions, roles_mentioned,
+)
 from app.constants import PROFILE_SLOT_KEYS, TOOL_ONLY_SLOT_KEYS, Slot
 
 
@@ -29,11 +32,11 @@ _SLOT_CUES = {
     Slot.SIZE: r"\bsize\b|\bco giay\b",
     Slot.COLOR: r"\bmau\b",
     Slot.PAYMENT: r"\bcod\b|thanh toan|chuyen khoan|momo|zalopay",
-    Slot.BLOCKER: r"hoi (?:vo|chong|me|bo|nguoi nha)|can nhac|chua quyet|"
+    Slot.BLOCKER: rf"hoi {PERSON_PATTERN}|can nhac|chua quyet|"
                   r"(?:doi|cho)\s+[^.!?;,]{0,40}(?:luong|bao gia|duyet)|"
                   r"(?:ban|trao doi)\s+(?:bac\s+)?voi|"
-                  r"(?:vo|chong|me|bo|ba|nguoi nha)\s+(?:toi\s+)?(?:chua|khong)\s+dong y|"
-                  r"(?:doi|cho)\s+(?:anh ay|chi ay|vo|chong|nguoi nha)\s+ve|"
+                  rf"{PERSON_PATTERN}\s+(?:toi\s+)?(?:chua|khong)\s+dong y|"
+                  rf"(?:doi|cho)\s+{PERSON_PATTERN}\s+ve|"
                   r"(?:xem|kiem tra)\s+lai\s+roi\s+bao",
     Slot.OBJECTION: r"dat qua|gia cao|dat hon|khong ung|khong thich",
     Slot.COMPETITOR_PRICE_VND: r"ben kia|ben khac|shop khac|doi thu",
@@ -135,18 +138,43 @@ def accepted_candidates(customer_text: str, tool_calls: list[dict[str, Any]],
     return list(accepted.values())
 
 
-def resolved_blockers(customer_text: str, profile: dict[str, dict[str, Any]],
-                      accepted: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Retract an open blocker only when the customer explicitly resolves it."""
-    if any(item["key"] == Slot.BLOCKER for item in accepted):
-        return []
+_APPROVAL_TAIL = (r"(?:\s+(?:toi|anh|chi|em|minh|nha toi))?\s+"
+                  r"(?:da\s+)?(?:(chua|khong)\s+)?"
+                  r"(?:dong y|chap nhan|ung ho|ok)\b")
+
+
+def blocker_resolution(customer_text: str, profile: dict[str, dict[str, Any]]
+                       ) -> tuple[bool, BlockerResolutionReason]:
+    """Decide whether this turn explicitly resolves the prior active blocker."""
     prior = profile.get(Slot.BLOCKER, {}).get("value")
     if not isinstance(prior, str):
-        return []
+        return False, BlockerResolutionReason.NO_PRIOR_BLOCKER
     old, current = _fold(prior), _fold(customer_text)
-    spouse_ok = ("vo" in old or "chong" in old) and bool(re.search(
-        r"(?:vo|chong)(?:\s+\w+){0,3}\s+(?:dong y|ok|ung ho|chap nhan)", current))
+    old_roles = roles_mentioned(old)
+    mentioned_approval = False
+    for role, mention in person_mentions(current):
+        match = re.match(_APPROVAL_TAIL, current[mention.end():])
+        if not match:
+            continue
+        if match.group(1):
+            if role in old_roles:
+                return False, BlockerResolutionReason.APPROVAL_NEGATED
+            continue
+        mentioned_approval = True
+        if role in old_roles:
+            return True, BlockerResolutionReason.DECISION_MAKER_APPROVED
+    if mentioned_approval and old_roles:
+        return False, BlockerResolutionReason.DIFFERENT_DECISION_MAKER
     price_ok = ("gia" in old or "dat" in old) and bool(re.search(
         r"\bthoi duoc\b|\bchap nhan gia\b|\bdong y gia\b", current))
+    if price_ok:
+        return True, BlockerResolutionReason.PRICE_ACCEPTED
+    return False, BlockerResolutionReason.NO_RESOLUTION_EVIDENCE
+
+
+def resolved_blockers(customer_text: str, profile: dict[str, dict[str, Any]],
+                      accepted: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Retract a resolved prior blocker before writing any new blocker."""
+    resolved, _ = blocker_resolution(customer_text, profile)
     return ([{"key": Slot.BLOCKER, "op": "delete", "source_kind": "customer"}]
-            if spouse_ok or price_ok else [])
+            if resolved else [])

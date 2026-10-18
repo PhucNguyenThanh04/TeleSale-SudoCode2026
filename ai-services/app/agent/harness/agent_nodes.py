@@ -123,7 +123,8 @@ class AgentNodes(SessionNodes):
                      *reported_tool_candidates(state["agent_text"], tool_calls)]
         facts = accepted_candidates(state["safe_text"], tool_calls,
                                     proposals, state["agent_text"])
-        facts.extend(resolved_blockers(state["safe_text"], state.get("profile", {}), facts))
+        facts = [*resolved_blockers(state["safe_text"], state.get("profile", {}), facts),
+                 *facts]
         try:
             result = await self.memory.commit_turn(
                 str(request.session_id), state.get("customer_id"), state["safe_text"],

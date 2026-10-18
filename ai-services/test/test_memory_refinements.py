@@ -65,7 +65,8 @@ class MemoryRefinementTest(unittest.TestCase):
             [{"key": "blocker", "op": "delete", "source_kind": "customer"}])
         self.assertEqual(resolved_blockers("Vợ anh đồng ý rồi", {
             "blocker": {"value": "can hoi vo"}},
-            [{"key": "blocker", "value": "chờ nhận lương"}]), [])
+            [{"key": "blocker", "value": "chờ nhận lương"}]),
+            [{"key": "blocker", "op": "delete", "source_kind": "customer"}])
 
 
 if __name__ == "__main__":

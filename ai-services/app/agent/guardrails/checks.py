@@ -10,6 +10,7 @@ from typing import Any
 from app.mcp_servers.mcp_shared.pii import mask_pii
 from app.constants import PROFILE_SLOT_KEYS, SLOT_SPEC_BY_KEY, TOOL_ONLY_SLOT_KEYS, Slot
 from app.agent.guardrails.skus import known_skus, mentioned_skus
+from app.agent.memory.decision_makers import PERSON_PATTERN
 
 
 FALLBACK = "Dạ, hiện em chưa kiểm tra được thông tin này. Em sẽ nhờ nhân viên hỗ trợ mình ạ."
@@ -799,7 +800,7 @@ _QUESTION_CUE = re.compile(r"\b(?:duoc khong|khong a|phai khong|the nao|thi sao|
 _POLAR_CHILD_NEGATION = re.compile(r"\b(?:khong|chua)\s+(?:co\s+)?(?:con|be|em be)\b")
 _SELECTION_NEGATION = re.compile(r"\bkhong\s+(?:(?:can|muon)\s+)?(?:thanh toan|tra|chon|lay|thich|mua|dung)\b|\bkhong\s+(?:can|muon)\b")
 _OBSTACLE_NEGATION = re.compile(r"\bkhong\s+can\b")
-_BLOCKER_DECISION_PERSON = r"(?:vo|chong|me|bo|ba|bo me|ba me|ong xa|anh ay|chi ay|nguoi nha|gia dinh)"
+_BLOCKER_DECISION_PERSON = PERSON_PATTERN
 _BLOCKER_CONSULT = re.compile(
     rf"\b(?:hoi\s+(?:them\s+|y kien\s+)?|xin y kien\s+|"
     rf"(?:ban|trao doi)\s+(?:bac\s+)?voi\s+){_BLOCKER_DECISION_PERSON}\b")

@@ -76,6 +76,50 @@ class TurnRepo(FakeRepo):
 
 
 class MemoryServiceTest(unittest.IsolatedAsyncioTestCase):
+    async def test_resolved_blocker_is_retracted_before_new_blocker_is_opened(self):
+        class BlockerRepo(TurnRepo):
+            def __init__(self):
+                super().__init__()
+                self.values = {}
+
+            async def active_fact_record(self, _conn, customer_id, key):
+                return self.values.get((customer_id, key))
+
+            async def set_fact_status(self, _conn, fact_id, status):
+                await super().set_fact_status(_conn, fact_id, status)
+                for entry in list(self.values):
+                    if self.values[entry]["fact_id"] == fact_id:
+                        del self.values[entry]
+
+            async def insert_fact(self, _conn, fact_id, customer_id, key, value,
+                                  source, session_id, previous, **metadata):
+                self.values[(customer_id, key)] = {"fact_id": fact_id,
+                                                    "value": json.dumps(value)}
+
+        repo = BlockerRepo()
+        session_id = str(uuid4())
+        base = {
+            "agent_text": "Dạ, em ghi nhận ạ.", "on": "2026-10-15",
+            "channel": "hotline", "client_msg_id": str(uuid4())}
+        await write(repo, "commit_turn", "C001", session_id, {
+            **base, "customer_text": "Tôi phải hỏi chồng đã",
+            "facts": [{"key": "blocker", "op": "set", "value": "hỏi chồng",
+                       "source_kind": "customer"}],
+        }, "prior-blocker")
+        result = await write(repo, "commit_turn", "C001", session_id, {
+            **base, "client_msg_id": str(uuid4()),
+            "customer_text": "Chồng đồng ý nhưng phải chờ lương",
+            "facts": [
+                {"key": "blocker", "op": "delete", "source_kind": "customer"},
+                {"key": "blocker", "op": "set", "value": "chờ lương",
+                 "source_kind": "customer"},
+            ],
+        }, "resolve-and-replace")
+        self.assertEqual([item["op"] for item in result["memory_writes"]],
+                         ["delete", "set"])
+        self.assertEqual(json.loads(repo.values[("C001", "blocker")]["value"]),
+                         "chờ lương")
+
     async def test_anonymous_fact_is_claimed_only_after_verified_identity(self):
         class PendingRepo(TurnRepo):
             def __init__(self):
