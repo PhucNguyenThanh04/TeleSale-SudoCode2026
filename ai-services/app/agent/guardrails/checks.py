@@ -615,6 +615,8 @@ class FactRejectReason(StrEnum):
     QUOTE_NOT_FOUND = "quote_not_found"
     VALUE_NOT_IN_QUOTE_WINDOW = "value_not_in_quote_window"
     UNSUPPORTED_FLOOR = "unsupported_floor"
+    PREFERENCE_NOT_BLOCKER = "preference_not_blocker"
+    DELIVERY_CONSTRAINT_NOT_BLOCKER = "delivery_constraint_not_blocker"
     PATTERN_NOT_MATCHED = "pattern_not_matched"
     VALUE_OUT_OF_DOMAIN = "value_out_of_domain"
     TYPE_INVALID = "type_invalid"
@@ -794,6 +796,44 @@ _QUESTION_CUE = re.compile(r"\b(?:duoc khong|khong a|phai khong|the nao|thi sao|
 _POLAR_CHILD_NEGATION = re.compile(r"\b(?:khong|chua)\s+(?:co\s+)?(?:con|be|em be)\b")
 _SELECTION_NEGATION = re.compile(r"\bkhong\s+(?:(?:can|muon)\s+)?(?:thanh toan|tra|chon|lay|thich|mua|dung)\b|\bkhong\s+(?:can|muon)\b")
 _OBSTACLE_NEGATION = re.compile(r"\bkhong\s+can\b")
+_BLOCKER_CONSULT = re.compile(
+    r"\b(?:hoi\s+(?:them\s+|y kien\s+)?|xin y kien\s+)"
+    r"(?:vo|chong|me|bo|ba|ong xa|nguoi nha|gia dinh)\b")
+_BLOCKER_WAIT = re.compile(
+    r"\b(?:doi|cho)\b[^.!?;,]{0,45}\b(?:luong|bao gia|duyet|xac nhan|quyet dinh|mua)\b")
+_BLOCKER_DECISION = re.compile(
+    r"\b(?:chua quyet|chua chot|chua the mua|can nhac gia|so sanh gia)\b|"
+    r"\b(?:can|phai)\b[^.!?;,]{0,45}\b(?:truoc khi|roi moi)\s+(?:mua|quyet|chot)\b")
+_BLOCKER_DELIVERY = re.compile(r"\b(?:giao|nhan hang|ship|van chuyen)\b")
+_BLOCKER_PREFERENCE = re.compile(r"\b(?:khong thich|thich|uu tien|khong muon|muon|can)\b")
+_BLOCKER_REJECTED_CONSULT = re.compile(r"\bkhong\s+(?:thich|muon|can)\b[^.!?;,]{0,25}\bhoi\b")
+
+
+def _blocker_rejection(value: Any, customer_text: str) -> FactRejectReason | None:
+    """Classify a proposed blocker by the meaning of its supporting clause."""
+    if not isinstance(value, str) or not value.strip() or mask_pii(value) != value:
+        return None
+    folded_value = _fold_text(value).strip()
+    clauses = [part.strip() for part in _CONTEXT_CLAUSE.split(unicodedata.normalize("NFC", customer_text))
+               if part.strip()]
+    reasons: list[FactRejectReason] = []
+    for clause in clauses:
+        folded = _fold_text(clause)
+        if folded_value not in folded:
+            continue
+        if _BLOCKER_REJECTED_CONSULT.search(folded):
+            reasons.append(FactRejectReason.PREFERENCE_NOT_BLOCKER)
+            continue
+        if (_BLOCKER_CONSULT.search(folded) or _BLOCKER_WAIT.search(folded)
+                or _BLOCKER_DECISION.search(folded)):
+            return None
+        if _BLOCKER_DELIVERY.search(folded):
+            reasons.append(FactRejectReason.DELIVERY_CONSTRAINT_NOT_BLOCKER)
+        elif _BLOCKER_PREFERENCE.search(folded):
+            reasons.append(FactRejectReason.PREFERENCE_NOT_BLOCKER)
+        else:
+            reasons.append(FactRejectReason.PATTERN_NOT_MATCHED)
+    return reasons[0] if reasons else None
 
 
 def _context_rejection(key: str, value: Any, op: str, customer_text: str) -> FactRejectReason | None:
@@ -840,6 +880,10 @@ def fact_evidence(
     context_reason = _context_rejection(key, value, op, customer_text)
     if context_reason is not None:
         return FactEvidence(source=None, reason=context_reason)
+    if key == Slot.BLOCKER and op == "set":
+        blocker_reason = _blocker_rejection(value, customer_text)
+        if blocker_reason is not None:
+            return FactEvidence(source=None, reason=blocker_reason)
     source = _fact_evidence_source(key, value, op, customer_text, tool_calls)
     return FactEvidence(source=source, reason=None if source is not None else
                         _fact_reject_reason(key, value, op, customer_text, tool_calls))

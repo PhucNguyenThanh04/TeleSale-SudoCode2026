@@ -29,7 +29,8 @@ _SLOT_CUES = {
     Slot.SIZE: r"\bsize\b|\bco giay\b",
     Slot.COLOR: r"\bmau\b",
     Slot.PAYMENT: r"\bcod\b|thanh toan|chuyen khoan|momo|zalopay",
-    Slot.BLOCKER: r"hoi (?:vo|chong)|can nhac|chua quyet|de suy nghi",
+    Slot.BLOCKER: r"hoi (?:vo|chong|me|bo|nguoi nha)|can nhac|chua quyet|"
+                  r"(?:doi|cho)\s+[^.!?;,]{0,40}(?:luong|bao gia|duyet)",
     Slot.OBJECTION: r"dat qua|gia cao|dat hon|khong ung|khong thich",
     Slot.COMPETITOR_PRICE_VND: r"ben kia|ben khac|shop khac|doi thu",
 }
@@ -46,8 +47,13 @@ _EXTRACTION_PROMPT = (
     "chỉ đề xuất giá trị mới nhất. Ngân sách chỉ có khi khách nói giới hạn chi tiêu "
     "của chính họ; hỏi giá sản phẩm không phải ngân sách. "
     "Chỉ dùng key trong danh sách: " + ", ".join(_CUSTOMER_KEYS) + ". "
+    "Với blocker, chỉ đề xuất trở ngại thực sự đang ngăn hoặc trì hoãn quyết định mua; "
+    "không dùng blocker cho sở thích sản phẩm hay thời gian giao/nhận hàng. "
+    "Giá trị blocker là cụm ngắn như 'hỏi chồng', 'đợi lương'; "
+    "evidence_quote giữ nguyên cụm lời khách làm căn cứ. "
     "Trả đúng JSON dạng {\"fact_candidates\":[{\"key\":\"...\",\"value\":...,"
-    "\"source\":\"customer\"}]}; trả mảng rỗng nếu không có fact. Không thêm lời giải thích."
+    "\"source\":\"customer\",\"evidence_quote\":\"...\"}]}; "
+    "trả mảng rỗng nếu không có fact. Không thêm lời giải thích."
 )
 
 
@@ -74,8 +80,12 @@ def model_candidates(messages: list[Any]) -> list[dict[str, Any]]:
                 value = item.get("value")
                 if isinstance(value, str) and (len(value) > 500 or mask_pii(value) != value):
                     continue
-                candidates.append({"key": item.get("key"), "value": value,
-                                   "source": item.get("source"), "origin": "model"})
+                quote = item.get("evidence_quote")
+                candidate = {"key": item.get("key"), "value": value,
+                             "source": item.get("source"), "origin": "model"}
+                if isinstance(quote, str) and 0 < len(quote) <= 200 and mask_pii(quote) == quote:
+                    candidate["evidence_quote"] = quote
+                candidates.append(candidate)
     return candidates
 
 
