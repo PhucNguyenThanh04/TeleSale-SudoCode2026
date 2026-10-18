@@ -23,7 +23,8 @@ def _fold(value: str) -> str:
 _SLOT_CUES = {
     Slot.ROOM_AREA_M2: r"\bphong\b|\b(?:m2|met vuong)\b",
     Slot.BUDGET_VND: r"ngan sach|muon chi|dinh chi|co the chi|chi tam|chi khoang|"
-                     r"khong (?:qua|hon|vuot)|toi da|\bduoi\b",
+                     r"khong (?:qua|hon|vuot)|toi da|\bduoi\b|"
+                     r"\b\d[\d.,]*\s*(?:den|-)\s*\d[\d.,]*\s*(?:trieu|tr|cu|k)\b",
     Slot.HAS_CHILDREN: r"\bcon\b|\bbe\b|tre nho|em be",
     Slot.SIZE: r"\bsize\b|\bco giay\b",
     Slot.COLOR: r"\bmau\b",

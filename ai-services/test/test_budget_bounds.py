@@ -46,6 +46,38 @@ class BudgetBoundsTests(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertIsNone(fact_evidence(Slot.BUDGET_VND, 4_000_000, "set", text, []).source)
 
+    def test_ranges_store_only_ceiling(self):
+        for text in ("từ 3 đến 5 triệu", "3-5 triệu", "tầm 3 đến 5 triệu",
+                     "ngân sách từ 3 triệu đến 5 triệu"):
+            with self.subTest(text=text):
+                self.assertEqual(customer_budget_amounts(text), {5_000_000})
+                self.assertEqual(fact_evidence(Slot.BUDGET_VND, 5_000_000, "set", text, []).source,
+                                 "customer")
+                self.assertEqual(fact_evidence(Slot.BUDGET_VND, 3_000_000, "set", text, []).reason,
+                                 FactRejectReason.UNSUPPORTED_FLOOR)
+        self.assertEqual(customer_budget_amounts("ngân sách 5-3 triệu"), set())
+
+    def test_ceiling_words_need_money_units(self):
+        for text, value in (("phòng dưới 25m2", 25), ("tối đa 2 cái", 2),
+                            ("dưới 3 người", 3)):
+            with self.subTest(text=text):
+                self.assertEqual(customer_budget_amounts(text), set())
+                self.assertIsNone(fact_evidence(Slot.BUDGET_VND, value, "set", text, []).source)
+
+    def test_amount_spellings_require_spending_context(self):
+        spellings = (("4tr", 4_000_000), ("4 củ", 4_000_000),
+                     ("4 triệu rưỡi", 4_500_000), ("4tr5", 4_500_000),
+                     ("800k", 800_000), ("4.000.000đ", 4_000_000),
+                     ("4,5 triệu", 4_500_000))
+        for spelling, amount in spellings:
+            with self.subTest(spelling=spelling):
+                self.assertEqual(customer_budget_amounts(spelling), set())
+                self.assertIsNone(fact_evidence(Slot.BUDGET_VND, amount, "set", spelling, []).source)
+                statement = "Ngân sách của tôi " + spelling
+                self.assertEqual(customer_budget_amounts(statement), {amount})
+                self.assertEqual(fact_evidence(Slot.BUDGET_VND, amount, "set", statement, []).source,
+                                 "customer")
+
 
 if __name__ == "__main__":
     unittest.main()

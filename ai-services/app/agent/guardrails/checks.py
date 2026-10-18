@@ -29,12 +29,6 @@ _NEGATIVE_DISCOUNT = re.compile(
 )
 _PRICE_CONTEXT = re.compile(r"(?i)\b(?:giá(?:\s+bán)?|còn|chỉ)\b")
 _COMPETITOR_CONTEXT = re.compile(r"(?i)\b(?:bên kia|bên khác|shop khác|đối thủ)\b")
-_BUDGET = re.compile(
-    r"(?i)\b(?:ngân\s*sách|budget|(?:muốn|định|có thể)\s+chi|chi\s+(?:tầm|khoảng))\s+"
-    r"(?:(?:anh|chị|em|tôi|mình|nhà mình)\s+)?"
-    r"(?:(?:tầm|khoảng|chỉ|là|cỡ)\s+)?"
-    r"(?P<amount>\d[\d.,]*\s*(?:triệu|tr|nghìn|ngàn|k|đồng|đ|vnd|₫))"
-)
 _REPEATED_BUDGET = re.compile(
     r"\b(?:ngan sach|tam gia|muc gia|gioi han|toi da|duoi)\s+"
     r"(?:(?:toi da|tam|khoang|la|duoi)\s+)?"
@@ -154,8 +148,15 @@ def _money_amount(value: str) -> int | None:
     return int(number)
 
 
-_BUDGET_AMOUNT_FOLDED = (r"(?:\d[\d.,]*\s*(?:trieu|tr|nghin|ngan|k|dong|d|vnd)"
+_BUDGET_AMOUNT_FOLDED = (r"(?:\d{1,3}\s*tr\s*\d{1,3}"
+                         r"|\d[\d.,]*\s*trieu\s+ruoi"
+                         r"|\d[\d.,]*\s*(?:trieu|tr|cu|nghin|ngan|k|dong|d|vnd)"
                          r"|[a-z]+\s+trieu(?:\s+(?:ruoi|mot|hai|ba|bon|nam|sau|bay|tam|chin))?)")
+_BUDGET_RANGE = re.compile(
+    r"\b(?:tu\s+|tam\s+|khoang\s+)?(?P<low>\d[\d.,]*)\s*"
+    r"(?P<low_unit>trieu|tr|cu|nghin|ngan|k|dong|d|vnd)?\s*"
+    r"(?:den|[-–—])\s*(?P<high>\d[\d.,]*)\s*"
+    r"(?P<high_unit>trieu|tr|cu|nghin|ngan|k|dong|d|vnd)\b")
 _BUDGET_FLOOR = re.compile(
     rf"\b(?:khong\s+duoi|khong\s+thap\s+hon|toi\s+thieu|it\s+nhat)\s+"
     rf"(?:la\s+)?(?P<amount>{_BUDGET_AMOUNT_FOLDED})\b")
@@ -168,8 +169,18 @@ _REPORTED_PRICE_SUBJECT = re.compile(r"\b(?:shop|cua hang|ben kia|ben khac|doi t
 
 def _folded_budget_amount(raw: str) -> int | None:
     """Parse a folded money expression without changing the existing amount parser."""
-    number = re.fullmatch(r"(\d[\d.,]*)\s*(trieu|tr|nghin|ngan|k|dong|d|vnd)", raw)
+    shorthand = re.fullmatch(r"(\d{1,3})\s*tr\s*(\d{1,3})", raw)
+    if shorthand:
+        millions, fraction = shorthand.groups()
+        return int(millions) * 1_000_000 + int(fraction) * 10 ** (6 - len(fraction))
+    half = re.fullmatch(r"(\d[\d.,]*)\s*trieu\s+ruoi", raw)
+    if half:
+        whole = _folded_budget_amount(half.group(1) + " trieu")
+        return whole + 500_000 if whole is not None else None
+    number = re.fullmatch(r"(\d[\d.,]*)\s*(trieu|tr|cu|nghin|ngan|k|dong|d|vnd)", raw)
     if number:
+        if number.group(2) == "cu":
+            return _money_amount(number.group(1) + "triệu")
         unit = {"trieu": "triệu", "nghin": "nghìn", "ngan": "ngàn",
                 "dong": "đồng", "d": "đ"}.get(number.group(2), number.group(2))
         return _money_amount(number.group(1) + unit)
@@ -187,22 +198,38 @@ def _folded_budget_amount(raw: str) -> int | None:
 def customer_budget_floor_amounts(customer_text: str) -> set[int]:
     """Recognize stated spending floors, which budget_vnd cannot represent."""
     folded = _fold_text(customer_text)
-    return {amount for match in _BUDGET_FLOOR.finditer(folded)
-            if (amount := _folded_budget_amount(match.group("amount"))) is not None}
+    amounts = {amount for match in _BUDGET_FLOOR.finditer(folded)
+               if (amount := _folded_budget_amount(match.group("amount"))) is not None}
+    for match in _BUDGET_RANGE.finditer(folded):
+        unit = match.group("low_unit") or match.group("high_unit")
+        low = _folded_budget_amount(match.group("low") + unit)
+        high = _folded_budget_amount(match.group("high") + match.group("high_unit"))
+        if low is not None and high is not None and low <= high:
+            amounts.add(low)
+    return amounts
 
 
 def customer_budget_amounts(customer_text: str) -> set[int]:
     """Only amounts explicitly framed as the customer's spending limit."""
-    amounts = {_money_amount(match.group("amount")) for match in _BUDGET.finditer(customer_text)}
-    amounts.discard(None)
+    amounts: set[int] = set()
     folded = _fold_text(customer_text)
     floors = list(_BUDGET_FLOOR.finditer(folded))
+    ranges = list(_BUDGET_RANGE.finditer(folded))
+    for match in ranges:
+        unit = match.group("low_unit") or match.group("high_unit")
+        low = _folded_budget_amount(match.group("low") + unit)
+        high = _folded_budget_amount(match.group("high") + match.group("high_unit"))
+        if low is not None and high is not None and low <= high:
+            amounts.add(high)
     for match in re.finditer(
         rf"\b(?:ngan sach|budget|muon chi|dinh chi|co the chi|chi tam|chi khoang)\b"
         rf"[^.!?;]{{0,28}}?\b(?P<amount>{_BUDGET_AMOUNT_FOLDED})\b", folded
     ):
         if any(floor.start("amount") <= match.start("amount") < floor.end("amount")
                for floor in floors):
+            continue
+        if any(price_range.start() <= match.start("amount") < price_range.end()
+               for price_range in ranges):
             continue
         amount = _folded_budget_amount(match.group("amount"))
         if amount is not None:
