@@ -796,11 +796,19 @@ _QUESTION_CUE = re.compile(r"\b(?:duoc khong|khong a|phai khong|the nao|thi sao|
 _POLAR_CHILD_NEGATION = re.compile(r"\b(?:khong|chua)\s+(?:co\s+)?(?:con|be|em be)\b")
 _SELECTION_NEGATION = re.compile(r"\bkhong\s+(?:(?:can|muon)\s+)?(?:thanh toan|tra|chon|lay|thich|mua|dung)\b|\bkhong\s+(?:can|muon)\b")
 _OBSTACLE_NEGATION = re.compile(r"\bkhong\s+can\b")
+_BLOCKER_DECISION_PERSON = r"(?:vo|chong|me|bo|ba|bo me|ba me|ong xa|anh ay|chi ay|nguoi nha|gia dinh)"
 _BLOCKER_CONSULT = re.compile(
-    r"\b(?:hoi\s+(?:them\s+|y kien\s+)?|xin y kien\s+)"
-    r"(?:vo|chong|me|bo|ba|ong xa|nguoi nha|gia dinh)\b")
+    rf"\b(?:hoi\s+(?:them\s+|y kien\s+)?|xin y kien\s+|"
+    rf"(?:ban|trao doi)\s+(?:bac\s+)?voi\s+){_BLOCKER_DECISION_PERSON}\b")
+_BLOCKER_APPROVAL = re.compile(
+    rf"\b{_BLOCKER_DECISION_PERSON}\b(?:\s+(?:toi|minh|nha toi))?\s+"
+    r"(?:chua|khong)\s+(?:dong y|chap nhan|ung ho|quyet)\b")
+_BLOCKER_WAIT_PERSON = re.compile(
+    rf"\b(?:doi|cho)\s+{_BLOCKER_DECISION_PERSON}\s+(?:ve|quay lai|tra loi)\b")
 _BLOCKER_WAIT = re.compile(
     r"\b(?:doi|cho)\b[^.!?;,]{0,45}\b(?:luong|bao gia|duyet|xac nhan|quyet dinh|mua)\b")
+_BLOCKER_DEFERRED_REPLY = re.compile(
+    r"\b(?:xem|kiem tra)\s+lai\b[^.!?;,]{0,20}\b(?:roi\s+)?bao\b")
 _BLOCKER_DECISION = re.compile(
     r"\b(?:chua quyet|chua chot|chua the mua|can nhac gia|so sanh gia)\b|"
     r"\b(?:can|phai)\b[^.!?;,]{0,45}\b(?:truoc khi|roi moi)\s+(?:mua|quyet|chot)\b")
@@ -824,8 +832,9 @@ def _blocker_rejection(value: Any, customer_text: str) -> FactRejectReason | Non
         if _BLOCKER_REJECTED_CONSULT.search(folded):
             reasons.append(FactRejectReason.PREFERENCE_NOT_BLOCKER)
             continue
-        if (_BLOCKER_CONSULT.search(folded) or _BLOCKER_WAIT.search(folded)
-                or _BLOCKER_DECISION.search(folded)):
+        if (_BLOCKER_CONSULT.search(folded) or _BLOCKER_APPROVAL.search(folded)
+                or _BLOCKER_WAIT_PERSON.search(folded) or _BLOCKER_WAIT.search(folded)
+                or _BLOCKER_DEFERRED_REPLY.search(folded) or _BLOCKER_DECISION.search(folded)):
             return None
         if _BLOCKER_DELIVERY.search(folded):
             reasons.append(FactRejectReason.DELIVERY_CONSTRAINT_NOT_BLOCKER)

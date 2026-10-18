@@ -53,6 +53,33 @@ class BlockerPolicyTests(unittest.TestCase):
             '"evidence_quote": "gọi 0901234567"}]}')])
         self.assertNotIn("evidence_quote", unsafe[0])
 
+    def test_decision_maker_and_specific_delay_variants(self):
+        accepted = (
+            ("để tôi bàn với chồng", "bàn với chồng"),
+            ("chồng tôi chưa đồng ý", "chồng tôi chưa đồng ý"),
+            ("phải xin ý kiến bố mẹ", "xin ý kiến bố mẹ"),
+            ("chờ anh ấy về", "chờ anh ấy về"),
+            ("hỏi ý kiến vợ đã", "hỏi ý kiến vợ"),
+            ("chưa quyết được", "chưa quyết được"),
+            ("để tôi xem lại rồi báo", "xem lại rồi báo"),
+            ("Tôi cần trao đổi với mẹ trước khi đặt", "trao đổi với mẹ"),
+        )
+        for text, value in accepted:
+            with self.subTest(text=text):
+                self.assertEqual(fact_evidence(Slot.BLOCKER, value, "set", text, []).source,
+                                 "customer")
+        rejected = (
+            ("để suy nghĩ thêm", "suy nghĩ thêm", FactRejectReason.PATTERN_NOT_MATCHED),
+            ("chồng tôi thích màu đen", "chồng tôi thích màu đen",
+             FactRejectReason.PREFERENCE_NOT_BLOCKER),
+            ("tôi không thích hỏi nhiều", "không thích hỏi nhiều",
+             FactRejectReason.PREFERENCE_NOT_BLOCKER),
+        )
+        for text, value, reason in rejected:
+            with self.subTest(text=text):
+                self.assertEqual(fact_evidence(Slot.BLOCKER, value, "set", text, []).reason,
+                                 reason)
+
 
 if __name__ == "__main__":
     unittest.main()

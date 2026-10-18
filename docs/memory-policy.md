@@ -21,6 +21,17 @@ Mỗi lượt được ghi qua `mcp-memory`; `source_session_id`, `source_turn_i
 | `order_id` | Chỉ từ `order.create` trả `status: created` và ID | Giữ lịch sử, đọc trạng thái từ order tool |
 | `in_stock` | Kết quả `inventory.check` thành công | Quan sát có ngày; kiểm lại trước khi báo/tạo đơn |
 
+## Khoản nợ thiết kế: sở thích và điều kiện giao nhận
+
+O04 (không thích lắp ráp phức tạp), M03 (không thích giày có dây) là sở thích;
+M06 (chỉ nhận hàng sau 18 giờ) là điều kiện giao nhận. Chúng không phải trở
+ngại đang chặn quyết định mua, nên `fact_evidence` từ chối ghi chúng vào
+`blocker` với `preference_not_blocker` hoặc `delivery_constraint_not_blocker`.
+Hiện các thông tin này chỉ còn trong lịch sử lượt có giới hạn, chưa thành fact
+dài hạn và có thể không được mang sang cuộc sau. Chưa có category fact mở được
+triển khai; không dùng `blocker` làm chỗ lưu tạm vì sẽ làm sai Call Brief và
+điều kiện giải quyết blocker.
+
 Agent chỉ đề xuất; `fact_evidence` kiểm lời khách hoặc kết quả tool. Với các
 fact về điều shop đã **nói** (`product_advised`, `price_quoted_vnd`, KM), bước
 ghi còn kiểm trên `agent_text` cuối sau guardrail. Nếu không chuẩn hóa được giá

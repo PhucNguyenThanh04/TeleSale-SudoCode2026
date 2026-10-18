@@ -30,7 +30,11 @@ _SLOT_CUES = {
     Slot.COLOR: r"\bmau\b",
     Slot.PAYMENT: r"\bcod\b|thanh toan|chuyen khoan|momo|zalopay",
     Slot.BLOCKER: r"hoi (?:vo|chong|me|bo|nguoi nha)|can nhac|chua quyet|"
-                  r"(?:doi|cho)\s+[^.!?;,]{0,40}(?:luong|bao gia|duyet)",
+                  r"(?:doi|cho)\s+[^.!?;,]{0,40}(?:luong|bao gia|duyet)|"
+                  r"(?:ban|trao doi)\s+(?:bac\s+)?voi|"
+                  r"(?:vo|chong|me|bo|ba|nguoi nha)\s+(?:toi\s+)?(?:chua|khong)\s+dong y|"
+                  r"(?:doi|cho)\s+(?:anh ay|chi ay|vo|chong|nguoi nha)\s+ve|"
+                  r"(?:xem|kiem tra)\s+lai\s+roi\s+bao",
     Slot.OBJECTION: r"dat qua|gia cao|dat hon|khong ung|khong thich",
     Slot.COMPETITOR_PRICE_VND: r"ben kia|ben khac|shop khac|doi thu",
 }
