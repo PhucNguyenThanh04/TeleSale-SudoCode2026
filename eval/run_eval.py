@@ -133,11 +133,20 @@ def _claims(answer: str, calls: list[dict]) -> list[dict]:
 
 def _facts_used(answer: str, state: dict) -> list[str]:
     profile = state.get("profile", {})
+    scoped = state.get("scoped_facts", {})
     evidence = answer.casefold() + " " + json.dumps(
         [{"name": call.get("name"), "args": call.get("args", {})}
          for call in state.get("tool_calls", [])], ensure_ascii=False).casefold()
-    used = []
-    for key, fact in profile.items():
+    candidates = list(profile.items()) if isinstance(profile, dict) else []
+    if isinstance(scoped, dict):
+        for groups in scoped.values():
+            if not isinstance(groups, dict):
+                continue
+            for facts in groups.values():
+                if isinstance(facts, dict):
+                    candidates.extend(facts.items())
+    used = set()
+    for key, fact in candidates:
         if not isinstance(fact, dict) or not fact.get("source"):
             continue
         source_session = fact["source"].split(":", 1)[0]
@@ -145,7 +154,7 @@ def _facts_used(answer: str, state: dict) -> list[str]:
             continue
         value = fact.get("value")
         if value is not None and str(value).casefold() in evidence:
-            used.append(key)
+            used.add(key)
     return sorted(used)
 
 

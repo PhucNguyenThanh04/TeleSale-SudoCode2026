@@ -63,29 +63,15 @@ class FakeMemory:
 
     def __init__(self):
         self.profile = {}
+        self.scoped_facts = {"product": {}, "room": {}}
         self.writes = []
         self.operations = {}
         self.turns = {}
-        self.pending = {}
-
-    async def claim_pending(self, session_id, customer_id, client_msg_id):
-        written = []
-        for fact, source in self.pending.pop(session_id, []):
-            old = self.profile.get(fact["key"])
-            if old and old["value"] == fact.get("value"):
-                continue
-            self.profile[fact["key"]] = {"key": fact["key"],
-                "value": fact.get("value"), "source": source,
-                "source_kind": fact["source_kind"], "status": "active"}
-            written.append({"key": fact["key"], "value": fact.get("value"),
-                "op": "supersede" if old else "set", "source": source,
-                "customer_id": customer_id})
-        self.writes.extend(written)
-        return {"memory_writes": written}
 
     async def read_context(self, session_id, customer_id):
         return {"history": self.turns.get(session_id, []),
                 "profile": dict(self.profile) if customer_id else {},
+                "scoped_facts": self.scoped_facts if customer_id else {"product": {}, "room": {}},
                 "episodes": [], "owned_order_ids": []}
 
     async def commit_turn(self, session_id, customer_id, customer_text, agent_text,
@@ -97,12 +83,18 @@ class FakeMemory:
             {"customer": customer_text, "agent": agent_text})
         written = []
         if not customer_id:
-            self.pending.setdefault(session_id, []).extend(
-                (fact, f"{session_id}:{client_msg_id}") for fact in facts)
             result = {"turn_no": len(self.turns[session_id]), "memory_writes": []}
             self.operations[key] = result
             return result
         for fact in facts:
+            if fact.get("scope_type") in {"product", "room"} and fact.get("scope_id"):
+                bucket = self.scoped_facts[fact["scope_type"]].setdefault(fact["scope_id"], {})
+                if fact.get("op") == "delete":
+                    bucket.pop(fact["key"], None)
+                else:
+                    bucket[fact["key"]] = {"key": fact["key"], "value": fact["value"],
+                                           "source_kind": fact.get("source_kind"),
+                                           "status": "active", "on": on}
             old = self.profile.get(fact["key"])
             if old and old["value"] == fact["value"]:
                 continue
@@ -126,6 +118,81 @@ def turn(text, session_id=None):
 
 
 class DeepMemoryTest(unittest.IsolatedAsyncioTestCase):
+    async def test_shared_phone_does_not_load_either_candidate_memory(self):
+        class SharedGateway(FakeGateway):
+            async def invoke(self, name, args):
+                if name == "crm.get_customer":
+                    return {"found": True, "ambiguous": True, "candidates": [
+                        {"customer_id": "C021", "name": "Mai", "sessions": [
+                            {"session_id": "mai-prior", "channel": "hotline",
+                             "date": "2026-10-12", "summary": "Hỏi máy lọc", "outcome": "khac"}]},
+                        {"customer_id": "C022", "name": "Sơn", "sessions": [
+                            {"session_id": "son-prior", "channel": "hotline",
+                             "date": "2026-10-13", "summary": "Hỏi giày", "outcome": "khac"}]}]}
+                return {"error": "unavailable"}
+
+        class ScopedMemory(FakeMemory):
+            async def read_context(self, session_id, customer_id):
+                assert customer_id is None
+                return {"history": self.turns.get(session_id, []), "profile": {},
+                        "episodes": [], "owned_order_ids": []}
+
+        model = FakeToolModel(replies=[AIMessage(content="Dạ, em nghe ạ.")])
+        runtime = DeepHarnessRuntime(model, SharedGateway(), ScopedMemory())
+        request = turn("Tôi hỏi tiếp món hôm trước", uuid4()).model_copy(update={
+            "channel_identity": "0912283456"})
+        response = await runtime.run(request)
+        self.assertIsNone(response.call_brief)
+        self.assertEqual(runtime.state_for(request)["identity_status"], "ambiguous")
+        self.assertNotIn("Hỏi máy lọc", model.seen[0])
+        self.assertNotIn("Hỏi giày", model.seen[0])
+
+    async def test_same_customer_memory_is_available_after_channel_change(self):
+        class MultiChannelGateway(FakeGateway):
+            async def invoke(self, name, args):
+                if name == "crm.get_customer":
+                    assert args in ({"fb_id": "fb.thao.37"}, {"phone": "0934567812"})
+                    return {"found": True, "customer_id": "C037", "phone": "0934567812",
+                            "name": "Thảo", "orders": [], "sessions": []}
+                return {"error": "unavailable"}
+
+        class ScopedMemory(FakeMemory):
+            async def read_context(self, session_id, customer_id):
+                assert customer_id == "C037"
+                return {"history": self.turns.get(session_id, []),
+                        "profile": {"room_area_m2": {"value": 32,
+                                                       "source_kind": "customer"}},
+                        "episodes": [{"session_id": "prior-fanpage", "channel": "chat_fanpage",
+                                      "on": "2026-10-14", "summary": "Quan tâm máy lọc yên tĩnh",
+                                      "outcome": "khac"}], "owned_order_ids": []}
+
+        model = FakeToolModel(replies=[AIMessage(content="Dạ, em ghi nhận ạ."),
+                                       AIMessage(content="Dạ, em tiếp tục tư vấn ạ.")])
+        runtime = DeepHarnessRuntime(model, MultiChannelGateway(), ScopedMemory())
+        fanpage = turn("Tôi muốn xem thêm mẫu máy", uuid4()).model_copy(update={
+            "channel": "chat_fanpage", "channel_identity": "fb.thao.37"})
+        await runtime.run(fanpage)
+        request = turn("Hôm trước tôi nhắn Fanpage", uuid4()).model_copy(update={
+            "channel_identity": "0934567812"})
+        response = await runtime.run(request)
+        self.assertEqual(runtime.state_for(fanpage)["customer_id"], "C037")
+        self.assertEqual(runtime.state_for(request)["customer_id"], "C037")
+        self.assertEqual(response.call_brief["last_session"]["channel"], "chat_fanpage")
+        self.assertEqual(response.call_brief["profile_facts"]["room_area_m2"], 32)
+
+    async def test_known_customer_does_not_claim_anonymous_facts(self):
+        class LegacyMemory(FakeMemory):
+            async def claim_pending(self, *_):
+                raise AssertionError("claim_pending must not run during context load")
+
+        from app.agent.harness.context import load_context
+
+        result = await load_context({"request": turn("Xin chào"),
+                                     "customer_id": "C001"},
+                                    LegacyMemory(), FakeGateway(), lambda: None)
+        self.assertEqual(result["profile"], {})
+        self.assertFalse(result.get("tool_failed", False))
+
     async def test_fallback_extracts_second_fact_when_agent_proposes_first(self):
         model = FakeToolModel(replies=[
             AIMessage(content='{"answer":"Dạ, em ghi nhận ạ.","fact_candidates":'
@@ -139,7 +206,7 @@ class DeepMemoryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(memory.profile["room_area_m2"]["value"], 25)
         self.assertEqual(memory.profile["budget_vnd"]["value"], 5_000_000)
 
-    async def test_pending_fact_flushes_after_late_verified_identity(self):
+    async def test_anonymous_fact_stays_in_session_history_after_late_identity(self):
         class SharedPhoneGateway(FakeGateway):
             async def invoke(self, name, args):
                 self.calls.append((name, args))
@@ -160,12 +227,12 @@ class DeepMemoryTest(unittest.IsolatedAsyncioTestCase):
         first = turn("Phòng anh 25 m²", session_id)
         await runtime.run(first)
         self.assertEqual(memory.profile, {})
-        self.assertEqual(len(memory.pending[str(session_id)]), 1)
         second = turn("Mình tiếp tục nhé", session_id).model_copy(update={
             "verified_customer_id": "C001", "verified_phone": "0984726714"})
         await runtime.run(second)
-        self.assertEqual(memory.profile["room_area_m2"]["value"], 25)
-        self.assertEqual(runtime.state_for(second)["memory_writes"][0]["op"], "set")
+        self.assertEqual(memory.profile, {})
+        self.assertEqual(runtime.state_for(second)["memory_writes"], [])
+        self.assertIn("Phòng anh 25 m²", memory.turns[str(session_id)][0]["customer"])
 
     def test_production_graph_has_one_agent_step(self):
         runtime = DeepHarnessRuntime(FakeToolModel(replies=[]), FakeGateway(), FakeMemory())

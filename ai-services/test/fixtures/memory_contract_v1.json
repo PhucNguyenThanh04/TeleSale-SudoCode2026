@@ -1,0 +1,98 @@
+[
+  {
+    "case": "correction",
+    "variant": "Đổi 'màu đen' thành 'màu trắng' sau khi cân nhắc, không dùng câu của sample.",
+    "control": "Hỏi 'nếu chọn màu xanh thì sao' không thay lựa chọn đã xác nhận.",
+    "calls": [
+      {"on": "2026-10-15", "channel": "hotline", "identity": "verified:C101", "turns": [
+        {"text": "Tôi thích giày màu đen, cỡ 40.", "expected_after_turn": {"customer_id": "C101", "profile": {"preferred_color": {"value": "đen"}}}, "forbidden": {}},
+        {"text": "À thôi, tôi lấy màu trắng nhé.", "expected_after_turn": {"customer_id": "C101", "profile": {"preferred_color": {"value": "trắng"}}, "memory_writes": [{"key": "preferred_color", "op": "supersede"}]}, "forbidden": {"profile": {"preferred_color": {"value": {"not_equals": "đen"}}}}},
+        {"text": "Nếu chọn màu xanh thì sao?", "expected_after_turn": {"profile": {"preferred_color": {"value": "trắng"}}}, "forbidden": {"profile": {"preferred_color": {"value": {"not_equals": "xanh"}}}}}
+      ]},
+      {"on": "2026-10-18", "channel": "hotline", "identity": "verified:C101", "turns": [
+        {"text": "Cho tôi xem lại đôi giày hôm trước.", "expected_after_turn": {"profile": {"preferred_color": {"value": "trắng"}}}, "forbidden": {"profile": {"preferred_color": {"value": {"not_equals": "đen"}}}}}
+      ]}
+    ]
+  },
+  {
+    "case": "shared_phone",
+    "variant": "Hai người dùng chung số, khách nhắc một sản phẩm khác của người còn lại.",
+    "control": "Khi operator xác minh C102, chỉ nạp C102 và không nạp C103.",
+    "calls": [
+      {"on": "2026-10-15", "channel": "hotline", "identity": "ambiguous:C102,C103", "turns": [
+        {"text": "Tôi muốn hỏi tiếp món đồ hôm trước.", "expected_after_turn": {"identity_status": "ambiguous", "customer_id": null, "profile": {}, "episodes": [], "call_brief": null}, "forbidden": {"agent_text": {"not_contains": "đơn của C103"}}}
+      ]},
+      {"on": "2026-10-16", "channel": "hotline", "identity": "verified:C102", "turns": [
+        {"text": "Đã xác minh tôi là người hỏi quạt DC hôm qua.", "expected_after_turn": {"customer_id": "C102"}, "forbidden": {"agent_text": {"not_contains": "đơn của C103"}}}
+      ]}
+    ]
+  },
+  {
+    "case": "cross_channel",
+    "variant": "Fanpage hỏi máy lọc Mini, hotline nhắc lại bằng cách diễn đạt khác.",
+    "control": "FB ID khác không được đọc hồ sơ dù số điện thoại tương tự.",
+    "calls": [
+      {"on": "2026-10-15", "channel": "chat_fanpage", "identity": "verified:C104", "turns": [
+        {"text": "Phòng tôi 12 m², đang xem AirPure Mini.", "expected_after_turn": {"customer_id": "C104", "profile": {"room_area_m2": {"value": 12}}}, "forbidden": {}}
+      ]},
+      {"on": "2026-10-17", "channel": "hotline", "identity": "verified:C104", "turns": [
+        {"text": "Hôm trước tôi có nhắn về máy để bàn, tư vấn tiếp giúp tôi.", "expected_after_turn": {"customer_id": "C104", "profile": {"room_area_m2": {"value": 12}}}, "forbidden": {"agent_text": {"not_contains": "phòng bao nhiêu mét"}}}
+      ]}
+    ]
+  },
+  {
+    "case": "many_products",
+    "variant": "Bốn SKU ngoài public sample: SKU-AP-MINI, SKU-AP-PRO, SKU-WF-RO9, SKU-FAN-DC1.",
+    "control": "Hỏi giá một SKU không đổi ngân sách khách và không tạo quote cho SKU khác.",
+    "calls": [
+      {"on": "2026-10-15", "channel": "hotline", "identity": "verified:C105", "turns": [
+        {"text": "Tôi muốn tìm thiết bị cho hai phòng và nhà bếp.", "expected_after_turn": {"customer_id": "C105"}, "forbidden": {}},
+        {"text": "Phòng nhỏ 12 m², cần máy để bàn.", "expected_after_turn": {"profile": {"room_area_m2": {"value": 12}}}, "forbidden": {}},
+        {"text": "AirPure Mini có hợp không?", "expected_after_turn": {"customer_id": "C105"}, "forbidden": {}},
+        {"text": "Giá Mini hiện tại bao nhiêu?", "expected_after_turn": {"tool_calls": {"contains": {"name": "pricing.get_quote", "args": {"sku": "SKU-AP-MINI", "on": "2026-10-15"}}}}, "forbidden": {}},
+        {"text": "Phòng thứ hai 45 m², tôi muốn máy mạnh hơn.", "expected_after_turn": {"customer_id": "C105", "profile": {"room_area_m2": {"value": 45}}}, "forbidden": {}},
+        {"text": "AirPure Pro có khóa trẻ em không?", "expected_after_turn": {"customer_id": "C105"}, "forbidden": {}},
+        {"text": "Cho tôi giá Pro, đừng lấy giá Mini.", "expected_after_turn": {"tool_calls": {"contains": {"name": "pricing.get_quote", "args": {"sku": "SKU-AP-PRO", "on": "2026-10-15"}}}}, "forbidden": {}},
+        {"text": "Tôi còn cần máy lọc nước cho bếp.", "expected_after_turn": {"customer_id": "C105"}, "forbidden": {}},
+        {"text": "Mẫu RO9 có lõi thay dễ không?", "expected_after_turn": {"customer_id": "C105"}, "forbidden": {}},
+        {"text": "Giá RO9 hôm nay thế nào?", "expected_after_turn": {"tool_calls": {"contains": {"name": "pricing.get_quote", "args": {"sku": "SKU-WF-RO9", "on": "2026-10-15"}}}}, "forbidden": {}},
+        {"text": "Phòng khách còn cần quạt tiết kiệm điện.", "expected_after_turn": {"customer_id": "C105"}, "forbidden": {}},
+        {"text": "Quạt DC1 có mấy mức gió?", "expected_after_turn": {"customer_id": "C105"}, "forbidden": {}},
+        {"text": "Báo giá quạt DC1 giúp tôi.", "expected_after_turn": {"tool_calls": {"contains": {"name": "pricing.get_quote", "args": {"sku": "SKU-FAN-DC1", "on": "2026-10-15"}}}}, "forbidden": {}},
+        {"text": "Nếu lấy cả quạt và máy lọc nước thì sao?", "expected_after_turn": {"customer_id": "C105"}, "forbidden": {}},
+        {"text": "Tôi còn cân nhắc, chưa đặt đơn.", "expected_after_turn": {"customer_id": "C105"}, "forbidden": {"tool_calls": {"not_contains": "order.create"}}},
+        {"text": "Nhớ giúp tôi bốn mẫu đã hỏi nhé.", "expected_after_turn": {"customer_id": "C105"}, "forbidden": {}}
+      ]},
+      {"on": "2026-10-19", "channel": "hotline", "identity": "verified:C105", "turns": [
+        {"text": "Tôi muốn so lại máy lọc nước và quạt đã hỏi.", "expected_after_turn": {"customer_id": "C105"}, "forbidden": {"agent_text": {"not_contains": "giá Mini là giá quạt"}}}
+      ]}
+    ]
+  },
+  {
+    "case": "return_after_months",
+    "variant": "Khách quay lại sau tám tháng, SKU cũ đã ngừng bán và KM cũ hết hạn.",
+    "control": "Sở thích bền vững vẫn được nhắc; giá vẫn phải kiểm lại ngay cả khi quay lại sớm.",
+    "calls": [
+      {"on": "2026-10-15", "channel": "hotline", "identity": "verified:C106", "turns": [
+        {"text": "Tôi thích máy lọc yên tĩnh cho phòng 30 m².", "expected_after_turn": {"customer_id": "C106", "profile": {"room_area_m2": {"value": 30}}}, "forbidden": {}},
+        {"text": "Giá của mẫu cũ và KM hôm nay thế nào?", "expected_after_turn": {"customer_id": "C106"}, "forbidden": {}}
+      ]},
+      {"on": "2027-06-15", "channel": "hotline", "identity": "verified:C106", "turns": [
+        {"text": "Tôi quay lại hỏi mẫu đã tư vấn, giao tới địa chỉ cũ được không?", "expected_after_turn": {"customer_id": "C106", "profile": {"room_area_m2": {"value": 30}}}, "forbidden": {"agent_text": {"not_contains": "đã xác nhận địa chỉ cũ"}}}
+      ]}
+    ]
+  },
+  {
+    "case": "erase_request",
+    "variant": "Khách nói 'đừng giữ thông tin của tôi nữa' thay cho đúng cụm 'xóa dữ liệu'.",
+    "control": "Xóa một sở thích cụ thể không được hiểu là xóa toàn bộ hồ sơ.",
+    "calls": [
+      {"on": "2026-10-15", "channel": "hotline", "identity": "unverified", "turns": [
+        {"text": "Đừng giữ thông tin của tôi nữa.", "expected_after_turn": {"customer_id": null}, "forbidden": {"agent_text": {"not_contains": "đã xóa toàn bộ"}}}
+      ]},
+      {"on": "2026-10-16", "channel": "hotline", "identity": "verified:C107", "turns": [
+        {"text": "Tôi đã xác minh, xin xóa dữ liệu của tôi.", "expected_after_turn": {"customer_id": "C107"}, "forbidden": {"agent_text": {"not_contains": "đã xóa toàn bộ"}}}
+      ]}
+    ]
+  }
+]

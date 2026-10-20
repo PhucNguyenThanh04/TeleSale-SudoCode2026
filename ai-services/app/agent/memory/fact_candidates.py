@@ -24,7 +24,7 @@ _CLOSED_CUSTOMER_DOMAINS = "; ".join(
 
 
 def _fold(value: str) -> str:
-    value = value.casefold().replace("đ", "d")
+    value = value.casefold().replace("đ", "d").replace("²", "2")
     return "".join(char for char in unicodedata.normalize("NFD", value)
                    if unicodedata.category(char) != "Mn")
 
@@ -48,6 +48,57 @@ _SLOT_CUES = {
     Slot.COMPETITOR_PRICE_VND: r"ben kia|ben khac|shop khac|doi thu",
 }
 
+_ROOM_AREA_MENTION = re.compile(
+    r"\bphong\s+([a-z ]{0,35}?)\s*(\d+)\s*(?:m2|met vuong)\b"
+)
+
+
+def _room_scope_for_area(customer_text: str, area: int) -> str | None:
+    """Resolve an area only from the local room phrase that contains it."""
+    matches = []
+    for match in _ROOM_AREA_MENTION.finditer(_fold(customer_text)):
+        if int(match.group(2)) != area:
+            continue
+        label = "_".join(match.group(1).strip().split())
+        if label == "thu_hai":
+            label = "2"
+        elif label == "thu_nhat":
+            label = "1"
+        matches.append("phong_" + (label or "1"))
+    return matches[0] if len(set(matches)) == 1 and matches else None
+
+
+def _tool_supports_product_scope(key: str, value: Any, sku: str,
+                                 calls: list[dict[str, Any]]) -> bool:
+    for call in calls:
+        name, args, result = call.get("name"), call.get("args", {}), call.get("result", {})
+        if not isinstance(args, dict) or not isinstance(result, dict) or "error" in result:
+            continue
+        item_sku = result.get("sku") or args.get("sku")
+        if name == "catalog.search" and key == Slot.PRODUCT_ADVISED:
+            if any(item.get("sku") == sku for item in result.get("items", [])
+                   if isinstance(item, dict)):
+                return value == sku
+        if item_sku != sku:
+            continue
+        if name == "pricing.get_quote":
+            if key == Slot.PRODUCT_ADVISED and value == sku:
+                return True
+            if key == Slot.PRICE_QUOTED_VND and result.get("final_price_vnd") == value:
+                return True
+            promos = [item for item in result.get("applied_promos", [])
+                      if isinstance(item, dict)]
+            if key == Slot.PROMO_CODE and any(item.get("promo_code") == value for item in promos):
+                return True
+            if key == Slot.PROMO_EXPIRY and any(item.get("valid_until") == value for item in promos):
+                return True
+        if name == "inventory.check" and key == Slot.IN_STOCK and result.get("in_stock") is value:
+            return True
+        if name == "order.create" and key == Slot.VARIANT_SKU \
+                and result.get("status") == "created" and value == sku:
+            return True
+    return False
+
 
 def customer_slot_cues(customer_text: str) -> set[str]:
     """Cheap recall trigger; accepted facts still require independent evidence."""
@@ -59,6 +110,8 @@ _EXTRACTION_PROMPT = (
     "giá shop báo, kết quả tìm kiếm hay các lượt cũ. Nếu khách sửa thông tin cũ, "
     "chỉ đề xuất giá trị mới nhất. Ngân sách chỉ có khi khách nói giới hạn chi tiêu "
     "của chính họ; hỏi giá sản phẩm không phải ngân sách. "
+    "Nếu khách nêu diện tích nhiều phòng, đề xuất một room_area_m2 cho từng phòng; "
+    "đừng chỉ giữ phòng cuối. Code sẽ kiểm lại phòng và diện tích từ lời khách. "
     "Chỉ dùng key trong danh sách: " + ", ".join(_CUSTOMER_KEYS) + ". "
     "Miền đóng: " + _CLOSED_CUSTOMER_DOMAINS + ". "
     "objection: dùng dat_qua cho lời chê giá đắt/mắc/cao/chát; các phản đối "
@@ -100,6 +153,8 @@ def model_candidates(messages: list[Any]) -> list[dict[str, Any]]:
                 quote = item.get("evidence_quote")
                 candidate = {"key": item.get("key"), "value": value,
                              "source": item.get("source"), "origin": "model"}
+                if item.get("scope_type") in {"room", "product"} and isinstance(item.get("scope_id"), str):
+                    candidate.update(scope_type=item["scope_type"], scope_id=item["scope_id"])
                 if isinstance(quote, str) and 0 < len(quote) <= 200 and mask_pii(quote) == quote:
                     candidate["evidence_quote"] = quote
                 candidates.append(candidate)
@@ -124,8 +179,8 @@ def accepted_candidates(customer_text: str, tool_calls: list[dict[str, Any]],
                         proposals: list[dict[str, Any]],
                         final_answer: str | None = None) -> list[dict[str, Any]]:
     """Keep only proposed slots supported by this turn or a successful business tool."""
-    accepted: dict[str, dict[str, Any]] = {}
-    conflicting: set[str] = set()
+    accepted: dict[tuple[str, str, str], dict[str, Any]] = {}
+    conflicting: set[tuple[str, str, str]] = set()
     for item in proposals:
         key, value = item.get("key"), item.get("value")
         if not isinstance(key, str):
@@ -135,21 +190,38 @@ def accepted_candidates(customer_text: str, tool_calls: list[dict[str, Any]],
         source = evidence.source
         if source and final_answer is not None and source.startswith("tool:"):
             from app.agent.memory.reported_facts import reported_tool_fact
-            if not reported_tool_fact(key, value, final_answer, tool_calls):
+            if not reported_tool_fact(key, value, final_answer, tool_calls,
+                                      item.get("scope_id") if item.get("scope_type") == "product" else None):
                 source = None
         if source:
             value = evidence.normalized_value
+            scope_type, scope_id = item.get("scope_type", "global"), item.get("scope_id", "")
+            if key == Slot.ROOM_AREA_M2 and source == "customer":
+                observed_room = _room_scope_for_area(customer_text, value)
+                if scope_type == "room" and observed_room != scope_id:
+                    continue
+                if scope_type == "global" and observed_room:
+                    scope_type, scope_id = "room", observed_room
+            elif scope_type == "room":
+                continue
+            if scope_type == "product" and (source == "customer" or not isinstance(scope_id, str)
+                                             or not _tool_supports_product_scope(
+                                                 key, value, scope_id, tool_calls)):
+                continue
             candidate = {"key": key, "value": value, "op": "set",
                          "source_kind": "customer" if source == "customer" else "tool",
                          **({"source_tool": source[5:]} if source.startswith("tool:") else {})}
+            if scope_type != "global":
+                candidate.update(scope_type=scope_type, scope_id=scope_id)
             if evidence.evidence_quote:
                 candidate["evidence_quote"] = evidence.evidence_quote
-            if key in accepted and accepted[key]["value"] != value:
-                conflicting.add(key)
+            identity = (scope_type, scope_id, key)
+            if identity in accepted and accepted[identity]["value"] != value:
+                conflicting.add(identity)
             else:
-                accepted[key] = candidate
-    for key in conflicting:
-        accepted.pop(key, None)
+                accepted[identity] = candidate
+    for identity in conflicting:
+        accepted.pop(identity, None)
     return list(accepted.values())
 
 

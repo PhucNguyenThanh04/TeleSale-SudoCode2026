@@ -1,46 +1,32 @@
 """Regression coverage for session memory and recoverable read failures."""
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 from uuid import uuid4
 from langchain_core.messages import AIMessage
-from app.agent.chat import main, parse_args
 from app.agent.harness.context import load_context
 from app.agent.harness.agent_nodes import MEMORY_UNAVAILABLE
 from app.agent.harness.runtime import AgentHarnessRuntime
-from app.agent.memory.store import MCPMemoryStore
 from test_deep_memory import FakeGateway, FakeMemory, FakeToolModel, turn
 
 
 class MemoryRecoveryTest(unittest.IsolatedAsyncioTestCase):
-    async def test_claim_keys_stable_per_turn(self):
-        gateway = AsyncMock()
-        gateway.invoke.return_value = {"memory_writes": []}
-        memory = MCPMemoryStore(gateway)
-        for message in ("first", "first", "second"):
-            await memory.claim_pending("session", "customer", message)
-        keys = [call.args[1]["operation_key"] for call in gateway.invoke.call_args_list]
-        self.assertEqual(keys[0], keys[1])
-        self.assertNotEqual(keys[1], keys[2])
-
     async def test_memory_errors_skip_model_without_handoff_promise(self):
-        for operation in ("claim_pending", "read_context"):
-            for raises in (False, True):
-                with self.subTest(operation=operation, raises=raises):
-                    memory = FakeMemory()
-                    callback = AsyncMock(return_value={"error": "tool_unavailable"})
-                    if raises:
-                        callback.side_effect = RuntimeError("private details")
-                    setattr(memory, operation, callback)
-                    model = FakeToolModel(replies=[])
-                    runtime = AgentHarnessRuntime(model, FakeGateway(), memory, guardrails_enabled=False)
-                    request = turn("Xin chào")
-                    with self.assertLogs("app.agent", level="WARNING") as logs:
-                        response = await runtime.run(request)
-                    self.assertEqual(response.agent_text, MEMORY_UNAVAILABLE)
-                    self.assertFalse(response.needs_handoff)
-                    self.assertEqual(model.seen, [])
-                    self.assertNotIn("private details", str(logs.output))
-                    self.assertIn("memory_failure", runtime.state_for(request))
+        for raises in (False, True):
+            with self.subTest(raises=raises):
+                memory = FakeMemory()
+                memory.read_context = AsyncMock(return_value={"error": "tool_unavailable"})
+                if raises:
+                    memory.read_context.side_effect = RuntimeError("private details")
+                model = FakeToolModel(replies=[])
+                runtime = AgentHarnessRuntime(model, FakeGateway(), memory, guardrails_enabled=False)
+                request = turn("Xin chào")
+                with self.assertLogs("app.agent", level="WARNING") as logs:
+                    response = await runtime.run(request)
+                self.assertEqual(response.agent_text, MEMORY_UNAVAILABLE)
+                self.assertFalse(response.needs_handoff)
+                self.assertEqual(model.seen, [])
+                self.assertNotIn("private details", str(logs.output))
+                self.assertEqual(runtime.state_for(request)["memory_failure"], "memory.read")
 
     async def test_commit_failure_is_not_success(self):
         memory = FakeMemory()
@@ -87,20 +73,3 @@ class MemoryRecoveryTest(unittest.IsolatedAsyncioTestCase):
         model = FakeToolModel(replies=[AIMessage(content="Mình tiếp tục nhé")])
         await AgentHarnessRuntime(model, FakeGateway(), memory).run(turn("Tiếp tục", session))
         self.assertIn("Phòng 25 m²", model.seen[0])
-
-    async def test_cli_keeps_session_changes_message_id(self):
-        runtime = AsyncMock()
-        runtime.tracing = None
-        runtime.run.return_value = type("Response", (), {"agent_text": "OK"})()
-        session = uuid4()
-        with patch("app.agent.chat.get_runtime", return_value=runtime), patch(
-                "builtins.input", side_effect=["Xin chào", "Tiếp tục", "/exit"]), patch("builtins.print"):
-            await main(["--session-id", str(session)])
-        requests = [call.args[0] for call in runtime.run.call_args_list]
-        self.assertEqual(len(requests), 2)
-        self.assertEqual({r.session_id for r in requests}, {session})
-        self.assertNotEqual(requests[0].client_msg_id, requests[1].client_msg_id)
-        self.assertEqual(requests[0].on.isoformat(), "2026-10-15")
-
-    def test_cli_explicit_business_date(self):
-        self.assertEqual(parse_args(["--on", "2026-10-22"]).on.isoformat(), "2026-10-22")

@@ -126,11 +126,15 @@ Start PostgreSQL with `docker compose up -d postgres redis`, then import the
 BTC release with `dataloader_offline`. Apply the additive
 runtime SQL migrations in order: `backend/migrations/0001_chat.sql`,
 `backend/migrations/0002_tools.sql`, `backend/migrations/0003_channel_identity.sql`,
+`backend/migrations/0004_erasure_suppressions.sql`,
 then `ai-services/migrations/0001_memory.sql`,
 `ai-services/migrations/0002_operations.sql`,
 `ai-services/migrations/0003_memory_provenance.sql`, and
 `ai-services/migrations/0004_pending_facts.sql`, and
-`ai-services/migrations/0005_memory_evidence_quote.sql`. Apply them before starting
+`ai-services/migrations/0005_memory_evidence_quote.sql`, then
+`ai-services/migrations/0006_episode_identity_boundary.sql`,
+`ai-services/migrations/0007_erasure_requests.sql`, and
+`ai-services/migrations/0008_scoped_facts.sql`. Apply them before starting
 `mcp-db-roles`. Use the same PostgreSQL database
 for the backend and all three MCP servers. Set matching `AI_INTERNAL_TOKEN`
 values in `backend/.env` and `ai-services/.env`, and a separate
@@ -261,20 +265,26 @@ uv run --no-project --with 'langgraph>=1.2.12,<1.3' \
 ### Memory demo and manual preflight
 
 Before starting the existing MCP services, apply migrations through
-`0005_memory_evidence_quote.sql` to their PostgreSQL database, then rerun role provisioning.
+`0008_scoped_facts.sql` to their PostgreSQL database, then rerun role provisioning.
 A table created after provisioning does not inherit the earlier table grants.
 With the administrative `psql` connection (never put passwords in the command), verify:
 
 ```sql
 SELECT to_regclass('ai_memory.pending_facts');
+SELECT to_regclass('ai_memory.erasure_requests');
 SELECT has_table_privilege('mcp_memory', 'ai_memory.pending_facts',
+                          'SELECT,INSERT,UPDATE,DELETE');
+SELECT has_table_privilege('mcp_memory', 'ai_memory.erasure_requests',
                           'SELECT,INSERT,UPDATE,DELETE');
 ```
 
-If only this table lacks grants, the administrator can run:
+If either table lacks grants, rerun `scripts/provision_mcp_roles.sh` with the
+documented administrative connection. For the memory tables alone, the
+administrator can run:
 
 ```sql
 GRANT SELECT, INSERT, UPDATE, DELETE ON ai_memory.pending_facts TO mcp_memory;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ai_memory.erasure_requests TO mcp_memory;
 ```
 
 These are deployment operations; chat continues to access PostgreSQL through MCP.
@@ -288,16 +298,25 @@ From `ai-services/`, edit the `ChatRequest` in `app/agent/chat.py`, then run one
 
 The script prints the full response, including `session_id`. To continue a session,
 reuse that UUID in the request and set a new `client_msg_id`. Set `on` to the call's
-business date. Without `channel_identity`, the conversation is anonymous and facts
-stay pending.
+business date. Without `channel_identity`, the conversation is anonymous and
+customer facts are not written to a long-term profile.
 
 Short-term history is read from MCP for each turn, including after process restart.
 `AGENT_PROMPT_HISTORY_TURNS` accepts 1–12 (default 6), matching the existing MCP read
 limit. Long-term profile facts are customer-scoped. Previous episodes are deduplicated
 by session, preferring memory over CRM, then limited by `MEMORY_MAX_EPISODES`.
-`claim_pending` uses a per-turn operation key, so a later turn cannot replay an earlier
-turn's claimed writes. A failed claim/read skips the model and returns a neutral outage
-message; logs identify the operation. Failed commits still fail the request.
+Anonymous turns remain available during the unverified session. After identity
+verification, prior anonymous turns are excluded from the model history and the
+customer's episode; they are not converted into profile facts. Migration 0006
+retracts legacy claims from anonymous turns and rebuilds mixed episodes from
+attributed turns, including facts whose anonymous commit lacked an operation key
+but whose claim result was logged. The old app always logged claim operations;
+direct MCP clients that omitted the claim operation key cannot be reconstructed
+from this migration and require a separate audit or quarantine of their legacy
+memory. If a claimed fact superseded an earlier fact, migration does not revive
+the earlier value automatically; confirm it with the customer before storing it
+again. A failed memory read skips
+the model and returns a neutral outage message; failed commits fail the request.
 
 Run regression tests with `python -m unittest discover -s test -v`. HTTP memory tests
 are opt-in: set `MEMORY_TEST_URL` and `MEMORY_TEST_TOKEN` to a dedicated eval MCP memory

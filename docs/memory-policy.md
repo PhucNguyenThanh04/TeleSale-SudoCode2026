@@ -1,8 +1,29 @@
 # Quy tắc ghi bộ nhớ khách hàng
 
+Các ca kiểm xuyên phiên và trạng thái nghiệm thu nằm ở
+[hợp đồng memory đa phiên v1](memory-contract-v1.md).
+Phạm vi và điều kiện xử lý xóa toàn hồ sơ được đề xuất trong
+[hợp đồng xóa dữ liệu](erasure-contract.md); cần chốt các kho giữ lại trước khi
+chạy thao tác xóa trên dữ liệu thật.
+
 Fact trong `ai_memory.facts` là thông tin có nguồn, không phải lời đoán của model.
 Mỗi lượt được ghi qua `mcp-memory`; `source_session_id`, `source_turn_id` và
 `on_date` giữ provenance. Giá, KM và tồn kho trong memory chỉ là lịch sử.
+Fact có phạm vi `global`, `product` (SKU từ tool) hoặc `room` (phòng gắn với
+diện tích khách nêu). Fact đang hoạt động là duy nhất theo
+`customer_id/scope_type/scope_id/key`; sửa một phòng hay một SKU không ghi đè
+phòng/SKU khác. Fact legacy không đủ nguồn để xác định phạm vi vẫn ở `global`;
+không tự suy SKU/phòng từ giá trị cũ. Call Brief trình bày nhiều sản phẩm riêng;
+SKU được nhắc trong lượt mới được lấy lại giá/tồn kho theo `on` của lượt đó.
+
+Khi đọc memory, harness chỉ đưa slot thuộc registry với giá trị đúng kiểu và
+không chứa PII nhận diện được vào profile cho agent/Call Brief; history và
+episode được che lại. Đây là lớp bảo vệ cho dữ liệu legacy, chưa thay cho kho
+`address_ref` và không chứng minh mọi dạng địa chỉ đều được phát hiện.
+Yêu cầu xóa toàn hồ sơ được chuyển qua `handoff.transfer` khi kênh có số điện
+thoại tin cậy; chỉ kết quả `queued` kèm ticket mới được thông báo là đã chuyển.
+Chưa có thao tác xóa vật lý toàn bộ dữ liệu khách, nên agent không được nói
+đã xóa. Yêu cầu xóa riêng một sở thích không kích hoạt luồng toàn hồ sơ.
 
 | Key | Bằng chứng để ghi | Vòng đời |
 |---|---|---|
@@ -27,8 +48,8 @@ tiền và diện tích là số nguyên dương; `promo_expiry` là ngày ISO h
 trị ngoài miền bị từ chối có mã lý do, không được ghi dưới dạng text tự do.
 `objection` là miền mở: cụm chê giá đã biết thành `dat_qua`; phản đối khác có
 quote nguyên văn thành `khac`. Quote được kiểm trong lời khách, che PII và lưu
-ở `ai_memory.facts.evidence_quote` (hoặc `pending_facts` khi chưa xác minh danh
-tính); số `khac` được log riêng. Cân nhắc trung tính giữa các lựa chọn không
+ở `ai_memory.facts.evidence_quote` khi đã xác định được khách; số `khac` được
+log riêng. Cân nhắc trung tính giữa các lựa chọn không
 phải phản đối. `blocker` vẫn giữ cụm ngắn, chưa ép enum vì BTC chưa công bố.
 
 ## Khoản nợ thiết kế: trạng thái của blocker
@@ -64,15 +85,18 @@ fact về điều shop đã **nói** (`product_advised`, `price_quoted_vnd`, KM)
 ghi còn kiểm trên `agent_text` cuối sau guardrail. Nếu không chuẩn hóa được giá
 trong câu cuối một cách chắc chắn, bỏ qua fact lịch sử đó.
 
-Khi danh tính chưa rõ, fact hợp lệ được che PII và giữ trong `pending_facts`
-theo phiên/lượt tối đa 24 giờ. Khách tự đọc số điện thoại không đủ để gắn
-profile. Backend chỉ chuyển pending sau khi operator xác minh riêng hoặc
-định danh kênh tin cậy xác nhận đúng khách. SĐT chung chưa phân biệt được
-người nói thì không nạp profile ứng viên. Việc ghi `commit_turn` và
-`claim_pending` có operation key để retry không tạo bản trùng. Key claim gồm
-phiên, khách và `client_msg_id`; lượt mới không phát lại `memory_writes` của lượt cũ.
+Khi danh tính chưa rõ, hệ thống vẫn ghi lịch sử lượt theo phiên nhưng không
+ghi fact vào hồ sơ khách. Khi được xác định danh tính ở lượt sau, các fact của
+lượt ẩn danh trước đó không được tự chuyển sang hồ sơ, lịch sử đưa cho model
+hoặc episode của khách; khách cần xác nhận lại
+nếu muốn dùng chúng xuyên phiên. Khách tự đọc số điện thoại không đủ để gắn
+profile; SĐT chung chưa phân biệt được người nói thì không nạp profile ứng viên.
+`commit_turn` có operation key để retry không tạo bản trùng.
+Các hàng `pending_facts` đã có từ phiên bản cũ không được đọc hoặc chuyển
+bởi luồng hiện tại; việc dọn dữ liệu cũ cần xử lý riêng khi quản lý lưu trữ.
 Lịch sử cùng phiên được đọc lại qua MCP mỗi lượt, kể cả sau khi khởi động lại
-process; prompt dùng tối đa 12 lượt. Episode từ memory ưu tiên hơn CRM khi
+process; MCP đọc tối đa 12 lượt, prompt mặc định dùng 6 lượt gần nhất.
+Episode từ memory ưu tiên hơn CRM khi
 trùng session và được giới hạn sau khi gộp.
 
 `expected_outcome`, `facts_established`, `ground_truth_facts` và

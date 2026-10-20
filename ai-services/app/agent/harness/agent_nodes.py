@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -16,11 +17,16 @@ from app.agent.memory.fact_candidates import (
 )
 from app.agent.memory.reported_facts import reported_tool_candidates
 from app.agent.memory.store import memory_error_code
-from app.agent.guardrails.checks import FALLBACK, check_answer, check_grounding, mask_pii
+from app.agent.guardrails.checks import (FALLBACK, check_answer, check_grounding,
+                                         customer_erasure_requested, mask_pii)
 from app.agent.guardrails.diagnostics import rejected_draft
 from app.agent.harness.session_nodes import SessionNodes, safe_catalog_reply
 from app.agent.harness.observability import log_event, trace_node
 from app.agent.harness.state import TurnState
+from app.agent.harness.policy import prepare_tool_call
+from app.agent.harness.observability import log_tool_input, log_tool_output
+from app.agent.harness.state import Decision
+from app.schemas.brief import HandoffBrief
 
 
 MEMORY_UNAVAILABLE = (
@@ -40,9 +46,14 @@ class AgentNodes(SessionNodes):
 
     @trace_node("run_agent")
     async def run_agent(self, state: TurnState) -> dict[str, Any]:
+        if state.get("memory_blocked") and customer_erasure_requested(state["safe_text"]):
+            state["tool_calls"] = list(state.get("tool_calls", []))
+            return await self._route_customer_erasure(state)
         if state.get("tool_failed"):
             return {"agent_draft": MEMORY_UNAVAILABLE, "fact_candidates": []}
         state["tool_calls"] = list(state.get("tool_calls", []))
+        if customer_erasure_requested(state["safe_text"]):
+            return await self._route_customer_erasure(state)
         business = BusinessTools(self.tools, state, self.max_tool_calls, self.clock)
         agent = build_agent(self.agent_kind, self.llm, business)
         context = prompt_context(state, self.prompt_history_turns)
@@ -87,6 +98,65 @@ class AgentNodes(SessionNodes):
                 "needs_handoff": state.get("needs_handoff", False),
                 "handoff_ticket_id": state.get("handoff_ticket_id")}
 
+    async def _route_customer_erasure(self, state: TurnState) -> dict[str, Any]:
+        """Escalate a whole-record request without presenting it as a completed purge."""
+        request = state["request"]
+        phone = state.get("customer_phone") or (
+            request.channel_identity if request.channel == "hotline" else None)
+        if not isinstance(phone, str) or not re.fullmatch(r"0[0-9]{9}", phone):
+            draft = ("Dạ, để xử lý yêu cầu về dữ liệu cá nhân, anh/chị vui lòng "
+                     "liên hệ tổng đài để xác minh chủ thể. Em chưa xóa dữ liệu ạ.")
+            return {"agent_draft": draft, "fact_candidates": [],
+                    "tool_calls": state["tool_calls"], "tool_count": state.get("tool_count", 0)}
+        brief = HandoffBrief(
+            customer_phone=phone, customer_name=state.get("customer_name"),
+            customer_id=state.get("customer_id"), channel=request.channel,
+            escalation_reason="khac",
+            escalation_reason_detail="Khách yêu cầu xử lý dữ liệu cá nhân.",
+            conversation_summary=("Khách yêu cầu xử lý dữ liệu cá nhân đã lưu. "
+                                  "Chưa có thao tác xóa; cần xác minh chủ thể và phạm vi."),
+            product_advised=None, price_quoted_vnd=None,
+            open_questions=["Xác minh chủ thể và phạm vi dữ liệu cần xử lý."],
+            next_action="Xác minh chủ thể và chuyển yêu cầu cho bộ phận có thẩm quyền.",
+            generated_at=self.clock(),
+        ).model_dump(mode="json")
+        state["decision"] = Decision(action="tool", tool_name="handoff.transfer",
+                                     tool_args={"brief": brief})
+        prepared = prepare_tool_call(state, self.clock)
+        if prepared is None:
+            result = {"error": "precondition_or_arguments"}
+            args = {"brief": brief}
+        else:
+            _, args = prepared
+            log_tool_input("run_agent", "handoff.transfer", args)
+            operation_key = (f"{request.session_id}:{request.client_msg_id}:"
+                             "handoff.transfer:1")
+            try:
+                if hasattr(self.tools, "invoke_trusted"):
+                    result = await self.tools.invoke_trusted(
+                        "handoff.transfer", args, state.get("customer_id"),
+                        request.channel, request.channel_identity, operation_key)
+                else:
+                    result = await self.tools.invoke("handoff.transfer", args)
+            except Exception:
+                result = {"error": "tool_error"}
+            if not isinstance(result, dict):
+                result = {"error": "invalid_tool_result"}
+            log_tool_output(state, "run_agent", "handoff.transfer", result)
+        state["tool_calls"].append({"name": "handoff.transfer", "args": args,
+                                    "result": result})
+        state["tool_count"] = state.get("tool_count", 0) + 1
+        ticket = result.get("ticket_id") if "error" not in result else None
+        queued = (isinstance(ticket, str) and bool(ticket)
+                  and result.get("status") == "queued")
+        draft = (("Dạ, em đã chuyển yêu cầu đến bộ phận phụ trách để xác minh "
+                  "và xử lý. Dữ liệu chưa được xóa ở bước này ạ.") if queued else
+                 ("Dạ, hiện em chưa chuyển được yêu cầu. Anh/chị vui lòng "
+                  "liên hệ tổng đài để xác minh và xử lý dữ liệu ạ."))
+        return {"agent_draft": draft, "fact_candidates": [],
+                "tool_calls": state["tool_calls"], "tool_count": state["tool_count"],
+                "needs_handoff": queued, "handoff_ticket_id": ticket if queued else None}
+
     @trace_node("verify")
     async def verify_agent(self, state: TurnState) -> dict[str, Any]:
         draft = state.get("agent_draft", FALLBACK)
@@ -117,6 +187,8 @@ class AgentNodes(SessionNodes):
 
     @trace_node("persist")
     async def persist_agent(self, state: TurnState) -> dict[str, Any]:
+        if state.get("memory_blocked"):
+            return {"memory_writes": []}
         request = state["request"]
         tool_calls = state.get("tool_calls", [])
         proposals = [*state.get("fact_candidates", []),
@@ -150,5 +222,4 @@ class AgentNodes(SessionNodes):
             raise RuntimeError("memory_turn_write_failed")
         log_event(state, "persist", "memory_recorded", turn_no=result["turn_no"],
                   accepted_facts=len(result["memory_writes"]))
-        return {"memory_writes": [*state.get("claimed_memory_writes", []),
-                                  *result["memory_writes"]]}
+        return {"memory_writes": result["memory_writes"]}

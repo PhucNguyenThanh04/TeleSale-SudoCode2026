@@ -48,36 +48,25 @@ class MemoryRepo:
     async def owner(self, conn, session_id: str) -> str | None:
         return await conn.fetchval("SELECT customer_id FROM ai_memory.turns WHERE session_id=$1 AND customer_id IS NOT NULL LIMIT 1", UUID(session_id))
 
-    async def bind_owner(self, conn, session_id: str, customer_id: str) -> None:
-        await conn.execute("UPDATE ai_memory.turns SET customer_id=$2 WHERE session_id=$1 AND customer_id IS NULL",
-                           UUID(session_id), customer_id)
-
-    async def stage_fact(self, conn, session_id: str, source_turn_id: UUID,
-                         turn_no: int, fact: dict, on: date) -> None:
-        await conn.execute("""INSERT INTO ai_memory.pending_facts
-            (session_id,source_turn_id,turn_no,key,value,op,source_kind,source_tool,on_date,evidence_quote)
-            VALUES($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10)
-            ON CONFLICT(session_id,source_turn_id,key) DO NOTHING""",
-            UUID(session_id), source_turn_id, turn_no, fact["key"],
-            json.dumps(fact.get("value"), ensure_ascii=False), fact["op"],
-            fact["source_kind"], fact.get("source_tool"), on, fact.get("evidence_quote"))
-
-    async def pending_facts(self, conn, session_id: str) -> list:
-        return await conn.fetch("""SELECT source_turn_id,key,value,op,source_kind,
-            source_tool,on_date,evidence_quote FROM ai_memory.pending_facts
-            WHERE session_id=$1 AND expires_at>now()
-            ORDER BY turn_no,key FOR UPDATE""", UUID(session_id))
-
-    async def clear_pending(self, conn, session_id: str) -> None:
-        await conn.execute("DELETE FROM ai_memory.pending_facts WHERE session_id=$1", UUID(session_id))
-
     async def turns(self, conn, session_id: str) -> list:
         return await conn.fetch("""SELECT customer_text,agent_text FROM ai_memory.turns
             WHERE session_id=$1 ORDER BY turn_no""", UUID(session_id))
 
+    async def customer_turns(self, conn, session_id: str, customer_id: str) -> list:
+        return await conn.fetch("""SELECT customer_text,agent_text FROM ai_memory.turns
+            WHERE session_id=$1 AND customer_id=$2 ORDER BY turn_no""",
+            UUID(session_id), customer_id)
+
     async def recent_turns(self, conn, session_id: str, maximum: int) -> list:
         rows = await conn.fetch("""SELECT customer_text,agent_text FROM ai_memory.turns
             WHERE session_id=$1 ORDER BY turn_no DESC LIMIT $2""", UUID(session_id), maximum)
+        return list(reversed(rows))
+
+    async def recent_customer_turns(self, conn, session_id: str, customer_id: str,
+                                    maximum: int) -> list:
+        rows = await conn.fetch("""SELECT customer_text,agent_text FROM ai_memory.turns
+            WHERE session_id=$1 AND customer_id=$2 ORDER BY turn_no DESC LIMIT $3""",
+            UUID(session_id), customer_id, maximum)
         return list(reversed(rows))
 
     async def turn_count(self, conn, session_id: str) -> int:
@@ -85,10 +74,20 @@ class MemoryRepo:
                                    UUID(session_id))
 
     async def facts(self, conn, customer_id: str, session_id: str, include_prior: bool) -> list:
-        return await conn.fetch("""SELECT key,value,source,observed_at,on_date,source_kind,source_tool,evidence_quote
+        return await conn.fetch("""SELECT key,value,source,observed_at,on_date,source_kind,source_tool,evidence_quote,
+            scope_type,scope_id
             FROM ai_memory.facts
             WHERE customer_id=$1 AND status='active' AND ($2::boolean OR source_session_id=$3)""",
             customer_id, include_prior, UUID(session_id))
+
+    async def session_facts(self, conn, session_id: str, customer_id: str) -> list:
+        rows = await conn.fetch("""SELECT key,value,scope_type,scope_id,status
+            FROM ai_memory.facts WHERE source_session_id=$1 AND customer_id=$2
+            AND status='active' ORDER BY observed_at,fact_id""", UUID(session_id), customer_id)
+        return [{"key": row["key"], "value": (json.loads(row["value"])
+                 if isinstance(row["value"], str) else row["value"]),
+                 "scope_type": row["scope_type"], "scope_id": row["scope_id"],
+                 "status": row["status"]} for row in rows]
 
     async def episodes(self, conn, customer_id: str, session_id: str, maximum: int) -> list:
         return await conn.fetch("""SELECT session_id,channel,on_date,summary,outcome FROM ai_memory.episodes
@@ -101,6 +100,79 @@ class MemoryRepo:
 
     async def lock_key(self, conn, key: str) -> None:
         await conn.execute("SELECT pg_advisory_xact_lock(hashtext($1))", key)
+
+    async def is_erasure_blocked(self, conn, customer_id: str) -> bool:
+        return bool(await conn.fetchval("""SELECT EXISTS(
+            SELECT 1 FROM ai_memory.erasure_requests WHERE customer_id=$1
+        )""", customer_id))
+
+    async def create_erasure_request(self, conn, request_key: str, customer_id: str,
+                                     verification_ref: str, verified_by: str,
+                                     scope: list[str]) -> dict:
+        await conn.execute("""INSERT INTO ai_memory.erasure_requests
+            (request_key,customer_id,verification_ref,verified_by,scope)
+            VALUES($1,$2,$3,$4,$5::jsonb) ON CONFLICT(request_key) DO NOTHING""",
+            UUID(request_key), customer_id, verification_ref, verified_by,
+            json.dumps(scope))
+        row = await conn.fetchrow("""SELECT customer_id,verification_ref,verified_by,scope,status
+            FROM ai_memory.erasure_requests WHERE request_key=$1""", UUID(request_key))
+        if (row["customer_id"] != customer_id
+                or row["verification_ref"] != verification_ref
+                or row["verified_by"] != verified_by):
+            return {"error": "request_key_conflict"}
+        stored_scope = json.loads(row["scope"]) if isinstance(row["scope"], str) else row["scope"]
+        if stored_scope != scope:
+            return {"error": "request_key_conflict"}
+        return {"request_key": request_key, "customer_id": customer_id,
+                "scope": stored_scope, "status": row["status"]}
+
+    async def erasure_request(self, conn, request_key: str, *, for_update: bool = False):
+        row = await conn.fetchrow("""SELECT customer_id,scope,status,store_results
+            FROM ai_memory.erasure_requests WHERE request_key=$1""" +
+            (" FOR UPDATE" if for_update else ""), UUID(request_key))
+        if row is None:
+            return None
+        def decoded(value):
+            return json.loads(value) if isinstance(value, str) else value
+        return {"customer_id": row["customer_id"], "scope": decoded(row["scope"]),
+                "status": row["status"], "store_results": decoded(row["store_results"])}
+
+    async def purge_customer_memory(self, conn, customer_id: str) -> dict:
+        sessions = await conn.fetch("""SELECT session_id FROM ai_memory.turns
+                WHERE customer_id=$1
+            UNION SELECT source_session_id FROM ai_memory.facts WHERE customer_id=$1
+            UNION SELECT session_id FROM ai_memory.episodes WHERE customer_id=$1""",
+            customer_id)
+        session_ids = [str(row["session_id"]) for row in sessions]
+        fully_owned = await conn.fetch("""SELECT DISTINCT t.session_id
+            FROM ai_memory.turns AS t WHERE t.customer_id=$1
+            AND NOT EXISTS (SELECT 1 FROM ai_memory.turns AS other
+                WHERE other.session_id=t.session_id
+                AND other.customer_id IS DISTINCT FROM $1)""", customer_id)
+        await conn.execute("""UPDATE ai_memory.write_operations
+            SET result='{"error":"erased"}'::jsonb
+            WHERE result->>'customer_id'=$1 OR EXISTS (
+                SELECT 1 FROM unnest($2::text[]) AS session_key
+                WHERE operation_key LIKE session_key || ':%')""",
+            customer_id, session_ids)
+        await conn.execute("DELETE FROM ai_memory.pending_facts WHERE session_id=ANY($1::uuid[])",
+                           [row["session_id"] for row in fully_owned])
+        deleted = {}
+        for table in ("order_links", "facts", "episodes", "turns"):
+            result = await conn.execute(f"DELETE FROM ai_memory.{table} WHERE customer_id=$1",
+                                        customer_id)
+            deleted[table] = int(result.rsplit(" ", 1)[-1])
+        ambiguous_pending = await conn.fetchval("""SELECT count(*) FROM ai_memory.pending_facts
+            WHERE session_id=ANY($1::uuid[])""", [UUID(session) for session in session_ids])
+        return {"status": "partial" if ambiguous_pending else "completed",
+                "deleted_rows": deleted, "unresolved_pending_sessions": bool(ambiguous_pending)}
+
+    async def finish_erasure_request(self, conn, request_key: str, status: str,
+                                     results: dict) -> None:
+        await conn.execute("""UPDATE ai_memory.erasure_requests
+            SET status=$2,store_results=$3::jsonb,updated_at=now()
+            WHERE request_key=$1""", UUID(request_key), status,
+            json.dumps(results, ensure_ascii=False))
 
     async def next_turn(self, conn, session_id: str) -> int:
         return await conn.fetchval("SELECT COALESCE(MAX(turn_no),0)+1 FROM ai_memory.turns WHERE session_id=$1", UUID(session_id))
@@ -129,13 +201,17 @@ class MemoryRepo:
         await conn.execute("""INSERT INTO ai_memory.order_links(customer_id,order_id)
             VALUES($1,$2) ON CONFLICT DO NOTHING""", customer_id, order_id)
 
-    async def active_fact(self, conn, customer_id: str, key: str):
+    async def active_fact(self, conn, customer_id: str, key: str,
+                          scope_type: str = "global", scope_id: str = ""):
         return await conn.fetchval("""SELECT fact_id FROM ai_memory.facts
-            WHERE customer_id=$1 AND key=$2 AND status='active' FOR UPDATE""", customer_id, key)
+            WHERE customer_id=$1 AND key=$2 AND scope_type=$3 AND scope_id=$4
+            AND status='active' FOR UPDATE""", customer_id, key, scope_type, scope_id)
 
-    async def active_fact_record(self, conn, customer_id: str, key: str):
+    async def active_fact_record(self, conn, customer_id: str, key: str,
+                                 scope_type: str = "global", scope_id: str = ""):
         return await conn.fetchrow("""SELECT fact_id,value FROM ai_memory.facts
-            WHERE customer_id=$1 AND key=$2 AND status='active' FOR UPDATE""", customer_id, key)
+            WHERE customer_id=$1 AND key=$2 AND scope_type=$3 AND scope_id=$4
+            AND status='active' FOR UPDATE""", customer_id, key, scope_type, scope_id)
 
     async def set_fact_status(self, conn, fact_id, status: str) -> None:
         await conn.execute("UPDATE ai_memory.facts SET status=$1 WHERE fact_id=$2", status, fact_id)
@@ -143,14 +219,14 @@ class MemoryRepo:
     async def insert_fact(self, conn, fact_id, customer_id: str, key: str, value,
                           source: str, session_id: str, previous, *, source_turn_id=None,
                           on_date=None, source_kind=None, source_tool=None,
-                          evidence_quote=None) -> None:
+                          evidence_quote=None, scope_type="global", scope_id="") -> None:
         await conn.execute("""INSERT INTO ai_memory.facts
             (fact_id,customer_id,key,value,source,source_session_id,status,supersedes_fact_id,
-             source_turn_id,on_date,source_kind,source_tool,evidence_quote)
-            VALUES($1,$2,$3,$4::jsonb,$5,$6,'active',$7,$8,$9,$10,$11,$12)""", fact_id,
+             source_turn_id,on_date,source_kind,source_tool,evidence_quote,scope_type,scope_id)
+            VALUES($1,$2,$3,$4::jsonb,$5,$6,'active',$7,$8,$9,$10,$11,$12,$13,$14)""", fact_id,
             customer_id, key, json.dumps(value, ensure_ascii=False), source,
             UUID(session_id), previous, source_turn_id, on_date, source_kind,
-            source_tool, evidence_quote)
+            source_tool, evidence_quote, scope_type, scope_id)
 
     async def claim_operation(self, conn, key: str, args_hash: str) -> dict | None:
         await conn.execute("""INSERT INTO ai_memory.write_operations(operation_key,args_hash)

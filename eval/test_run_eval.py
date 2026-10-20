@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from eval.catalog_search_benchmark import catalog_search_metrics
-from eval.run_eval import _claims, _require_eval_database, run
+from eval.run_eval import _claims, _facts_used, _require_eval_database, run
 from app.agent.guardrails.diagnostics import rejected_draft
 from app.schemas.agent import TextTurnResponse
 
@@ -49,6 +49,14 @@ class _BlockedRuntime(_Runtime):
 
 
 class EvalRunnerTest(unittest.TestCase):
+    def test_prior_scoped_fact_used_is_counted_without_customer_identifier(self):
+        state = {"request": SimpleNamespace(session_id="current-session"),
+                 "profile": {}, "tool_calls": [], "scoped_facts": {"product": {
+                     "SKU-ALPHA": {"preferred_color": {"value": "xanh",
+                         "source": "old-session:turn-1"}}}}}
+        self.assertEqual(_facts_used("Mẫu màu xanh vẫn phù hợp", state),
+                         ["preferred_color"])
+
     def test_price_claim_keeps_thousands_separators(self):
         claims = _claims("Giá hôm nay là 4.890.000đ. Em kiểm tra tiếp ạ.", [])
         self.assertIn({"field": "price_vnd", "value": 4890000,

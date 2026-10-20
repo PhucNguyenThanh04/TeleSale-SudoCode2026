@@ -103,6 +103,38 @@ def _fold_text(value: str) -> str:
                    if unicodedata.category(char) != "Mn")
 
 
+_ERASURE_ACTION = re.compile(r"\b(?:xoa|go|huy|loai bo)\b|\b(?:dung|khong)\s+(?:tiep tuc\s+)?(?:giu|luu)\b")
+_ERASURE_SUBJECT = re.compile(r"\b(?:du lieu|thong tin|ho so)\b")
+_ERASURE_OWNER = re.compile(r"\b(?:cua\s+(?:toi|anh|chi|em|minh)|ca nhan|ve\s+(?:toi|anh|chi|em|minh)|toan bo|tat ca|het)\b")
+_ERASURE_SPECIFIC_INFO = re.compile(r"\bthong tin\s+(?:ve\s+)?(?:so thich|mau|size|co giay|ngan sach|dien tich phong)\b")
+_ERASURE_WHOLE_RECORD = re.compile(r"\b(?:toan bo|tat ca|het)\s+(?:du lieu|thong tin|ho so)\b")
+_ERASURE_DONE = re.compile(r"\bda\s+(?:duoc\s+)?(?:xoa|go|huy|loai bo|xu ly xong)\b|\b(?:xoa|go|huy)\s+(?:xong|het|hoan tat)\b|\bda\s+(?:xu ly|hoan thanh)\s+xong\s+yeu cau\s+xoa\b")
+
+
+def customer_erasure_requested(customer_text: str) -> bool:
+    """Recognize requests about the customer's whole record, not one preference."""
+    folded = _fold_text(customer_text)
+    subjects = list(_ERASURE_SUBJECT.finditer(folded))
+    return bool(_ERASURE_ACTION.search(folded) and subjects
+                and (any(subject.group() != "thong tin"
+                         or not _ERASURE_SPECIFIC_INFO.match(folded, subject.start())
+                         for subject in subjects)
+                     or _ERASURE_WHOLE_RECORD.search(folded))
+                and (_ERASURE_OWNER.search(folded)
+                     or any(subject.group() in {"du lieu", "ho so"}
+                            for subject in subjects)))
+
+
+def _customer_erasure_completion_claim(answer: str) -> bool:
+    folded = _fold_text(answer)
+    for clause in re.split(r"[;.!?]|\bnhung\b|,\s*(?=(?:gio|nay|bay gio|sau do)\b)", folded):
+        if (_ERASURE_DONE.search(clause) and _ERASURE_ACTION.search(clause)
+                and _ERASURE_SUBJECT.search(clause)
+                and not re.search(r"\b(?:chua|khong)\s+(?:duoc\s+)?(?:xoa|go|huy|xu ly)\b", clause)):
+            return True
+    return False
+
+
 def _room_area_evidenced(value: Any, customer_text: str) -> bool:
     if type(value) is not int or value <= 0:
         return False
@@ -409,6 +441,9 @@ def check_grounding(candidate: str, tool_calls: list[dict[str, Any]]) -> str | N
     The broader product, SKU and price evidence checks are added separately.
     """
     successful = [call for call in tool_calls if "error" not in call.get("result", {})]
+    # There is no authorized whole-customer purge tool in the current contract.
+    if _customer_erasure_completion_claim(candidate):
+        return "customer_erasure_unverified"
     if _unsupported_feature(candidate, successful):
         return "unsupported_product_spec"
     return None
@@ -507,6 +542,8 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     """Return a verified answer and a stable, non-sensitive rejection reason."""
     if not candidate.strip():
         return FALLBACK, "empty_answer"
+    if _customer_erasure_completion_claim(candidate):
+        return FALLBACK, "customer_erasure_unverified"
     if _INTERNAL.search(candidate) or _PRICE_REFERENCE.search(candidate):
         return FALLBACK, "unsupported_policy_or_internal_claim"
     successful = [
@@ -919,7 +956,7 @@ def _fact_reject_reason(key: str, value: Any, op: str, customer_text: str,
 
 
 _CONTEXT_CLAUSE = re.compile(r"[;,](?!\d)|\b(?:nhưng|nhung|và|va|mà|ma)\b", re.IGNORECASE)
-_HYPOTHETICAL_CUE = re.compile(r"\b(?:neu|gia su|lo|vi du|thu)\b|^nho\b")
+_HYPOTHETICAL_CUE = re.compile(r"\b(?:neu|gia su|lo|vi du)\b|^nho\b")
 _QUESTION_CUE = re.compile(r"\b(?:duoc khong|khong a|phai khong|the nao|thi sao|hay sao)\b|\b(?:a|ha|nhi|chua)\s*$")
 _POLAR_CHILD_NEGATION = re.compile(r"\b(?:khong|chua)\s+(?:co\s+)?(?:con|be|em be)\b")
 _SELECTION_NEGATION = re.compile(r"\bkhong\s+(?:(?:can|muon)\s+)?(?:thanh toan|tra|chuyen khoan|chon|lay|thich|mua|dung|phai)\b|\bkhong\s+(?:can|muon)\b")
@@ -1026,7 +1063,7 @@ def _context_rejection(key: str, value: Any, op: str, customer_text: str,
             continue
         folded = _fold_text(clause)
         hypothetical = (_HYPOTHETICAL_CUE.search(folded)
-                        or re.search(r"\bnhỡ\b", clause.casefold()))
+                        or re.search(r"\b(?:nhỡ|thử)\b", clause.casefold()))
         if spec.semantic_gate == "purchase_objection":
             # Accent folding makes the concern "lo" identical to hypothetical
             # "lỡ". Keep the explicit accented cue and a narrow ASR form.

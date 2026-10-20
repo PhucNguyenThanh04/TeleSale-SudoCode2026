@@ -28,11 +28,18 @@ async def handle_chat_turn(db: AsyncSession, ai_http: httpx.AsyncClient,
             channel_identity = request.channel_identity or request.caller_phone
             if identity_key:
                 # Column names are fixed by the trusted channel enum, never interpolated from user text.
-                result = await db.execute(text(f"""SELECT customer_id FROM btc_source.customers
+                result = await db.execute(text(f"""SELECT btc_source.customers.customer_id,
+                    (suppressed.customer_id IS NOT NULL) AS suppressed
+                    FROM btc_source.customers
+                    LEFT JOIN app_runtime.erasure_suppressions AS suppressed
+                      ON suppressed.customer_id=btc_source.customers.customer_id
                     WHERE {identity_key}=:identity"""), {"identity": channel_identity})
             else:
                 result = []
-            customers = [row.customer_id for row in result]
+            matches = list(result)
+            if matches and all(getattr(row, "suppressed", False) for row in matches):
+                raise HTTPException(410, "Customer record unavailable")
+            customers = [row.customer_id for row in matches]
             identity_status = "ambiguous" if len(customers) > 1 else ("known" if customers else "unknown")
             customer_id = customers[0] if len(customers) == 1 else None
             call_date = request.call_date
@@ -102,7 +109,9 @@ async def verify_session_identity(db: AsyncSession, operator_id: str, session_id
         if row.customer_id and row.customer_id != payload.customer_id:
             raise HTTPException(409, "Session is bound to another customer")
         matches = await db.execute(text("""SELECT customer_id FROM btc_source.customers
-            WHERE customer_id=:customer_id AND phone=:phone"""),
+            WHERE customer_id=:customer_id AND phone=:phone
+            AND NOT EXISTS (SELECT 1 FROM app_runtime.erasure_suppressions
+                WHERE erasure_suppressions.customer_id=:customer_id)"""),
             {"customer_id": payload.customer_id, "phone": payload.phone})
         if matches.one_or_none() is None:
             raise HTTPException(422, "Customer and phone do not match CRM")

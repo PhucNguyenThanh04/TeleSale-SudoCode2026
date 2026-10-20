@@ -9,15 +9,35 @@ from datetime import date
 from uuid import UUID, uuid4
 
 from app.mcp_servers.mcp_shared.pii import mask_pii
+from app.mcp_servers.mcp_memory.services.episode_summary import build_episode_summary
 from app.constants import Slot
 
 
 _FACT_KEY = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
+_SCOPE_ID = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
+_PRODUCT_KEYS = {Slot.PRODUCT_ADVISED, Slot.PRICE_QUOTED_VND, Slot.PROMO_CODE,
+                 Slot.PROMO_EXPIRY, Slot.IN_STOCK, Slot.VARIANT_SKU}
+_ROOM_KEYS = {Slot.ROOM_AREA_M2, Slot.BUDGET_VND}
+
+
+def _valid_scope(fact: dict) -> bool:
+    scope_type = fact.get("scope_type", "global")
+    scope_id = fact.get("scope_id", "")
+    if scope_type == "global":
+        return scope_id == ""
+    if not isinstance(scope_id, str) or not _SCOPE_ID.fullmatch(scope_id):
+        return False
+    if scope_type == "product":
+        return fact.get("key") in _PRODUCT_KEYS
+    if scope_type == "room":
+        return fact.get("key") in _ROOM_KEYS
+    return False
 
 
 def _valid_fact(fact: dict) -> bool:
     value = fact.get("value")
-    return (isinstance(fact.get("key"), str)
+    return (_valid_scope(fact)
+            and isinstance(fact.get("key"), str)
             and bool(_FACT_KEY.fullmatch(fact["key"]))
             and fact.get("op") in {"set", "supersede", "delete"}
             and fact.get("source_kind") in {"customer", "tool"}
@@ -40,9 +60,13 @@ async def _write_fact(repo, conn, customer_id: str, session_id: str, fact: dict,
                       source: str, source_turn_id: UUID | None = None,
                       on_date: date | None = None) -> dict:
     key, op = fact["key"], fact["op"]
-    await repo.lock_key(conn, customer_id + ":" + key)
+    scope_type, scope_id = fact.get("scope_type", "global"), fact.get("scope_id", "")
+    await repo.lock_key(conn, f"{customer_id}:{scope_type}:{scope_id}:{key}")
     if hasattr(repo, "active_fact_record"):
-        previous_record = await repo.active_fact_record(conn, customer_id, key)
+        previous_record = (await repo.active_fact_record(conn, customer_id, key)
+                           if scope_type == "global" else
+                           await repo.active_fact_record(conn, customer_id, key,
+                                                         scope_type, scope_id))
         previous = previous_record["fact_id"] if previous_record else None
         old_value = previous_record["value"] if previous_record else None
         if isinstance(old_value, str):
@@ -52,12 +76,16 @@ async def _write_fact(repo, conn, customer_id: str, session_id: str, fact: dict,
         if not previous and op == "delete":
             return {"key": key, "op": "unchanged"}
     else:
-        previous = await repo.active_fact(conn, customer_id, key)
+        previous = (await repo.active_fact(conn, customer_id, key)
+                    if scope_type == "global" else
+                    await repo.active_fact(conn, customer_id, key, scope_type, scope_id))
     if previous:
         await repo.set_fact_status(conn, previous,
                                    "retracted" if op == "delete" else "superseded")
     actual_op = "delete" if op == "delete" else ("supersede" if previous else "set")
     result = {"customer_id": customer_id, "key": key, "op": actual_op, "source": source}
+    if scope_type != "global":
+        result.update(scope_type=scope_type, scope_id=scope_id)
     if op != "delete":
         fact_id = uuid4()
         extra = ({"source_turn_id": source_turn_id, "on_date": on_date,
@@ -66,6 +94,8 @@ async def _write_fact(repo, conn, customer_id: str, session_id: str, fact: dict,
                  if source_turn_id else {})
         if fact.get("evidence_quote"):
             extra["evidence_quote"] = fact["evidence_quote"]
+        if scope_type != "global":
+            extra.update(scope_type=scope_type, scope_id=scope_id)
         await repo.insert_fact(conn, fact_id, customer_id, key, fact["value"],
                                source, session_id, previous, **extra)
         result.update(value=fact["value"], fact_id=str(fact_id))
@@ -77,25 +107,38 @@ async def _write_fact(repo, conn, customer_id: str, session_id: str, fact: dict,
 async def read(repo, customer_id: str | None, session_id: str,
                max_episodes: int = 5, include_prior: bool = True) -> dict:
     async with repo.transaction() as conn:
+        if customer_id and hasattr(repo, "is_erasure_blocked"):
+            await repo.lock_key(conn, f"erasure:{customer_id}")
+            if await repo.is_erasure_blocked(conn, customer_id):
+                return {"error": "customer_erasure_in_progress"}
         owner = await repo.owner(conn, session_id)
         if owner is not None and owner != customer_id:
             return {"error": "session_owner_mismatch"}
-        turns = (await repo.recent_turns(conn, session_id, 12)
-                 if hasattr(repo, "recent_turns") else await repo.turns(conn, session_id))
+        if customer_id:
+            turns = await repo.recent_customer_turns(conn, session_id, customer_id, 12)
+        else:
+            turns = (await repo.recent_turns(conn, session_id, 12)
+                     if hasattr(repo, "recent_turns") else await repo.turns(conn, session_id))
         result = {"history": [{"customer": row["customer_text"], "agent": row["agent_text"]}
-                              for row in turns], "profile": {}, "episodes": [], "owned_order_ids": [],
+                              for row in turns], "profile": {}, "scoped_facts": {"product": {}, "room": {}},
+                  "episodes": [], "owned_order_ids": [],
                   "turn_count": (await repo.turn_count(conn, session_id)
                                  if hasattr(repo, "turn_count") else len(turns))}
         if not customer_id:
             return result
         facts = await repo.facts(conn, customer_id, session_id, include_prior)
-        result["profile"] = {row["key"]: {"key": row["key"],
-            "value": json.loads(row["value"]) if isinstance(row["value"], str) else row["value"],
-            "source": row["source"], "status": "active",
-            "on": row.get("on_date").isoformat() if row.get("on_date") else None,
-            "source_kind": row.get("source_kind"), "source_tool": row.get("source_tool"),
-            "evidence_quote": row.get("evidence_quote")}
-            for row in facts}
+        for row in facts:
+            fact = {"key": row["key"],
+                "value": json.loads(row["value"]) if isinstance(row["value"], str) else row["value"],
+                "source": row["source"], "status": "active",
+                "on": row.get("on_date").isoformat() if row.get("on_date") else None,
+                "source_kind": row.get("source_kind"), "source_tool": row.get("source_tool"),
+                "evidence_quote": row.get("evidence_quote")}
+            scope_type, scope_id = row.get("scope_type", "global"), row.get("scope_id", "")
+            if scope_type == "global":
+                result["profile"][row["key"]] = fact
+            elif scope_type in {"product", "room"} and scope_id:
+                result["scoped_facts"][scope_type].setdefault(scope_id, {})[row["key"]] = fact
         episodes = await repo.episodes(conn, customer_id, session_id, max_episodes) if include_prior else []
         result["episodes"] = [{"session_id": str(row["session_id"]), "channel": row["channel"],
             "on": row["on_date"].isoformat(), "summary": row["summary"],
@@ -133,6 +176,10 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
         "session_id": session_id, "data": data}, sort_keys=True, default=str,
         ensure_ascii=False).encode()).hexdigest()
     async with repo.transaction() as conn:
+        if customer_id and hasattr(repo, "is_erasure_blocked"):
+            await repo.lock_key(conn, f"erasure:{customer_id}")
+            if await repo.is_erasure_blocked(conn, customer_id):
+                return {"error": "customer_erasure_in_progress"}
         if operation_key:
             previous = await repo.claim_operation(conn, operation_key, digest)
             if previous is not None:
@@ -148,12 +195,6 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
                 on = date.fromisoformat(data["on"])
                 await repo.insert_turn(conn, session_id, number, customer_id,
                                        data["channel"], on, customer_text, agent_text)
-                if customer_id:
-                    last = (await repo.turns(conn, session_id))[-summary_turns:]
-                    summary = " | ".join(f"Khách: {row['customer_text']} Trợ lý: {row['agent_text']}"
-                                         for row in last)[:summary_max_chars]
-                    await repo.upsert_episode(conn, session_id, customer_id, data["channel"],
-                                              on, summary, data.get("outcome", "khac"))
                 result = {"turn_no": number}
                 if action == "commit_turn":
                     writes = []
@@ -164,35 +205,16 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
                                                         fact, source, source_turn_id, on)
                             if written["op"] != "unchanged":
                                 writes.append(written)
-                        elif hasattr(repo, "stage_fact"):
-                            await repo.stage_fact(conn, session_id, source_turn_id,
-                                                  number, fact, on)
                     for order_id in orders:
                         await repo.link_order(conn, customer_id, order_id)
                     result["memory_writes"] = writes
-        elif action == "claim_pending" and customer_id:
-            await repo.lock_key(conn, session_id)
-            owner = await repo.owner(conn, session_id)
-            if owner not in (None, customer_id):
-                result = {"error": "session_owner_mismatch"}
-            else:
-                writes = []
-                for pending in await repo.pending_facts(conn, session_id):
-                    value = pending["value"]
-                    fact = {"key": pending["key"],
-                            "value": json.loads(value) if isinstance(value, str) else value,
-                            "op": pending["op"], "source_kind": pending["source_kind"],
-                            "source_tool": pending["source_tool"],
-                            "evidence_quote": pending.get("evidence_quote")}
-                    source_turn_id = pending["source_turn_id"]
-                    written = await _write_fact(repo, conn, customer_id, session_id,
-                                                fact, f"{session_id}:{source_turn_id}",
-                                                source_turn_id, pending["on_date"])
-                    if written["op"] != "unchanged":
-                        writes.append(written)
-                await repo.clear_pending(conn, session_id)
-                await repo.bind_owner(conn, session_id, customer_id)
-                result = {"memory_writes": writes}
+                if customer_id:
+                    turns = await repo.customer_turns(conn, session_id, customer_id)
+                    confirmed = (await repo.session_facts(conn, session_id, customer_id)
+                                 if hasattr(repo, "session_facts") else [])
+                    summary = build_episode_summary(confirmed, turns, summary_max_chars)
+                    await repo.upsert_episode(conn, session_id, customer_id, data["channel"],
+                                              on, summary, data.get("outcome", "khac"))
         elif not customer_id:
             result = {"error": "identity_required"}
         elif action == "seed_episode":
@@ -211,7 +233,9 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
         elif action == "fact":
             key, op = data["key"], data["op"]
             quote = data.get("evidence_quote")
-            if op not in {"set", "supersede", "delete"}:
+            if not _valid_scope(data):
+                result = {"error": "invalid_scope"}
+            elif op not in {"set", "supersede", "delete"}:
                 result = {"error": "invalid_op"}
             elif isinstance(data.get("value"), str) and mask_pii(data["value"]) != data["value"]:
                 result = {"error": "pii_rejected"}

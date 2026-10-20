@@ -35,6 +35,8 @@ class TraceMemoryWrite(BaseModel):
     value: Any = None
     op: Literal["set", "supersede", "delete"]
     source: str
+    scope_type: Literal["global", "product", "room"] | None = None
+    scope_id: str | None = None
 
 
 class AgentTraceLine(BaseModel):
