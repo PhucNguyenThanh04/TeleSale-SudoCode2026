@@ -1,0 +1,6 @@
+{
+ "_doc": "Copy thành speech/data/team_voices.json (thư mục data/ đã .gitignore) rồi điền cho từng thành viên đọc vai tv1–tv3 trong speech/dialogues/team_clone.template.json. gender: f|m; region: bac|trung|nam (giọng thật của người đó); ref_audio: file wav 6–15 giây, một người nói, phòng yên tĩnh, không nhạc nền, đường dẫn tương đối tính từ thư mục chứa file này. consent: chỉ đổi thành true sau khi chính thành viên đó đồng ý cho dùng giọng để tạo dữ liệu thử nghiệm của nhóm; thiếu true thì lệnh synth từ chối. 'tts' (tuỳ chọn): tham số VieNeu riêng, ví dụ {\"temperature\": 0.4}.",
+ "tv1": {"gender": "f", "region": "bac", "ref_audio": "voice_refs/tv1.wav", "consent": false},
+ "tv2": {"gender": "m", "region": "nam", "ref_audio": "voice_refs/tv2.wav", "consent": false},
+ "tv3": {"gender": "f", "region": "trung", "ref_audio": "voice_refs/tv3.wav", "consent": false}
+}

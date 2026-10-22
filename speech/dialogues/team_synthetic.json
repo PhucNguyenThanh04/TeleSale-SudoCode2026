@@ -1,0 +1,351 @@
+{
+ "description": "Kịch bản ASR full synthetic của nhóm: T01 (dev, chép nguyên từ examples/team_dialogues.sample.json) + T03–T12 (holdout). Audio tạo THỦ CÔNG trên web ElevenLabs (Flash v2.5) theo checklist của `python -m speech manual-export`, rồi nhập bằng engine `files`. `text` là ground truth ở dạng nói; `tts_text` chỉ đổi tên hãng sang chữ gốc cho TTS đọc tự nhiên, số vẫn viết bằng chữ. Giá/KM/tồn kho/chính sách đối chiếu bằng `python -m speech validate` (mock_tools BTC tại call_date). `tool_context`/`checks` chỉ dùng cho validator, bị bỏ khỏi ground_truth.json đầu ra.",
+ "normalization_rule": "Trước khi tính WER/CER: lowercase, NFC, bỏ dấu câu, gộp khoảng trắng (giống asr/ground_truth.json của BTC).",
+ "reference_date": "2026-10-15",
+ "call_date_range": ["2026-10-15", "2026-10-31"],
+ "tts_engine": "elevenlabs",
+ "dialogues": [
+  {
+   "id": "T01",
+   "call_date": "2026-10-20",
+   "split": "dev",
+   "customer_region": "nam",
+   "customer_gender": "m",
+   "agent_region": "bac",
+   "agent_gender": "f",
+   "noisy": false,
+   "note": "Khách miền Nam nói chêm tiếng Anh (check, voucher, sale, order, thanks); SKU-XM-4P về hàng 19/10, quà XM-COMBO đến 14/11, NAM-SHIP0, COD-0",
+   "tool_context": {"address": "Quận 7, TP.HCM"},
+   "checks": [
+    {"tool": "pricing.get_quote", "args": {"sku": "SKU-XM-4P", "address": "Quận 7, TP.HCM"}, "turn": 5,
+     "applied": ["NAM-SHIP0", "COD-0"], "why": "freeship miền Nam và COD miễn phí (KM-08, VC-03)"}
+   ],
+   "turns": [
+    {"idx": 1, "speaker": "A", "text": "dạ shop bê tê xê xin nghe, em có thể hỗ trợ gì cho anh ạ", "entities": {}},
+    {"idx": 2, "speaker": "C", "text": "hi em, anh muốn check con xiao mi smart bốn pro, bây giờ còn hàng chưa em", "entities": {"sku": "SKU-XM-4P"}},
+    {"idx": 3, "speaker": "A", "text": "dạ mẫu xiao mi smart bốn pro đã có hàng lại rồi ạ, giá năm triệu bốn trăm chín mươi nghìn, đang có quà tặng một màng lọc đến hết ngày mười bốn tháng mười một ạ", "entities": {"sku": "SKU-XM-4P", "in_stock": true, "price_vnd": 5490000, "promo_expiry": "2026-11-14"}},
+    {"idx": 4, "speaker": "C", "text": "ok, có voucher hay sale gì thêm không em, phí ship về quận bảy bao nhiêu", "entities": {}},
+    {"idx": 5, "speaker": "A", "text": "dạ mẫu này hiện không có voucher giảm giá, nhưng anh ở miền nam nên được freeship, thanh toán cê ô đê cũng miễn phí luôn ạ", "entities": {"payment": "COD"}},
+    {"idx": 6, "speaker": "C", "text": "ok vậy em lên order giúp anh một máy, anh trả cê ô đê nhé", "entities": {"payment": "COD"}},
+    {"idx": 7, "speaker": "A", "text": "dạ em xác nhận một máy xiao mi smart bốn pro, giá năm triệu bốn trăm chín mươi nghìn, thanh toán cê ô đê, giao nội thành trong một đến hai ngày làm việc, anh để ý điện thoại giúp em nhé", "entities": {"sku": "SKU-XM-4P", "price_vnd": 5490000, "payment": "COD", "delivery_days": 2}},
+    {"idx": 8, "speaker": "C", "text": "ok em, thanks em nhé", "entities": {}},
+    {"idx": 9, "speaker": "A", "text": "dạ em cảm ơn anh, chúc anh một ngày vui vẻ ạ", "entities": {}}
+   ],
+   "entities": {"sku": "SKU-XM-4P", "in_stock": true, "price_vnd": 5490000, "promo_expiry": "2026-11-14", "payment": "COD", "delivery_days": 2}
+  },
+  {
+   "id": "T03",
+   "call_date": "2026-10-16",
+   "split": "holdout",
+   "customer_region": "bac",
+   "customer_gender": "m",
+   "agent_region": "bac",
+   "agent_gender": "f",
+   "noisy": false,
+   "note": "Kangaroo RO10 vs Karofi RO9 (SP-WF-01/02; BH-01/BH-04: 36 tháng thân máy, lõi không bảo hành). Giao Bắc Ninh: freeship ≥2 triệu nhưng hàng cồng kềnh ngoài nội thành phụ thu 30k (VC-02); tỉnh khác 2–4 ngày (VC-01); COD >2 triệu gọi xác nhận (VC-05).",
+   "tool_context": {"address": "Từ Sơn, Bắc Ninh"},
+   "checks": [
+    {"tool": "delivery.eta", "args": {"address": "Từ Sơn, Bắc Ninh"}, "turn": 9, "expect": "2026-10-21",
+     "why": "giao tỉnh trong hai đến bốn ngày làm việc (mock: 4 ngày làm việc, bỏ Chủ nhật)"}
+   ],
+   "turns": [
+    {"idx": 1, "speaker": "A", "text": "dạ shop bê tê xê xin nghe, em chào anh ạ", "entities": {}},
+    {"idx": 2, "speaker": "C", "text": "chào em, nhà anh dùng nước máy, anh đang xem máy lọc nước kang ga ru mười lõi, giá bao nhiêu em", "tts_text": "chào em, nhà anh dùng nước máy, anh đang xem máy lọc nước Kangaroo mười lõi, giá bao nhiêu em", "entities": {"sku": "SKU-WF-RO10"}},
+    {"idx": 3, "speaker": "A", "text": "dạ máy kang ga ru mười lõi giá sáu triệu tám trăm chín mươi nghìn ạ, dùng được cả nước máy và nước giếng khoan, bảo hành ba mươi sáu tháng cho thân máy", "tts_text": "dạ máy Kangaroo mười lõi giá sáu triệu tám trăm chín mươi nghìn ạ, dùng được cả nước máy và nước giếng khoan, bảo hành ba mươi sáu tháng cho thân máy", "entities": {"sku": "SKU-WF-RO10", "price_vnd": 6890000, "warranty_months": 36}},
+    {"idx": 4, "speaker": "C", "text": "còn máy ka rô phi chín lõi thì sao em, mấy cái lõi filter có được warranty không", "tts_text": "còn máy Karofi chín lõi thì sao em, mấy cái lõi filter có được warranty không", "entities": {"sku": "SKU-WF-RO9"}},
+    {"idx": 5, "speaker": "A", "text": "dạ máy ka rô phi chín lõi giá năm triệu chín trăm chín mươi nghìn, cũng bảo hành ba mươi sáu tháng thân máy, riêng lõi lọc là vật tư tiêu hao nên không bảo hành, ba lõi đầu anh nên thay sau sáu đến chín tháng ạ", "tts_text": "dạ máy Karofi chín lõi giá năm triệu chín trăm chín mươi nghìn, cũng bảo hành ba mươi sáu tháng thân máy, riêng lõi lọc là vật tư tiêu hao nên không bảo hành, ba lõi đầu anh nên thay sau sáu đến chín tháng ạ", "entities": {"sku": "SKU-WF-RO9", "price_vnd": 5990000, "warranty_months": 36}},
+    {"idx": 6, "speaker": "C", "text": "ok, vậy anh lấy kang ga ru cho chắc, giao về từ sơn bắc ninh có mất phí ship không", "tts_text": "ok, vậy anh lấy Kangaroo cho chắc, giao về Từ Sơn Bắc Ninh có mất phí ship không", "entities": {"sku": "SKU-WF-RO10"}},
+    {"idx": 7, "speaker": "A", "text": "dạ đơn trên hai triệu nên anh được miễn phí ship, riêng máy lọc nước là hàng cồng kềnh nên giao ngoài nội thành phụ thu ba mươi nghìn ạ", "entities": {"min_free_ship_vnd": 2000000, "bulky_fee_vnd": 30000}},
+    {"idx": 8, "speaker": "C", "text": "được, anh trả cê ô đê nhé", "entities": {"payment": "COD"}},
+    {"idx": 9, "speaker": "A", "text": "dạ em xác nhận một máy kang ga ru mười lõi, giá sáu triệu tám trăm chín mươi nghìn, cộng phụ thu ba mươi nghìn, thanh toán cê ô đê, giao trong hai đến bốn ngày làm việc, trước khi giao bên em sẽ gọi xác nhận ạ", "tts_text": "dạ em xác nhận một máy Kangaroo mười lõi, giá sáu triệu tám trăm chín mươi nghìn, cộng phụ thu ba mươi nghìn, thanh toán cê ô đê, giao trong hai đến bốn ngày làm việc, trước khi giao bên em sẽ gọi xác nhận ạ", "entities": {"sku": "SKU-WF-RO10", "price_vnd": 6890000, "bulky_fee_vnd": 30000, "payment": "COD", "delivery_days": 4}},
+    {"idx": 10, "speaker": "C", "text": "ok em, cảm ơn nhé", "entities": {}}
+   ],
+   "entities": {"sku": "SKU-WF-RO10", "price_vnd": 6890000, "warranty_months": 36, "min_free_ship_vnd": 2000000, "bulky_fee_vnd": 30000, "payment": "COD", "delivery_days": 4}
+  },
+  {
+   "id": "T04",
+   "call_date": "2026-10-28",
+   "split": "holdout",
+   "customer_region": "nam",
+   "customer_gender": "f",
+   "agent_region": "nam",
+   "agent_gender": "m",
+   "noisy": true,
+   "note": "Bẫy KM-02: KM '11-11' (−15% gia dụng) chạy 11/11–12/11, chưa bắt đầu tại call_date → agent không hé lộ, chỉ nêu KM đang chạy (NAM-SHIP0, COD-0). Nồi chiên Philips 6.2L: SP-AF-01; bảo hành catalog 12 tháng; COD >2 triệu gọi xác nhận (VC-05).",
+   "tool_context": {"address": "Gò Vấp, TP.HCM"},
+   "checks": [
+    {"tool": "pricing.get_quote", "args": {"sku": "SKU-AF-6L", "address": "Gò Vấp, TP.HCM"}, "turn": 5,
+     "not_applied": ["11-11"], "applied": ["NAM-SHIP0", "COD-0"],
+     "why": "KM 11/11 chưa bắt đầu nên không được nhắc; freeship miền Nam và COD-0 đang chạy"},
+    {"tool": "delivery.eta", "args": {"address": "Gò Vấp, TP.HCM"}, "turn": 7, "expect": "2026-10-30",
+     "why": "nội thành TP.HCM một đến hai ngày làm việc"}
+   ],
+   "turns": [
+    {"idx": 1, "speaker": "A", "text": "dạ bê tê xê xin nghe, em có thể hỗ trợ gì cho chị ạ", "entities": {}},
+    {"idx": 2, "speaker": "C", "text": "hello em, chị đang coi con nồi chiên phi líp sáu phẩy hai lít, đang có deal gì không em", "tts_text": "hello em, chị đang coi con nồi chiên Philips sáu phẩy hai lít, đang có deal gì không em", "entities": {"sku": "SKU-AF-6L"}},
+    {"idx": 3, "speaker": "A", "text": "dạ nồi chiên phi líp sáu phẩy hai lít giá ba triệu chín trăm chín mươi nghìn ạ, công suất hai nghìn oát, có bảy chế độ nấu cài sẵn", "tts_text": "dạ nồi chiên Philips sáu phẩy hai lít giá ba triệu chín trăm chín mươi nghìn ạ, công suất hai nghìn oát, có bảy chế độ nấu cài sẵn", "entities": {"sku": "SKU-AF-6L", "price_vnd": 3990000}},
+    {"idx": 4, "speaker": "C", "text": "nghe nói mười một tháng mười một có flash sale với voucher xịn lắm, hay chị đợi tới đó rồi order cho rẻ", "entities": {}},
+    {"idx": 5, "speaker": "A", "text": "dạ hiện em chỉ có thông tin các chương trình đang áp dụng thôi chị ạ, hôm nay chị đặt thì được freeship, thanh toán cê ô đê cũng không mất phí thu hộ", "entities": {"payment": "COD"}},
+    {"idx": 6, "speaker": "C", "text": "ok vậy chị lấy luôn, bảo hành bao lâu em, ship về gò vấp mấy ngày", "entities": {}},
+    {"idx": 7, "speaker": "A", "text": "dạ nồi chiên bảo hành mười hai tháng chính hãng ạ, giao nội thành thành phố hồ chí minh trong một đến hai ngày làm việc", "entities": {"warranty_months": 12, "delivery_days": 2}},
+    {"idx": 8, "speaker": "C", "text": "ok, em lên order cê ô đê cho chị nha, thanks em", "entities": {"payment": "COD"}},
+    {"idx": 9, "speaker": "A", "text": "dạ em xác nhận một nồi chiên phi líp sáu phẩy hai lít, giá ba triệu chín trăm chín mươi nghìn, freeship, thanh toán cê ô đê, trước khi giao bên em sẽ gọi xác nhận với chị ạ", "tts_text": "dạ em xác nhận một nồi chiên Philips sáu phẩy hai lít, giá ba triệu chín trăm chín mươi nghìn, freeship, thanh toán cê ô đê, trước khi giao bên em sẽ gọi xác nhận với chị ạ", "entities": {"sku": "SKU-AF-6L", "price_vnd": 3990000, "payment": "COD"}}
+   ],
+   "entities": {"sku": "SKU-AF-6L", "price_vnd": 3990000, "payment": "COD", "warranty_months": 12, "delivery_days": 2}
+  },
+  {
+   "id": "T05",
+   "call_date": "2026-10-17",
+   "split": "holdout",
+   "customer_region": "bac",
+   "customer_gender": "f",
+   "agent_region": "nam",
+   "agent_gender": "f",
+   "noisy": false,
+   "note": "Medela Swing Maxi vs Spectra S1 (SP-MB-01). Bẫy: PUMP-GIFT (tặng túi trữ sữa) hết hạn 13/10 → không hứa quà; MOM-FREESHIP đơn mẹ & bé từ 500k (VC-02). Không tư vấn y khoa (PB-06). Nam Định: tỉnh khác 2–4 ngày (VC-01).",
+   "tool_context": {"address": "Nam Định"},
+   "checks": [
+    {"tool": "pricing.get_quote", "args": {"sku": "SKU-MB-PUMP1", "address": "Nam Định"}, "turn": 7,
+     "expired": ["PUMP-GIFT"], "applied": ["MOM-FREESHIP"],
+     "why": "quà túi trữ sữa đã hết hạn 13/10; freeship mẹ & bé còn chạy"}
+   ],
+   "turns": [
+    {"idx": 1, "speaker": "A", "text": "dạ bê tê xê xin nghe, em chào chị ạ", "entities": {}},
+    {"idx": 2, "speaker": "C", "text": "chào em, chị đang phân vân máy hút sữa mê đê la swing maxi với xpếch tra ét một, em tư vấn giúp chị với", "tts_text": "chào em, chị đang phân vân máy hút sữa Medela Swing Maxi với Spectra ét một, em tư vấn giúp chị với", "entities": {}},
+    {"idx": 3, "speaker": "A", "text": "dạ cả hai đều là máy hút sữa điện đôi ạ, máy mê đê la swing maxi rất nhẹ, chỉ khoảng bốn trăm gam, giá năm triệu chín trăm chín mươi nghìn", "tts_text": "dạ cả hai đều là máy hút sữa điện đôi ạ, máy Medela Swing Maxi rất nhẹ, chỉ khoảng bốn trăm gam, giá năm triệu chín trăm chín mươi nghìn", "entities": {"sku": "SKU-MB-PUMP2", "price_vnd": 5990000}},
+    {"idx": 4, "speaker": "C", "text": "còn xpếch tra thì sao, chị đọc review thấy bảo có pin sạc tiện lắm", "tts_text": "còn Spectra thì sao, chị đọc review thấy bảo có pin sạc tiện lắm", "entities": {"sku": "SKU-MB-PUMP1"}},
+    {"idx": 5, "speaker": "A", "text": "dạ đúng rồi chị, xpếch tra ét một có pin sạc dùng khoảng ba tiếng, giá bốn triệu hai trăm chín mươi nghìn, bảo hành mười hai tháng ạ", "tts_text": "dạ đúng rồi chị, Spectra ét một có pin sạc dùng khoảng ba tiếng, giá bốn triệu hai trăm chín mươi nghìn, bảo hành mười hai tháng ạ", "entities": {"sku": "SKU-MB-PUMP1", "price_vnd": 4290000, "warranty_months": 12}},
+    {"idx": 6, "speaker": "C", "text": "trên fanpage có ghi mua xpếch tra được tặng túi trữ sữa, giờ còn không em", "tts_text": "trên fanpage có ghi mua Spectra được tặng túi trữ sữa, giờ còn không em", "entities": {}},
+    {"idx": 7, "speaker": "A", "text": "dạ chương trình tặng túi trữ sữa đã kết thúc từ ngày mười ba tháng mười rồi chị ạ, nhưng đơn mẹ và bé từ năm trăm nghìn vẫn được freeship", "entities": {"min_free_ship_vnd": 500000}},
+    {"idx": 8, "speaker": "C", "text": "ok, vậy chị lấy xpếch tra, giao về nam định, chị trả bằng momo nhé", "tts_text": "ok, vậy chị lấy Spectra, giao về Nam Định, chị trả bằng MoMo nhé", "entities": {"sku": "SKU-MB-PUMP1", "payment": "momo"}},
+    {"idx": 9, "speaker": "A", "text": "dạ em xác nhận một máy xpếch tra ét một, giá bốn triệu hai trăm chín mươi nghìn, freeship, thanh toán momo, giao về nam định trong hai đến bốn ngày làm việc ạ", "tts_text": "dạ em xác nhận một máy Spectra ét một, giá bốn triệu hai trăm chín mươi nghìn, freeship, thanh toán MoMo, giao về Nam Định trong hai đến bốn ngày làm việc ạ", "entities": {"sku": "SKU-MB-PUMP1", "price_vnd": 4290000, "payment": "momo", "delivery_days": 4}},
+    {"idx": 10, "speaker": "C", "text": "ok, cảm ơn em nhiều", "entities": {}}
+   ],
+   "entities": {"sku": "SKU-MB-PUMP1", "price_vnd": 4290000, "warranty_months": 12, "min_free_ship_vnd": 500000, "payment": "momo", "delivery_days": 4}
+  },
+  {
+   "id": "T06",
+   "call_date": "2026-10-19",
+   "split": "holdout",
+   "customer_region": "bac",
+   "customer_gender": "m",
+   "agent_region": "nam",
+   "agent_gender": "f",
+   "noisy": true,
+   "note": "HikePro form rộng chọn đúng size, chân 25,5 cm → 41 (SP-SN-01, FAQ). 41 trắng hết hàng, không có ngày về (FAQ-17) → gợi ý đen/xám còn hàng. Đổi trả 7 ngày, chưa mòn đế, còn tem/hộp (DT-01/02). Hà Đông nội thành: đơn <2 triệu phí 25k, 1–2 ngày (VC-01/02).",
+   "tool_context": {"address": "Hà Đông, Hà Nội"},
+   "checks": [
+    {"tool": "inventory.check", "args": {"sku": "SKU-SN-TRK-41-TRANG"}, "turn": 5, "expect": {"in_stock": false},
+     "why": "size 41 màu trắng hết hàng"}
+   ],
+   "turns": [
+    {"idx": 1, "speaker": "A", "text": "dạ shop bê tê xê xin nghe ạ", "entities": {}},
+    {"idx": 2, "speaker": "C", "text": "alo em, anh muốn mua giày trekking hai pro, chân anh dài hai mươi lăm phẩy năm phân thì đi size nào", "tts_text": "alo em, anh muốn mua giày trekking HikePro, chân anh dài hai mươi lăm phẩy năm phân thì đi size nào", "entities": {"sku": "SKU-SN-TRK"}},
+    {"idx": 3, "speaker": "A", "text": "dạ giày hai pro form rộng nên anh chọn đúng size, chân hai mươi lăm phẩy năm phân thì anh đi size bốn mươi mốt ạ", "tts_text": "dạ giày HikePro form rộng nên anh chọn đúng size, chân hai mươi lăm phẩy năm phân thì anh đi size bốn mươi mốt ạ", "entities": {"sku": "SKU-SN-TRK"}},
+    {"idx": 4, "speaker": "C", "text": "anh thích màu trắng, em check giúp anh size bốn mươi mốt màu trắng còn không", "entities": {"color": "trang"}},
+    {"idx": 5, "speaker": "A", "text": "dạ size bốn mươi mốt màu trắng hiện hết hàng anh ạ, em chưa có ngày về, size này còn màu đen và màu xám", "entities": {"in_stock": false}},
+    {"idx": 6, "speaker": "C", "text": "vậy lấy màu xám đi em, giá bao nhiêu, đi không vừa thì đổi trả sao", "entities": {"color": "xam"}},
+    {"idx": 7, "speaker": "A", "text": "dạ size bốn mươi mốt màu xám còn hàng, giá một triệu chín trăm chín mươi nghìn ạ, anh được đổi trả trong bảy ngày nếu giày chưa đi ra ngoài, chưa mòn đế, còn nguyên tem và hộp", "entities": {"color": "xam", "in_stock": true, "price_vnd": 1990000, "return_days": 7}},
+    {"idx": 8, "speaker": "C", "text": "ok, ship về hà đông phí bao nhiêu em", "tts_text": "ok, ship về Hà Đông phí bao nhiêu em", "entities": {}},
+    {"idx": 9, "speaker": "A", "text": "dạ đơn dưới hai triệu nên phí ship nội thành là hai mươi lăm nghìn ạ, giao trong một đến hai ngày làm việc", "entities": {"min_free_ship_vnd": 2000000, "delivery_days": 2}},
+    {"idx": 10, "speaker": "C", "text": "ok em, chốt cho anh một đôi nhé", "entities": {}}
+   ],
+   "entities": {"sku": "SKU-SN-TRK", "color": "xam", "in_stock": true, "price_vnd": 1990000, "return_days": 7, "min_free_ship_vnd": 2000000, "delivery_days": 2}
+  },
+  {
+   "id": "T07",
+   "call_date": "2026-10-22",
+   "split": "holdout",
+   "customer_region": "nam",
+   "customer_gender": "f",
+   "agent_region": "bac",
+   "agent_gender": "m",
+   "noisy": false,
+   "note": "Chốt đơn áo phao Warmly size L đen (còn hàng), COD, khách đọc SĐT giả; gửi thông tin đơn qua Zalo. Đơn <2 triệu phí 25k nội thành (VC-02), 1–2 ngày (VC-01); đọc lại giá cuối, phí, thanh toán, thời gian giao (PB-09); đổi size lần đầu miễn phí, 7 ngày, chưa giặt (DT-01/02/03).",
+   "tool_context": {"address": "Tân Bình, TP.HCM"},
+   "checks": [
+    {"tool": "delivery.eta", "args": {"address": "Tân Bình, TP.HCM"}, "turn": 7, "expect": "2026-10-24",
+     "why": "nội thành TP.HCM một đến hai ngày làm việc"}
+   ],
+   "turns": [
+    {"idx": 1, "speaker": "A", "text": "dạ shop bê tê xê xin nghe, em chào chị ạ", "entities": {}},
+    {"idx": 2, "speaker": "C", "text": "hi em, chị muốn order áo phao uôm li size l màu đen, em check còn hàng không", "tts_text": "hi em, chị muốn order áo phao Warmly size L màu đen, em check còn hàng không", "entities": {"sku": "SKU-JK-DWN", "color": "den"}},
+    {"idx": 3, "speaker": "A", "text": "dạ áo phao uôm li size l màu đen còn hàng chị ạ, giá một triệu bốn trăm chín mươi nghìn", "tts_text": "dạ áo phao Warmly size L màu đen còn hàng chị ạ, giá một triệu bốn trăm chín mươi nghìn", "entities": {"sku": "SKU-JK-DWN", "color": "den", "in_stock": true, "price_vnd": 1490000}},
+    {"idx": 4, "speaker": "C", "text": "ok chị lấy một cái, ship cê ô đê về tân bình nha, phí ship nhiêu em", "tts_text": "ok chị lấy một cái, ship cê ô đê về Tân Bình nha, phí ship nhiêu em", "entities": {"payment": "COD"}},
+    {"idx": 5, "speaker": "A", "text": "dạ đơn dưới hai triệu nên phí ship nội thành là hai mươi lăm nghìn ạ, chị cho em xin số điện thoại nhận hàng", "entities": {"min_free_ship_vnd": 2000000}},
+    {"idx": 6, "speaker": "C", "text": "số chị là không chín không bảy ba một hai tám bốn năm, có gì em inbox zalo cho chị check lại nha", "tts_text": "số chị là không chín không bảy ba một hai tám bốn năm, có gì em inbox Zalo cho chị check lại nha", "entities": {"phone": "0907312845"}},
+    {"idx": 7, "speaker": "A", "text": "dạ em xác nhận áo phao uôm li size l màu đen, giá một triệu bốn trăm chín mươi nghìn, cộng phí ship hai mươi lăm nghìn, thanh toán cê ô đê, giao trong một đến hai ngày làm việc, em gửi thông tin đơn qua zalo cho chị ạ", "tts_text": "dạ em xác nhận áo phao Warmly size L màu đen, giá một triệu bốn trăm chín mươi nghìn, cộng phí ship hai mươi lăm nghìn, thanh toán cê ô đê, giao trong một đến hai ngày làm việc, em gửi thông tin đơn qua Zalo cho chị ạ", "entities": {"sku": "SKU-JK-DWN", "color": "den", "price_vnd": 1490000, "payment": "COD", "delivery_days": 2}},
+    {"idx": 8, "speaker": "C", "text": "ok, lỡ mặc không vừa thì đổi size được không em", "entities": {}},
+    {"idx": 9, "speaker": "A", "text": "dạ chị được đổi trong bảy ngày, đổi size lần đầu miễn phí, chị giữ nguyên tem mác và chưa giặt giúp em nhé", "entities": {"return_days": 7, "exchange_fee_vnd": 0}},
+    {"idx": 10, "speaker": "C", "text": "ok, thank you em", "entities": {}}
+   ],
+   "entities": {"sku": "SKU-JK-DWN", "color": "den", "in_stock": true, "price_vnd": 1490000, "payment": "COD", "min_free_ship_vnd": 2000000, "phone": "0907312845", "delivery_days": 2, "return_days": 7, "exchange_fee_vnd": 0}
+  },
+  {
+   "id": "T08",
+   "call_date": "2026-10-22",
+   "split": "holdout",
+   "customer_region": "nam",
+   "customer_gender": "m",
+   "agent_region": "nam",
+   "agent_gender": "f",
+   "noisy": false,
+   "note": "Xiaomi Tower Fan: app Mi Home, 100 mức gió (SP-FAN-01), tài liệu không nói remote → 'chưa có thông tin' (PB-05); hết hàng, không có ngày về (FAQ-17) → gợi ý Panasonic F-409 (remote, 9 mức gió, 22 dB), không khẳng định có app. NAM-SHIP0 xét theo địa chỉ giao (KM-08); giao 24/10.",
+   "tool_context": {"address": "Quận 3, TP.HCM"},
+   "checks": [
+    {"tool": "inventory.check", "args": {"sku": "SKU-FAN-TWR"}, "turn": 3, "expect": {"in_stock": false},
+     "why": "Tower Fan hết hàng"},
+    {"tool": "delivery.eta", "args": {"address": "Quận 3, TP.HCM"}, "turn": 7, "expect": "2026-10-24",
+     "why": "dự kiến thứ bảy 24/10"},
+    {"tool": "pricing.get_quote", "args": {"sku": "SKU-FAN-DC1", "address": "Quận 3, TP.HCM"}, "turn": 9,
+     "applied": ["NAM-SHIP0"], "why": "freeship đơn gia dụng miền Nam"}
+   ],
+   "turns": [
+    {"idx": 1, "speaker": "A", "text": "dạ bê tê xê xin nghe ạ", "entities": {}},
+    {"idx": 2, "speaker": "C", "text": "hello em, anh muốn mua quạt tháp xiao mi tao ơ phan, con này có remote với app không em", "tts_text": "hello em, anh muốn mua quạt tháp Xiaomi Tower Fan, con này có remote với app không em", "entities": {"sku": "SKU-FAN-TWR"}},
+    {"idx": 3, "speaker": "A", "text": "dạ quạt xiao mi tao ơ phan điều khiển qua app mi hôm, có một trăm mức gió, còn remote thì em chưa có thông tin ạ, mà mẫu này hiện đang hết hàng và chưa có ngày về", "tts_text": "dạ quạt Xiaomi Tower Fan điều khiển qua app Mi Home, có một trăm mức gió, còn remote thì em chưa có thông tin ạ, mà mẫu này hiện đang hết hàng và chưa có ngày về", "entities": {"sku": "SKU-FAN-TWR", "in_stock": false}},
+    {"idx": 4, "speaker": "C", "text": "tiếc ghê, vậy em có con nào có remote, chạy êm, tầm hai triệu rưỡi đổ lại không", "entities": {"budget_vnd": 2500000}},
+    {"idx": 5, "speaker": "A", "text": "dạ anh tham khảo quạt đứng pa na sô níc ép bốn trăm linh chín, có remote, chín mức gió, độ ồn thấp nhất hai mươi hai đề xi ben, giá hai triệu bốn trăm năm mươi nghìn, mẫu này còn hàng ạ", "tts_text": "dạ anh tham khảo quạt đứng Panasonic F bốn trăm linh chín, có remote, chín mức gió, độ ồn thấp nhất hai mươi hai đề xi ben, giá hai triệu bốn trăm năm mươi nghìn, mẫu này còn hàng ạ", "entities": {"sku": "SKU-FAN-DC1", "price_vnd": 2450000, "in_stock": true}},
+    {"idx": 6, "speaker": "C", "text": "ok, con này có app không, ship về quận ba mấy ngày em", "entities": {}},
+    {"idx": 7, "speaker": "A", "text": "dạ về app thì em chưa có thông tin cho mẫu này ạ, giao nội thành thành phố hồ chí minh trong một đến hai ngày làm việc, dự kiến thứ bảy hai mươi bốn tháng mười anh nhận hàng", "entities": {"delivery_days": 2}},
+    {"idx": 8, "speaker": "C", "text": "phí ship sao em, có freeship không", "entities": {}},
+    {"idx": 9, "speaker": "A", "text": "dạ anh ở miền nam nên đơn gia dụng được freeship ạ, quạt bảo hành mười hai tháng chính hãng", "entities": {"warranty_months": 12}},
+    {"idx": 10, "speaker": "C", "text": "ok, em lên order cho anh một cái, cê ô đê nha", "entities": {"payment": "COD"}}
+   ],
+   "entities": {"sku": "SKU-FAN-DC1", "in_stock": true, "budget_vnd": 2500000, "price_vnd": 2450000, "delivery_days": 2, "warranty_months": 12, "payment": "COD"}
+  },
+  {
+   "id": "T09",
+   "call_date": "2026-10-19",
+   "split": "holdout",
+   "customer_region": "bac",
+   "customer_gender": "m",
+   "agent_region": "bac",
+   "agent_gender": "f",
+   "noisy": true,
+   "note": "AirPure Pro tồn kho 0 ngày gọi (inventory_timeline) → không tạo đơn chờ, KHÔNG hứa ngày về (FAQ-17: chỉ được nói ngày có trong ghi chú nhập hàng nội bộ — nhóm không dùng file đó) → đặt lịch gọi lại cụ thể (PB-03, schedule.callback). AIR-OCT −300k đến 30/10. SP-AIR-01: ≤45 m², app, khóa trẻ em; catalog: UV, bảo hành 24 tháng.",
+   "tool_context": {"customer_phone": "0986214735"},
+   "checks": [
+    {"tool": "inventory.check", "args": {"sku": "SKU-AP-PRO"}, "turn": 3, "expect": {"in_stock": false},
+     "why": "AirPure Pro tạm hết hàng"},
+    {"tool": "schedule.callback", "args": {"customer_phone": "0986214735", "callback_at": "2026-10-21T10:00"}, "turn": 7,
+     "expect": {"callback_at": "2026-10-21T10:00", "moved_from": null},
+     "why": "hẹn gọi lại 10 giờ sáng thứ Tư 21/10, trong giờ làm việc"}
+   ],
+   "turns": [
+    {"idx": 1, "speaker": "A", "text": "dạ shop bê tê xê xin nghe, em chào anh ạ", "entities": {}},
+    {"idx": 2, "speaker": "C", "text": "chào em, anh muốn mua máy lọc không khí e pia pro cho phòng ba mươi lăm mét vuông, bên em còn hàng không", "tts_text": "chào em, anh muốn mua máy lọc không khí AirPure Pro cho phòng ba mươi lăm mét vuông, bên em còn hàng không", "entities": {"sku": "SKU-AP-PRO", "room_area_m2": 35}},
+    {"idx": 3, "speaker": "A", "text": "dạ e pia pro dùng tốt cho phòng đến bốn mươi lăm mét vuông, nhưng hiện máy đang tạm hết hàng anh ạ, em chưa thể hứa chính xác ngày có hàng lại", "tts_text": "dạ AirPure Pro dùng tốt cho phòng đến bốn mươi lăm mét vuông, nhưng hiện máy đang tạm hết hàng anh ạ, em chưa thể hứa chính xác ngày có hàng lại", "entities": {"sku": "SKU-AP-PRO", "in_stock": false}},
+    {"idx": 4, "speaker": "C", "text": "tiếc quá, giá bao nhiêu em, có khuyến mãi gì không", "entities": {}},
+    {"idx": 5, "speaker": "A", "text": "dạ máy giá bảy triệu chín trăm chín mươi nghìn, đang giảm ba trăm nghìn đến hết ngày ba mươi tháng mười, còn bảy triệu sáu trăm chín mươi nghìn ạ", "entities": {"price_vnd": 7690000, "promo_expiry": "2026-10-30"}},
+    {"idx": 6, "speaker": "C", "text": "ok, khi nào restock thì em gọi lại cho anh nhé, anh muốn kịp chương trình", "entities": {}},
+    {"idx": 7, "speaker": "A", "text": "dạ em đặt lịch gọi lại cho anh lúc mười giờ sáng thứ tư hai mươi mốt tháng mười để báo tình hình hàng, anh để ý điện thoại giúp em nhé", "entities": {}},
+    {"idx": 8, "speaker": "C", "text": "ok, máy có app với khóa trẻ em không em, nhà anh có con nhỏ", "entities": {"has_children": true}},
+    {"idx": 9, "speaker": "A", "text": "dạ e pia pro có app điều khiển và khóa trẻ em, có màng hê pa với đèn u vê diệt khuẩn, bảo hành hai mươi bốn tháng ạ", "tts_text": "dạ AirPure Pro có app điều khiển và khóa trẻ em, có màng HEPA với đèn UV diệt khuẩn, bảo hành hai mươi bốn tháng ạ", "entities": {"warranty_months": 24}},
+    {"idx": 10, "speaker": "C", "text": "ok, cảm ơn em", "entities": {}}
+   ],
+   "entities": {"sku": "SKU-AP-PRO", "room_area_m2": 35, "in_stock": false, "price_vnd": 7690000, "promo_expiry": "2026-10-30", "has_children": true, "warranty_months": 24}
+  },
+  {
+   "id": "T10",
+   "call_date": "2026-10-23",
+   "split": "holdout",
+   "customer_region": "bac",
+   "customer_gender": "f",
+   "agent_region": "bac",
+   "agent_gender": "m",
+   "noisy": false,
+   "note": "Ghế ô tô Chicco 0–18 kg, ISOFIX hoặc dây 3 điểm, không có thông tin tương thích từng xe (SP-MB-03, PB-05); Joie Pact 6 kg, tải 22 kg (SP-MB-02); tổng 8,48 triệu ≤ ngân sách 9 triệu. MOM-FREESHIP ≥500k; COD <10 triệu, >2 triệu gọi xác nhận (VC-03/05). Đặt thứ Sáu 23/10 nội thành: Chủ nhật + nghỉ 26/10 → giao thứ Ba 27/10 (LN-02/LN-03).",
+   "tool_context": {"address": "Cầu Giấy, Hà Nội", "basket_skus": ["SKU-MB-CAR", "SKU-MB-STR1"]},
+   "checks": [
+    {"tool": "delivery.eta", "args": {"address": "Cầu Giấy, Hà Nội"}, "turn": 9, "expect": "2026-10-27",
+     "why": "đặt 23/10, nghỉ Chủ nhật và 26/10 → giao thứ Ba 27/10"},
+    {"tool": "pricing.get_quote", "args": {"sku": "SKU-MB-STR1", "address": "Cầu Giấy, Hà Nội"}, "turn": 9,
+     "applied": ["MOM-FREESHIP"], "why": "freeship mẹ & bé"},
+    {"tool": "inventory.check", "args": {"sku": "SKU-MB-STR1"}, "turn": 8, "expect": {"in_stock": true},
+     "why": "xe đẩy còn hàng ngày đặt"}
+   ],
+   "turns": [
+    {"idx": 1, "speaker": "A", "text": "dạ shop bê tê xê xin nghe, em chào chị ạ", "entities": {}},
+    {"idx": 2, "speaker": "C", "text": "chào em, bé nhà chị được mười tháng, chị muốn mua ghế ô tô với xe đẩy, ngân sách tầm chín triệu", "entities": {"has_children": true, "budget_vnd": 9000000}},
+    {"idx": 3, "speaker": "A", "text": "dạ chị tham khảo ghế ô tô chích cô cho bé từ không đến mười tám ký, lắp bằng isofix hoặc dây an toàn ba điểm, giá bốn triệu chín trăm chín mươi nghìn ạ", "tts_text": "dạ chị tham khảo ghế ô tô Chicco cho bé từ không đến mười tám ký, lắp bằng isofix hoặc dây an toàn ba điểm, giá bốn triệu chín trăm chín mươi nghìn ạ", "entities": {"sku": "SKU-MB-CAR", "price_vnd": 4990000}},
+    {"idx": 4, "speaker": "C", "text": "ghế này lắp vừa xe nhà chị không em, xe bốn chỗ", "entities": {}},
+    {"idx": 5, "speaker": "A", "text": "dạ em chưa có thông tin tương thích với từng dòng xe ạ, chị kiểm tra giúp em xe có móc isofix không, nếu không thì vẫn lắp bằng dây an toàn ba điểm", "tts_text": "dạ em chưa có thông tin tương thích với từng dòng xe ạ, chị kiểm tra giúp em xe có móc isofix không, nếu không thì vẫn lắp bằng dây an toàn ba điểm", "entities": {}},
+    {"idx": 6, "speaker": "C", "text": "ok, còn xe đẩy thì sao em", "entities": {}},
+    {"idx": 7, "speaker": "A", "text": "dạ xe đẩy joi pact gấp gọn một tay, nặng sáu ký, chịu tải đến hai mươi hai ký, giá ba triệu bốn trăm chín mươi nghìn, cả hai món là tám triệu bốn trăm tám mươi nghìn, vẫn trong ngân sách của chị ạ", "tts_text": "dạ xe đẩy Joie Pact gấp gọn một tay, nặng sáu ký, chịu tải đến hai mươi hai ký, giá ba triệu bốn trăm chín mươi nghìn, cả hai món là tám triệu bốn trăm tám mươi nghìn, vẫn trong ngân sách của chị ạ", "entities": {"sku": "SKU-MB-STR1", "price_vnd": 3490000}},
+    {"idx": 8, "speaker": "C", "text": "ok chị lấy cả hai, thanh toán cê ô đê, giao về cầu giấy nhé", "tts_text": "ok chị lấy cả hai, thanh toán cê ô đê, giao về Cầu Giấy nhé", "entities": {"payment": "COD"}},
+    {"idx": 9, "speaker": "A", "text": "dạ đơn mẹ và bé trên năm trăm nghìn nên chị được freeship ạ, vì chủ nhật và thứ hai hai mươi sáu bên em nghỉ nên dự kiến thứ ba hai mươi bảy tháng mười chị nhận hàng, trước khi giao bên em sẽ gọi xác nhận", "entities": {"min_free_ship_vnd": 500000}},
+    {"idx": 10, "speaker": "C", "text": "ok em, cảm ơn em nhé", "entities": {}}
+   ],
+   "entities": {"has_children": true, "budget_vnd": 9000000, "sku": "SKU-MB-STR1", "price_vnd": 3490000, "payment": "COD", "min_free_ship_vnd": 500000}
+  },
+  {
+   "id": "T11",
+   "call_date": "2026-10-27",
+   "split": "holdout",
+   "customer_region": "nam",
+   "customer_gender": "m",
+   "agent_region": "bac",
+   "agent_gender": "f",
+   "noisy": true,
+   "note": "Khách hỏi đơn giao chậm (CRM giả lập trong bộ nhớ, SĐT/mã đơn giả). Đặt thứ Sáu 23/10, Chủ nhật + nghỉ 26/10 → dự kiến giao hôm nay 27/10 (LN-02). Mã vận đơn gửi qua SMS/Zalo khi bàn giao vận chuyển (VC-06); giao tối đa 3 lần (VC-07). Xin lỗi, không đổ lỗi.",
+   "tool_context": {"customer_phone": "0918460273", "address": "Tân Phú, TP.HCM", "crm_overlay": [
+    {"customer_id": "SYN-T11", "name": "khách giả lập T11", "honorific": "anh", "phone": "0918460273", "region": "nam",
+     "orders": [{"order_id": "OD731508", "sku": "SKU-AF-XM", "price_vnd": 1590000, "date": "2026-10-23", "status": "shipping"}]}]},
+   "checks": [
+    {"tool": "order.status", "args": {"order_id": "OD731508"}, "turn": 3,
+     "expect": {"orders": [{"order_id": "OD731508", "status": "shipping"}]}, "why": "đơn đang giao"},
+    {"tool": "delivery.eta", "args": {"on": "2026-10-23", "address": "Tân Phú, TP.HCM"}, "turn": 5, "expect": "2026-10-27",
+     "why": "đặt 23/10, nghỉ Chủ nhật và 26/10 → giao 27/10"}
+   ],
+   "turns": [
+    {"idx": 1, "speaker": "A", "text": "dạ bê tê xê xin nghe, em chào anh ạ", "entities": {}},
+    {"idx": 2, "speaker": "C", "text": "alo em, anh đặt nồi chiên xiao mi từ thứ sáu tuần trước mà giờ chưa thấy giao, mã đơn ô đê bảy trăm ba mươi mốt nghìn năm trăm linh tám", "tts_text": "alo em, anh đặt nồi chiên Xiaomi từ thứ sáu tuần trước mà giờ chưa thấy giao, mã đơn ô đê bảy trăm ba mươi mốt nghìn năm trăm linh tám", "entities": {"sku": "SKU-AF-XM", "order_id": "OD731508"}},
+    {"idx": 3, "speaker": "A", "text": "dạ em xin lỗi đã để anh chờ ạ, em kiểm tra thì đơn ô đê bảy trăm ba mươi mốt nghìn năm trăm linh tám đang trên đường giao đến anh", "entities": {"order_id": "OD731508"}},
+    {"idx": 4, "speaker": "C", "text": "sao lâu vậy em, đặt từ thứ sáu lận", "entities": {}},
+    {"idx": 5, "speaker": "A", "text": "dạ do chủ nhật và ngày hai mươi sáu bên em nghỉ nên đơn giao chậm hơn, dự kiến hôm nay anh sẽ nhận được hàng ạ", "entities": {}},
+    {"idx": 6, "speaker": "C", "text": "mà anh có thấy tracking gì đâu, mã vận đơn ở đâu em", "entities": {}},
+    {"idx": 7, "speaker": "A", "text": "dạ mã vận đơn được gửi qua tin nhắn ét em ét khi đơn bàn giao cho bên vận chuyển ạ, em gửi lại qua zalo cho anh ngay nhé", "tts_text": "dạ mã vận đơn được gửi qua tin nhắn ét em ét khi đơn bàn giao cho bên vận chuyển ạ, em gửi lại qua Zalo cho anh ngay nhé", "entities": {}},
+    {"idx": 8, "speaker": "C", "text": "ok, lỡ hôm nay anh không có nhà thì sao", "entities": {}},
+    {"idx": 9, "speaker": "A", "text": "dạ shipper sẽ gọi trước khi giao, nếu anh vắng thì bên vận chuyển giao lại tối đa ba lần ạ, đơn cê ô đê một triệu năm trăm chín mươi nghìn anh chuẩn bị giúp em nhé", "entities": {"payment": "COD", "price_vnd": 1590000}},
+    {"idx": 10, "speaker": "C", "text": "ok em, cảm ơn em", "entities": {}}
+   ],
+   "entities": {"sku": "SKU-AF-XM", "order_id": "OD731508", "payment": "COD", "price_vnd": 1590000}
+  },
+  {
+   "id": "T12",
+   "call_date": "2026-10-27",
+   "split": "holdout",
+   "customer_region": "bac",
+   "customer_gender": "f",
+   "agent_region": "nam",
+   "agent_gender": "m",
+   "noisy": false,
+   "note": "Thu cũ đổi mới (KM-04/KM-09) cần lịch sử mua AirPure X 2024 → CRM giả lập trong bộ nhớ (cách a, mục 4 handoff). Gọi 27/10: GIFT-FILTER đã hết 22/10 nên không còn tranh cãi quà; AIR-OCT không cộng dồn trade-in → AirPure Pro tính ưu đãi lớn hơn: 7.590.000. Chốt AirPure Y 4.800.000, chuyển khoản, Thái Nguyên 2–4 ngày.",
+   "tool_context": {"customer_phone": "0973508164", "address": "Thái Nguyên", "crm_overlay": [
+    {"customer_id": "SYN-T12", "name": "khách giả lập T12", "honorific": "chị", "phone": "0973508164", "region": "bac",
+     "orders": [{"order_id": "OD715342", "sku": "SKU-AP-X-2024", "price_vnd": 4290000, "date": "2025-11-02", "status": "delivered"}]}]},
+   "checks": [
+    {"tool": "pricing.get_quote", "args": {"sku": "SKU-AP-PRO", "customer_phone": "0973508164"}, "turn": 5,
+     "applied": ["TRADE-IN-AP"], "not_applied": ["AIR-OCT"], "why": "trade-in không cộng dồn giảm 300k tháng 10"},
+    {"tool": "pricing.get_quote", "args": {"sku": "SKU-AP-Y", "customer_phone": "0973508164"}, "turn": 7,
+     "applied": ["TRADE-IN-AP"], "why": "AirPure Y trừ thu cũ đổi mới"},
+    {"tool": "delivery.eta", "args": {"address": "Thái Nguyên"}, "turn": 9, "expect": "2026-10-31",
+     "why": "tỉnh khác 2–4 ngày làm việc → thứ Bảy 31/10"}
+   ],
+   "turns": [
+    {"idx": 1, "speaker": "A", "text": "dạ shop bê tê xê xin nghe, em chào chị ạ", "entities": {}},
+    {"idx": 2, "speaker": "C", "text": "chào em, năm ngoái chị mua máy lọc không khí e pia ích bản hai không hai bốn bên em, giờ chị muốn lên đời, bên em có trade in không", "tts_text": "chào em, năm ngoái chị mua máy lọc không khí AirPure X bản hai không hai bốn bên em, giờ chị muốn lên đời, bên em có trade in không", "entities": {}},
+    {"idx": 3, "speaker": "A", "text": "dạ có chị ạ, em thấy chị đã mua máy bản hai không hai bốn bên em nên được thu cũ đổi mới, chị đang quan tâm mẫu nào ạ", "entities": {}},
+    {"idx": 4, "speaker": "C", "text": "chị đang xem e pia pro, nghe nói đang giảm ba trăm nghìn, trừ thêm trade in thì còn bao nhiêu em", "tts_text": "chị đang xem AirPure Pro, nghe nói đang giảm ba trăm nghìn, trừ thêm trade in thì còn bao nhiêu em", "entities": {"sku": "SKU-AP-PRO"}},
+    {"idx": 5, "speaker": "A", "text": "dạ thu cũ đổi mới không cộng dồn với giảm ba trăm nghìn ạ, bên em tính ưu đãi có lợi hơn cho chị nên e pia pro còn bảy triệu năm trăm chín mươi nghìn", "tts_text": "dạ thu cũ đổi mới không cộng dồn với giảm ba trăm nghìn ạ, bên em tính ưu đãi có lợi hơn cho chị nên AirPure Pro còn bảy triệu năm trăm chín mươi nghìn", "entities": {"sku": "SKU-AP-PRO", "price_vnd": 7590000}},
+    {"idx": 6, "speaker": "C", "text": "vẫn hơi cao, còn e pia y thì sao em", "tts_text": "vẫn hơi cao, còn AirPure Y thì sao em", "entities": {"sku": "SKU-AP-Y"}},
+    {"idx": 7, "speaker": "A", "text": "dạ e pia y dùng cho phòng đến ba mươi mét vuông, có khóa trẻ em, giá năm triệu hai trăm nghìn, trừ thu cũ đổi mới còn bốn triệu tám trăm nghìn ạ", "tts_text": "dạ AirPure Y dùng cho phòng đến ba mươi mét vuông, có khóa trẻ em, giá năm triệu hai trăm nghìn, trừ thu cũ đổi mới còn bốn triệu tám trăm nghìn ạ", "entities": {"sku": "SKU-AP-Y", "price_vnd": 4800000}},
+    {"idx": 8, "speaker": "C", "text": "ok, chị lấy e pia y, chị chuyển khoản nhé, giao về thái nguyên", "tts_text": "ok, chị lấy AirPure Y, chị chuyển khoản nhé, giao về Thái Nguyên", "entities": {"sku": "SKU-AP-Y", "payment": "bank"}},
+    {"idx": 9, "speaker": "A", "text": "dạ em xác nhận máy e pia y giá bốn triệu tám trăm nghìn đã trừ thu cũ đổi mới, chuyển khoản, freeship, giao về thái nguyên trong hai đến bốn ngày làm việc, dự kiến thứ bảy ba mươi mốt tháng mười ạ", "tts_text": "dạ em xác nhận máy AirPure Y giá bốn triệu tám trăm nghìn đã trừ thu cũ đổi mới, chuyển khoản, freeship, giao về Thái Nguyên trong hai đến bốn ngày làm việc, dự kiến thứ bảy ba mươi mốt tháng mười ạ", "entities": {"sku": "SKU-AP-Y", "price_vnd": 4800000, "payment": "bank", "delivery_days": 4}},
+    {"idx": 10, "speaker": "C", "text": "ok em, cảm ơn em nhé", "entities": {}}
+   ],
+   "entities": {"sku": "SKU-AP-Y", "price_vnd": 4800000, "payment": "bank", "delivery_days": 4}
+  }
+ ]
+}

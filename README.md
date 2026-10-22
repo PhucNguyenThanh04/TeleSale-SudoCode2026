@@ -39,3 +39,8 @@ ai-services/.venv/bin/python eval/catalog_search_benchmark.py --source mcp --run
 The benchmark uses a fresh session and in-process memory for each turn. MCP
 mode reads the deployed catalog through HTTP; other business tools are disabled
 in this measurement. The report stores a hash of the question, not its text.
+
+The offline Vietnamese–English speech pipeline for M1 (TTS test audio, Silero
+VAD, local faster-whisper/PhoWhisper, normalization, BTC `hypotheses.json` and
+WER/CER/entity scoring) is independent of the text harness; see
+[speech/README.md](speech/README.md).

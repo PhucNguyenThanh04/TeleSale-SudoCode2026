@@ -17,6 +17,8 @@ service-account*.json
 # Python environments, caches, packaging and test output
 .venv/
 .venv-dataloader/
+.venv-speech/
+.venv-vieneu/
 venv/
 env/
 __pycache__/
@@ -55,6 +57,9 @@ temp/
 **/eval/runs/
 outputs/
 artifacts/
+# Speech dataset/runs (audio, TTS cache, hypotheses) and local voice config
+speech/data/
+speech/voices.json
 
 # Downloaded model weights and local object storage
 *.pt

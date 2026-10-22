@@ -1,0 +1,51 @@
+{
+ "description": "Mẫu kịch bản ASR của nhóm (cùng format asr/ground_truth.json của BTC) để sinh audio bằng `python -m speech synth --dialogues <file>`. Text viết ở DẠNG NÓI (số đọc bằng chữ, tên hãng như người Việt đọc) vì đây là ground truth tính WER. Mỗi lượt có thể thêm `tts_text` nếu muốn engine TTS đọc khác chữ ground truth (vd viết 'Xiaomi' cho ElevenLabs đọc chuẩn); trường này bị bỏ khỏi ground_truth.json đầu ra. Giá, khuyến mãi, tồn kho, chính sách đã đối chiếu catalog/policy BTC theo call_date.",
+ "normalization_rule": "Trước khi tính WER/CER: lowercase, NFC, bỏ dấu câu, gộp khoảng trắng (giống asr/ground_truth.json của BTC).",
+ "reference_date": "2026-10-15",
+ "dialogues": [
+  {
+   "id": "T01",
+   "call_date": "2026-10-20",
+   "customer_region": "nam",
+   "customer_gender": "m",
+   "agent_region": "bac",
+   "agent_gender": "f",
+   "noisy": false,
+   "note": "Khách miền Nam nói chêm tiếng Anh (check, voucher, sale, order, thanks); SKU-XM-4P về hàng 19/10, quà XM-COMBO đến 14/11, NAM-SHIP0, COD-0",
+   "turns": [
+    {"idx": 1, "speaker": "A", "text": "dạ shop bê tê xê xin nghe, em có thể hỗ trợ gì cho anh ạ", "entities": {}},
+    {"idx": 2, "speaker": "C", "text": "hi em, anh muốn check con xiao mi smart bốn pro, bây giờ còn hàng chưa em", "entities": {"sku": "SKU-XM-4P"}},
+    {"idx": 3, "speaker": "A", "text": "dạ mẫu xiao mi smart bốn pro đã có hàng lại rồi ạ, giá năm triệu bốn trăm chín mươi nghìn, đang có quà tặng một màng lọc đến hết ngày mười bốn tháng mười một ạ", "entities": {"sku": "SKU-XM-4P", "in_stock": true, "price_vnd": 5490000, "promo_expiry": "2026-11-14"}},
+    {"idx": 4, "speaker": "C", "text": "ok, có voucher hay sale gì thêm không em, phí ship về quận bảy bao nhiêu", "entities": {}},
+    {"idx": 5, "speaker": "A", "text": "dạ mẫu này hiện không có voucher giảm giá, nhưng anh ở miền nam nên được freeship, thanh toán cê ô đê cũng miễn phí luôn ạ", "entities": {"payment": "COD"}},
+    {"idx": 6, "speaker": "C", "text": "ok vậy em lên order giúp anh một máy, anh trả cê ô đê nhé", "entities": {"payment": "COD"}},
+    {"idx": 7, "speaker": "A", "text": "dạ em xác nhận một máy xiao mi smart bốn pro, giá năm triệu bốn trăm chín mươi nghìn, thanh toán cê ô đê, giao nội thành trong một đến hai ngày làm việc, anh để ý điện thoại giúp em nhé", "entities": {"sku": "SKU-XM-4P", "price_vnd": 5490000, "payment": "COD", "delivery_days": 2}},
+    {"idx": 8, "speaker": "C", "text": "ok em, thanks em nhé", "entities": {}},
+    {"idx": 9, "speaker": "A", "text": "dạ em cảm ơn anh, chúc anh một ngày vui vẻ ạ", "entities": {}}
+   ],
+   "entities": {"sku": "SKU-XM-4P", "in_stock": true, "price_vnd": 5490000, "promo_expiry": "2026-11-14", "payment": "COD", "delivery_days": 2}
+  },
+  {
+   "id": "T02",
+   "call_date": "2026-10-16",
+   "customer_region": "trung",
+   "customer_gender": "f",
+   "agent_region": "nam",
+   "agent_gender": "f",
+   "noisy": true,
+   "note": "Đổi size áo khoác, có nhiễu; 'lấy áo trong một đến hai ngày' là lịch lấy hàng (DT-07), không phải delivery_days",
+   "turns": [
+    {"idx": 1, "speaker": "C", "text": "alo em ơi, chị order online cái áo khoác win brếch size m màu navy, mặc vào hơi chật", "entities": {"sku": "SKU-JK-WND", "size_old": "M", "color": "navy"}},
+    {"idx": 2, "speaker": "A", "text": "dạ em chào chị, chị đọc giúp em mã đơn hoặc số điện thoại đặt hàng để em check ạ", "entities": {}},
+    {"idx": 3, "speaker": "C", "text": "mã đơn là ô đê bốn trăm tám mươi bảy nghìn hai trăm mười lăm, số điện thoại không chín ba tám năm năm một hai bốn sáu", "entities": {"order_id": "OD487215", "phone": "0938551246"}},
+    {"idx": 4, "speaker": "A", "text": "dạ em thấy rồi ạ, áo win brếch size m màu navy, chị muốn đổi lên size l đúng không ạ", "entities": {"sku": "SKU-JK-WND", "size_old": "M", "color": "navy", "size_new": "L"}},
+    {"idx": 5, "speaker": "C", "text": "đúng rồi, size l còn hàng không em, đổi có mất phí ship không", "entities": {"size_new": "L"}},
+    {"idx": 6, "speaker": "A", "text": "dạ size l màu navy vẫn còn hàng ạ, đổi size lần đầu bên em miễn phí, shop chịu phí ship hai chiều, chị giữ nguyên tem mác giúp em nhé", "entities": {"size_new": "L", "color": "navy", "in_stock": true, "exchange_fee_vnd": 0}},
+    {"idx": 7, "speaker": "C", "text": "ok em, khi nào shipper qua lấy áo", "entities": {}},
+    {"idx": 8, "speaker": "A", "text": "dạ bên vận chuyển sẽ qua lấy áo trong một đến hai ngày làm việc, em gửi thông tin qua zalo cho chị check nha", "entities": {}},
+    {"idx": 9, "speaker": "C", "text": "ok, cảm ơn em", "entities": {}}
+   ],
+   "entities": {"sku": "SKU-JK-WND", "size_old": "M", "color": "navy", "order_id": "OD487215", "phone": "0938551246", "size_new": "L", "in_stock": true, "exchange_fee_vnd": 0}
+  }
+ ]
+}
