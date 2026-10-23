@@ -6,10 +6,12 @@ import math
 import re
 import unicodedata
 from datetime import date
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 from app.mcp_servers.mcp_shared.pii import mask_pii
 from app.mcp_servers.mcp_memory.services.episode_summary import build_episode_summary
+from app.mcp_servers.mcp_memory.services.episode_state import (
+    EpisodeCapacityError, apply_episode_delta)
 from app.constants import Slot
 
 
@@ -121,7 +123,8 @@ async def read(repo, customer_id: str | None, session_id: str,
                      if hasattr(repo, "recent_turns") else await repo.turns(conn, session_id))
         result = {"history": [{"customer": row["customer_text"], "agent": row["agent_text"]}
                               for row in turns], "profile": {}, "scoped_facts": {"product": {}, "room": {}},
-                  "episodes": [], "owned_order_ids": [],
+                  "episodes": [], "current_episode": None,
+                  "prior_session_ids": [], "owned_order_ids": [],
                   "turn_count": (await repo.turn_count(conn, session_id)
                                  if hasattr(repo, "turn_count") else len(turns))}
         if not customer_id:
@@ -139,10 +142,27 @@ async def read(repo, customer_id: str | None, session_id: str,
                 result["profile"][row["key"]] = fact
             elif scope_type in {"product", "room"} and scope_id:
                 result["scoped_facts"][scope_type].setdefault(scope_id, {})[row["key"]] = fact
+        if hasattr(repo, "episode_state"):
+            current = await repo.episode_state(conn, session_id, customer_id)
+            if current is not None:
+                topics = current["topics"]
+                result["current_episode"] = {"summary": current["summary"],
+                    "outcome": current["outcome"], "status": current.get("status", "active"),
+                    "topics": json.loads(topics) if isinstance(topics, str) else topics,
+                    "resolved_prior_items": (json.loads(current["resolved_prior_items"])
+                        if isinstance(current.get("resolved_prior_items", []), str)
+                        else current.get("resolved_prior_items", []))}
         episodes = await repo.episodes(conn, customer_id, session_id, max_episodes) if include_prior else []
         result["episodes"] = [{"session_id": str(row["session_id"]), "channel": row["channel"],
             "on": row["on_date"].isoformat(), "summary": row["summary"],
-            "outcome": row["outcome"]} for row in episodes]
+            "outcome": row["outcome"], "status": row.get("status", "active"),
+            "topics": (json.loads(row["topics"]) if isinstance(row.get("topics", []), str)
+                       else row.get("topics", [])),
+            "resolved_prior_items": (json.loads(row["resolved_prior_items"])
+                if isinstance(row.get("resolved_prior_items", []), str)
+                else row.get("resolved_prior_items", []))} for row in episodes]
+        if include_prior and hasattr(repo, "prior_session_ids"):
+            result["prior_session_ids"] = await repo.prior_session_ids(conn, customer_id, session_id)
         result["owned_order_ids"] = await repo.order_links(conn, customer_id) if include_prior else []
         return result
 
@@ -150,6 +170,7 @@ async def read(repo, customer_id: str | None, session_id: str,
 async def write(repo, action: str, customer_id: str | None, session_id: str,
                 data: dict, operation_key: str | None = None,
                 summary_turns: int = 3, summary_max_chars: int = 800) -> dict:
+    episode_delta = {}
     if action == "commit_turn":
         try:
             source_turn_id = UUID(str(data["client_msg_id"]))
@@ -172,6 +193,12 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
                 or any(not isinstance(item, str) or not item for item in orders)
                 or (orders and not customer_id)):
             return {"error": "invalid_orders_or_identity"}
+        episode_delta = data.get("episode_delta", {})
+        if not isinstance(episode_delta, dict):
+            return {"error": "invalid_episode_delta"}
+        if data.get("outcome", "khac") not in {
+                "khac", "hen_goi_lai", "chot_don", "tu_choi", "chuyen_may"}:
+            return {"error": "invalid_outcome"}
     digest = hashlib.sha256(json.dumps({"action": action, "customer_id": customer_id,
         "session_id": session_id, "data": data}, sort_keys=True, default=str,
         ensure_ascii=False).encode()).hexdigest()
@@ -193,9 +220,39 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
                 customer_text = mask_pii(data["customer_text"])
                 agent_text = mask_pii(data["agent_text"])
                 on = date.fromisoformat(data["on"])
+                episode_state = {"topics": [], "resolved_prior_items": []}
+                episode_warning = None
+                if customer_id:
+                    prior = (await repo.episode_state(conn, session_id, customer_id)
+                             if hasattr(repo, "episode_state") else None)
+                    old_topics = prior["topics"] if prior is not None else []
+                    old_resolved = prior.get("resolved_prior_items", []) if prior is not None else []
+                    if isinstance(old_topics, str):
+                        old_topics = json.loads(old_topics)
+                    if isinstance(old_resolved, str):
+                        old_resolved = json.loads(old_resolved)
+                    prior_open = (await repo.prior_open_items(conn, customer_id, session_id)
+                                  if hasattr(repo, "prior_open_items") and any(
+                                      isinstance(item, dict) and item.get("resolve_items")
+                                      for item in episode_delta.get("topic_updates", [])) else {})
+                    try:
+                        episode_state = apply_episode_delta({"topics": old_topics,
+                            "resolved_prior_items": old_resolved}, episode_delta,
+                            source_turn_id=(str(source_turn_id) if action == "commit_turn" else
+                                            str(uuid5(UUID(session_id), str(number)))),
+                            customer_text=customer_text, agent_text=agent_text,
+                            prior_open_items=prior_open)
+                    except EpisodeCapacityError:
+                        episode_state = {"topics": old_topics,
+                                         "resolved_prior_items": old_resolved}
+                        episode_warning = "capacity_reached"
+                    except ValueError:
+                        return {"error": "invalid_episode_delta"}
                 await repo.insert_turn(conn, session_id, number, customer_id,
                                        data["channel"], on, customer_text, agent_text)
                 result = {"turn_no": number}
+                if episode_warning:
+                    result["episode_warning"] = episode_warning
                 if action == "commit_turn":
                     writes = []
                     source = f"{session_id}:{source_turn_id}"
@@ -212,9 +269,15 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
                     turns = await repo.customer_turns(conn, session_id, customer_id)
                     confirmed = (await repo.session_facts(conn, session_id, customer_id)
                                  if hasattr(repo, "session_facts") else [])
-                    summary = build_episode_summary(confirmed, turns, summary_max_chars)
-                    await repo.upsert_episode(conn, session_id, customer_id, data["channel"],
-                                              on, summary, data.get("outcome", "khac"))
+                    summary = build_episode_summary(confirmed, turns, summary_max_chars,
+                                                    episode_state=episode_state)
+                    if hasattr(repo, "upsert_episode_state"):
+                        await repo.upsert_episode_state(conn, session_id, customer_id,
+                            data["channel"], on, summary, data.get("outcome", "khac"),
+                            episode_state["topics"], episode_state["resolved_prior_items"])
+                    else:
+                        await repo.upsert_episode(conn, session_id, customer_id, data["channel"],
+                                                  on, summary, data.get("outcome", "khac"))
         elif not customer_id:
             result = {"error": "identity_required"}
         elif action == "seed_episode":

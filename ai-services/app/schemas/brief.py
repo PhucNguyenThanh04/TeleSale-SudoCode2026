@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field, StrictInt, StrictStr
 
 PhoneNumber = str  # Call Brief permits a broader string; Handoff Brief validates below.
 Channel = Literal["hotline", "chat_fanpage", "zalo_oa", "web_chat", "other"]
@@ -53,18 +53,18 @@ class CallBrief(BaseModel):
 
 
 class HandoffBrief(BaseModel):
-    customer_phone: str = Field(pattern=r"^0[0-9]{9}$")
+    customer_phone: StrictStr = Field(pattern=r"^0[0-9]{9}$")
     customer_name: str | None
     escalation_reason: Literal[
         "cau_hoi_y_te", "ngoai_pham_vi_tai_lieu", "khach_yeu_cau_gap_nguoi",
         "khieu_nai_nghiem_trong", "loi_he_thong", "khach_mat_kien_nhan", "khac",
     ]
     conversation_summary: str = Field(min_length=20, max_length=800)
-    product_advised: str | None
-    price_quoted_vnd: int | None = Field(ge=0)
+    product_advised: StrictStr | None
+    price_quoted_vnd: StrictInt | None = Field(ge=0)
     open_questions: list[str]
-    next_action: str
-    generated_at: datetime
+    next_action: str = Field(min_length=1)
+    generated_at: AwareDatetime
     customer_id: str | None = None
     channel: Channel | None = None
     escalation_reason_detail: str | None = None

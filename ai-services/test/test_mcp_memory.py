@@ -91,6 +91,99 @@ class TurnRepo(FakeRepo):
 
 
 class MemoryServiceTest(unittest.IsolatedAsyncioTestCase):
+    async def test_full_episode_does_not_abort_turn(self):
+        class FullRepo(TurnRepo):
+            async def episode_state(self, *_):
+                return {"topics": [{"scope_type": "unknown", "scope_id": "",
+                    "items": [{"item_id": str(index), "status": "resolved"}
+                              for index in range(40)]}],
+                    "resolved_prior_items": []}
+
+            async def upsert_episode_state(self, _conn, _session, _customer,
+                                           _channel, _on, summary, outcome, topics,
+                                           resolved_prior_items):
+                self.saved_topics = topics
+
+        repo = FullRepo()
+        session_id = str(uuid4())
+        result = await write(repo, "commit_turn", "C001", session_id, {
+            "customer_text": "Có giao cuối tuần không?", "agent_text": "Em kiểm tra",
+            "on": "2026-10-15", "channel": "hotline", "client_msg_id": str(uuid4()),
+            "facts": [], "episode_delta": {"topic_updates": [{
+                "scope_type": "unknown", "scope_id": "", "add_items": [{
+                    "kind": "question", "text": "Có giao cuối tuần không?",
+                    "evidence_quote": "Có giao cuối tuần không?"}]}]}},
+            operation_key="full-episode")
+        self.assertEqual(result["turn_no"], 1)
+        self.assertEqual(result["episode_warning"], "capacity_reached")
+        self.assertEqual(len(repo.rows[session_id]), 1)
+        self.assertEqual(len(repo.saved_topics[0]["items"]), 40)
+
+    async def test_commit_turn_persists_structured_issue_and_replays_idempotently(self):
+        class StructuredRepo(TurnRepo):
+            def __init__(self):
+                super().__init__()
+                self.structured = None
+
+            async def episode_state(self, *_):
+                return self.structured
+
+            async def upsert_episode_state(self, _conn, _session_id, _customer_id,
+                                           _channel, _on, summary, outcome, topics,
+                                           resolved_prior_items):
+                self.structured = {"summary": summary, "outcome": outcome,
+                                   "topics": topics,
+                                   "resolved_prior_items": resolved_prior_items}
+
+        repo = StructuredRepo()
+        session_id, message_id = str(uuid4()), str(uuid4())
+        data = {"customer_text": "Tôi còn phải hỏi người thân", "agent_text": "Dạ vâng",
+                "on": "2026-10-15", "channel": "hotline", "client_msg_id": message_id,
+                "facts": [], "episode_delta": {"topic_updates": [{
+                    "scope_type": "unknown", "scope_id": "",
+                    "add_items": [{"kind": "blocker", "text": "Cần hỏi người thân",
+                                   "evidence_quote": "phải hỏi người thân"}]}]}}
+        first = await write(repo, "commit_turn", "C001", session_id, data,
+                            operation_key="structured-1")
+        replay = await write(repo, "commit_turn", "C001", session_id, data,
+                             operation_key="structured-1")
+        self.assertEqual(first, replay)
+        self.assertEqual(len(repo.rows[session_id]), 1)
+        self.assertEqual(repo.structured["topics"][0]["items"][0]["status"], "open")
+        forged = {**data, "client_msg_id": str(uuid4()),
+                  "episode_delta": {"topic_updates": [{"scope_type": "unknown",
+                      "scope_id": "", "add_items": [{"kind": "question",
+                          "text": "Khách hỏi về giao hàng",
+                          "evidence_quote": "Khách hỏi về giao hàng"}]}]}}
+        rejected = await write(repo, "commit_turn", "C001", session_id, forged,
+                               operation_key="structured-forged")
+        self.assertEqual(rejected, {"error": "invalid_episode_delta"})
+        self.assertEqual(len(repo.rows[session_id]), 1)
+
+    async def test_read_returns_all_prior_ids_separately_from_capped_episodes(self):
+        class Readable(TurnRepo):
+            def __init__(self):
+                super().__init__()
+                del self.facts
+
+            async def facts(self, *_):
+                return []
+
+            async def episodes(self, *_):
+                return [{"session_id": str(uuid4()), "channel": "hotline",
+                         "on_date": __import__("datetime").date(2026, 10, 14),
+                         "summary": "Một lần tư vấn", "outcome": "khac"} for _ in range(5)]
+
+            async def prior_session_ids(self, *_):
+                return [f"old-{index}" for index in range(7)]
+
+            async def order_links(self, *_):
+                return []
+
+        result = await read(Readable(), "C88", str(uuid4()), max_episodes=5)
+        self.assertEqual(len(result["episodes"]), 5)
+        self.assertEqual(len(result["prior_session_ids"]), 7)
+
     async def test_other_objection_quote_is_checked_and_passed_to_storage(self):
         class QuoteRepo(TurnRepo):
             async def insert_fact(self, _conn, fact_id, customer_id, key, value,
@@ -289,14 +382,15 @@ class MemoryServiceTest(unittest.IsolatedAsyncioTestCase):
                                      f"{session_id}:msg-2:turn"), {"turn_no": 2})
         self.assertEqual(len((await read(repo, None, session_id))["history"]), 2)
 
-    async def test_known_customer_turn_updates_episode_summary(self):
+    async def test_known_customer_turn_without_state_has_conservative_summary(self):
         repo = TurnRepo()
         session_id = str(uuid4())
         data = {"customer_text": "Tìm AirPure X", "agent_text": "Dạ, có AirPure X ạ.",
                 "on": "2026-10-15", "channel": "chat_fanpage"}
         self.assertEqual(await write(repo, "turn", "C001", session_id, data),
                          {"turn_no": 1})
-        self.assertIn("AirPure X", repo.episode_summaries[session_id])
+        self.assertEqual(repo.episode_summaries[session_id],
+                         "Chưa có diễn biến riêng được xác minh.")
 
     async def test_late_verification_does_not_promote_anonymous_turn_to_episode(self):
         class ReadableTurnRepo(TurnRepo):
@@ -324,7 +418,7 @@ class MemoryServiceTest(unittest.IsolatedAsyncioTestCase):
             **base, "client_msg_id": str(uuid4()),
             "customer_text": "Tôi đã xác minh, muốn hỏi loại ít ồn", "facts": []})
         summary = repo.episode_summaries[session_id]
-        self.assertIn("loại ít ồn", summary)
+        self.assertNotIn("loại ít ồn", summary)
         self.assertNotIn("48 m²", summary)
         self.assertEqual(repo.rows[session_id][0]["customer_id"], None)
 

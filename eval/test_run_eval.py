@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import runpy
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,7 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from eval.catalog_search_benchmark import catalog_search_metrics
-from eval.run_eval import _claims, _facts_used, _require_eval_database, run
+from eval.run_eval import _claims, _facts_used, _require_eval_database, _trace_args, run
 from app.agent.guardrails.diagnostics import rejected_draft
 from app.schemas.agent import TextTurnResponse
 
@@ -83,6 +84,8 @@ class EvalRunnerTest(unittest.TestCase):
         self.assertEqual(count, len(rows))
         self.assertEqual(report["catalog_search"]["turns"], count)
         self.assertEqual(report["catalog_search"]["total_calls"], 0)
+        self.assertEqual(report["database_identity"], {
+            "database": "telesale_eval", "host": "eval-postgres", "port": 5432})
         self.assertFalse(runtime.memory.include_prior)
         self.assertTrue(all(row["agent_text"] == "Dạ, em kiểm tra ạ." for row in rows))
         self.assertTrue(all("facts_established" not in request.model_dump()
@@ -94,6 +97,49 @@ class EvalRunnerTest(unittest.TestCase):
                        if str(item.session_id) == str(runtime.requests[4].session_id))
         self.assertEqual(request.on.isoformat(), "2026-10-17")
         self.assertEqual(sample["latency"]["ttft_ms"], sample["latency"]["total_ms"])
+
+    def test_stage_sidecar_has_one_safe_item_per_turn(self):
+        scenario_dir = Path(__file__).resolve().parents[2] / "BTC-Data-Vong1-TEAMS" / \
+            "test_set" / "public_sample"
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / "trace.jsonl"
+            asyncio.run(run(SimpleNamespace(scenarios=scenario_dir, config="full",
+                                          out=output, isolated_db=True), _Runtime()))
+            stages = json.loads(output.with_suffix(".stages.json").read_text(
+                encoding="utf-8"))
+            rows = output.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(stages), len(rows))
+        self.assertEqual((stages[0]["scenario_id"], stages[0]["call"], stages[0]["turn"]),
+                         ("SAMPLE-01", "call_1", 1))
+        self.assertEqual(stages[0]["config"], "full")
+        self.assertTrue(stages[0]["run_id"])
+        self.assertNotIn("facts_established", json.dumps(stages))
+
+    def test_handoff_trace_preserves_brief_presence_without_personal_text(self):
+        args = {"brief": {"customer_phone": "0912345678", "customer_name": "Lan",
+                          "escalation_reason": "khac",
+                          "conversation_summary": "Chị Lan ở 12 đường X cần gặp nhân viên",
+                          "product_advised": "SKU-OTHER", "price_quoted_vnd": 4900000,
+                          "open_questions": ["Chị Lan muốn biết địa chỉ: 12 đường X"],
+                          "next_action": "Gọi chị Lan theo 0912345678",
+                          "generated_at": "2026-10-22T00:00:00Z"}}
+        traced = _trace_args(args)
+        self.assertTrue(all(traced["brief"].get(key) not in (None, "", [])
+                            for key in ("conversation_summary", "open_questions",
+                                        "next_action", "escalation_reason")))
+        self.assertEqual(traced["brief"]["product_advised"], "SKU-OTHER")
+        serialized = json.dumps(traced, ensure_ascii=False)
+        for private in ("0912345678", "Lan", "12 đường X"):
+            self.assertNotIn(private, serialized)
+        scorer = runpy.run_path(str(Path(__file__).resolve().parents[2] /
+                                    "BTC-Data-Vong1-TEAMS" / "eval" / "reference_eval.py"))
+        passed, reasons = scorer["check_call"](
+            {"success_if": {"tool_called": "handoff.transfer",
+                            "brief_must_contain": ["escalation_reason", "conversation_summary",
+                                                   "open_questions", "next_action"]}},
+            [{"agent_text": "Đã bàn giao", "tool_calls": [{"name": "handoff.transfer",
+                                                   "args": traced}]}])
+        self.assertTrue(passed, reasons)
 
     def test_catalog_search_metric_counts_each_turn(self):
         rows = [{"tool_calls": [{"name": "catalog.search"}]},

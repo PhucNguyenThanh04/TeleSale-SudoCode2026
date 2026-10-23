@@ -18,6 +18,31 @@ from app.mcp_servers.mcp_memory.services.memory import read, write
 @unittest.skipUnless(os.getenv("MEMORY_INTEGRATION_ADMIN_DSN"),
                      "requires MEMORY_INTEGRATION_ADMIN_DSN with CREATEDB")
 class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
+    async def test_structured_issue_resolves_across_sessions(self):
+        first, second = str(uuid4()), str(uuid4())
+        opened = await write(self.repo, "commit_turn", "C901", first, {
+            "customer_text": "SKU-GAMMA giao cuối tuần được không?",
+            "agent_text": "Để em kiểm tra.", "on": "2026-10-15",
+            "channel": "chat_fanpage", "client_msg_id": str(uuid4()), "facts": [],
+            "episode_delta": {"topic_updates": [{"scope_type": "product",
+                "scope_id": "SKU-GAMMA", "add_items": [{"kind": "question",
+                    "text": "Giao cuối tuần?", "evidence_quote": "giao cuối tuần được không?"}]}]}})
+        self.assertEqual(opened["turn_no"], 1)
+        prior = await read(self.repo, "C901", second)
+        item = prior["episodes"][0]["topics"][0]["items"][0]
+        self.assertEqual(item["status"], "open")
+        resolved = await write(self.repo, "commit_turn", "C901", second, {
+            "customer_text": "Tôi hỏi lại về SKU-GAMMA", "agent_text": "Có giao cuối tuần ạ.",
+            "on": "2026-10-16", "channel": "hotline", "client_msg_id": str(uuid4()),
+            "facts": [], "episode_delta": {"topic_updates": [{
+                "scope_type": "product", "scope_id": "SKU-GAMMA",
+                "resolve_items": [{"item_id": item["item_id"],
+                                   "evidence_quote": "Có giao cuối tuần ạ."}]}]}})
+        self.assertEqual(resolved["turn_no"], 1)
+        again = await read(self.repo, "C901", str(uuid4()))
+        self.assertIn(item["item_id"], {marker["item_id"] for episode in again["episodes"]
+                                      for marker in episode["resolved_prior_items"]})
+
     async def test_request_key_rejects_changed_verification_evidence(self):
         key = str(uuid4())
         first = await request_erasure(self.repo, customer_id="C901", request_key=key,

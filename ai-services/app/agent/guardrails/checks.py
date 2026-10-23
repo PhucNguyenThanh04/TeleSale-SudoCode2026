@@ -109,6 +109,10 @@ _ERASURE_OWNER = re.compile(r"\b(?:cua\s+(?:toi|anh|chi|em|minh)|ca nhan|ve\s+(?
 _ERASURE_SPECIFIC_INFO = re.compile(r"\bthong tin\s+(?:ve\s+)?(?:so thich|mau|size|co giay|ngan sach|dien tich phong)\b")
 _ERASURE_WHOLE_RECORD = re.compile(r"\b(?:toan bo|tat ca|het)\s+(?:du lieu|thong tin|ho so)\b")
 _ERASURE_DONE = re.compile(r"\bda\s+(?:duoc\s+)?(?:xoa|go|huy|loai bo|xu ly xong)\b|\b(?:xoa|go|huy)\s+(?:xong|het|hoan tat)\b|\bda\s+(?:xu ly|hoan thanh)\s+xong\s+yeu cau\s+xoa\b")
+_HANDOFF_DONE = re.compile(
+    r"\b(?:da|vua)\s+(?:ban giao|ket noi|noi may|chuyen may)\b"
+    r"|\b(?:da|vua)\s+chuyen\b[^.!?]{0,60}\b(?:nhan vien|bo phan|tong dai|nguoi tu van)\b"
+    r"|\b(?:chuyen|ban giao|ket noi|noi may)\b[^.!?]{0,50}\b(?:nhan vien|bo phan|tong dai)\b[^.!?]{0,30}\broi\b")
 
 
 def customer_erasure_requested(customer_text: str) -> bool:
@@ -444,6 +448,13 @@ def check_grounding(candidate: str, tool_calls: list[dict[str, Any]]) -> str | N
     # There is no authorized whole-customer purge tool in the current contract.
     if _customer_erasure_completion_claim(candidate):
         return "customer_erasure_unverified"
+    if _HANDOFF_DONE.search(_fold_text(candidate)) and not any(
+            call.get("name") == "handoff.transfer"
+            and isinstance(call.get("result"), dict)
+            and call["result"].get("status") == "queued"
+            and isinstance(call["result"].get("ticket_id"), str)
+            and bool(call["result"]["ticket_id"]) for call in tool_calls):
+        return "handoff_not_queued"
     if _unsupported_feature(candidate, successful):
         return "unsupported_product_spec"
     return None

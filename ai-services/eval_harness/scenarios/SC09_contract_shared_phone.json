@@ -1,0 +1,49 @@
+{
+  "scenario_id": "SC09",
+  "level": "M2",
+  "persona": "hai_nguoi_chung_sdt",
+  "hard_case": "2_nguoi_dung_chung_sdt",
+  "customer_phone": "0912345609",
+  "customer_name": "Bình",
+  "honorific": "anh",
+  "notes": "Kịch bản hợp đồng: Hai người dùng chung một số điện thoại (Bình và An). Cuộc 1 chưa xác minh rõ danh tính, agent không được leak đơn hay thông tin của An. Cuộc 2 khách xác minh rõ là anh Bình quan tâm quạt DC1.",
+  "calls": {
+    "call_1": {
+      "customer_goal": "hoi tiep don hang hom truoc ma chua xac minh ro danh tinh",
+      "customer_turns": [
+        "Alo, tôi muốn hỏi tiếp về món đồ hôm trước hỏi bên bạn.",
+        "Tôi hỏi quạt đứng hay máy lọc gì đó, kiểm tra xem có đơn chưa."
+      ],
+      "facts_established": {
+        "identity_status": "ambiguous",
+        "product_advised": "SKU-FAN-DC1"
+      },
+      "expected_outcome": "can_xac_minh_danh_tinh"
+    },
+    "call_2": {
+      "days_later": 1,
+      "customer_turns": [
+        "Alo, tôi là Bình, hôm trước tôi có hỏi quạt đứng DC inverter Panasonic đó.",
+        "Tôi muốn hỏi quạt đó giá bao nhiêu và còn hàng không?",
+        "Em lên đơn cho tôi luôn nhé, giao về địa chỉ nhà tôi."
+      ],
+      "must_carry_over": [
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-FAN-DC1",
+          "price_vnd": 2450000
+        }
+      },
+      "ground_truth_facts": {
+        "price_vnd": 2450000,
+        "in_stock": true
+      }
+    }
+  }
+}

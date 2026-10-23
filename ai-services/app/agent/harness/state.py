@@ -28,6 +28,9 @@ class TurnState(TypedDict, total=False):
     profile: dict[str, dict[str, Any]]
     scoped_facts: dict[str, dict[str, dict[str, Any]]]
     episodes: list[dict[str, Any]]
+    current_episode: dict[str, Any] | None
+    episode_proposal: dict[str, Any] | None
+    handoff_episode_delta: dict[str, Any] | None
     remembered_order_ids: list[str]
     call_brief: dict[str, Any] | None
     turn_no: int

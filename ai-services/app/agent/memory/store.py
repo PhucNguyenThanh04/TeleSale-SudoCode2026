@@ -14,7 +14,8 @@ def memory_error_code(result: Any) -> str:
         "mcp_unavailable", "mcp_tool_error", "tool_unavailable", "invalid_args",
         "invalid_tool_result", "session_owner_mismatch", "operation_key_conflict",
         "invalid_turn_data", "invalid_facts_or_identity", "invalid_orders_or_identity",
-        "customer_erasure_in_progress", "invalid_scope",
+        "customer_erasure_in_progress", "invalid_scope", "invalid_episode_delta",
+        "invalid_outcome",
     } else "memory_error"
 
 
@@ -26,7 +27,9 @@ class MemoryStore(Protocol):
     async def commit_turn(self, session_id: str, customer_id: str | None,
                           customer_text: str, agent_text: str, on: str, channel: str,
                           client_msg_id: str, facts: list[dict[str, Any]],
-                          orders: list[str] | None = None) -> dict: ...
+                          orders: list[str] | None = None,
+                          episode_delta: dict[str, Any] | None = None,
+                          outcome: str = "khac") -> dict: ...
 
 
 class MCPMemoryStore:
@@ -51,12 +54,19 @@ class MCPMemoryStore:
     async def commit_turn(self, session_id: str, customer_id: str | None,
                           customer_text: str, agent_text: str, on: str, channel: str,
                           client_msg_id: str, facts: list[dict[str, Any]],
-                          orders: list[str] | None = None) -> dict:
+                          orders: list[str] | None = None,
+                          episode_delta: dict[str, Any] | None = None,
+                          outcome: str = "khac") -> dict:
+        data = {"customer_text": customer_text, "agent_text": agent_text,
+                "on": on, "channel": channel, "client_msg_id": client_msg_id,
+                "facts": facts, "orders": orders or []}
+        if episode_delta:
+            data["episode_delta"] = episode_delta
+        if outcome != "khac":
+            data["outcome"] = outcome
         return await self.gateway.invoke("memory.write", {
             "action": "commit_turn", "session_id": session_id,
             "customer_id": self._id(customer_id),
-            "data": {"customer_text": customer_text, "agent_text": agent_text,
-                     "on": on, "channel": channel, "client_msg_id": client_msg_id,
-                     "facts": facts, "orders": orders or []},
+            "data": data,
             "operation_key": f"{session_id}:{client_msg_id}:commit_turn",
         })

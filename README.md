@@ -26,6 +26,17 @@ runtime state before baseline. `--isolated-db` is an operator assertion; it
 does not reset or isolate PostgreSQL itself. The model is configured in
 `ai-services/.env`. See [memory policy](docs/memory-policy.md).
 
+For a new comparison, write both traces into a new directory under
+`eval/runs/` and audit each with `ai-services/.venv/bin/python -m
+eval.trace_audit trace --scenarios ... --trace ... --config full` (or
+`baseline_no_memory`). The auditor checks BTC JSON Schema and exact turn
+coverage; its `manifest` and `pair` commands record nonsecret run hashes and
+reject mismatched model, seed or source settings. The older files directly in
+`eval/runs/` are historical and do not describe the current working tree.
+Use `eval.score_pair` to invoke BTC's reference evaluator and bind the score
+report to the exact trace hashes before creating manifests. See the
+[evaluation runbook](docs/eval-runbook.md) for the reset and audit sequence.
+
 Each trace also gets a `.report.json` sidecar containing `catalog_search`:
 `calls_per_turn`, total calls, and the share of search turns with exactly one
 call. To measure N independent turns with the configured model and either the

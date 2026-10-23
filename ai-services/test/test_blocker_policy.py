@@ -6,13 +6,26 @@ from langchain_core.messages import AIMessage
 
 from app.agent.guardrails.checks import FactRejectReason, fact_evidence
 from app.agent.memory.fact_candidates import (
-    _fold, accepted_candidates, blocker_resolution, model_candidates, resolved_blockers,
+    _fold, accepted_candidates, blocker_resolution, literal_blocker_candidates,
+    model_candidates, resolved_blockers,
 )
 from app.agent.memory.decision_makers import BlockerResolutionReason, roles_mentioned
 from app.constants import Slot
 
 
 class BlockerPolicyTests(unittest.TestCase):
+    def test_literal_decision_delay_survives_missing_model_proposal(self):
+        for text, expected in (
+            ("Để chị hỏi ông xã rồi gọi lại nhé.", "hỏi ông xã"),
+            ("Tôi cần bàn với vợ trước khi quyết định.", "bàn với vợ"),
+        ):
+            with self.subTest(text=text):
+                facts = accepted_candidates(text, [], literal_blocker_candidates(text))
+                self.assertEqual([(x["key"], x["value"]) for x in facts],
+                                 [("blocker", expected)])
+        self.assertEqual(literal_blocker_candidates("Chồng tôi đồng ý rồi."), [])
+        self.assertEqual(literal_blocker_candidates("Tôi không cần hỏi vợ."), [])
+
     def test_preferences_and_delivery_constraints_are_rejected(self):
         examples = (
             ("lắp ráp phức tạp", "Tôi không thích phải lắp ráp phức tạp.",

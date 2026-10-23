@@ -1,0 +1,59 @@
+{
+  "scenario_id": "SC08",
+  "level": "M2",
+  "persona": "khach_hoi_nhieu_khong_mua",
+  "hard_case": "thay_doi_thong_tin_sau_khi_chot",
+  "customer_phone": "0912345608",
+  "customer_name": "Tuấn",
+  "honorific": "anh",
+  "notes": "Kịch bản hợp đồng: Sửa thuộc tính sản phẩm từ màu đen sang màu trắng sau khi cân nhắc. Lượt hỏi 'nếu chọn màu xanh thì sao' không được ghi đè lựa chọn màu trắng đã xác nhận. Cuộc 2 chốt đơn đúng màu trắng.",
+  "calls": {
+    "call_1": {
+      "customer_goal": "hoi mua giay sneaker size 40 mau den roi doi sang trang",
+      "customer_turns": [
+        "Chào em, anh muốn tìm đôi giày Urban Classic cỡ 40 màu đen.",
+        "À mà anh nghĩ lại rồi, anh lấy màu trắng nhé. Cho anh hỏi giá bao nhiêu?",
+        "Nếu chọn màu xanh thì sao em?",
+        "Thôi chốt màu trắng đi, để anh xem lại rồi gọi lại đặt sau."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-SN-CAS-40-TRANG",
+        "size": 40,
+        "preferred_color": "trang",
+        "price_quoted_vnd": 890000,
+        "blocker": "can suy nghi them"
+      },
+      "expected_outcome": "hen_goi_lai"
+    },
+    "call_2": {
+      "days_later": 3,
+      "customer_turns": [
+        "Alo em, anh Tuấn hôm trước có hỏi đôi giày Urban Classic đây.",
+        "Em lên đơn giúp anh đôi đó nhé, giao về địa chỉ cũ cho anh."
+      ],
+      "must_carry_over": [
+        "product_advised",
+        "preferred_color",
+        "size"
+      ],
+      "must_not_ask": [
+        "preferred_color",
+        "size",
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-SN-CAS-40-TRANG",
+          "price_vnd": 890000
+        }
+      },
+      "ground_truth_facts": {
+        "price_vnd": 890000,
+        "in_stock": true,
+        "color": "trang",
+        "size": 40
+      }
+    }
+  }
+}

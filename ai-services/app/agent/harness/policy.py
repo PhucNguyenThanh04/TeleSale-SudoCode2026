@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Callable
 
 from app.agent.harness.catalog_query import clean_catalog_query
+from app.agent.harness.handoff_brief import build_handoff_brief
 from app.agent.harness.state import TurnState
 
 
@@ -93,18 +94,14 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
             return None
         args["customer_phone"] = state["customer_phone"]
     if name == "handoff.transfer":
-        trusted_phone = state.get("customer_phone") or (
-            request.channel_identity if request.channel == "hotline" else None)
-        if not trusted_phone:
+        brief = build_handoff_brief(state, args.get("brief") if isinstance(args.get("brief"), dict)
+                                   else {}, clock)
+        if brief is None:
             return None
-        brief = args.get("brief")
-        if not isinstance(brief, dict):
-            brief = {}
-        brief = dict(brief)
-        brief["customer_phone"] = trusted_phone
-        brief["customer_name"] = state.get("customer_name")
-        brief["generated_at"] = clock().isoformat()
-        args = {"brief": brief}
+        payload = brief.model_dump(mode="json", exclude_none=True)
+        for nullable in ("customer_name", "product_advised", "price_quoted_vnd"):
+            payload.setdefault(nullable, None)
+        args = {"brief": payload}
     owned_orders = set(state.get("owned_order_ids", [])) | set(state.get("remembered_order_ids", []))
     if name in {"order.status", "order.update"}:
         if state.get("identity_status") != "known" or not state.get("customer_phone"):

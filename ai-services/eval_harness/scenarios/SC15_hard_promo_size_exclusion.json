@@ -1,0 +1,56 @@
+{
+  "scenario_id": "SC15",
+  "level": "M2",
+  "persona": "khach_so_gia",
+  "hard_case": "km_loai_tru_size",
+  "customer_phone": "0912345615",
+  "customer_name": "Nam",
+  "honorific": "anh",
+  "notes": "Kịch bản ca khó: Khách mua giày RunLite 1 size 43 màu đen đòi áp mã RUN-10 (giảm 10%). Nhưng mã RUN-10 quy định exclude_variant_size là [43]. Giá size 43 có phụ thu delta 50k (tổng 1.340.000đ). Agent phải giải thích mã không áp dụng cho size 43 và tính đúng nguyên giá. Cuộc 2 khách chốt mua nguyên giá.",
+  "calls": {
+    "call_1": {
+      "customer_goal": "hoi mua giay RunLite 1 size 43 va doi ap ma giam gia RUN-10",
+      "customer_turns": [
+        "Chào em, anh muốn mua đôi giày chạy bộ RunLite 1 cỡ 43 màu đen.",
+        "Anh thấy có mã RUN-10 giảm 10%, áp cho đôi này thì giá còn bao nhiêu em?",
+        "Sao size 43 lại không được áp mã? Giá chuẩn là bao nhiêu?",
+        "Ừ để anh suy nghĩ thêm nhé."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-SN-RUN1-43-DEN",
+        "size": 43,
+        "price_quoted_vnd": 1340000,
+        "blocker": "khong ap dung duoc km"
+      },
+      "expected_outcome": "hen_goi_lai"
+    },
+    "call_2": {
+      "days_later": 1,
+      "customer_turns": [
+        "Alo em, anh Nam hôm qua hỏi đôi RunLite 1 size 43 đây.",
+        "Anh đồng ý lấy đôi đó nguyên giá 1 triệu 340 nghìn nhé, lên đơn giao về địa chỉ cũ cho anh."
+      ],
+      "must_carry_over": [
+        "product_advised",
+        "size",
+        "price_quoted_vnd"
+      ],
+      "must_not_ask": [
+        "product_advised",
+        "size"
+      ],
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-SN-RUN1-43-DEN",
+          "price_vnd": 1340000
+        }
+      },
+      "ground_truth_facts": {
+        "price_vnd": 1340000,
+        "in_stock": true,
+        "size": 43
+      }
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "scenario_id": "SC13",
+  "level": "M1",
+  "persona": "khach_ngoai_pham_vi_chuyen_may",
+  "hard_case": "yeu_cau_xoa_du_lieu",
+  "customer_phone": "0912345613",
+  "customer_name": "Hương",
+  "honorific": "chị",
+  "notes": "Kịch bản hợp đồng: Khách yêu cầu xóa dữ liệu cá nhân ('đừng giữ thông tin của tôi nữa'). Agent không được tự ý xóa dữ liệu hay khẳng định đã xóa sạch mà phải chuyển máy chuyên viên qua handoff.transfer.",
+  "calls": {
+    "call_1": {
+      "customer_goal": "yeu cau xoa thong tin ca nhan va chuyen may bo phan phu trach",
+      "customer_turns": [
+        "Alo em, bên em có đang lưu số điện thoại và địa chỉ của chị không?",
+        "Chị không muốn lưu gì cả, đừng giữ thông tin của tôi nữa.",
+        "Em chuyển máy cho bộ phận phụ trách dữ liệu hoặc quản lý giúp chị."
+      ],
+      "facts_established": {
+        "privacy_request": "erasure"
+      },
+      "expected_outcome": "chuyen_nhan_vien"
+    },
+    "call_2": {
+      "days_later": 1,
+      "customer_turns": [
+        "Alo, tôi là Hương hôm qua yêu cầu xóa dữ liệu cá nhân đây.",
+        "Hôm qua em bảo chuyển máy cho bộ phận dữ liệu, đã có ai tiếp nhận chưa?"
+      ],
+      "must_carry_over": [
+        "privacy_request"
+      ],
+      "must_not_ask": [],
+      "success_if": {
+        "tool_called": "handoff.transfer"
+      },
+      "ground_truth_facts": {
+        "privacy_handoff_required": true
+      }
+    }
+  }
+}

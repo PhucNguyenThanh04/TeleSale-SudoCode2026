@@ -2,6 +2,7 @@
 
 import time
 import logging
+import re
 from datetime import datetime
 from typing import Any, Callable
 
@@ -40,6 +41,7 @@ def prompt_context(state: TurnState, history_turns: int) -> dict[str, Any]:
         "sales_history": _mask_context(sales_history),
         "session_history": _mask_context(state.get("history", [])[-history_turns:]),
         "previous_episodes": _mask_context(state.get("episodes", [])),
+        "current_episode": _mask_context(state.get("current_episode") or {}),
         "call_brief": _mask_context({key: value for key, value in
                                      (state.get("call_brief") or {}).items()
                                      if key not in {"customer_phone", "customer_name"}}),
@@ -72,6 +74,30 @@ def _split_facts(profile: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any
         else:
             customer[key] = public
     return customer, sales
+
+
+def _open_episode_items(episodes: list[dict], kind: str) -> list[str]:
+    scoped_values = []
+    resolved_ids = {item.get("item_id") for episode in episodes
+                    if isinstance(episode, dict)
+                    for item in episode.get("resolved_prior_items", [])
+                    if isinstance(item, dict)}
+    for episode in episodes:
+        for topic in episode.get("topics", []) if isinstance(episode, dict) else []:
+            if not isinstance(topic, dict):
+                continue
+            for item in topic.get("items", []):
+                if (isinstance(item, dict) and item.get("kind") == kind
+                        and item.get("status") == "open"
+                        and item.get("item_id") not in resolved_ids
+                        and isinstance(item.get("text"), str)):
+                    entry = (topic.get("scope_type"), topic.get("scope_id"), item["text"])
+                    if entry not in scoped_values:
+                        scoped_values.append(entry)
+    counts = {text: sum(other[2] == text for other in scoped_values)
+              for _, _, text in scoped_values}
+    return [f"{scope_id}: {value}" if counts[value] > 1 and scope_id else value
+            for _, scope_id, value in scoped_values]
 
 
 def _mask_context(value: Any) -> Any:
@@ -121,7 +147,8 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
         return result
 
     def failed(operation, reason=None):
-        return {"history": [], "profile": {}, "episodes": [], "call_brief": None,
+        return {"history": [], "profile": {}, "episodes": [], "current_episode": None,
+                "call_brief": None,
                 "remembered_order_ids": [], "turn_no": 1, "tool_failed": True,
                 "memory_failure": operation,
                 "memory_blocked": reason == "customer_erasure_in_progress"}
@@ -133,7 +160,13 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
     profile = context.get("profile", {})
     scoped_facts = _safe_scoped_facts(context.get("scoped_facts", {}))
     episodes = list(context.get("episodes", []))
+    current_episode = _mask_context(context.get("current_episode") or {})
+    prior_ids = {str(item) for item in context.get("prior_session_ids", []) if item}
+    prior_ids.update(str(item.get("session_id")) for item in episodes
+                     if isinstance(item, dict) and item.get("session_id"))
     if getattr(memory, "include_prior", True):
+        prior_ids.update(str(item.get("session_id")) for item in state.get("crm_sessions", [])
+                         if isinstance(item, dict) and item.get("session_id"))
         episodes.extend({"session_id": item["session_id"], "channel": item["channel"],
                          "on": item["date"], "summary": mask_pii(item["summary"]),
                          "outcome": item.get("outcome", "khac")}
@@ -151,6 +184,12 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
     episodes = _mask_context(episodes)
     if not getattr(memory, "include_prior", True):
         episodes = []
+        prior_ids = set()
+    prior_ids.discard(session_id)
+    first_turn = (context.get("turn_count", 0) == 0 or
+                  ("current_episode" in context and context["current_episode"] is None))
+    create_brief = (first_turn and bool(episodes) and bool(state.get("customer_phone"))
+                    and state.get("identity_status") == "known")
     fresh_calls = []
     warnings = []
     safe_customer, safe_sales = _split_facts(profile)
@@ -161,9 +200,14 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
                       if sku.casefold() in state.get("safe_text", "").casefold()]
     if not requested_skus and len(scoped_products) == 1:
         requested_skus = list(scoped_products)
-    refresh_skus = ([advised] if isinstance(advised, str) else []) + requested_skus
+    refresh_skus = requested_skus + ([advised] if isinstance(advised, str)
+                                     and (not scoped_products or len(scoped_products) == 1) else [])
     refresh_skus = list(dict.fromkeys(refresh_skus))
-    for refresh_sku in refresh_skus if episodes else []:
+    quotes_by_sku = {}
+    freshness_request = bool(re.search(
+        r"(?i)giá|khuyến mãi|tồn kho|còn hàng|bao nhiêu|giảm giá|ưu đãi",
+        state.get("safe_text") or state["request"].text))
+    for refresh_sku in refresh_skus if create_brief or (episodes and freshness_request) else []:
         history_facts = scoped_products.get(refresh_sku, safe_sales)
         for name, args in (
             ("inventory.check", {"sku": refresh_sku, "on": state["request"].on.isoformat()}),
@@ -187,6 +231,11 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
             fresh_calls.append({"name": name, "args": args, "result": result})
         stock = fresh_calls[-2]["result"]
         quote = fresh_calls[-1]["result"]
+        if (isinstance(quote, dict) and "error" not in quote
+                and type(quote.get("final_price_vnd")) is int
+                and isinstance(quote.get("applied_promos"), list)
+                and quote.get("sku", refresh_sku) == refresh_sku):
+            quotes_by_sku[refresh_sku] = quote
         if stock.get("in_stock") is False:
             warnings.append(f"{refresh_sku}: Sản phẩm đã hết hàng; cần tư vấn lại.")
         elif "error" in stock:
@@ -195,43 +244,83 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
         if old_price is not None and quote.get("final_price_vnd") != old_price:
             warnings.append(f"{refresh_sku}: Giá hiện tại khác báo giá cũ hoặc chưa xác minh được.")
         old_promo = history_facts.get(Slot.PROMO_CODE, {}).get("value")
-        if old_promo and old_promo not in {
+        if old_promo and refresh_sku in quotes_by_sku and old_promo not in {
             promo.get("promo_code") for promo in quote.get("applied_promos", [])}:
             warnings.append(f"{refresh_sku}: Khuyến mãi cũ không còn được áp dụng.")
+        elif old_promo and refresh_sku not in quotes_by_sku:
+            warnings.append(f"{refresh_sku}: Chưa kiểm tra được khuyến mãi hiện tại.")
     brief = None
-    if episodes and state.get("customer_phone"):
+    if create_brief:
         last = episodes[0]
-        advised_products = [
-            {"sku": sku,
-             Slot.PRICE_QUOTED_VND: facts.get(Slot.PRICE_QUOTED_VND, {}).get("value"),
-             Slot.PROMO_CODE: facts.get(Slot.PROMO_CODE, {}).get("value")}
-            for sku, facts in scoped_products.items()
-            if isinstance(sku, str) and isinstance(facts, dict)]
+        advised_products = []
+        for sku, facts in scoped_products.items():
+            if not isinstance(sku, str) or not isinstance(facts, dict):
+                continue
+            old_promo = facts.get(Slot.PROMO_CODE, {}).get("value")
+            quote = quotes_by_sku.get(sku)
+            product = {"sku": sku, "promo_code": old_promo,
+                "promo_still_active": (old_promo in {promo.get("promo_code")
+                    for promo in quote.get("applied_promos", []) if isinstance(promo, dict)}
+                    if old_promo and quote else None)}
+            old_price = facts.get(Slot.PRICE_QUOTED_VND, {}).get("value")
+            if type(old_price) is int:
+                product[Slot.PRICE_QUOTED_VND] = old_price
+            quoted_on = facts.get(Slot.PRICE_QUOTED_VND, {}).get("on")
+            if isinstance(quoted_on, str) and quoted_on:
+                product["quoted_on"] = quoted_on
+            advised_products.append(product)
         if advised and advised not in scoped_products:
-            advised_products.append({"sku": advised,
-                Slot.PRICE_QUOTED_VND: safe_sales.get(Slot.PRICE_QUOTED_VND, {}).get("value"),
-                Slot.PROMO_CODE: safe_sales.get(Slot.PROMO_CODE, {}).get("value")})
+            product = {"sku": advised, "promo_code": safe_sales.get(Slot.PROMO_CODE, {}).get("value")}
+            old_price = safe_sales.get(Slot.PRICE_QUOTED_VND, {}).get("value")
+            if type(old_price) is int:
+                product[Slot.PRICE_QUOTED_VND] = old_price
+            quoted_on = safe_sales.get(Slot.PRICE_QUOTED_VND, {}).get("on")
+            if isinstance(quoted_on, str) and quoted_on:
+                product["quoted_on"] = quoted_on
+            advised_products.append(product)
+        known_slots = set(safe_customer) | set(safe_sales)
+        for groups in scoped_facts.values():
+            for facts in groups.values():
+                known_slots.update(facts)
+        if advised_products and not refresh_skus:
+            warnings.append("Chưa kiểm tra lại giá, khuyến mãi và tồn kho của các sản phẩm đã tư vấn.")
+        prior_point = (f"mẫu {requested_skus[0]}" if len(requested_skus) == 1
+                       else f"mẫu {advised_products[0]['sku']}" if len(advised_products) == 1
+                       else "các sản phẩm lần trước" if advised_products
+                       else str(safe_customer[Slot.BLOCKER]["value"])
+                       if Slot.BLOCKER in safe_customer else "nội dung lần trước")
+        next_action = ("Kiểm lại giá hoặc khuyến mãi trước khi tư vấn tiếp." if warnings
+                       else "Tiếp tục tư vấn theo nhu cầu đã ghi nhận.")
+        structured_blockers = _open_episode_items(episodes, "blocker")
         brief = CallBrief(
             customer_phone=state["customer_phone"], customer_name=state.get("customer_name"),
             honorific=state.get("honorific"), is_returning=True,
-            n_previous_sessions=len(episodes),
+            n_previous_sessions=len(prior_ids),
             last_session={"session_id": last["session_id"], "date": last["on"],
                           "channel": last["channel"], "summary": last["summary"],
                           "outcome": last["outcome"]},
             products_advised=advised_products,
-            open_blockers=([str(safe_customer[Slot.BLOCKER]["value"])]
-                           if Slot.BLOCKER in safe_customer else []),
-            must_not_ask=[key for key in BRIEF_MUST_NOT_ASK_KEYS
-                          if key in safe_customer or key in safe_sales],
-            suggested_opening="Dạ, em thấy mình đã trao đổi lần trước. Mình muốn tiếp tục phần đó ạ?",
+            open_blockers=(structured_blockers if structured_blockers else
+                [str(safe_customer[Slot.BLOCKER]["value"])]
+                if Slot.BLOCKER in safe_customer else []),
+            open_questions=_open_episode_items(episodes, "question"),
+            must_not_ask=[key for key in BRIEF_MUST_NOT_ASK_KEYS if key in known_slots],
+            suggested_opening=f"Dạ, lần trước mình đã trao đổi về {prior_point}. Mình muốn tiếp tục phần đó ạ?",
+            suggested_next_action=next_action,
             generated_at=clock(),
             latency_ms=int((time.perf_counter() - state["received_at_monotonic"]) * 1000),
-            profile_facts={key: value["value"] for key, value in safe_customer.items()},
+            profile_facts={**{key: value["value"] for key, value in safe_customer.items()},
+                "rooms": scoped_facts["room"], "products": scoped_facts["product"]},
             stale_warnings=warnings, precomputed_parts=["episode_summary"],
         ).model_dump(mode="json")
+        for product in brief["products_advised"]:
+            for optional in ("quoted_on", Slot.PRICE_QUOTED_VND):
+                if product.get(optional) is None:
+                    product.pop(optional, None)
     return {"history": history, "profile": profile,
             "scoped_facts": scoped_facts,
-            "episodes": episodes, "call_brief": brief,
+            "episodes": episodes, "current_episode": current_episode,
+            "call_brief": brief,
             "remembered_order_ids": context.get("owned_order_ids", []),
             "tool_calls": [*state.get("tool_calls", []), *fresh_calls],
         "turn_no": context.get("turn_count", len(history)) + 1}

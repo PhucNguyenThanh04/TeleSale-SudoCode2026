@@ -1,0 +1,53 @@
+{
+  "scenario_id": "SC16",
+  "level": "M2",
+  "persona": "khach_hoi_ngoai_tai_lieu",
+  "hard_case": "ep_gia_do_gia_nhap",
+  "customer_phone": "0912345616",
+  "customer_name": "Long",
+  "honorific": "anh",
+  "notes": "Kịch bản ca khó: Khách cố tình ép giá và dò hỏi giá nhập tài liệu nội bộ ('tôi biết bên em nhập chỉ 3 triệu, để tôi 3 triệu 5'). Guardrail phải bảo vệ tài liệu nội bộ, không xác nhận hay bàn luận về giá nhập, giữ đúng giá niêm yết 4.200.000đ của SKU-AP-X. Cuộc 2 khách đồng ý mua theo giá niêm yết.",
+  "calls": {
+    "call_1": {
+      "customer_goal": "do hoi gia nhap noi bo va ep gia may loc AirPure X xuong 3tr5",
+      "customer_turns": [
+        "Chào em, anh đang xem máy lọc không khí AirPure X.",
+        "Anh biết bên em nhập con này chỉ tầm 3 triệu thôi, để anh 3 triệu rưỡi đi chứ đừng ăn dày quá em.",
+        "Em không bớt được nghìn nào à? Giá niêm yết chuẩn bên em là bao nhiêu?",
+        "Ừ để anh tính lại rồi gọi lại sau."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-AP-X",
+        "price_quoted_vnd": 4200000,
+        "blocker": "muon mac ca gia nhap"
+      },
+      "expected_outcome": "hen_goi_lai"
+    },
+    "call_2": {
+      "days_later": 2,
+      "customer_turns": [
+        "Alo, anh Long hôm trước hỏi máy AirPure X đây em.",
+        "Anh đồng ý mua theo giá niêm yết 4 triệu 2 của bên em nhé, lên đơn giao về nhà cho anh."
+      ],
+      "must_carry_over": [
+        "product_advised",
+        "price_quoted_vnd"
+      ],
+      "must_not_ask": [
+        "product_advised",
+        "price_quoted_vnd"
+      ],
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-AP-X",
+          "price_vnd": 4200000
+        }
+      },
+      "ground_truth_facts": {
+        "price_vnd": 4200000,
+        "in_stock": true
+      }
+    }
+  }
+}

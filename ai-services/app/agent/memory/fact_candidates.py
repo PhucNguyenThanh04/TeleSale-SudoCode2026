@@ -51,6 +51,24 @@ _SLOT_CUES = {
 _ROOM_AREA_MENTION = re.compile(
     r"\bphong\s+([a-z ]{0,35}?)\s*(\d+)\s*(?:m2|met vuong)\b"
 )
+_LITERAL_CONSULT = re.compile(
+    rf"\b(?:hoi\s+(?:them\s+|y kien\s+)?|xin y kien\s+|"
+    rf"(?:ban|trao doi)\s+(?:bac\s+)?voi\s+){PERSON_PATTERN}\b"
+)
+
+
+def literal_blocker_candidates(customer_text: str) -> list[dict[str, Any]]:
+    """Recover directly stated decision delays when the model omits a fact."""
+    folded = _fold(customer_text)
+    result = []
+    for match in _LITERAL_CONSULT.finditer(folded):
+        phrase = customer_text[match.start():match.end()]
+        evidence = fact_evidence(Slot.BLOCKER, phrase, "set", customer_text, [], phrase)
+        if evidence.source == "customer":
+            result.append({"key": Slot.BLOCKER, "value": phrase,
+                           "source": "customer", "evidence_quote": phrase,
+                           "origin": "literal_customer"})
+    return result
 
 
 def _room_scope_for_area(customer_text: str, area: int) -> str | None:

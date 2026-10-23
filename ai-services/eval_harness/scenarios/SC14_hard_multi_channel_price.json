@@ -1,0 +1,55 @@
+{
+  "scenario_id": "SC14",
+  "level": "M2",
+  "persona": "khach_da_kenh_mau_thuan",
+  "hard_case": "3_kenh_lech_gia",
+  "customer_phone": "0912345614",
+  "customer_name": "Mai",
+  "honorific": "chị",
+  "notes": "Kịch bản ca khó: 3 kênh báo giá lệch nhau (Web ghi 4tr8, Fanpage báo 5tr, Hotline báo 5tr2). Agent phải tra cứu giá hotline hiệu lực ngày 2026-10-15 qua pricing.get_quote, giải thích giá niêm yết hotline 5tr2 kèm quà tặng GIFT-FILTER, không tự ý giảm giá. Cuộc 2 khách đồng ý mua theo giá hotline.",
+  "calls": {
+    "call_1": {
+      "customer_goal": "thac mac gia lech giua cac kenh va hoi gia chuan may loc AirPure Y",
+      "customer_turns": [
+        "Alo, chị thấy trên web bên em để AirPure Y có 4 triệu 8, mà nhắn fanpage nhân viên bảo 5 triệu, sao giờ gọi hotline em lại báo khác?",
+        "Giá chuẩn của hotline hôm nay là bao nhiêu em? Có kèm quà gì không?",
+        "Ừ để chị xem lại rồi có gì gọi lại em sau nhé."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-AP-Y",
+        "price_quoted_vnd": 5200000,
+        "promo_code": "GIFT-FILTER",
+        "blocker": "thac mac lech gia kenh"
+      },
+      "expected_outcome": "hen_goi_lai"
+    },
+    "call_2": {
+      "days_later": 2,
+      "customer_turns": [
+        "Alo, chị Mai hôm trước hỏi máy lọc AirPure Y đây em.",
+        "Chị đồng ý mua với giá 5 triệu 2 kèm quà tặng màng lọc nhé, lên đơn giúp chị về địa chỉ cũ."
+      ],
+      "must_carry_over": [
+        "product_advised",
+        "price_quoted_vnd",
+        "promo_code"
+      ],
+      "must_not_ask": [
+        "product_advised",
+        "price_quoted_vnd"
+      ],
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-AP-Y",
+          "price_vnd": 5200000
+        }
+      },
+      "ground_truth_facts": {
+        "price_vnd": 5200000,
+        "promo_active": true,
+        "in_stock": true
+      }
+    }
+  }
+}

@@ -51,7 +51,7 @@ class SessionNodes:
     async def accept(self, state: TurnState) -> dict[str, Any]:
         return {
             "safe_text": mask_pii(state["request"].text),
-            "received_at_monotonic": time.perf_counter(),
+            "received_at_monotonic": state.get("received_at_monotonic", time.perf_counter()),
             "tool_calls": state.get("tool_calls", []), "tool_count": 0,
             "tool_failed": False,
             "needs_handoff": False, "handoff_ticket_id": None,

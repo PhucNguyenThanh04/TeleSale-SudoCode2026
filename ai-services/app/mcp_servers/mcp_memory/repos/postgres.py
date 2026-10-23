@@ -46,7 +46,11 @@ class MemoryRepo:
                 "port": url.port or 5432}
 
     async def owner(self, conn, session_id: str) -> str | None:
-        return await conn.fetchval("SELECT customer_id FROM ai_memory.turns WHERE session_id=$1 AND customer_id IS NOT NULL LIMIT 1", UUID(session_id))
+        return await conn.fetchval("""SELECT COALESCE(
+            (SELECT customer_id FROM ai_memory.turns
+             WHERE session_id=$1 AND customer_id IS NOT NULL LIMIT 1),
+            (SELECT customer_id FROM ai_memory.episodes WHERE session_id=$1))""",
+            UUID(session_id))
 
     async def turns(self, conn, session_id: str) -> list:
         return await conn.fetch("""SELECT customer_text,agent_text FROM ai_memory.turns
@@ -90,9 +94,33 @@ class MemoryRepo:
                  "status": row["status"]} for row in rows]
 
     async def episodes(self, conn, customer_id: str, session_id: str, maximum: int) -> list:
-        return await conn.fetch("""SELECT session_id,channel,on_date,summary,outcome FROM ai_memory.episodes
+        return await conn.fetch("""SELECT session_id,channel,on_date,summary,outcome,topics,resolved_prior_items,status FROM ai_memory.episodes
             WHERE customer_id=$1 AND session_id<>$2 ORDER BY on_date DESC,updated_at DESC LIMIT $3""",
             customer_id, UUID(session_id), maximum)
+
+    async def episode_state(self, conn, session_id: str, customer_id: str):
+        return await conn.fetchrow("""SELECT summary,outcome,topics,resolved_prior_items,status FROM ai_memory.episodes
+            WHERE session_id=$1 AND customer_id=$2""", UUID(session_id), customer_id)
+
+    async def prior_open_items(self, conn, customer_id: str, session_id: str) -> dict[str, tuple[str, str]]:
+        rows = await conn.fetch("""SELECT topics,resolved_prior_items FROM ai_memory.episodes
+            WHERE customer_id=$1 AND session_id<>$2""", customer_id, UUID(session_id))
+        decoded = [(json.loads(row["topics"]) if isinstance(row["topics"], str)
+                    else row["topics"],
+                    json.loads(row["resolved_prior_items"])
+                    if isinstance(row["resolved_prior_items"], str)
+                    else row["resolved_prior_items"]) for row in rows]
+        resolved = {item.get("item_id") for _, markers in decoded
+                    for item in markers if isinstance(item, dict)}
+        return {item["item_id"]: (topic["scope_type"], topic["scope_id"])
+                for topics, _ in decoded for topic in topics if isinstance(topic, dict)
+                for item in topic.get("items", []) if isinstance(item, dict)
+                and item.get("status") == "open" and item.get("item_id") not in resolved}
+
+    async def prior_session_ids(self, conn, customer_id: str, session_id: str) -> list[str]:
+        rows = await conn.fetch("""SELECT DISTINCT session_id FROM ai_memory.episodes
+            WHERE customer_id=$1 AND session_id<>$2""", customer_id, UUID(session_id))
+        return [str(row["session_id"]) for row in rows]
 
     async def order_links(self, conn, customer_id: str) -> list[str]:
         rows = await conn.fetch("SELECT order_id FROM ai_memory.order_links WHERE customer_id=$1", customer_id)
@@ -190,6 +218,19 @@ class MemoryRepo:
             VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(session_id) DO UPDATE SET summary=$5,
             outcome=CASE WHEN $6='khac' THEN ai_memory.episodes.outcome ELSE $6 END,updated_at=now()""",
             UUID(session_id), customer_id, channel, on, summary, outcome)
+
+    async def upsert_episode_state(self, conn, session_id: str, customer_id: str,
+                                   channel: str, on, summary: str, outcome: str,
+                                   topics: list[dict], resolved_prior_items: list[dict]) -> None:
+        await conn.execute("""INSERT INTO ai_memory.episodes
+            (session_id,customer_id,channel,on_date,summary,outcome,topics,resolved_prior_items)
+            VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb)
+            ON CONFLICT(session_id) DO UPDATE SET summary=$5,
+            outcome=CASE WHEN $6='khac' THEN ai_memory.episodes.outcome ELSE $6 END,
+            topics=$7::jsonb,resolved_prior_items=$8::jsonb,updated_at=now()""",
+            UUID(session_id), customer_id, channel, on, summary, outcome,
+            json.dumps(topics, ensure_ascii=False),
+            json.dumps(resolved_prior_items, ensure_ascii=False))
 
     async def seed_episode(self, conn, session_id: str, customer_id: str, channel: str,
                            on, summary: str, outcome: str) -> None:

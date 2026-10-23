@@ -12,10 +12,13 @@ from app.agent.implementations import AgentKind, build_agent
 from app.agent.implementations.business_agent import BusinessTools
 from app.agent.memory.fact_candidates import (
     accepted_candidates, customer_slot_cues, extract_customer_candidates, model_candidates,
-    resolved_blockers,
+    literal_blocker_candidates, resolved_blockers,
     parse_json_object,
 )
 from app.agent.memory.reported_facts import reported_tool_candidates
+from app.agent.memory.episode_candidates import (
+    accepted_episode_delta, blocker_episode_delta, outcome_from_tool_calls,
+)
 from app.agent.memory.store import memory_error_code
 from app.agent.guardrails.checks import (FALLBACK, check_answer, check_grounding,
                                          customer_erasure_requested, mask_pii)
@@ -58,6 +61,7 @@ class AgentNodes(SessionNodes):
         agent = build_agent(self.agent_kind, self.llm, business)
         context = prompt_context(state, self.prompt_history_turns)
         messages = []
+        episode_proposal = None
         try:
             result = await agent.ainvoke(
                 {"messages": [HumanMessage(content=json.dumps(context, ensure_ascii=False,
@@ -73,11 +77,21 @@ class AgentNodes(SessionNodes):
                 final_payload = parse_json_object(draft)
                 if final_payload and isinstance(final_payload.get("answer"), str):
                     draft = final_payload["answer"]
+                    episode_proposal = final_payload.get("episode_delta")
             draft = mask_pii(draft)
         except Exception as exc:
             log_event(state, "run_agent", "model_failed", level=logging.WARNING,
                       error_type=type(exc).__name__)
             draft = FALLBACK
+        handoffs = [call for call in state.get("tool_calls", [])
+                    if call.get("name") == "handoff.transfer"]
+        if handoffs and not any(
+                isinstance(call.get("result"), dict)
+                and call["result"].get("status") == "queued"
+                and isinstance(call["result"].get("ticket_id"), str)
+                and bool(call["result"]["ticket_id"]) for call in handoffs):
+            draft = ("Dạ, hiện em chưa chuyển được yêu cầu. Anh/chị vui lòng "
+                     "liên hệ tổng đài để được hỗ trợ ạ.")
         proposals = state.get("model_fact_candidates", []) + model_candidates(messages)
         evidenced = accepted_candidates(state["safe_text"], state.get("tool_calls", []),
                                        proposals)
@@ -92,6 +106,8 @@ class AgentNodes(SessionNodes):
                 log_event(state, "run_agent", "fact_extraction_failed",
                           level=logging.WARNING, error_type=type(exc).__name__)
         return {"agent_draft": draft, "fact_candidates": proposals,
+                "episode_proposal": episode_proposal,
+                "handoff_episode_delta": state.get("handoff_episode_delta"),
                 "plan_envelopes": state.get("plan_envelopes", []),
                 "tool_calls": state["tool_calls"],
                 "tool_count": state.get("tool_count", 0),
@@ -193,14 +209,34 @@ class AgentNodes(SessionNodes):
         tool_calls = state.get("tool_calls", [])
         proposals = [*state.get("fact_candidates", []),
                      *reported_tool_candidates(state["agent_text"], tool_calls)]
+        literal_blockers = literal_blocker_candidates(state["safe_text"])
+        if literal_blockers:
+            proposals = [item for item in proposals if item.get("key") != "blocker"]
+            proposals.extend(literal_blockers)
         facts = accepted_candidates(state["safe_text"], tool_calls,
                                     proposals, state["agent_text"])
         facts = [*resolved_blockers(state["safe_text"], state.get("profile", {}), facts),
                  *facts]
+        episode_delta = accepted_episode_delta(
+            state["safe_text"], state["agent_text"], state.get("episode_proposal"),
+            state.get("current_episode") or {}, tool_calls,
+            prior_episodes=state.get("episodes", []))
+        fact_episode_delta = blocker_episode_delta(
+            state["safe_text"], facts, state.get("current_episode") or {}, episode_delta)
+        if fact_episode_delta:
+            episode_delta = {"topic_updates": [
+                *episode_delta.get("topic_updates", []),
+                *fact_episode_delta["topic_updates"]][:8]}
+        handoff_delta = state.get("handoff_episode_delta") or {}
+        if handoff_delta.get("topic_updates"):
+            updates = [*handoff_delta["topic_updates"],
+                       *episode_delta.get("topic_updates", [])]
+            episode_delta = {"topic_updates": updates[:8]}
         other_objections = sum(fact["key"] == "objection" and fact.get("value") == "khac"
                                for fact in facts)
         if other_objections:
             log_event(state, "persist", "open_objection_other", count=other_objections)
+        outcome = outcome_from_tool_calls(tool_calls)
         try:
             result = await self.memory.commit_turn(
                 str(request.session_id), state.get("customer_id"), state["safe_text"],
@@ -209,7 +245,9 @@ class AgentNodes(SessionNodes):
                 orders=[call["result"]["order_id"] for call in state.get("tool_calls", [])
                         if call.get("name") == "order.create"
                         and call.get("result", {}).get("status") == "created"
-                        and isinstance(call.get("result", {}).get("order_id"), str)])
+                        and isinstance(call.get("result", {}).get("order_id"), str)],
+                **({"episode_delta": episode_delta} if episode_delta else {}),
+                **({"outcome": outcome} if outcome != "khac" else {}))
         except Exception as exc:
             log_event(state, "persist", "failed", level=logging.ERROR,
                       operation="commit_turn", error_type=type(exc).__name__)
@@ -221,5 +259,7 @@ class AgentNodes(SessionNodes):
                       operation="commit_turn", reason=memory_error_code(result))
             raise RuntimeError("memory_turn_write_failed")
         log_event(state, "persist", "memory_recorded", turn_no=result["turn_no"],
-                  accepted_facts=len(result["memory_writes"]))
+                  accepted_facts=len(result["memory_writes"]),
+                  **({"episode_warning": result["episode_warning"]}
+                     if result.get("episode_warning") else {}))
         return {"memory_writes": result["memory_writes"]}

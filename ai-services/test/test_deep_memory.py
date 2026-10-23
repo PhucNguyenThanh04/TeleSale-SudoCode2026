@@ -1,6 +1,7 @@
 """The production graph uses Deep Agent tool calls and commits cross-session facts."""
 
 import unittest
+import asyncio
 from datetime import date
 from uuid import uuid4
 
@@ -75,7 +76,8 @@ class FakeMemory:
                 "episodes": [], "owned_order_ids": []}
 
     async def commit_turn(self, session_id, customer_id, customer_text, agent_text,
-                          on, channel, client_msg_id, facts, orders=None):
+                          on, channel, client_msg_id, facts, orders=None,
+                          episode_delta=None, outcome="khac"):
         key = (session_id, client_msg_id)
         if key in self.operations:
             return self.operations[key]
@@ -118,6 +120,58 @@ def turn(text, session_id=None):
 
 
 class DeepMemoryTest(unittest.IsolatedAsyncioTestCase):
+    async def test_decision_delay_is_written_to_fact_and_episode_without_model_proposal(self):
+        class RecordingMemory(FakeMemory):
+            async def commit_turn(self, *args, episode_delta=None, **kwargs):
+                self.last_episode_delta = episode_delta
+                return await super().commit_turn(*args, episode_delta=episode_delta, **kwargs)
+
+        memory = RecordingMemory()
+        model = FakeToolModel(replies=[AIMessage(content='{"answer":"Dạ, chị cứ trao đổi rồi gọi lại ạ."}')])
+        runtime = DeepHarnessRuntime(model, FakeGateway(), memory,
+                                     fact_extraction_mode="off")
+        await runtime.run(turn("Để chị hỏi ông xã rồi gọi lại nhé."))
+        self.assertEqual(memory.profile["blocker"]["value"], "hỏi ông xã")
+        self.assertEqual(memory.last_episode_delta["topic_updates"][0]
+                         ["add_items"][0]["text"], "hỏi ông xã")
+
+    async def test_failed_ordinary_transfer_has_explicit_failure_reply(self):
+        class Gateway(FakeGateway):
+            async def invoke(self, name, args):
+                if name == "handoff.transfer":
+                    self.calls.append((name, args))
+                    return {"ticket_id": "HT0042", "status": "failed"}
+                return await super().invoke(name, args)
+
+        model = FakeToolModel(replies=[
+            AIMessage(content="", tool_calls=[{"name": "handoff.transfer",
+                "args": {"brief": {"escalation_reason": "khach_yeu_cau_gap_nguoi"}},
+                "id": "handoff_attempt"}]),
+            AIMessage(content="Dạ, em đã chuyển yêu cầu đến nhân viên tư vấn ạ.")])
+        runtime = DeepHarnessRuntime(model, Gateway(), FakeMemory())
+        response = await runtime.run(turn("Tôi muốn gặp nhân viên tư vấn"))
+        self.assertFalse(response.needs_handoff)
+        self.assertIn("chưa chuyển được", response.agent_text)
+
+    async def test_call_brief_latency_includes_identity_lookup(self):
+        class SlowGateway(FakeGateway):
+            async def invoke(self, name, args):
+                if name == "crm.get_customer":
+                    await asyncio.sleep(0.05)
+                return await super().invoke(name, args)
+
+        class PriorMemory(FakeMemory):
+            async def read_context(self, session_id, customer_id):
+                result = await super().read_context(session_id, customer_id)
+                result["episodes"] = [{"session_id": "old-call", "channel": "hotline",
+                    "on": "2026-10-14", "summary": "Khách hỏi mẫu khác", "outcome": "khac"}]
+                return result
+
+        runtime = DeepHarnessRuntime(FakeToolModel(replies=[AIMessage(content="Dạ, em nghe ạ.")]),
+                                     SlowGateway(), PriorMemory())
+        response = await runtime.run(turn("Tôi hỏi tiếp sản phẩm hôm qua"))
+        self.assertGreaterEqual(response.call_brief["latency_ms"], 40)
+
     async def test_shared_phone_does_not_load_either_candidate_memory(self):
         class SharedGateway(FakeGateway):
             async def invoke(self, name, args):

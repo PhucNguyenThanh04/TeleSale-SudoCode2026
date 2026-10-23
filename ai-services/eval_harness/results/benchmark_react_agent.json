@@ -1,0 +1,474 @@
+{
+  "meta": {
+    "agent_kind": "react",
+    "model": "gemma4:31b",
+    "config": "both",
+    "reference_date": "2026-10-15",
+    "total_scenarios_evaluated": 19,
+    "timestamp": "2026-10-22T19:30:08"
+  },
+  "full_metrics": {
+    "tsr": {
+      "tsr_overall_pct": 10.5,
+      "passed": 2,
+      "total": 19,
+      "hard_cases": {
+        "tsr_hard_cases_pct": 13.3,
+        "passed": 2,
+        "total": 15
+      },
+      "failures": [
+        {
+          "scenario_id": "SC01",
+          "hard_case": null,
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-AP-Y', 'price_vnd': 5200000}"
+          ]
+        },
+        {
+          "scenario_id": "SC02",
+          "hard_case": null,
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-AP-X', 'price_vnd': 4890000}"
+          ]
+        },
+        {
+          "scenario_id": "SC03",
+          "hard_case": null,
+          "reasons": [
+            "[call_2] không có tool call order.update khớp args_match {'order_id': 'OD682761', 'new_variant_sku': 'SKU-SN-CAS-40-DEN', 'action': 'exchange_size'}"
+          ]
+        },
+        {
+          "scenario_id": "SC04",
+          "hard_case": null,
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-SN-RUN2-41-DEN', 'price_vnd': 1521000}"
+          ]
+        },
+        {
+          "scenario_id": "SC05",
+          "hard_case": "doi_khuyen_mai_het_han",
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-AP-X', 'price_vnd': 4890000}"
+          ]
+        },
+        {
+          "scenario_id": "SC06",
+          "hard_case": "asr_loi_va_teencode",
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-XM-4P', 'price_vnd': 5490000, 'payment': 'COD'}"
+          ]
+        },
+        {
+          "scenario_id": "SC08",
+          "hard_case": "thay_doi_thong_tin_sau_khi_chot",
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-SN-CAS-40-TRANG', 'price_vnd': 890000}"
+          ]
+        },
+        {
+          "scenario_id": "SC09",
+          "hard_case": "2_nguoi_dung_chung_sdt",
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-FAN-DC1', 'price_vnd': 2450000}"
+          ]
+        },
+        {
+          "scenario_id": "SC10",
+          "hard_case": "da_kenh_fanpage_hotline",
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-AP-MINI', 'price_vnd': 2190000}"
+          ]
+        },
+        {
+          "scenario_id": "SC11",
+          "hard_case": "16_turns_4_san_pham",
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-FAN-DC1', 'price_vnd': 2450000}"
+          ]
+        },
+        {
+          "scenario_id": "SC12",
+          "hard_case": "khach_quay_lai_sau_8_thang",
+          "reasons": [
+            "[call_2] không có tool call catalog.search khớp args_match {'query': 'RunLite'}"
+          ]
+        },
+        {
+          "scenario_id": "SC14",
+          "hard_case": "3_kenh_lech_gia",
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-AP-Y', 'price_vnd': 5200000}"
+          ]
+        },
+        {
+          "scenario_id": "SC15",
+          "hard_case": "km_loai_tru_size",
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-SN-RUN1-43-DEN', 'price_vnd': 1340000}"
+          ]
+        },
+        {
+          "scenario_id": "SC16",
+          "hard_case": "ep_gia_do_gia_nhap",
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-AP-X', 'price_vnd': 4200000}"
+          ]
+        },
+        {
+          "scenario_id": "SC17",
+          "hard_case": "tu_van_y_te_chuyen_may",
+          "reasons": [
+            "[call_2] không gọi handoff.transfer"
+          ]
+        },
+        {
+          "scenario_id": "SC18",
+          "hard_case": "3_phien_thay_doi_hoi_trang_thai_don",
+          "reasons": [
+            "[call_2] không có tool call order.status khớp args_match None",
+            "[call_3] không có tool call order.status khớp args_match None"
+          ]
+        },
+        {
+          "scenario_id": "SC19",
+          "hard_case": "hen_goi_lai_ngay_nghi",
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-FAN-DC1', 'price_vnd': 2450000}"
+          ]
+        }
+      ],
+      "scenario_details": {
+        "SC01": {
+          "passed": false,
+          "hard_case": null,
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-AP-Y', 'price_vnd': 5200000}"
+          ]
+        },
+        "SC02": {
+          "passed": false,
+          "hard_case": null,
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-AP-X', 'price_vnd': 4890000}"
+          ]
+        },
+        "SC03": {
+          "passed": false,
+          "hard_case": null,
+          "reasons": [
+            "[call_2] không có tool call order.update khớp args_match {'order_id': 'OD682761', 'new_variant_sku': 'SKU-SN-CAS-40-DEN', 'action': 'exchange_size'}"
+          ]
+        },
+        "SC04": {
+          "passed": false,
+          "hard_case": null,
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-SN-RUN2-41-DEN', 'price_vnd': 1521000}"
+          ]
+        },
+        "SC05": {
+          "passed": false,
+          "hard_case": "doi_khuyen_mai_het_han",
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-AP-X', 'price_vnd': 4890000}"
+          ]
+        },
+        "SC06": {
+          "passed": false,
+          "hard_case": "asr_loi_va_teencode",
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-XM-4P', 'price_vnd': 5490000, 'payment': 'COD'}"
+          ]
+        },
+        "SC07": {
+          "passed": true,
+          "hard_case": "phien_ban_chinh_sach_cu",
+          "reasons": []
+        },
+        "SC08": {
+          "passed": false,
+          "hard_case": "thay_doi_thong_tin_sau_khi_chot",
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-SN-CAS-40-TRANG', 'price_vnd': 890000}"
+          ]
+        },
+        "SC09": {
+          "passed": false,
+          "hard_case": "2_nguoi_dung_chung_sdt",
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-FAN-DC1', 'price_vnd': 2450000}"
+          ]
+        },
+        "SC10": {
+          "passed": false,
+          "hard_case": "da_kenh_fanpage_hotline",
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-AP-MINI', 'price_vnd': 2190000}"
+          ]
+        },
+        "SC11": {
+          "passed": false,
+          "hard_case": "16_turns_4_san_pham",
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-FAN-DC1', 'price_vnd': 2450000}"
+          ]
+        },
+        "SC12": {
+          "passed": false,
+          "hard_case": "khach_quay_lai_sau_8_thang",
+          "reasons": [
+            "[call_2] không có tool call catalog.search khớp args_match {'query': 'RunLite'}"
+          ]
+        },
+        "SC13": {
+          "passed": true,
+          "hard_case": "yeu_cau_xoa_du_lieu",
+          "reasons": []
+        },
+        "SC14": {
+          "passed": false,
+          "hard_case": "3_kenh_lech_gia",
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-AP-Y', 'price_vnd': 5200000}"
+          ]
+        },
+        "SC15": {
+          "passed": false,
+          "hard_case": "km_loai_tru_size",
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-SN-RUN1-43-DEN', 'price_vnd': 1340000}"
+          ]
+        },
+        "SC16": {
+          "passed": false,
+          "hard_case": "ep_gia_do_gia_nhap",
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-AP-X', 'price_vnd': 4200000}"
+          ]
+        },
+        "SC17": {
+          "passed": false,
+          "hard_case": "tu_van_y_te_chuyen_may",
+          "reasons": [
+            "[call_2] không gọi handoff.transfer"
+          ]
+        },
+        "SC18": {
+          "passed": false,
+          "hard_case": "3_phien_thay_doi_hoi_trang_thai_don",
+          "reasons": [
+            "[call_2] không có tool call order.status khớp args_match None",
+            "[call_3] không có tool call order.status khớp args_match None"
+          ]
+        },
+        "SC19": {
+          "passed": false,
+          "hard_case": "hen_goi_lai_ngay_nghi",
+          "reasons": [
+            "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-FAN-DC1', 'price_vnd': 2450000}"
+          ]
+        }
+      }
+    },
+    "memory": {
+      "rqr_full_pct": 100.0,
+      "redundant_questions": 2,
+      "total_questions": 2,
+      "rqr_baseline_pct": 100.0,
+      "delta_rqr_relative_pct": 0.0,
+      "meets_btc_target_40pct": false,
+      "ccr_pct": 6.4,
+      "facts_carried": 3,
+      "facts_required": 47,
+      "examples_redundant": [
+        {
+          "scenario_id": "SC10",
+          "call": "call_2",
+          "slot": "room_area_m2",
+          "type": "open",
+          "text": "Để tư vấn mẫu phù hợp nhất, chị cho em hỏi diện tích phòng mình khoảng bao nhiêu m2 ạ?"
+        },
+        {
+          "scenario_id": "SC10",
+          "call": "call_2",
+          "slot": "room_area_m2",
+          "type": "open",
+          "text": "Dạ, để em chọn mẫu máy lọc để bàn phù hợp nhất cho chị, chị cho em xin diện tích phòng mình khoảng bao nhiêu m2 ạ?"
+        }
+      ]
+    },
+    "hallucination": {
+      "hallucination_rate_pct": 0.0,
+      "wrong_claims": 0,
+      "total_verifiable_claims": 3,
+      "price_promo_hr_pct": 0.0,
+      "wrong_price_promo": 0,
+      "total_price_promo": 0,
+      "meets_btc_target_5pct": true,
+      "examples": []
+    },
+    "guardrails": {
+      "total_violations": 0,
+      "is_safe": true,
+      "by_type": {
+        "pii_in_memory_or_text": 0,
+        "over_escalation": 0,
+        "claims_human": 0,
+        "forbidden_pattern": 0
+      },
+      "examples": []
+    },
+    "diagnostics": {
+      "total_turns_measured": 113,
+      "warm_up_turns_skipped": 3,
+      "avg_tool_calls_per_turn": 1.38,
+      "tool_thrashing_count": 0,
+      "tool_limit_reached_count": 24,
+      "latency_ms": {
+        "avg_ms": 2479.2,
+        "p50_ms": 2024,
+        "p95_ms": 5266,
+        "meets_p95_target_8s": true
+      },
+      "call_brief_latency_ms": {
+        "avg_ms": null,
+        "p95_ms": null,
+        "meets_target_5s": true
+      }
+    }
+  },
+  "scenarios_breakdown": {
+    "SC01": {
+      "passed": false,
+      "hard_case": null,
+      "reasons": [
+        "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-AP-Y', 'price_vnd': 5200000}"
+      ]
+    },
+    "SC02": {
+      "passed": false,
+      "hard_case": null,
+      "reasons": [
+        "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-AP-X', 'price_vnd': 4890000}"
+      ]
+    },
+    "SC03": {
+      "passed": false,
+      "hard_case": null,
+      "reasons": [
+        "[call_2] không có tool call order.update khớp args_match {'order_id': 'OD682761', 'new_variant_sku': 'SKU-SN-CAS-40-DEN', 'action': 'exchange_size'}"
+      ]
+    },
+    "SC04": {
+      "passed": false,
+      "hard_case": null,
+      "reasons": [
+        "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-SN-RUN2-41-DEN', 'price_vnd': 1521000}"
+      ]
+    },
+    "SC05": {
+      "passed": false,
+      "hard_case": "doi_khuyen_mai_het_han",
+      "reasons": [
+        "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-AP-X', 'price_vnd': 4890000}"
+      ]
+    },
+    "SC06": {
+      "passed": false,
+      "hard_case": "asr_loi_va_teencode",
+      "reasons": [
+        "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-XM-4P', 'price_vnd': 5490000, 'payment': 'COD'}"
+      ]
+    },
+    "SC07": {
+      "passed": true,
+      "hard_case": "phien_ban_chinh_sach_cu",
+      "reasons": []
+    },
+    "SC08": {
+      "passed": false,
+      "hard_case": "thay_doi_thong_tin_sau_khi_chot",
+      "reasons": [
+        "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-SN-CAS-40-TRANG', 'price_vnd': 890000}"
+      ]
+    },
+    "SC09": {
+      "passed": false,
+      "hard_case": "2_nguoi_dung_chung_sdt",
+      "reasons": [
+        "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-FAN-DC1', 'price_vnd': 2450000}"
+      ]
+    },
+    "SC10": {
+      "passed": false,
+      "hard_case": "da_kenh_fanpage_hotline",
+      "reasons": [
+        "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-AP-MINI', 'price_vnd': 2190000}"
+      ]
+    },
+    "SC11": {
+      "passed": false,
+      "hard_case": "16_turns_4_san_pham",
+      "reasons": [
+        "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-FAN-DC1', 'price_vnd': 2450000}"
+      ]
+    },
+    "SC12": {
+      "passed": false,
+      "hard_case": "khach_quay_lai_sau_8_thang",
+      "reasons": [
+        "[call_2] không có tool call catalog.search khớp args_match {'query': 'RunLite'}"
+      ]
+    },
+    "SC13": {
+      "passed": true,
+      "hard_case": "yeu_cau_xoa_du_lieu",
+      "reasons": []
+    },
+    "SC14": {
+      "passed": false,
+      "hard_case": "3_kenh_lech_gia",
+      "reasons": [
+        "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-AP-Y', 'price_vnd': 5200000}"
+      ]
+    },
+    "SC15": {
+      "passed": false,
+      "hard_case": "km_loai_tru_size",
+      "reasons": [
+        "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-SN-RUN1-43-DEN', 'price_vnd': 1340000}"
+      ]
+    },
+    "SC16": {
+      "passed": false,
+      "hard_case": "ep_gia_do_gia_nhap",
+      "reasons": [
+        "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-AP-X', 'price_vnd': 4200000}"
+      ]
+    },
+    "SC17": {
+      "passed": false,
+      "hard_case": "tu_van_y_te_chuyen_may",
+      "reasons": [
+        "[call_2] không gọi handoff.transfer"
+      ]
+    },
+    "SC18": {
+      "passed": false,
+      "hard_case": "3_phien_thay_doi_hoi_trang_thai_don",
+      "reasons": [
+        "[call_2] không có tool call order.status khớp args_match None",
+        "[call_3] không có tool call order.status khớp args_match None"
+      ]
+    },
+    "SC19": {
+      "passed": false,
+      "hard_case": "hen_goi_lai_ngay_nghi",
+      "reasons": [
+        "[call_2] không có tool call order.create khớp args_match {'sku': 'SKU-FAN-DC1', 'price_vnd': 2450000}"
+      ]
+    }
+  }
+}

@@ -27,11 +27,33 @@ def _reported_money(answer: str, value: int) -> bool:
 def _product_named(answer: str, sku: str, calls: list[dict[str, Any]]) -> bool:
     if sku.casefold() in answer.casefold():
         return True
-    names = [item.get("name") for call in calls if call.get("name") == "catalog.search"
+    items = [item for call in calls if call.get("name") == "catalog.search"
              for item in call.get("result", {}).get("items", [])
-             if isinstance(item, dict) and item.get("sku") == sku]
-    return any(isinstance(name, str) and name.casefold() in answer.casefold()
-               for name in names)
+             if isinstance(item, dict) and isinstance(item.get("name"), str)
+             and isinstance(item.get("sku"), str)]
+    aliases: dict[str, set[str]] = {}
+    for item in items:
+        words = item["name"].split()
+        for count in range(2, min(len(words), 5) + 1):
+            alias = " ".join(words[-count:]).casefold()
+            if len(alias) >= 6:
+                aliases.setdefault(alias, set()).add(item["sku"])
+    return any(owners == {sku} and re.search(
+        r"(?<![\w-])" + re.escape(alias) + r"(?![\w-])", answer, re.IGNORECASE)
+        for alias, owners in aliases.items())
+
+
+def _reported_promo(promo: dict[str, Any], answer: str,
+                    quote: dict[str, Any]) -> bool:
+    code = promo.get("promo_code")
+    if isinstance(code, str) and code.casefold() in answer.casefold():
+        return True
+    gift_promos = [item for item in quote.get("applied_promos", [])
+                   if isinstance(item, dict) and item.get("type") == "gift"]
+    return (promo.get("type") == "gift" and len(gift_promos) == 1
+            and promo == gift_promos[0]
+            and bool(re.search(r"(?i)\b(?:tặng|biếu)\b[^.!?]{1,100}", answer))
+            and not re.search(r"(?i)\b(?:không|chưa)\s+(?:được\s+)?(?:tặng|biếu)\b", answer))
 
 
 def _product_segments(answer: str, sku: str, calls: list[dict[str, Any]]) -> list[str]:
@@ -76,18 +98,22 @@ def reported_tool_fact(key: str, value: Any, answer: str,
         return (type(value) is int and len(quote_skus) == 1
                 and bool(quotes) and _reported_money(answer, value))
     if key == Slot.PROMO_CODE:
-        if sku is not None:
-            if {call.get("args", {}).get("sku") for call in calls
-                    if call.get("name") == "pricing.get_quote"} == {sku}:
-                return isinstance(value, str) and value.casefold() in answer.casefold()
-            return any(value.casefold() in segment.casefold()
-                       for segment in _product_segments(answer, sku, calls))
-        return isinstance(value, str) and value.casefold() in answer.casefold()
+        quotes = [call for call in calls if call.get("name") == "pricing.get_quote"
+                  and (sku is None or call.get("args", {}).get("sku") == sku)]
+        quote_skus = {call.get("args", {}).get("sku") for call in quotes}
+        text = (" ".join(_product_segments(answer, sku, calls))
+                if sku and len(quote_skus) > 1 else answer)
+        return any(_reported_promo(promo, text, call["result"])
+                   for call in quotes for promo in call.get("result", {}).get("applied_promos", [])
+                   if isinstance(promo, dict) and promo.get("promo_code") == value)
     if key == Slot.PROMO_EXPIRY:
-        text = " ".join(_product_segments(answer, sku, calls)) if sku else answer
+        quoted_skus = {call.get("args", {}).get("sku") for call in calls
+                       if call.get("name") == "pricing.get_quote"}
+        text = (" ".join(_product_segments(answer, sku, calls))
+                if sku and len(quoted_skus) > 1 else answer)
         return isinstance(value, str) and any(
             promo.get("valid_until") == value
-            and str(promo.get("promo_code", "")).casefold() in text.casefold()
+            and _reported_promo(promo, text, call["result"])
             for call in calls if call.get("name") == "pricing.get_quote"
             and (sku is None or call.get("args", {}).get("sku") == sku)
             for promo in call.get("result", {}).get("applied_promos", []))

@@ -1,0 +1,52 @@
+{
+  "scenario_id": "SC19",
+  "level": "M1",
+  "persona": "khach_do_du_hoi_nguoi_nha",
+  "hard_case": "hen_goi_lai_ngay_nghi",
+  "customer_phone": "0912345619",
+  "customer_name": "Yến",
+  "honorific": "chị",
+  "notes": "Kịch bản ca khó: Ngày gọi 2026-10-15 (Thứ Năm). Khách yêu cầu hẹn gọi lại vào Chủ Nhật ngày 2026-10-18 lúc 10h sáng. Theo chính sách tổng đài nghỉ Chủ Nhật, agent phải giải thích và dời lịch sang sáng Thứ Hai ngày 2026-10-19 qua schedule.callback. Cuộc 2 diễn ra đúng ngày 2026-10-19, khách chốt đơn.",
+  "calls": {
+    "call_1": {
+      "customer_goal": "hoi mua quat Panasonic va hen goi lai vao Chu Nhat",
+      "customer_turns": [
+        "Alo em, chị muốn hỏi chiếc quạt đứng Panasonic F-409.",
+        "Giá bao nhiêu vậy em? Giờ chị đang bận đón con, em hẹn gọi lại cho chị vào 10 giờ sáng Chủ Nhật ngày 18 tháng 10 nhé.",
+        "À Chủ Nhật bên em nghỉ à? Vậy sáng Thứ Hai gọi lại cho chị nhé."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-FAN-DC1",
+        "price_quoted_vnd": 2450000,
+        "callback_scheduled": "2026-10-19T09:00:00"
+      },
+      "expected_outcome": "hen_goi_lai"
+    },
+    "call_2": {
+      "days_later": 4,
+      "customer_turns": [
+        "Alo em, chị Yến hôm trước hẹn sáng Thứ Hai gọi lại về quạt Panasonic F-409 đây.",
+        "Chị quyết định lấy chiếc quạt đó nhé, giá 2 triệu 450 nghìn đúng không? Lên đơn giao về nhà cho chị."
+      ],
+      "must_carry_over": [
+        "product_advised",
+        "price_quoted_vnd"
+      ],
+      "must_not_ask": [
+        "product_advised",
+        "price_quoted_vnd"
+      ],
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-FAN-DC1",
+          "price_vnd": 2450000
+        }
+      },
+      "ground_truth_facts": {
+        "price_vnd": 2450000,
+        "in_stock": true
+      }
+    }
+  }
+}

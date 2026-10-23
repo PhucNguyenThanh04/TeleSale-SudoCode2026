@@ -1,0 +1,46 @@
+{
+  "scenario_id": "SC12",
+  "level": "M2",
+  "persona": "khach_quay_lai_sau_8_thang",
+  "hard_case": "khach_quay_lai_sau_8_thang",
+  "customer_phone": "0912345612",
+  "customer_name": "Hoàng",
+  "honorific": "anh",
+  "notes": "Kịch bản hợp đồng: Khách quay lại sau 8 tháng (240 ngày). Sản phẩm cũ SKU-SN-RUN1-OLD đã ngừng bán. Địa chỉ cũ quá hạn TTL cần xác nhận lại, agent phải tra cứu catalog để thông báo trạng thái sản phẩm.",
+  "calls": {
+    "call_1": {
+      "customer_goal": "hoi mua giay chay bo RunLite 1 mau 2025",
+      "customer_turns": [
+        "Chào em, anh muốn tìm đôi giày chạy bộ RunLite 1 phiên bản 2025.",
+        "Đôi này giá hôm nay thế nào em?",
+        "Ừ để anh cân nhắc thêm nhé."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-SN-RUN1-OLD",
+        "price_quoted_vnd": 1090000
+      },
+      "expected_outcome": "hen_goi_lai"
+    },
+    "call_2": {
+      "days_later": 240,
+      "customer_turns": [
+        "Alo em, 8 tháng trước anh có hỏi đôi RunLite 1 mẫu 2025 đó.",
+        "Giờ anh muốn đặt đôi đó, giao về địa chỉ cũ năm ngoái được không?"
+      ],
+      "must_carry_over": [
+        "product_advised"
+      ],
+      "must_not_ask": [],
+      "success_if": {
+        "tool_called": "catalog.search",
+        "args_match": {
+          "query": "RunLite"
+        }
+      },
+      "ground_truth_facts": {
+        "product_status": "discontinued",
+        "address_reconfirm_needed": true
+      }
+    }
+  }
+}

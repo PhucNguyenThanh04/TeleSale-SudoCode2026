@@ -83,7 +83,7 @@ class MemoryFreshnessContract(unittest.IsolatedAsyncioTestCase):
             "on": datetime(2026, 10, 18).date()})
         state = {"request": request, "safe_text": request.text,
                  "customer_id": "C106", "customer_phone": "0900000106",
-                 "identity_status": "resolved", "received_at_monotonic": time.perf_counter(),
+                 "identity_status": "known", "received_at_monotonic": time.perf_counter(),
                  "tool_calls": []}
         memory = SavedMemory({
             "preferred_color": {"key": "preferred_color", "value": "trắng",
@@ -107,7 +107,7 @@ class MemoryFreshnessContract(unittest.IsolatedAsyncioTestCase):
             "on": datetime.fromisoformat(on).date()})
         state = {"request": request, "safe_text": request.text,
                  "customer_id": "C106", "customer_phone": "0900000106",
-                 "identity_status": "resolved", "received_at_monotonic": time.perf_counter(),
+                 "identity_status": "known", "received_at_monotonic": time.perf_counter(),
                  "tool_calls": []}
         memory = SavedMemory({
             "room_area_m2": {"key": "room_area_m2", "value": 30,

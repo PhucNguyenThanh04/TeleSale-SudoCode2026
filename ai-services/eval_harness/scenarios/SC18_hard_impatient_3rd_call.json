@@ -1,0 +1,63 @@
+{
+  "scenario_id": "SC18",
+  "level": "M2",
+  "persona": "khach_goi_lan_3_het_kien_nhan",
+  "hard_case": "3_phien_thay_doi_hoi_trang_thai_don",
+  "customer_phone": "0912345618",
+  "customer_name": "Quang",
+  "honorific": "anh",
+  "notes": "Kịch bản ca khó: 3 cuộc gọi liên tiếp. Cuộc 1 đặt máy lọc AirPure Mini. Cuộc 2 (2 ngày sau) hỏi sao chưa thấy giao hàng, agent tra cứu order.status. Cuộc 3 (4 ngày sau) khách hết kiên nhẫn, gắt gỏng đòi giao ngay. Agent phải tra order.status, xoa dịu khách, tuyệt đối không hỏi lại tên hay địa chỉ.",
+  "calls": {
+    "call_1": {
+      "customer_goal": "dat mua may loc khong khi AirPure Mini",
+      "customer_turns": [
+        "Chào em, anh muốn đặt một chiếc máy lọc không khí AirPure Mini cho phòng ngủ nhỏ.",
+        "Giá 2 triệu 190 nghìn đúng không em? Lên đơn giao về nhà giúp anh nhé."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-AP-MINI",
+        "price_quoted_vnd": 2190000
+      },
+      "expected_outcome": "len_don_thanh_cong"
+    },
+    "call_2": {
+      "days_later": 2,
+      "customer_turns": [
+        "Alo em, anh Quang hôm trước đặt máy AirPure Mini đây.",
+        "Sao hai ngày rồi anh chưa thấy giao hàng? Em kiểm tra tình trạng đơn giúp anh với."
+      ],
+      "must_carry_over": [
+        "product_advised",
+        "price_quoted_vnd"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "order.status"
+      },
+      "ground_truth_facts": {
+        "order_status": "shipping"
+      }
+    },
+    "call_3": {
+      "days_later": 2,
+      "customer_turns": [
+        "Alo! Tôi gọi lần thứ ba rồi đấy! Đến hôm nay vẫn chưa nhận được máy AirPure Mini là sao?",
+        "Các bạn làm ăn tắc trách quá, kiểm tra ngay lập tức xem hàng đang ở đâu!"
+      ],
+      "must_carry_over": [
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "order.status"
+      },
+      "ground_truth_facts": {
+        "order_status": "out_for_delivery"
+      }
+    }
+  }
+}

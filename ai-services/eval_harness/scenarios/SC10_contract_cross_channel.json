@@ -1,0 +1,53 @@
+{
+  "scenario_id": "SC10",
+  "level": "M1",
+  "persona": "khach_da_kenh_fb_hotline",
+  "hard_case": "da_kenh_fanpage_hotline",
+  "customer_phone": "0912345610",
+  "customer_name": "Linh",
+  "honorific": "chị",
+  "notes": "Kịch bản hợp đồng: Khách nhắn Fanpage về phòng 12m2 cần máy lọc Mini. Cuộc 2 gọi Hotline nhắc lại máy để bàn, agent phải nhớ diện tích 12m2 và SKU-AP-MINI, không hỏi lại diện tích.",
+  "calls": {
+    "call_1": {
+      "customer_goal": "nhan fanpage hoi may loc Mini cho phong 12m2",
+      "customer_turns": [
+        "Chào shop, phòng tôi khoảng 12 mét vuông, đang xem mẫu AirPure Mini.",
+        "Mẫu này để bàn được đúng không em? Giá hiện tại bao nhiêu vậy?"
+      ],
+      "facts_established": {
+        "room_area_m2": 12,
+        "product_advised": "SKU-AP-MINI",
+        "price_quoted_vnd": 2190000
+      },
+      "expected_outcome": "tu_van_thanh_cong"
+    },
+    "call_2": {
+      "days_later": 2,
+      "customer_turns": [
+        "Alo, hôm trước chị có nhắn fanpage về máy lọc để bàn đó em, tư vấn tiếp giúp chị.",
+        "Chị muốn đặt luôn một chiếc, giao về địa chỉ cũ giúp chị nhé."
+      ],
+      "must_carry_over": [
+        "room_area_m2",
+        "product_advised",
+        "price_quoted_vnd"
+      ],
+      "must_not_ask": [
+        "room_area_m2",
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-AP-MINI",
+          "price_vnd": 2190000
+        }
+      },
+      "ground_truth_facts": {
+        "price_vnd": 2190000,
+        "in_stock": true,
+        "room_area_m2": 12
+      }
+    }
+  }
+}

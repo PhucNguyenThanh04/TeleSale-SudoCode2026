@@ -90,6 +90,8 @@ class MemoryErasureRequestContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(handoff["customer_phone"], "0900000108")
         self.assertEqual(handoff["escalation_reason"], "khac")
         HandoffBrief.model_validate(handoff)
+        self.assertIn("Xác minh chủ thể", handoff["next_action"])
+        self.assertIn("phạm vi dữ liệu", handoff["open_questions"][0])
         self.assertNotIn("0900000108", response.agent_text)
 
     async def test_request_without_trusted_phone_does_not_forge_handoff(self):

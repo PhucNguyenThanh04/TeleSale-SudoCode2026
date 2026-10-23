@@ -6,6 +6,7 @@ import unittest
 import warnings
 from contextlib import asynccontextmanager
 from pathlib import Path
+from jsonschema import Draft202012Validator, FormatChecker
 
 from app.mcp_servers.mcp_shared.commerce_rules import _catalog, _inventory, quote
 from app.mcp_servers.mcp_order.services.order import invoke as invoke_order
@@ -36,6 +37,7 @@ class FakeOrderRepo:
 
     async def insert_handoff(self, _session, _brief):
         self.handoffs += 1
+        self.last_brief = _brief
         return self.handoffs
 
 
@@ -64,9 +66,10 @@ class BusinessTest(unittest.IsolatedAsyncioTestCase):
     async def test_handoff_replay_does_not_write_twice(self):
         repo = FakeOrderRepo()
         args = {"brief": {"customer_phone": "0984726714", "customer_name": "Lan",
-            "escalation_reason": "test", "conversation_summary": "test",
-            "product_advised": [], "price_quoted_vnd": None, "open_questions": [],
-            "next_action": "call", "generated_at": "2026-10-15T10:00:00"},
+            "escalation_reason": "khach_yeu_cau_gap_nguoi",
+            "conversation_summary": "Khách muốn trao đổi trực tiếp với nhân viên về sản phẩm.",
+            "product_advised": None, "price_quoted_vnd": None, "open_questions": [],
+            "next_action": "Gọi lại để tư vấn.", "generated_at": "2026-10-15T10:00:00+07:00"},
             "source_channel": "hotline", "source_identity": "0984726714", "operation_key": "key-1"}
         import hashlib
         clean = {k: v for k, v in args.items() if k != "operation_key"}
@@ -75,6 +78,28 @@ class BusinessTest(unittest.IsolatedAsyncioTestCase):
         second = await invoke_order(repo, "handoff.transfer", args)
         self.assertEqual(first, second)
         self.assertEqual(repo.handoffs, 1)
+        schema = json.loads((BTC / "schemas/handoff_brief.schema.json").read_text())
+        Draft202012Validator(schema, format_checker=FormatChecker()).validate(repo.last_brief)
+
+    async def test_handoff_rejects_invalid_values_without_ticket(self):
+        valid = {"customer_phone": "0984726714", "customer_name": "Lan",
+            "escalation_reason": "cau_hoi_y_te",
+            "conversation_summary": "Khách cần nhân viên trả lời câu hỏi y tế về sản phẩm.",
+            "product_advised": None, "price_quoted_vnd": None,
+            "open_questions": ["Có dùng được khi mang thai không?"],
+            "next_action": "Chuyển nhân viên có chuyên môn.",
+            "generated_at": "2026-10-15T10:00:00+07:00"}
+        for change in ({"conversation_summary": "ngắn"}, {"escalation_reason": "unknown"},
+                       {"product_advised": []}, {"price_quoted_vnd": "hai triệu"},
+                       {"customer_phone": "bad"}, {"next_action": ""},
+                       {"generated_at": "2026-10-15T10:00:00"}):
+            with self.subTest(change=change):
+                repo = FakeOrderRepo()
+                result = await invoke_order(repo, "handoff.transfer", {
+                    "brief": {**valid, **change}, "source_channel": "hotline",
+                    "source_identity": "0984726714"})
+                self.assertEqual(result.get("error"), "brief_invalid")
+                self.assertEqual(repo.handoffs, 0)
 
     async def test_ambiguous_order_identity_is_rejected(self):
         repo = FakeOrderRepo()

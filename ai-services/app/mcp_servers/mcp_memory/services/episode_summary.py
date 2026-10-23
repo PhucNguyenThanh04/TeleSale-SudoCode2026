@@ -1,48 +1,35 @@
-"""Bounded episode text from verified facts and the customer's own turns."""
+"""Compact, evidence-backed session state for a returning customer's brief."""
 
 from app.mcp_servers.mcp_shared.pii import mask_pii
 
 
 def build_episode_summary(confirmed_facts: list[dict], recent_turns: list[dict],
-                          max_chars: int) -> str:
+                          max_chars: int, *, episode_state: dict | None = None) -> str:
+    """Describe what happened between facts; facts and turns remain separate records."""
     if max_chars < 1:
         raise ValueError("max_chars must be positive")
-    products = []
-    rooms = []
-    for fact in confirmed_facts:
-        if fact.get("status", "active") != "active":
+    topics = (episode_state or {}).get("topics", [])
+    if not isinstance(topics, list):
+        topics = []
+    entries = []
+    for topic in reversed(topics):
+        if not isinstance(topic, dict):
             continue
-        if fact.get("key") == "product_advised" and fact.get("scope_type") == "product":
-            sku = fact.get("scope_id")
-            if isinstance(sku, str) and sku and sku not in products:
-                products.append(sku)
-        elif fact.get("key") == "room_area_m2" and fact.get("scope_type") == "room":
-            room, area = fact.get("scope_id"), fact.get("value")
-            if isinstance(room, str) and type(area) is int:
-                item = f"{room}={area} m²"
-                if item not in rooms:
-                    rooms.append(item)
-    parts = []
-    if products:
-        parts.append("Sản phẩm đã tư vấn: " + ", ".join(products))
-    if rooms:
-        parts.append("Diện tích: " + ", ".join(rooms))
-    required = mask_pii(" | ".join(parts))
-    if len(required) > max_chars:
-        # Scoped facts remain in ai_memory.facts and memory.read.scoped_facts.
-        # A partial SKU/room list here could be mistaken for a complete one.
-        return "Xem fact có cấu trúc"[:max_chars]
-    tail = []
-    seen = set()
-    for row in recent_turns:
-        customer = mask_pii(str(row["customer_text"])).strip()
-        if customer and customer not in seen:
-            tail.append(customer)
-            seen.add(customer)
-    text = required
-    for utterance in tail:
-        next_text = (text + " | " if text else "") + utterance
-        if len(next_text) > max_chars:
-            break
-        text = next_text
-    return text
+        for item in reversed(topic.get("items", [])):
+            if not isinstance(item, dict) or item.get("status") != "open":
+                continue
+            label = "Câu hỏi còn mở" if item.get("kind") == "question" else "Rào cản còn mở"
+            if isinstance(item.get("text"), str) and item["text"].strip():
+                entries.append((label, item["text"].strip()))
+        for field, label in (("next_step", "Bước tiếp theo"),
+                             ("customer_goal", "Mục tiêu"),
+                             ("advice_given", "Đã tư vấn")):
+            if isinstance(topic.get(field), str) and topic[field].strip():
+                entries.append((label, topic[field].strip()))
+    selected = []
+    for label, value in entries:
+        for entry in (mask_pii(f"{label}: {value}"), mask_pii(value)):
+            if entry not in selected and len(" | ".join([*selected, entry])) <= max_chars:
+                selected.append(entry)
+                break
+    return " | ".join(selected) if selected else "Chưa có diễn biến riêng được xác minh."[:max_chars]

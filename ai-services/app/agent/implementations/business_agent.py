@@ -193,7 +193,10 @@ class BusinessTools:
             log_tool_output(self.state, "call_tool", name, result)
             self.state.setdefault("tool_calls", []).append(
                 {"name": name, "args": args, "result": result})
-            if name == "handoff.transfer" and "error" not in result and result.get("ticket_id"):
+            if (name == "handoff.transfer" and "error" not in result
+                    and result.get("status") == "queued"
+                    and isinstance(result.get("ticket_id"), str)
+                    and result["ticket_id"]):
                 self.state["needs_handoff"] = True
                 self.state["handoff_ticket_id"] = result["ticket_id"]
             if name == "order.create" and result.get("status") == "created" and result.get("order_id"):
@@ -252,8 +255,20 @@ _SYSTEM_PROMPT = (
     "fact_candidates=[{key,value,source}] nếu có fact; đây chỉ là đề xuất để harness "
     "kiểm chứng và ghi sau câu trả lời. Diện tích phòng khách trực tiếp nêu có thể "
     "đề xuất bằng room_area_m2, source=customer cùng catalog.search. Nếu không gọi tool nghiệp "
-    "vụ, trả JSON {\"answer\":\"câu trả lời cho khách\",\"fact_candidates\":[...]} "
-    "khi có fact cần nhớ; nếu không có fact thì trả lời văn bản bình thường. "
+    "vụ, luôn trả JSON {\"answer\":\"câu trả lời cho khách\","
+    "\"fact_candidates\":[...],\"episode_delta\":{\"topic_updates\":[...]}}. "
+    "Bỏ trường hoặc để mảng rỗng khi không có thông tin tương ứng. "
+    "episode_delta chỉ đề xuất câu hỏi/rào cản còn mở hoặc đã giải quyết: "
+    "topic_update có scope_type unknown/global/product/room, scope_id; "
+    "add_items=[{kind:question|blocker,text,evidence_quote}], "
+    "resolve_items=[{item_id,evidence_quote}]; có thể đề xuất customer_goal, "
+    "advice_given hoặc next_step cùng narrative_evidence_quote khi phát biểu hiện tại "
+    "thực sự hỗ trợ nội dung đó. evidence_quote là nguyên văn "
+    "của lượt hiện tại; item_id lấy từ current_episode hoặc previous_episodes, không tự tạo. "
+    "Nội dung text phải được câu trích dẫn hỗ trợ rõ ràng. Khi gọi handoff.transfer "
+    "và khách vừa nói một câu hỏi cũ đã được giải quyết, có thể kèm episode_delta "
+    "trong brief đề xuất để brief nhân viên không mang câu hỏi cũ. "
+    "Không nêu giá/KM/tồn kho cũ như thông tin hiện tại. "
     "Chỉ đề xuất fact có bằng chứng trong lượt hiện tại, không đoán từ hồ sơ cũ. "
     "Không gán giá shop báo thành budget_vnd. memory.propose_fact là cách khác để "
     "đề xuất fact, không trực tiếp ghi database."

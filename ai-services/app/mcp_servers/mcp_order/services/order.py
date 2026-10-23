@@ -136,6 +136,15 @@ async def handoff(repo, session, args: dict, customer_id: str | None, phone: str
     missing = [key for key in required if key not in brief]
     if missing:
         return {"error": "brief_invalid", "missing": missing}
+    from pydantic import ValidationError
+    from app.schemas.brief import HandoffBrief
+    try:
+        validated = HandoffBrief.model_validate(brief)
+        brief = validated.model_dump(mode="json", exclude_none=True)
+        for nullable in ("customer_name", "product_advised", "price_quoted_vnd"):
+            brief.setdefault(nullable, None)
+    except ValidationError:
+        return {"error": "brief_invalid"}
     if customer_id and brief["customer_phone"] != phone:
         return {"error": "customer_not_owned"}
     if not customer_id and (args.get("source_channel") != "hotline" or

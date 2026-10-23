@@ -22,9 +22,10 @@ from app.configs import get_settings  # noqa: E402
 from app.schemas.agent import TextTurnRequest  # noqa: E402
 from app.schemas.trace import AgentTraceLine  # noqa: E402
 from eval.catalog_search_benchmark import catalog_search_metrics  # noqa: E402
+from eval.stage_evidence import stage_evidence  # noqa: E402
 
 
-async def _require_eval_database(runtime, isolated_db: bool) -> None:
+async def _require_eval_database(runtime, isolated_db: bool) -> dict:
     """Fail before the first turn unless all three MCP pools reach one allowed eval DB."""
     if not isolated_db:
         raise ValueError("Pass --isolated-db after configuring a dedicated eval database")
@@ -52,6 +53,8 @@ async def _require_eval_database(runtime, isolated_db: bool) -> None:
         identities.append((name, *endpoint))
     if len(set(identities)) != 1:
         raise RuntimeError("MCP services do not share one eval database endpoint")
+    database, host, port = identities[0]
+    return {"database": database, "host": host, "port": port}
 
 
 def _scenario_inputs(folder: Path):
@@ -160,9 +163,36 @@ def _facts_used(answer: str, state: dict) -> list[str]:
 
 def _trace_args(args: dict) -> dict:
     """Preserve business arguments while excluding raw contact and address fields."""
-    return {key: mask_pii(value) if isinstance(value, str) else value
+    traced = {key: mask_pii(value) if isinstance(value, str) else value
             for key, value in args.items()
             if key not in {"address", "brief", "source_identity", "verified_customer_id"}}
+    brief = args.get("brief")
+    if isinstance(brief, dict):
+        # BTC checks brief_must_contain in trace tool args. Export the presence
+        # and safe business fields while withholding free-form customer prose.
+        projected = {}
+        for key in ("customer_phone", "customer_name", "conversation_summary",
+                    "next_action", "escalation_reason_detail"):
+            value = brief.get(key)
+            if key in brief:
+                projected[key] = ("[SỐ ĐÃ ẨN]" if key == "customer_phone" else
+                                  "[TÊN ĐÃ ẨN]" if key == "customer_name" else
+                                  "[NỘI DUNG ĐÃ ẨN]") if value else value
+        if isinstance(brief.get("open_questions"), list):
+            projected["open_questions"] = ["[NỘI DUNG ĐÃ ẨN]" for item in
+                                           brief["open_questions"] if item]
+        for key in ("escalation_reason", "channel", "generated_at", "promo_code"):
+            value = brief.get(key)
+            if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_:\-+TZ.]+", value):
+                projected[key] = value
+        sku = brief.get("product_advised")
+        if sku is None or isinstance(sku, str) and re.fullmatch(r"SKU-[A-Z0-9-]+", sku):
+            projected["product_advised"] = sku
+        price = brief.get("price_quoted_vnd")
+        if price is None or type(price) is int:
+            projected["price_quoted_vnd"] = price
+        traced["brief"] = projected
+    return traced
 
 
 async def run(args, runtime=None) -> int:
@@ -170,11 +200,12 @@ async def run(args, runtime=None) -> int:
     validator = Draft202012Validator(json.loads(schema_path.read_text(encoding="utf-8")))
     if runtime is None:
         runtime = build_runtime(get_settings())
-    await _require_eval_database(runtime, args.isolated_db)
+    database_identity = await _require_eval_database(runtime, args.isolated_db)
     runtime.memory.include_prior = args.config == "full"
     run_id = str(uuid4())
     rows = []
     events = []
+    stages = []
     for scenario_id, call_name, on, channel, identity, mode, turns in _scenario_inputs(args.scenarios):
         session_id = uuid4()
         for turn_no, customer_text in enumerate(turns, 1):
@@ -203,6 +234,9 @@ async def run(args, runtime=None) -> int:
             ).model_dump(mode="json")
             validator.validate(row)
             rows.append(row)
+            stages.append(stage_evidence(state, response, scenario_id=scenario_id,
+                                         call=call_name, turn=turn_no,
+                                         run_id=run_id, config=args.config))
             checks = state.get("verifier_events", [])
             if checks:
                 events.append({"scenario_id": scenario_id, "call": call_name,
@@ -212,10 +246,13 @@ async def run(args, runtime=None) -> int:
                         encoding="utf-8")
     args.out.with_suffix(".events.json").write_text(
         json.dumps(events, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    args.out.with_suffix(".stages.json").write_text(
+        json.dumps(stages, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     report_out = getattr(args, "report_out", None) or args.out.with_suffix(".report.json")
     report_out.parent.mkdir(parents=True, exist_ok=True)
     report_out.write_text(json.dumps({
         "run_id": run_id, "config": args.config,
+        "database_identity": database_identity,
         "catalog_search": catalog_search_metrics(rows),
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return len(rows)

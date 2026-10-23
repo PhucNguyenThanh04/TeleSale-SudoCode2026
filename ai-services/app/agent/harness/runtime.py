@@ -84,6 +84,7 @@ class AgentHarnessRuntime:
                         config["callbacks"] = [trace[0]]
                     state: TurnState = await self.graph.ainvoke(
                         {"request": turn, **deepcopy(identity),
+                         "received_at_monotonic": started,
                          "tool_calls": initial_calls}, config=config,
                     )
                     if trace:

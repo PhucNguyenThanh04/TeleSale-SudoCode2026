@@ -1,0 +1,69 @@
+{
+  "scenario_id": "SC11",
+  "level": "M2",
+  "persona": "khach_mua_nhieu_mon",
+  "hard_case": "16_turns_4_san_pham",
+  "customer_phone": "0912345611",
+  "customer_name": "Dũng",
+  "honorific": "anh",
+  "notes": "Kịch bản hợp đồng: 16 turns liên tiếp hỏi 4 SKU (SKU-AP-MINI, SKU-AP-PRO, SKU-WF-RO9, SKU-FAN-DC1). Cuộc 2 so sánh lại RO9 và quạt DC1, agent không được nhầm giá chéo giữa các SKU.",
+  "calls": {
+    "call_1": {
+      "customer_goal": "khao sat thiet bi cho 2 phong, nha bep va phong khach gom 4 san pham",
+      "customer_turns": [
+        "Tôi muốn tìm thiết bị cho hai phòng ngủ, nhà bếp và phòng khách.",
+        "Phòng ngủ nhỏ 12 mét vuông cần máy để bàn.",
+        "AirPure Mini có hợp phòng đó không?",
+        "Giá Mini hiện tại bao nhiêu em?",
+        "Phòng ngủ thứ hai 45 mét vuông, tôi muốn máy lọc mạnh hơn.",
+        "AirPure Pro có công suất đáp ứng được không em?",
+        "Cho tôi giá mẫu AirPure Pro nhé.",
+        "Tôi còn cần máy lọc nước cho nhà bếp nữa.",
+        "Mẫu RO9 Karofi có mấy lõi lọc?",
+        "Giá máy lọc nước RO9 hôm nay thế nào?",
+        "Phòng khách tôi muốn thêm quạt đứng tiết kiệm điện.",
+        "Quạt DC1 Panasonic có êm không em?",
+        "Báo giá quạt DC1 giúp tôi luôn.",
+        "Nếu tôi lấy cả quạt và máy lọc nước thì có ưu đãi gì không?",
+        "Tôi đang cân nhắc ngân sách nên chưa đặt đơn ngay đâu nhé.",
+        "Em lưu giúp tôi bốn mẫu vừa hỏi để hôm sau tôi xem lại nhé."
+      ],
+      "facts_established": {
+        "room_area_small": 12,
+        "room_area_large": 45,
+        "product_1": "SKU-AP-MINI",
+        "product_2": "SKU-AP-PRO",
+        "product_3": "SKU-WF-RO9",
+        "product_advised": "SKU-FAN-DC1",
+        "blocker": "can can nhac ngan sach"
+      },
+      "expected_outcome": "hen_goi_lai"
+    },
+    "call_2": {
+      "days_later": 4,
+      "customer_turns": [
+        "Alo em, anh Dũng hôm trước có hỏi 4 thiết bị gia đình đây.",
+        "Anh muốn so sánh lại giá của máy lọc nước RO9 và quạt DC1 hôm trước em báo.",
+        "Em lên đơn giúp anh chiếc quạt DC1 trước nhé, giao về địa chỉ cũ cho anh."
+      ],
+      "must_carry_over": [
+        "product_advised",
+        "blocker"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-FAN-DC1",
+          "price_vnd": 2450000
+        }
+      },
+      "ground_truth_facts": {
+        "price_vnd": 2450000,
+        "in_stock": true
+      }
+    }
+  }
+}
