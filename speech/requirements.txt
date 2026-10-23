@@ -1,0 +1,7 @@
+# Cài vào venv riêng (đã .gitignore):
+#   python -m venv .venv-speech
+#   .\.venv-speech\Scripts\pip install -r speech\requirements.txt
+faster-whisper>=1.1     # Whisper/PhoWhisper chạy bằng CTranslate2 + Silero VAD (ONNX) + PyAV giải mã audio
+numpy>=1.24
+huggingface_hub>=0.23   # tải model CTranslate2
+edge-tts>=7.0           # TTS miễn phí để sinh dữ liệu thử; ElevenLabs gọi REST bằng urllib, không cần SDK

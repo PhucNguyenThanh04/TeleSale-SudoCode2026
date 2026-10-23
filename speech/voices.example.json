@@ -1,0 +1,66 @@
+{
+ "_doc": "Copy thành speech/voices.json (đã .gitignore) rồi sửa. Khóa giọng tra theo thứ tự: '<vai>:<vùng>_<giới>' → '<vùng>_<giới>' → '<vai>:bac_<giới>' → 'bac_<giới>'; vai A = nhân viên, C = khách; vùng bac|trung|nam; giới f|m (lấy từ agent_/customer_region, _gender của kịch bản). 'roles' ghi đè tham số theo vai. edge-tts chỉ có 2 giọng tiếng Việt (đều giọng Bắc) nên vùng miền chỉ được mô phỏng bằng cao độ; muốn giọng Trung/Nam thật thì dùng ElevenLabs. ElevenLabs: giọng trong Voice Library phải 'Add to My Voices' trước, voice_id dạng 20 ký tự; 3 voice_id dưới đây lấy từ Voice Library công khai, cần kiểm tra lại bằng `python -m speech voices --engine elevenlabs --accent southern`. 'pronounce' (chỉ edge): phiên âm từ tiếng Anh theo cách người Việt hay nói trước khi TTS đọc, vì giọng edge tiếng Việt đọc chữ Anh rất lạ; ground truth vẫn giữ chữ gốc. Tắt bằng --no-pronounce.",
+ "edge": {
+  "voices": {
+   "bac_f": {"voice": "vi-VN-HoaiMyNeural"},
+   "bac_m": {"voice": "vi-VN-NamMinhNeural"},
+   "C:bac_f": {"voice": "vi-VN-HoaiMyNeural", "pitch": "-8Hz"},
+   "trung_f": {"voice": "vi-VN-HoaiMyNeural", "pitch": "-4Hz"},
+   "trung_m": {"voice": "vi-VN-NamMinhNeural", "pitch": "-4Hz"},
+   "nam_f": {"voice": "vi-VN-HoaiMyNeural", "pitch": "+4Hz"},
+   "nam_m": {"voice": "vi-VN-NamMinhNeural", "pitch": "+4Hz"}
+  },
+  "roles": {
+   "A": {"rate": "+6%"},
+   "C": {"rate": "-4%"}
+  },
+  "pronounce": {
+   "size": "sai", "ship": "síp", "shipper": "síp pơ", "shop": "sóp", "freeship": "phri síp",
+   "voucher": "vâu chơ", "order": "o đơ", "check": "chéc", "online": "on lai", "ok": "ô kê", "hi": "hai",
+   "smart": "sờ mát", "navy": "nây vi", "zalo": "da lô", "sale": "sêu", "combo": "com bô"
+  }
+ },
+ "elevenlabs": {
+  "model_id": "eleven_flash_v2_5",
+  "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+  "voices": {
+   "bac_m": {"voice_id": "ObhtJZSfI8Ps4i8lwyVx", "name": "Minh Son - nam, giọng Bắc"},
+   "nam_m": {"voice_id": "TqkkccUg3tobDj5LbKlt", "name": "TuHau - nam, giọng Nam"},
+   "nam_f": {"voice_id": "Xi7XXVTwHkrvxPd6M7td", "name": "Anh Minh - nữ, giọng Nam"},
+   "bac_f": {"voice_id": "DIEN_VOICE_ID_NU_GIONG_BAC", "name": "nữ, giọng Bắc"},
+   "C:bac_f": {"voice_id": "DIEN_VOICE_ID_NU_GIONG_BAC_THU_HAI", "name": "khách nữ giọng Bắc, khác giọng nhân viên"},
+   "trung_f": {"voice_id": "DIEN_VOICE_ID_NU_GIONG_TRUNG", "name": "nữ, giọng Trung"},
+   "trung_m": {"voice_id": "DIEN_VOICE_ID_NAM_GIONG_TRUNG", "name": "nam, giọng Trung"}
+  },
+  "roles": {}
+ },
+ "vieneu": {
+  "_doc": "VieNeu-TTS v3 Turbo (offline, CPU). Tên giọng lấy từ `python -m speech voices --engine vieneu`. Không cần 'pronounce' vì mô hình tự đọc chen tiếng Anh. Có thể thêm 'mode' (v3turbo|v3nano), 'temperature', 'top_k'.",
+  "voices": {
+   "bac_f": {"voice": "Trúc Ly"},
+   "C:bac_f": {"voice": "Ngọc Huyền"},
+   "bac_m": {"voice": "Hải Đăng"},
+   "C:bac_m": {"voice": "Phạm Tuyên"},
+   "trung_f": {"voice": "Ngọc Trân"},
+   "trung_m": {"voice": "Quang Sơn"},
+   "nam_f": {"voice": "Thùy Dung"},
+   "C:nam_f": {"voice": "Mỹ Duyên"},
+   "nam_m": {"voice": "Minh Triết"},
+   "C:nam_m": {"voice": "Adam"}
+  },
+  "roles": {}
+ },
+ "mms": {
+  "_doc": "Meta MMS-TTS tiếng Việt (VITS, CC-BY-NC 4.0, chỉ 1 giọng Bắc; không đọc được tiếng Anh). Dùng làm mốc 'TTS yếu'; vai chỉ khác nhau ở tốc độ đọc.",
+  "voices": {
+   "bac_f": {"voice": "facebook/mms-tts-vie"},
+   "bac_m": {"voice": "facebook/mms-tts-vie"}
+  },
+  "roles": {"A": {"speaking_rate": 1.05}, "C": {"speaking_rate": 0.95}},
+  "pronounce": {
+   "size": "sai", "ship": "síp", "shipper": "síp pơ", "shop": "sóp", "freeship": "phri síp",
+   "voucher": "vâu chơ", "order": "o đơ", "check": "chéc", "online": "on lai", "ok": "ô kê", "hi": "hai",
+   "smart": "sờ mát", "navy": "nây vi", "zalo": "da lô", "sale": "sêu", "combo": "com bô"
+  }
+ }
+}
