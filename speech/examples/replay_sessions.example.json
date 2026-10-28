@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "sessions": [
+    {
+      "dataset": "..\\data\\datasets\\team22-edge-synth",
+      "dialogue_id": "T01",
+      "conversation_key": "smoke-conversation-1",
+      "session_key": "smoke-session-1",
+      "session_index": 1,
+      "identity_ref": "synthetic-fixture-1",
+      "call_date": "2026-10-20"
+    }
+  ]
+}

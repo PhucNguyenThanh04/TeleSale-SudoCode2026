@@ -3,6 +3,9 @@
 Module này biến audio cuộc gọi tiếng Việt có chen tiếng Anh ("size", "ship", "COD", "AirPure"…) thành
 `hypotheses.json` đúng format BTC. Kết quả được chấm bằng chính `eval/reference_eval.py` của BTC.
 
+**Tra cứu ít tốn context:** đọc [FILE_MAP.md](FILE_MAP.md) trước, chọn đúng file theo công việc.
+Baseline B0/B1/B2 và gói replay offline được mô tả ở §10/§11 bên dưới.
+
 Module chạy độc lập và không chặn luồng chat text (`backend/` → `ai-services/`). Ở M2, phần streaming sẽ nối vào
 `ai-services/app/infarstructure/{VAD,STT,TTS}.py` (hiện các file này vẫn trống).
 
@@ -216,6 +219,11 @@ $tts = ".\.venv-vieneu\Scripts\python.exe"
 
 ### 6c. Bộ dữ liệu của nhóm: ElevenLabs thủ công + giọng clone (22 hội thoại)
 
+**Cập nhật lựa chọn dataset:** hiện dùng `team22-edge-synth` + `team22-edge-clone` (11 + 11 file),
+cả hai có engine **edge**, kênh phone và 7 hội thoại nhiễu. “clone” trong tên chỉ nguồn template;
+`team_preview=true` không chứng minh clone giọng thật. Chỉ hai giọng edge, không chứng minh đa vùng miền.
+Quy trình ElevenLabs/clone dưới đây giữ lại như **tùy chọn**, không còn là bước bắt buộc.
+
 | File | Hội thoại | Nguồn audio | Split |
 |---|---|---|---|
 | `dialogues/team_synthetic.json` | T01, T03–T12 (11) | ElevenLabs tạo **thủ công trên web**, nhập bằng engine `files` | T01 `dev`, còn lại `holdout` |
@@ -311,8 +319,8 @@ Kịch bản dùng cùng format với `asr/ground_truth.json` của BTC, thêm v
 - `entities` chỉ dùng key BTC; entity hội thoại = gộp entity các lượt (lượt sau ghi đè). `split`: `dev` | `holdout`.
 - Bản mẫu clone thay vùng/giới bằng `agent_voice`/`customer_voice` (`tv1`–`tv3`) và dùng `{kh}` cho “anh/chị” (§6c).
 - Bảng `pronounce` trong `voices.example.json` Việt hóa từ tiếng Anh cho giọng edge ("size" → "sai"). Dùng `--no-pronounce` để tắt.
-- BTC đo WER/CER/Entity trên 12 hội thoại của BTC **cộng ít nhất 20 file của nhóm** (`DIEU-CHINH-DE.md`). Nhóm có 22
-  kịch bản (§6c): bản ElevenLabs dùng giọng Bắc/Nam, bản clone theo vùng thật của thành viên; 7/22 có `noisy: true`;
+- BTC đo WER/CER/Entity trên audio BTC **cộng ít nhất 20 file của nhóm** (`DIEU-CHINH-DE.md`). Nhóm có 22
+  kịch bản (§6c), dataset hiện dùng edge cho cả hai nguồn template; 7/22 có `noisy: true`;
   `call_date` 16–29/10/2026; `validate` báo 0 lỗi.
 
 Nguồn BTC đã dùng để viết và kiểm 22 kịch bản (chỉ đọc, không chép vào repo): `catalog/products.json`,
@@ -420,9 +428,180 @@ Tái lập: chạy các lệnh ở §5 cho từng model (`--model`), với `--no
 - HikePro đọc "hai pro" trùng "2 Pro" (GT D04: "giày run lai hai pro" = RunLite 2 Pro), nên lexicon không tự đổi
   "hai pro" thành HikePro; chỉ nhận khi ASR viết "HikePro"/"hike pro". Biến thể mới của lexicon đều là phỏng đoán
   (`source: guess`), cần nghe audio thật để xác nhận.
-- `entities` dùng một `reference_date` cho cả file, chưa đọc `call_date` riêng từng hội thoại. Ngày này chỉ dùng để
-  suy ra năm của "ngày 20/10", nên ảnh hưởng nhỏ; sẽ kiểm khi viết công cụ validate kịch bản.
+- Lệnh `transcribe` cũ dùng một `reference_date` cho cả batch; truyền ngày rõ ràng nếu input không cùng ngày.
+  Lệnh `baseline` mới lấy ngày riêng từng hội thoại, `export-replay` lấy ngày từng phiên từ mapping tin cậy.
 - VAD gộp hai lượt nếu khoảng nghỉ dưới khoảng 0,5 s. Chưa có diarization nên chưa xuất `turns[]` (việc của M2).
 - Bộ trích entity dựa trên luật và được phát triển khi đã đọc mẫu công khai. Phải đo thêm trên kịch bản mới của nhóm.
-- GPU GTX 1660 Ti chưa dùng được vì thiếu DLL CUDA của CTranslate2, nên hiện chạy CPU int8. Turbo trên GPU sẽ nhanh hơn
-  nhiều lần; đây là điều kiện cần nếu dùng turbo cho voice gần real-time ở M2 (TTFA p95 ≤ 2,5 s).
+- **GPU (GTX 1660 Ti, 6 GB): đã có lời giải, kiểm 2026-10-28.** BTC không bắt chạy CPU; đề chỉ yêu cầu ASR local,
+  báo riêng ASR time/phút audio, và so baseline với hệ thống trên cùng phần cứng.
+  - Lỗi gặp phải: trong `.venv-speech` (Python 3.14), CTranslate2 thấy GPU nhưng khi load model báo
+    `cublas64_12.dll is not found`. Lý do là CTranslate2 không kèm DLL cuBLAS/cuDNN, và trên Python 3.14
+    chưa cài được bộ CUDA qua pip (nhóm đã thử nhưng không thành).
+  - Lời giải: dùng `.venv-vieneu` (Python 3.12, tạo bằng uv). Env này có `torch 2.5.1+cu121`, và
+    `torch\lib` của nó đã chứa `cublas64_12.dll` và `cudnn64_9.dll` (cuDNN 9.1), đúng loại CTranslate2 4.x
+    cần. Env cũng có sẵn `ctranslate2 4.8.3` và `faster-whisper 1.2.1`.
+  - Cần một bước nữa: phải `import torch` trước, hoặc thêm `torch\lib` vào PATH. Nếu không, vẫn báo lỗi
+    thiếu `cublas64_12.dll`.
+  - Cách chạy, không cần sửa code:
+    ```powershell
+    $env:PATH = "$PWD\.venv-vieneu\Lib\site-packages\torch\lib;$env:PATH"
+    .\.venv-vieneu\Scripts\python.exe -m speech ... --device cuda --compute-type float16
+    ```
+  - Đã kiểm: load whisper-turbo float16 trên CUDA rồi decode thử audio im lặng, chạy được. `import speech`
+    trong env 3.12 cũng chạy được.
+  - Chưa làm: chưa chạy benchmark hay test suite trên GPU/3.12, và chưa đo tốc độ thật. Kết quả §10 vẫn là
+    CPU int8. Nếu chạy GPU thì phải chạy lại cả B0/B1/B2 vào thư mục run mới; không trộn CPU và GPU trong
+    một bảng so sánh, vì float16 có thể làm WER lệch nhẹ.
+  - GPU là điều kiện cần nếu dùng turbo cho voice gần real-time ở M2 (TTFA p95 ≤ 2,5 s).
+
+## 10. Baseline ASR B0/B1/B2 — cơ sở đo cải tiến
+
+Đây là **baseline của speech**, không thay cho baseline bỏ memory của harness.
+Cả ba dùng cùng audio, Whisper turbo local, VAD, language `vi`, beam 5 và bộ trích entity:
+
+| Profile | Hotwords | Lexicon/TN–ITN | Dùng để đo |
+|---|---|---|---|
+| B0 | Tắt | Tắt | Mốc cơ sở: VAD + ASR + cleanup chung; extractor nhận chữ chưa chuẩn hóa domain |
+| B1 | Tắt | Bật | Tác dụng hậu xử lý trên cùng raw decode với B0 |
+| B2 | Bật | Bật | Pipeline đầy đủ, có cả bộ lọc đọc lại hotwords |
+
+B0 **không phải Whisper hoàn toàn nguyên bản**: vẫn giữ VAD/cleanup, vẫn dùng extractor chung.
+WER/CER do BTC chấm còn phạt chữ số/viết tắt khác dạng nói GT. B0→B1 không chỉ đo “nghe tốt hơn”.
+B1→B2 bao gồm hotwords và cơ chế lọc echo đi kèm, không phải phép cô lập decoder tuyệt đối.
+
+### Kết quả đã chạy trên team22
+
+Experiment `speech\data\runs\team22-baseline-v1`: **22 file, 139 entity**, Whisper turbo CPU/int8,
+cùng audio edge phone/noise. Đã kiểm lại nguồn/config/hash và chấm lại bằng evaluator BTC.
+
+| Cấu hình | WER % ↓ | CER % ↓ | Entity % ↑ | Giây ASR/phút audio |
+|---|---:|---:|---:|---:|
+| B0 — cơ sở | 38,3 | 31,6 | 63,3 | 87,7 |
+| B1 — thêm hậu xử lý | 19,3 | 14,9 | 64,7 | 87,7 |
+| B2 — đầy đủ | **14,1** | **10,0** | **74,8** | 92,1 |
+
+B0→B2: WER giảm **24,2 điểm phần trăm**, Entity tăng **11,5 điểm phần trăm**.
+Riêng B1→B2: WER giảm 5,2 và Entity tăng 10,1 điểm phần trăm.
+Oracle entity trên GT là **84,2%**: bộ trích còn hạn chế, không quy hết lỗi entity cho ASR.
+Đây là kết quả trên **audio nhóm**, không phải điểm audio BTC chính thức hay điểm memory.
+Timing có tác vụ CPU chạy đồng thời nên chỉ tham khảo.
+
+Chi tiết từng file/dataset/split/noise và delta nằm trong `report.md`/`comparison.json` của experiment.
+Noisy/clean là các hội thoại khác nội dung, không phải cặp cùng audio bật/tắt nhiễu; không dùng bảng
+tập con để kết luận thêm nhiễu làm nhận dạng tốt hơn.
+
+```powershell
+$py = ".\.venv-speech\Scripts\python.exe"
+$env:BTC_DATA_DIR = "<đường dẫn gói BTC>"
+& $py -m speech baseline `
+  --datasets speech\data\datasets\team22-edge-synth speech\data\datasets\team22-edge-clone `
+  --out speech\data\runs\team22-baseline-v1 --device cpu --compute-type int8
+
+# Kiểm hash và chấm lại từ artifact, không chạy lại ASR
+& $py -m speech compare-baselines --experiment speech\data\runs\team22-baseline-v1
+```
+
+Nếu không dùng biến môi trường, đặt `--data-dir` **trước subcommand**:
+`& $py -m speech --data-dir "<gói BTC>" baseline ...`.
+
+Output mới phải là thư mục rỗng/chưa tồn tại:
+
+```text
+experiment.json                 nguồn audio/hash, ngày, catalog, evaluator, model/code/dependency
+ground_truth.json               bản đánh giá gộp, chỉ để evaluator đọc
+B0\, B1\, B2\
+  raw.json                      đủ segment trước lọc; B0/B1 cùng raw decode
+  hypotheses.json               text + entities + segment + thời gian
+  run.json                      profile thật, lineage/hash và frozen
+  score.json                    điểm BTC + timing/oracle
+comparison.json, report.md      overall, từng dataset, noisy/clean, split, delta
+```
+
+Chấm nguyên hội thoại, không dùng GT cả hội thoại để chấm clip chỉ có khách.
+Hai tập team được ghép theo ID duy nhất, evaluator tính lại toàn bộ 22 file — **không lấy trung bình
+hai phần trăm**. Tập con cũng được chấm lại; `wer_noisy`/`wer_clean` trong kết quả BTC gốc có phép
+aggregate riêng nên không đánh đồng với WER weighted của một tập con.
+
+Delta = profile sau − profile trước, đơn vị **điểm phần trăm**: WER/CER âm là tốt, Entity dương là tốt.
+Không che kết quả xấu hơn và không hứa B2 sẽ thắng. `split=holdout` giữ theo nhãn nguồn, không khẳng định
+độc lập nếu đã nghe/xem lỗi. Oracle entity là diagnostic dùng GT, không phải output ASR.
+
+Thời gian ASR/phút audio ghi riêng, không gộp TTFT. B0/B1 chia sẻ thời gian decode thật, cộng thời gian
+hậu xử lý tương ứng; `decode_reused=true` ở B1. Không dùng thời gian đọc cache để giả là ASR nhanh.
+Nạp model báo riêng; máy có tiến trình khác thì số timing chỉ tham khảo.
+
+`compare-baselines` từ chối thiếu/thừa ID hoặc mismatch nguồn/config/hash. `renormalize` từ chối ghi đè
+baseline đã khóa; sửa luật thì tạo experiment mới. Run lịch sử không đủ provenance không được nâng
+thành baseline hợp lệ chỉ bằng đổi tên.
+
+**Phạm vi dữ liệu dự thi:** BTC yêu cầu audio BTC + ≥20 file team (`DIEU-CHINH-DE.md` §8).
+Gói BTC tìm được khi triển khai chưa có audio. Điểm `btc-edge` là proxy TTS, không thay điểm audio BTC phát.
+Chỉ báo hoàn tất phần BTC thật sau khi được cấp audio và chạy đúng tập đó.
+
+## 11. Gói replay offline — bàn giao cho nhóm harness
+
+Không viết HTTP client, không gọi DB/MCP/LLM, không triển khai memory trong speech.
+Pipeline nhận mapping tin cậy, cắt **chỉ lượt C** từ audio phone/noise bằng mốc A/C có sẵn, chạy B2
+trên từng clip, nối các đoạn VAD trong cùng clip thành một lượt khách. Đây là **oracle boundaries**
+của benchmark offline, không phải diarization hay streaming đã hoạt động.
+
+Mỗi clip có 0,3 giây im lặng ở hai đầu (ghi trong manifest), giữ nguyên phần âm thanh khách ở giữa.
+Cắt sát tiếng nói có thể làm VAD bỏ toàn bộ clip có tiếng; padding áp dụng đồng nhất, không mượn
+âm thanh lượt A, không đổi ngưỡng VAD theo sample và không lấy GT bù chữ bị mất.
+
+```powershell
+# Mẫu là một phiên synthetic để smoke test, không ánh xạ CRM thật hay chứng minh memory đa phiên
+& $py -m speech prepare-replay --mapping speech\examples\replay_sessions.example.json `
+  --out speech\data\replays\prepared
+& $py -m speech export-replay --prepared speech\data\replays\prepared `
+  --out speech\data\replays\b2 --device cpu --compute-type int8
+& $py -m speech verify-replay --bundle speech\data\replays\b2
+```
+
+Đường dẫn `dataset` tương đối với **file mapping**. Mỗi session cần `dialogue_id`, `conversation_key`,
+`session_key`, `session_index`, `identity_ref`, `call_date`. Chỉ chấp nhận các trường khai báo; không
+đưa expected entities/checks/gold text vào mapping. Phiên trong cùng conversation có cùng identity_ref,
+index tăng liên tục từ 1 và ngày không lùi. Nhóm harness cấp mapping đa phiên; không tự ghép T01–T22
+thành cùng một khách.
+
+`turns.jsonl` chứa: conversation/session keys, session index, identity_ref, call_date, turn index,
+source turn index, `text` dạng written, `customer_input_mode="asr_transcript"` và audio hash.
+Không chứa câu A/expected result/entity gộp. Clip không ra chữ hoặc text quá 8000 ký tự → ghi
+`diagnostics.json`, **không xuất gói ready**, không bỏ lượt, không cắt chữ, không lấy GT thay thế.
+Raw được giữ cục bộ trong `run\raw.json` để điều tra, không tự gửi vào prompt.
+
+**Khớp nối người nhận cần thực hiện:**
+
+| Metadata replay | Backend `POST /api/chat` |
+|---|---|
+| `text`, `customer_input_mode` | Chuyển đúng tên trường; không gửi toàn bộ record replay như request |
+| `identity_ref` | Resolve ra định danh kênh từ fixture/nguồn tin cậy; không đoán từ ASR |
+| `call_date` | Lượt đầu gửi cùng channel + identity; backend chuyển thành `on` cho AI |
+| `session_key` | Khóa logic, không phải UUID API; lưu `session_id` backend trả về |
+| Lượt sau | Gửi session_id + text + input mode + client_msg_id mới; không lặp lại trường mở phiên |
+| Retry / chạy hai mode | Retry cùng lượt giữ client UUID; hai run dùng UUID/session runtime riêng |
+
+Giữ **cùng gói B2** cho có/không memory, không đưa B0 cho mode bỏ memory. Người phụ trách harness
+tự cô lập/reset trạng thái và tính RQR/CCR/TSR/HR. Replay lời khách cố định là open-loop: câu khách
+có thể phụ thuộc câu A trong kịch bản cũ, nên không chứng minh một đối thoại thích ứng hoàn chỉnh.
+
+`speech\data` bị Git ignore. Bàn giao artifact qua kho nội bộ có kiểm soát, kèm manifest và hash từ
+kênh tin cậy; đây là kiểm toàn vẹn, không phải chữ ký chống sửa manifest. Chỉ dùng dữ liệu synthetic/
+được phép. Transcript/audio có thể chứa PII: không đưa lên public repo, prompt hay dịch vụ ngoài;
+người nhận phải đi qua ranh giới mask PII hiện có trước LLM. Không tự gọi một gói đã mask là cùng
+artifact cũ: thay nội dung thì tạo gói/hash mới cho cả hai mode.
+
+**Đã kiểm thực:** `speech\data\replays\boundary-b2-v2` xuất đủ **9/9 lượt khách T01/T03** sau padding;
+kiểm lại hash trên gói đã lưu và bản sao ở thư mục khác. 18 request fixture (9 lượt × hai run độc lập)
+qua schema `ChatRequest` thật của backend. Đây là kiểm ASR/contract offline; chưa gọi HTTP, PostgreSQL,
+MCP hay LLM thật, chưa có kết quả memory đa phiên.
+
+**Kiểm hồi quy:** 53 test mới và toàn bộ 142 test speech qua với `BTC_DATA_DIR` hợp lệ:
+
+```powershell
+& $py -B -m unittest speech.test.test_baseline speech.test.test_replay
+& $py -B -m unittest discover -s speech\test -t .
+git diff --check
+```
+
+Test số học baseline cần evaluator BTC thật; thiếu gói sẽ báo lỗi thay vì báo đã kiểm phép chấm.

@@ -8,6 +8,11 @@
   renormalize  chạy lại chuẩn hóa + entity trên chữ thô đã lưu (sửa lexicon xong không cần chạy lại ASR)
   eval         chấm bằng reference_eval.py của BTC, so sánh nhiều run
   normalize    xem một câu đi qua các bước chuẩn hóa (debug)
+  baseline     chạy B0/B1/B2 cùng audio/model, xuất điểm và delta bằng evaluator BTC
+  compare-baselines kiểm nguồn/config/hash và chấm lại experiment, không decode lại
+  prepare-replay    cắt clip khách theo mốc A/C offline
+  export-replay     ASR clip khách thành gói turns.jsonl cố định
+  verify-replay     kiểm toàn vẹn và hợp đồng gói đã lưu
 """
 from __future__ import annotations
 
@@ -241,6 +246,10 @@ def cmd_renormalize(args: argparse.Namespace) -> None:
     fingerprint = rules_fingerprint()
     for run in map(Path, args.runs):
         info = read_json(run / "run.json") if (run / "run.json").is_file() else {}
+        if info.get("frozen") or info.get("profile") in ("B0", "B1", "B2"):
+            sys.exit("Run baseline/replay đã khóa; tạo experiment mới, không renormalize ghi đè.")
+    for run in map(Path, args.runs):
+        info = read_json(run / "run.json") if (run / "run.json").is_file() else {}
         ref = date.fromisoformat(info["reference_date"]) if info.get("reference_date") else REFERENCE_DATE
         hypotheses = read_json(run / "hypotheses.json")
         for key, record in hypotheses.items():
@@ -294,11 +303,74 @@ def cmd_normalize(args: argparse.Namespace) -> None:
     print(f"entities : {json.dumps(merged, ensure_ascii=False)}")
 
 
+def cmd_baseline(args: argparse.Namespace) -> None:
+    from .baseline import compare_baselines, run_baselines
+    from .btc import find_data_dir
+
+    try:
+        data_dir = find_data_dir(args.data_dir)
+        if args.command == "compare-baselines":
+            compare_baselines(Path(args.experiment), data_dir)
+            print(f"Verified comparison: {Path(args.experiment) / 'report.md'}")
+        else:
+            run_baselines([Path(p) for p in args.datasets], Path(args.out), data_dir,
+                          model_name=args.model, device=args.device, compute_type=args.compute_type)
+            print(f"Baseline comparison: {Path(args.out) / 'report.md'}")
+    except (ValueError, FileNotFoundError) as exc:
+        sys.exit(str(exc))
+
+
+def cmd_replay(args: argparse.Namespace) -> None:
+    from .btc import find_data_dir
+    from .replay import export_replay, prepare_replay, verify_bundle
+
+    try:
+        if args.command == "prepare-replay":
+            result = prepare_replay(Path(args.mapping), Path(args.out))
+        elif args.command == "export-replay":
+            result = export_replay(Path(args.prepared), Path(args.out), find_data_dir(args.data_dir),
+                                   model_name=args.model, device=args.device, compute_type=args.compute_type)
+        else:
+            result = verify_bundle(Path(args.bundle))
+        print(f"Verified {result['kind']} bundle: {result['turn_count']} customer turns")
+    except (ValueError, FileNotFoundError) as exc:
+        sys.exit(str(exc))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m speech", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--data-dir", help="thư mục BTC-Data-Vong1-TEAMS (mặc định: BTC_DATA_DIR hoặc cạnh repo)")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("prepare-replay", help="cut customer-only clips using offline A/C annotations")
+    p.add_argument("--mapping", required=True)
+    p.add_argument("--out", required=True)
+    p.set_defaults(func=cmd_replay)
+
+    p = sub.add_parser("export-replay", help="ASR customer clips once for both memory modes")
+    p.add_argument("--prepared", required=True)
+    p.add_argument("--out", required=True)
+    p.add_argument("--model", default="whisper-turbo")
+    p.add_argument("--device", default="cpu")
+    p.add_argument("--compute-type", default="int8")
+    p.set_defaults(func=cmd_replay)
+
+    p = sub.add_parser("verify-replay", help="verify persisted replay hashes, shape and ordering")
+    p.add_argument("--bundle", required=True)
+    p.set_defaults(func=cmd_replay)
+
+    p = sub.add_parser("baseline", help="run B0/B1/B2 on identical audio, using the BTC evaluator")
+    p.add_argument("--datasets", nargs="+", required=True, help="dataset folders with audio/GT/manifest")
+    p.add_argument("--out", required=True, help="new/empty experiment directory")
+    p.add_argument("--model", default="whisper-turbo")
+    p.add_argument("--device", default="cpu")
+    p.add_argument("--compute-type", default="int8")
+    p.set_defaults(func=cmd_baseline)
+
+    p = sub.add_parser("compare-baselines", help="verify and re-score a frozen B0/B1/B2 experiment")
+    p.add_argument("--experiment", required=True)
+    p.set_defaults(func=cmd_baseline)
 
     p = sub.add_parser("voices", help="liệt kê/thêm giọng tiếng Việt")
     p.add_argument("--engine", choices=("edge", "elevenlabs", "vieneu"), default="edge")
