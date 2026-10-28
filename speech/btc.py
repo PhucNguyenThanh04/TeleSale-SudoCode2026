@@ -33,6 +33,13 @@ def read_json(path: Path) -> dict | list:
         return json.load(fh)
 
 
+def read_json_object(path: Path) -> dict:
+    value = read_json(path)
+    if not isinstance(value, dict):
+        raise ValueError(f"Expected a JSON object: {path}")
+    return value
+
+
 def text_sha256(path: str | Path) -> str:
     """sha256 của file văn bản (kịch bản, ground_truth.json) sau khi đổi CRLF → LF: Windows và Linux cho cùng giá trị."""
     return hashlib.sha256(Path(path).read_bytes().replace(b"\r\n", b"\n")).hexdigest()

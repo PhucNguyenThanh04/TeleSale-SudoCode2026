@@ -135,9 +135,20 @@ def _decode(model, chunk: np.ndarray, language: str, cfg: DecodeConfig, hotwords
 def transcribe_audio(model, audio: np.ndarray, *, cfg: DecodeConfig, vad: VadConfig, lexicon: Lexicon,
                      catalog: tuple[Product, ...] = (), reference_date: date = REFERENCE_DATE) -> dict:
     """Một file âm thanh → bản ghi theo format ``hypotheses.json`` của BTC (+ đoạn debug ``asr_segments``)."""
+    pieces = decode_segments(model, audio, cfg=cfg, vad=vad, lexicon=lexicon)
+    return finalize(pieces, lexicon, catalog, reference_date, hotword_filter_terms(lexicon, cfg))
+
+
+def hotword_filter_terms(lexicon: Lexicon, cfg: DecodeConfig) -> frozenset[str]:
+    words = lexicon_hotwords(lexicon) if cfg.use_hotwords else ""
+    return frozenset(fold(t) for t in re.findall(r"\w+", words))
+
+
+def decode_segments(model, audio: np.ndarray, *, cfg: DecodeConfig, vad: VadConfig,
+                    lexicon: Lexicon) -> list[dict]:
+    """Decode only; preserve every segment before cleanup or domain normalization."""
     sr = au.SAMPLE_RATE
     hotwords = lexicon_hotwords(lexicon) if cfg.use_hotwords else None
-    hotword_terms = frozenset(fold(t) for t in re.findall(r"\w+", hotwords or ""))
     pieces: list[dict] = []
     if cfg.segmentation == "file":
         from faster_whisper.vad import VadOptions
@@ -161,11 +172,12 @@ def transcribe_audio(model, audio: np.ndarray, *, cfg: DecodeConfig, vad: VadCon
             pieces.append({"start": start / sr, "end": end / sr, "raw": " ".join(s.text.strip() for s in segs),
                            "lang": lang, "avg_logprob": float(np.mean([s.avg_logprob for s in segs])),
                            "no_speech_prob": float(max(s.no_speech_prob for s in segs))})
-    return finalize(pieces, lexicon, catalog, reference_date, hotword_terms)
+    return pieces
 
 
 def finalize(pieces: list[dict], lexicon: Lexicon, catalog: tuple[Product, ...] = (),
-             reference_date: date = REFERENCE_DATE, hotword_terms: frozenset[str] = frozenset()) -> dict:
+             reference_date: date = REFERENCE_DATE, hotword_terms: frozenset[str] = frozenset(),
+             *, postprocess: bool = True) -> dict:
     """Các đoạn ASR thô → chuẩn hóa + entity. Tách riêng để sửa lexicon xong chấm lại mà không cần chạy lại ASR."""
     turns = []
     for piece in pieces:
@@ -174,9 +186,10 @@ def finalize(pieces: list[dict], lexicon: Lexicon, catalog: tuple[Product, ...] 
         raw = clean_hypothesis(piece["raw"], hotword_terms)
         if not raw:
             continue
-        norm = normalize_text(raw, lexicon)
-        turns.append({"start": round(piece["start"], 2), "end": round(piece["end"], 2), "text": norm.spoken,
-                      "text_written": norm.written, "raw": raw, "lang": piece["lang"],
+        norm = normalize_text(raw, lexicon) if postprocess else None
+        turns.append({"start": round(piece["start"], 2), "end": round(piece["end"], 2),
+                      "text": norm.spoken if norm else raw,
+                      "text_written": norm.written if norm else raw, "raw": raw, "lang": piece["lang"],
                       "avg_logprob": round(piece["avg_logprob"], 3), "no_speech_prob": round(piece["no_speech_prob"], 3)})
     merged, per_turn = extract_entities([t["text_written"] for t in turns], catalog, reference_date)
     for turn, entities in zip(turns, per_turn):

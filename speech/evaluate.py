@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import shutil
 import tempfile
+from datetime import date
 from pathlib import Path
 from types import ModuleType
 
@@ -41,7 +42,8 @@ def oracle_entities(ground_truth: dict, catalog: tuple[Product, ...]) -> dict:
     ref = reference_date(ground_truth)
     for dialogue in ground_truth["dialogues"]:
         written = [normalize_text(turn["text"]).written for turn in dialogue["turns"]]
-        merged, _ = extract_entities(written, catalog, ref)
+        on = date.fromisoformat(dialogue["call_date"]) if dialogue.get("call_date") else ref
+        merged, _ = extract_entities(written, catalog, on)
         for key, value in dialogue.get("entities", {}).items():
             total += 1
             ok += str(merged.get(key)) == str(value)
