@@ -43,6 +43,42 @@ requests_by_ip: dict[str, deque[float]] = defaultdict(deque)
 logger = logging.getLogger(__name__)
 VOICES = {"bao_kim", "gia_bao", "khanh_vy", "hoang_nam", "ngoc_huyen", "huu_dat", "phuong_linh", "quang_huy", "quynh_nhu", "thanh_phong"}
 VIENEU_URL = "http://127.0.0.1:18111"
+WEB_URL = "http://127.0.0.1:8000"
+HOP_HEADERS = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+               "te", "trailer", "transfer-encoding", "upgrade", "content-length"}
+
+
+@app.middleware("http")
+async def public_web_route(request: Request, call_next):
+    """Keep both Cloudflare hostnames on 18110, serving the web via its own backend."""
+    if request.url.hostname != "telesale.ktoxz.id.vn":
+        return await call_next(request)
+    client = httpx.AsyncClient(timeout=httpx.Timeout(120, connect=5))
+    try:
+        body = await request.body()
+        headers = {key: value for key, value in request.headers.items()
+                   if key.lower() not in HOP_HEADERS and key.lower() != "host"}
+        headers["host"] = "telesale.ktoxz.id.vn"
+        headers["x-forwarded-proto"] = "https"
+        upstream_request = client.build_request(request.method,
+            f"{WEB_URL}{request.url.path}", params=request.query_params,
+            headers=headers, content=body)
+        upstream = await client.send(upstream_request, stream=True)
+    except httpx.HTTPError as exc:
+        await client.aclose()
+        logger.warning("Public web backend unavailable: %s", exc)
+        return Response("Web backend unavailable", status_code=503)
+    out_headers = {key: value for key, value in upstream.headers.items()
+                   if key.lower() not in HOP_HEADERS and key.lower() not in {"content-encoding", "content-length"}}
+    async def chunks():
+        try:
+            async for chunk in upstream.aiter_raw():
+                yield chunk
+        finally:
+            await upstream.aclose()
+            await client.aclose()
+    return StreamingResponse(chunks(), status_code=upstream.status_code,
+                             headers=out_headers, media_type=upstream.headers.get("content-type"))
 
 
 def check_rate(request: Request):

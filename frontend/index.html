@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#f4efe4">
   <title>Sổ Tư Vấn · TeleSale</title>
   <link rel="stylesheet" href="/app/styles.css">
+  <script src="/app/workspace.js" defer></script>
   <script src="/app/speech.js" defer></script>
   <script src="/app/app.js" defer></script>
 </head>
@@ -21,10 +22,16 @@
       <div class="masthead-side"><span class="ornament">✳</span><span id="service-state">Đang kiểm tra</span></div>
     </header>
 
-    <main class="workspace">
+    <nav class="primary-nav" aria-label="Màn hình">
+      <button type="button" class="nav-active" data-view="conversation">Hội thoại</button>
+      <button type="button" data-view="reference">Dữ liệu tra cứu</button>
+      <button type="button" data-view="calls">Quản lý cuộc gọi</button>
+    </nav>
+
+    <main class="workspace" id="conversation-screen">
       <aside class="sidebar" aria-label="Thiết lập cuộc gọi">
         <div class="section-heading"><span>01</span><h2>Thông tin phiên</h2></div>
-        <p class="section-intro">Mỗi cuộc gọi bắt đầu bằng kênh và danh tính do tư vấn viên xác nhận từ nguồn tiếp nhận.</p>
+        <p class="section-intro" id="identity-help">Mỗi cuộc gọi bắt đầu bằng kênh và danh tính do tư vấn viên xác nhận từ nguồn tiếp nhận.</p>
 
         <form id="setup-form" class="setup-form">
           <label for="channel">Kênh tiếp nhận</label>
@@ -45,7 +52,7 @@
 
         <div class="rule"></div>
         <div class="section-heading compact"><span>02</span><h2>Quyền truy cập</h2></div>
-        <p class="field-note">Phiên thử nghiệm nội bộ được thiết lập tự động trên máy này.</p>
+        <p class="field-note" id="access-help">Phiên truy cập được thiết lập tự động.</p>
         <div class="auth-row"><span id="auth-indicator" class="status-dot"></span><span id="auth-label">Đang kết nối…</span></div>
 
         <button id="new-session" class="text-button" type="button">↻ Bắt đầu cuộc gọi mới</button>
@@ -99,6 +106,17 @@
         <div id="brief-content" class="brief-content">Chưa có thông tin từ phiên trước.</div>
         <div class="folio-bottom"><span aria-hidden="true">✳</span> Ghi chép cho cuộc gọi hiện tại</div>
       </aside>
+    </main>
+    <main class="secondary-screen" id="reference-screen" hidden>
+      <header class="screen-head"><div><p class="eyebrow">KHO DỮ LIỆU</p><h2>Sản phẩm & chính sách</h2><p>Dữ liệu nguồn theo ngày cuộc gọi; giá cuối và khuyến mãi áp dụng cho từng khách cần agent kiểm tra lại.</p></div><div class="date-filters"><label for="reference-date">Ngày cuộc gọi</label><input type="date" id="reference-date" value="2026-10-15"><label for="order-date">Ngày đơn hàng (khi tra chính sách đơn cũ)</label><input type="date" id="order-date"><button id="load-reference" type="button">Tra cứu</button></div></header>
+      <p id="reference-status" role="status">Đang chờ tra cứu.</p>
+      <div class="reference-grid"><section><h3>Sản phẩm & tồn kho</h3><div id="products-list"></div></section><section><h3>Khuyến mãi theo ngày</h3><div id="promotions-list"></div></section></div>
+      <section class="policy-section"><h3>Tài liệu chính sách công khai</h3><div id="policies-list"></div></section>
+    </main>
+    <main class="secondary-screen" id="calls-screen" hidden>
+      <header class="screen-head"><div><p class="eyebrow">LỊCH SỬ</p><h2>Quản lý cuộc gọi</h2><p>Chỉ hiển thị các cuộc gọi thuộc phiên truy cập này.</p></div><button id="refresh-calls" type="button">Làm mới</button></header>
+      <p id="calls-status" role="status">Đang tải cuộc gọi.</p>
+      <div class="calls-grid"><section><h3>Danh sách cuộc gọi</h3><div id="calls-list"></div></section><section><h3>Chi tiết</h3><div id="call-detail">Chọn một cuộc gọi để xem nội dung.</div></section></div>
     </main>
     <footer class="site-footer"><span>TELESALE · 2026</span><span>Giao diện thử nghiệm nội bộ</span></footer>
   </div>

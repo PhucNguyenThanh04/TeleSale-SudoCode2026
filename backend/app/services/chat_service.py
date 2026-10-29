@@ -1,6 +1,7 @@
 """Trusted operator chat boundary and backend-to-harness contract."""
 
 import re
+import time
 from uuid import UUID, uuid4
 
 import httpx
@@ -19,7 +20,9 @@ def _mask(text_value: str) -> str:
 
 
 async def handle_chat_turn(db: AsyncSession, ai_http: httpx.AsyncClient,
-                           operator_id: str, request: ChatRequest) -> ChatResponse:
+                           operator_id: str, request: ChatRequest,
+                           timings: dict[str, float] | None = None) -> ChatResponse:
+    started = time.perf_counter()
     async with db.begin():
         if request.session_id is None:
             session_id = uuid4()
@@ -67,6 +70,7 @@ async def handle_chat_turn(db: AsyncSession, ai_http: httpx.AsyncClient,
         turn_no = next_turn.scalar_one()
         safe_text = _mask(request.text)
         client_msg_id = request.client_msg_id or uuid4()
+        identity_done = time.perf_counter()
         try:
             ai_response = await ai_http.post("/v1/chat/turns", json={
                 "client_msg_id": str(client_msg_id), "session_id": str(session_id),
@@ -85,6 +89,7 @@ async def handle_chat_turn(db: AsyncSession, ai_http: httpx.AsyncClient,
         agent_text = parsed.agent_text
         needs_handoff, handoff_ticket_id = parsed.needs_handoff, parsed.handoff_ticket_id
         call_brief = parsed.call_brief
+        ai_done = time.perf_counter()
         for role, content in (("customer", safe_text), ("agent", _mask(agent_text))):
             await db.execute(text("""INSERT INTO app_runtime.chat_messages
                 (session_id,turn_no,role,content) VALUES (:session_id,:turn_no,:role,:content)"""),
@@ -92,6 +97,10 @@ async def handle_chat_turn(db: AsyncSession, ai_http: httpx.AsyncClient,
                  "content": content})
         await db.execute(text("UPDATE app_runtime.chat_sessions SET updated_at=now() WHERE id=:id"),
                          {"id": str(session_id)})
+        if timings is not None:
+            timings.update(identity_ms=round((identity_done-started)*1000),
+                           ai_ms=round((ai_done-identity_done)*1000),
+                           store_ms=round((time.perf_counter()-ai_done)*1000))
         return ChatResponse(client_msg_id=client_msg_id, session_id=session_id, agent_text=agent_text,
                             identity_status=identity_status, needs_handoff=needs_handoff,
                             handoff_ticket_id=handoff_ticket_id, call_brief=call_brief)

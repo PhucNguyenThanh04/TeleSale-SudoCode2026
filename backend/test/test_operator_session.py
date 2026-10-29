@@ -6,7 +6,7 @@ from fastapi import HTTPException, Response
 from starlette.requests import Request
 
 from app.api.deps import get_current_user_id
-from app.api.operator_session import COOKIE_NAME, local_session
+from app.api.operator_session import COOKIE_NAME, local_session, visitor_session
 
 
 class _Redis:
@@ -18,6 +18,9 @@ class _Redis:
 
     async def set(self, key, value, ex):
         self.values[key] = value
+
+    async def expire(self, key, ex):
+        return key in self.values
 
 
 def _request(cookie=None, *, host="127.0.0.1", client="127.0.0.1"):
@@ -50,4 +53,24 @@ class OperatorSessionTests(unittest.IsolatedAsyncioTestCase):
     async def test_demo_session_rejects_non_local_request(self):
         with self.assertRaises(HTTPException) as remote:
             await local_session(_request(host="example.com"), Response(), _Redis())
+        self.assertEqual(remote.exception.status_code, 403)
+
+    async def test_public_browser_identity_is_pseudonymous_and_reused(self):
+        redis = _Redis()
+        first = Response()
+        result = await visitor_session(_request(host="telesale.ktoxz.id.vn"), first, redis)
+        self.assertFalse(result["returning_browser"])
+        self.assertIn("secure", first.headers["set-cookie"].lower())
+        token = first.headers["set-cookie"].split(";", 1)[0].split("=", 1)[1]
+        owner = await get_current_user_id(_request(token, host="telesale.ktoxz.id.vn"), redis)
+        self.assertTrue(owner.startswith("web-visitor:"))
+        again = Response()
+        result = await visitor_session(_request(token, host="telesale.ktoxz.id.vn"), again, redis)
+        self.assertTrue(result["returning_browser"])
+        self.assertNotIn("set-cookie", again.headers)
+
+    async def test_public_session_rejects_remote_direct_requests(self):
+        with self.assertRaises(HTTPException) as remote:
+            await visitor_session(_request(host="telesale.ktoxz.id.vn", client="10.0.0.8"),
+                                  Response(), _Redis())
         self.assertEqual(remote.exception.status_code, 403)

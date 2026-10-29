@@ -3,6 +3,9 @@
 
   const $ = (id) => document.getElementById(id);
   const speech = window.TeleSaleSpeech;
+  const workspace = window.TeleSaleWorkspace;
+  const visitorMode = location.hostname === "telesale.ktoxz.id.vn";
+  let returningBrowser = false;
   const ui = {
     channel: $("channel"), identity: $("identity"), callDate: $("call-date"),
     authLabel: $("auth-label"), authIndicator: $("auth-indicator"),
@@ -38,13 +41,25 @@
   }
 
   async function connectLocalSession() {
-    const response = await fetch("/api/auth/local-session", {
+    const response = await fetch(visitorMode ? "/api/auth/visitor-session" : "/api/auth/local-session", {
       method: "POST", credentials: "same-origin",
     });
     if (!response.ok) throw new Error("Không thiết lập được phiên truy cập nội bộ.");
     accessReady = true;
-    ui.authLabel.textContent = "Đã kết nối";
+    const access = await response.json();
+    returningBrowser = Boolean(access.returning_browser);
+    ui.authLabel.textContent = visitorMode ? (returningBrowser ? "Trình duyệt quay lại" : "Khách mới trên trình duyệt") : "Đã kết nối";
     ui.authIndicator.classList.add("active");
+    if (visitorMode) {
+      ui.channel.value = "chat_fanpage";
+      ui.identity.value = "browser-session";
+      ui.channel.disabled = true;
+      ui.identity.disabled = true;
+      $("identity-help").textContent = "Web nhận diện khách mới hoặc quay lại bằng cookie riêng của trình duyệt. Danh tính CRM cần được xác minh qua kênh tin cậy.";
+      $("access-help").textContent = "Phiên trình duyệt được lưu 30 ngày. Không dùng Bearer JWT.";
+      ui.identityStatus.textContent = returningBrowser ? "Trình duyệt quay lại · CRM chưa xác minh" : "Khách mới · CRM chưa xác minh";
+      if (returningBrowser) workspace.renderPreviousSummary();
+    }
   }
 
   function makeMessage(kind, text, meta) {
@@ -69,6 +84,7 @@
 
   function setSetupLocked(locked) {
     for (const field of ui.setup.elements) field.disabled = locked;
+    if (visitorMode) { ui.channel.disabled = true; ui.identity.disabled = true; }
   }
 
   function renderBrief(brief) {
@@ -103,7 +119,9 @@
     sessionId = data.session_id;
     ui.session.textContent = sessionId;
     const identity = { known: "Đã xác định", unknown: "Chưa xác định", ambiguous: "Cần xác minh" };
-    ui.identityStatus.textContent = identity[data.identity_status] || "Chưa xác định";
+    ui.identityStatus.textContent = visitorMode
+      ? (returningBrowser ? "Trình duyệt quay lại · CRM chưa xác minh" : "Khách mới · CRM chưa xác minh")
+      : (identity[data.identity_status] || "Chưa xác định");
     ui.handoff.textContent = data.needs_handoff
       ? (data.handoff_ticket_id ? `Cần chuyển · ${data.handoff_ticket_id}` : "Cần chuyển")
       : "Chưa yêu cầu";
@@ -117,6 +135,7 @@
     if (status === 401) return "Phiên truy cập đã hết hạn. Hãy tải lại trang rồi bắt đầu cuộc gọi mới.";
     if (status === 422) return "Thông tin phiên chưa hợp lệ. Kiểm tra kênh, định danh và ngày cuộc gọi.";
     if (status === 503) return "Dịch vụ tư vấn đang bận. Bạn có thể thử gửi lại cùng lượt tin.";
+    if (status === 429) return "Bạn đã gửi quá nhiều lượt trong một phút. Vui lòng đợi rồi thử lại.";
     return typeof data?.detail === "string" ? data.detail : `Không gửi được tin (mã ${status}).`;
   }
 
@@ -142,7 +161,9 @@
       }
       updateFolio(data);
       makeMessage("agent", data.agent_text, "Đã trả lời");
-      speech.setStage("agent", `xong sau ${Math.round(performance.now() - agentStarted)} ms`);
+      if (workspace.currentView() === "calls") workspace.loadCalls();
+      const timing = response.headers.get("Server-Timing");
+      speech.setStage("agent", `xong sau ${Math.round(performance.now() - agentStarted)} ms${timing ? ` · ${timing}` : ""}`);
       speech.speak(data.agent_text);
       turn.view.caption.textContent = "Đã gửi";
       pendingTurn = null;
@@ -183,7 +204,7 @@
       showError("Đang kết nối phiên nội bộ. Vui lòng thử lại sau giây lát.");
       return;
     }
-    if (!sessionId && (!ui.identity.value.trim() || !ui.callDate.value)) {
+    if (!sessionId && ((!visitorMode && !ui.identity.value.trim()) || !ui.callDate.value)) {
       showError("Hãy điền định danh từ kênh và ngày cuộc gọi.");
       ui.identity.focus();
       return;
@@ -194,8 +215,8 @@
     };
     if (sessionId) payload.session_id = sessionId;
     else {
-      payload.channel = ui.channel.value;
-      payload.channel_identity = ui.identity.value.trim();
+      payload.channel = visitorMode ? "web_chat" : ui.channel.value;
+      payload.channel_identity = visitorMode ? "browser-session" : ui.identity.value.trim();
       payload.call_date = ui.callDate.value;
     }
     const turn = { payload, view: makeMessage("customer", text, "Đang gửi…"), retry: null };
@@ -205,7 +226,7 @@
   speech.setCanRecord(() => {
     if (busy || pendingTurn) { showError("Hãy hoàn tất lượt hội thoại hiện tại trước khi ghi âm."); return false; }
     if (!accessReady) { showError("Phiên truy cập chưa sẵn sàng."); return false; }
-    if (!sessionId && (!ui.identity.value.trim() || !ui.callDate.value)) {
+    if (!sessionId && ((!visitorMode && !ui.identity.value.trim()) || !ui.callDate.value)) {
       showError("Hãy điền định danh từ kênh và ngày cuộc gọi trước khi ghi âm.");
       return false;
     }
@@ -235,7 +256,9 @@
     setSetupLocked(false);
     ui.messages.replaceChildren();
     ui.session.textContent = "Chưa bắt đầu";
-    ui.identityStatus.textContent = "Chưa xác định";
+    ui.identityStatus.textContent = visitorMode
+      ? (returningBrowser ? "Trình duyệt quay lại · CRM chưa xác minh" : "Khách mới · CRM chưa xác minh")
+      : "Chưa xác định";
     ui.handoff.textContent = "Chưa yêu cầu";
     ui.turnCount.textContent = "00";
     ui.brief.textContent = "Chưa có thông tin từ phiên trước.";
@@ -246,7 +269,7 @@
     prompt.innerHTML = '<div class="empty-emblem" aria-hidden="true">✦</div><p class="eyebrow">TRANG MỚI</p><h3>Bắt đầu cuộc gọi tiếp theo.</h3><p>Kiểm tra lại định danh và ngày cuộc gọi trước khi gửi tin đầu tiên.</p>';
     ui.messages.append(prompt);
     ui.empty = prompt;
-    ui.identity.focus();
+    if (!visitorMode) ui.identity.focus();
   });
   fetch("/health")
     .then((response) => {
