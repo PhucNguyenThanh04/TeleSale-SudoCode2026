@@ -16,7 +16,7 @@ def episode(session, summary, on="2026-10-15", topics=None):
 
 
 class RecallTests(unittest.IsolatedAsyncioTestCase):
-    async def test_projection_must_match_canonical_summary_and_customer(self):
+    async def test_primary_store_episode_is_served_without_legacy_episode_query(self):
         class Repo(TurnRepo):
             def __init__(self):
                 super().__init__()
@@ -24,25 +24,20 @@ class RecallTests(unittest.IsolatedAsyncioTestCase):
             async def facts(self, *_):
                 return []
             async def episodes(self, *_):
-                return [{**episode("prior", "đúng"), "on_date": __import__("datetime").date(2026, 10, 15)}]
+                raise AssertionError("legacy episodes queried")
             async def order_links(self, *_):
                 return []
         repo = Repo()
         projection = AsyncMock()
-        projection.list_episodes.return_value = [episode("prior", "sai"),
-                                                  episode("another", "đúng")]
+        projection.list_fact_versions.return_value = []
+        projection.list_episode_versions.return_value = [
+            {**episode("prior", "đúng"), "schema_version": 1}]
         result = await read(repo, "C1", str(uuid4()),
                             langmem_mode="enabled", projector=projection)
-        self.assertEqual(result["accepted_episodes"], [])
-        projection.list_episodes.assert_awaited_once_with("C1", 5)
-        projection.list_episodes.return_value = [
-            {**episode("prior", "đúng"), "schema_version": 1}]
-        accepted = await read(repo, "C1", str(uuid4()),
-                              langmem_mode="enabled", projector=projection)
-        self.assertEqual([item["session_id"] for item in accepted["accepted_episodes"]],
-                         ["prior"])
+        self.assertEqual([item["session_id"] for item in result["episodes"]], ["prior"])
+        projection.list_episode_versions.assert_awaited_once_with("C1")
 
-    async def test_projection_outage_falls_back(self):
+    async def test_primary_store_outage_fails_closed(self):
         class Repo(TurnRepo):
             def __init__(self):
                 super().__init__()
@@ -54,11 +49,11 @@ class RecallTests(unittest.IsolatedAsyncioTestCase):
             async def order_links(self, *_):
                 return []
         projection = AsyncMock()
-        projection.list_episodes.side_effect = OSError("offline")
+        projection.list_fact_versions.return_value = []
+        projection.list_episode_versions.side_effect = OSError("offline")
         result = await read(Repo(), "C1", str(uuid4()),
                             langmem_mode="enabled", projector=projection)
-        self.assertEqual(result["episodes"], [])
-        self.assertEqual(result["accepted_episodes"], [])
+        self.assertEqual(result, {"error": "memory_store_unavailable"})
 
     def test_product_and_open_blocker_outrank_recent_unrelated_episode(self):
         older = episode("old", "SKU-A cần xác nhận", "2026-10-15",

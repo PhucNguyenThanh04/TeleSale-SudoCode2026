@@ -41,14 +41,15 @@ def admit_profile_candidates(
                              "reason": str(evidence.reason or "source_mismatch")})
             continue
         value = evidence.normalized_value if candidate.op != "delete" else candidate.value
+        scope_id = "" if candidate.scope_type == "global" else candidate.scope_id
         fact = {"key": candidate.key, "value": value, "op": candidate.op,
                 "source_kind": candidate.source_kind,
                 "evidence_quote": candidate.evidence_quote,
                 "source_turn_id": candidate.source_turn_id,
-                "scope_type": candidate.scope_type, "scope_id": candidate.scope_id}
+                "scope_type": candidate.scope_type, "scope_id": scope_id}
         if candidate.source_tool:
             fact["source_tool"] = candidate.source_tool
-        identity = (candidate.scope_type, candidate.scope_id, candidate.key)
+        identity = (candidate.scope_type, scope_id, candidate.key)
         if identity in seen and seen[identity] != value:
             rejected.append({"key": candidate.key, "reason": "conflicting_values"})
             accepted = [item for item in accepted if

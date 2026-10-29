@@ -20,8 +20,8 @@ settings needed for your run.
 |---|---|---|
 | API | `APP_NAME`, `APP_ENV`, `DEBUG`, `HOST`, `PORT`, `LOG_LEVEL`, `TIMEZONE` | API identity, environment label, debug flag, bind address, logging, callback timezone |
 | Ollama Cloud | `LLM_API_KEY`, `LLM_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_TIMEOUT_SECONDS`, `LLM_TEMPERATURE`, `LLM_MAX_TOKENS`, `LLM_SEED` | Model, authentication, timeout, response budget and reproducible sampling |
-| Harness | `AGENT_KIND`, `FACT_EXTRACTION_MODE`, `AGENT_MAX_TOOL_CALLS`, `AGENT_PROMPT_HISTORY_TURNS`, `AGENT_GUARDRAILS_ENABLED` | Select `deep` or `react`, choose fact extraction behavior, set tool and context limits, and toggle answer checks |
-| Memory | `MEMORY_MAX_EPISODES`, `MEMORY_SUMMARY_TURNS`, `MEMORY_SUMMARY_MAX_CHARS`, `LANGMEM_MODE`, `LANGMEM_MODEL` | Prior episodes, opt-in LangMem worker, and separate distillation model; baseline still disables prior memory |
+| Harness | `AGENT_KIND`, `FACT_EXTRACTION_MODE`, `AGENT_MAX_TOOL_CALLS`, `AGENT_PROMPT_HISTORY_TURNS`, `AGENT_GUARDRAILS_ENABLED` | Select `deep` or `react`, set tool and context limits, and toggle answer checks; old extraction is only for comparison mode |
+| Memory | `MEMORY_MAX_EPISODES`, `LANGMEM_MODE`, `LANGMEM_MODEL` | Customer-scoped LangMem knowledge and a separate distillation model; `enabled` is the default |
 | Langfuse | `LANGFUSE_ENABLED`, `LANGFUSE_CAPTURE_CONTENT`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` | Optional one trace per chat turn, grouped by session; content capture is opt-in for development/test |
 | Internal transport | `AI_INTERNAL_TOKEN`, `MCP_INTERNAL_TOKEN`, `MCP_CATALOG_URL`, `MCP_ORDER_URL`, `MCP_MEMORY_URL` | Backend-to-AI and AI-to-MCP authentication and endpoints |
 | MCP process | `MCP_HOST`, `MCP_CATALOG_PORT`, `MCP_ORDER_PORT`, `MCP_MEMORY_PORT`, `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `MEMORY_DB_POOL_MIN_SIZE`, `MEMORY_DB_POOL_MAX_SIZE` | HTTP listener and PostgreSQL pools |
@@ -43,21 +43,14 @@ reference date are source-of-truth rules, not tunable settings. Keep them in
 the BTC-compatible business logic and scenario input.
 
 The API invokes an outer one-turn LangGraph. It resolves identity through
-mcp-catalog, reads mcp-memory, and runs the selected Deep or ReAct agent for business tool
-calls through the existing MCP gateway. The outer graph checks the reply and
-commits the masked turn, evidenced fact candidates, and successful order links
-through mcp-memory in one transaction. Each model-facing business tool accepts
-an optional `fact_candidates` argument, so either agent can propose facts while
-calling a tool. The internal plan envelope records that tool call and its
-proposals; the candidates are removed before the BTC MCP request. The harness
-accepts model proposals only with evidence from the current customer turn or a
-successful tool. In `fallback` mode, a small slot-cue detector triggers an
-extra customer-only extraction when the agent omitted a likely slot. `off`
-relies only on the agent; `always` invokes the extractor every turn. Without a business tool call, either agent can also
-return `{"answer":"...","fact_candidates":[...]}` in its final answer.
-`memory.propose_fact` is an optional model-facing proposal tool;
-it never writes to PostgreSQL. Deep Agent's `memory=` file feature is not the
-customer fact store.
+mcp-catalog, reads mcp-memory, and runs the selected Deep or ReAct agent for
+business tools. In the default `enabled` mode, the agent commits a masked turn
+and successful order links to `ai_memory`, then a separate worker uses LangMem
+to extract profile facts and call episodes. The worker checks each proposal
+against committed customer text or a successful business tool before writing
+it to the customer namespace in `langmem_store`. The old synchronous fact
+proposal tool and schema are hidden from the model in this mode. `off` and
+`shadow` remain available only for controlled comparisons.
 When `AGENT_GUARDRAILS_ENABLED=false`, the outer graph returns the selected agent's
 draft reply without `check_answer` or catalog fallback. PII masking, MCP tool
 preconditions, identity checks, and memory evidence validation still apply.
@@ -137,7 +130,9 @@ then `ai-services/migrations/0001_memory.sql`,
 `ai-services/migrations/0008_scoped_facts.sql`, then
 `ai-services/migrations/0009_structured_episodes.sql`,
 `ai-services/migrations/0010_langmem_distillation_jobs.sql`, and
-`ai-services/migrations/0011_langmem_store.sql`. Apply them before starting
+`ai-services/migrations/0011_langmem_store.sql`, and
+`ai-services/migrations/0012_langmem_accepted_writes.sql`, and
+`ai-services/migrations/0013_langmem_job_proposals.sql`. Apply them before starting
 `mcp-db-roles`. Use the same PostgreSQL database
 for the backend and all three MCP servers. Set matching `AI_INTERNAL_TOKEN`
 values in `backend/.env` and `ai-services/.env`, and a separate
@@ -172,34 +167,40 @@ exposes `crm.get_customer`, `catalog.search`, `inventory.check`,
 exposes `order.create`, `order.update`, `order.status`, `schedule.callback`,
 `handoff.transfer`. Each MCP has its own PostgreSQL connection pool and role;
 catalog reads `btc_source`, order writes commerce tables in `app_runtime`, and
-memory writes `ai_memory`. All connect to `postgres:5432` on the Compose
+memory writes operational turns, jobs and erasure barriers to `ai_memory`,
+and long-term facts and episodes to `langmem_store`. All connect to `postgres:5432` on the Compose
 network. The one-shot `mcp-db-roles` service provisions roles on the existing
 database volume. The MCP ports are published only on host loopback and require
 the MCP bearer token. The backend business tool HTTP route is no longer mounted.
 
-When `LANGMEM_MODE=shadow` or `enabled`, each identified committed turn also
-creates one durable `ai_memory.langmem_distillation_jobs` row. Run one separate
-worker with `python -m app.mcp_servers.mcp_memory.distiller_worker` under the
+When `LANGMEM_MODE=enabled`, each identified committed turn creates one durable
+`ai_memory.langmem_distillation_jobs` row. Compose starts the worker with
+`mcp-memory`; locally run `python -m app.mcp_servers.mcp_memory.distiller_worker` under the
 `mcp_memory` database role and model credentials. The worker leases jobs in
 session order, retries up to five times, and logs only error codes. A model
-timeout never rolls back the already committed customer turn. The default
-`LANGMEM_MODE=off` leaves the queue idle.
+timeout never rolls back the already committed customer turn. If the store is
+unavailable, customer memory reads fail closed instead of reading stale legacy facts.
 Apply `migrations/0010_langmem_distillation_jobs.sql` and
-`migrations/0011_langmem_store.sql` after `0009`. Then, once with an admin
+`migrations/0011_langmem_store.sql`, `0012_langmem_accepted_writes.sql`, and
+`0013_langmem_job_proposals.sql` after `0009`. Then, once with an admin
 `DATABASE_URL`, run `python -m scripts.setup_langmem_store` from `ai-services/`.
 This invokes `AsyncPostgresStore.setup()` with `langmem_store` as the fixed
 search path; LangGraph's concurrent index DDL must run outside a wrapping
 transaction. Re-run `scripts/provision_mcp_roles.sh` after setup to grant the
 `mcp_memory` role access to the new store tables and job sequence. Neither the
 API nor the worker runs store DDL at startup. V1 has no vector index.
+For an existing database, run `python -m scripts.backfill_langmem_store` once
+after store setup. It copies active facts with source turn and date plus
+existing episodes, skips records that lack provenance, and preserves newer
+LangMem facts.
 For a verified erasure request already registered in `ai_memory.erasure_requests`,
 run `python -m scripts.execute_memory_erasure REQUEST_UUID` with the memory
-role. It removes the canonical rows, queued jobs and the customer's LangGraph
-namespace under the per-customer barrier. A projection outage leaves the
+role. It removes operational rows, queued jobs and the customer's LangGraph
+namespace under the per-customer barrier. A store outage leaves the
 request `partial`; retry the same UUID after recovery.
-Use the BTC reference evaluator and `eval_harness.compare_langmem` on
-separately seeded current, shadow, and enabled deployments before turning on
-`enabled` for a demo. See `eval_harness/README.md` for the runbook.
+Use the BTC reference evaluator on a separately seeded database before a demo.
+The harness waits for jobs and attributes only accepted writes to their source
+turns in the official trace. See `eval_harness/README.md` for the runbook.
 
 The code for each server lives in `app/mcp_servers/mcp_catalog`, `app/mcp_servers/mcp_order` or
 `app/mcp_servers/mcp_memory`: `tools/` validates MCP calls, `services/` holds business
@@ -208,11 +209,8 @@ connection setup live in `app/mcp_servers/mcp_shared`. Order and memory write se
 an operation key derived from the chat message to return the same stored result
 when a write is retried.
 
-The repository's `run_eval.py` currently cannot run because this checkout lacks
-the imported `eval/` package. Restore the runner before comparing full with
-`baseline_no_memory`. Each completed chat turn is written to `ai_memory.turns`;
-for identified customers, the memory service also updates the session episode.
-Model-proposed facts pass evidence checks before writing. A failed turn write fails the chat
+Each completed chat turn is written to `ai_memory.turns`; accepted long-term
+knowledge is written to the LangGraph store by the worker. A failed turn write fails the chat
 request so callers can retry with the same session and message IDs. Use an
 isolated eval database and reset mutable business tables between configurations.
 

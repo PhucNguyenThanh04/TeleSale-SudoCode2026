@@ -13,6 +13,16 @@ def candidate(key, value, quote, *, op="set", turn="turn-1", source="customer"):
 
 
 class AdmissionTests(unittest.TestCase):
+    def test_model_customer_id_in_global_scope_is_normalized(self):
+        from app.mcp_servers.mcp_memory.services.langmem_admission import admit_profile_candidates
+        proposal = candidate("has_children", True, "Nhà chị có bé nhỏ")
+        proposal.scope_id = "C001"
+        accepted, rejected = admit_profile_candidates("C001", "session-1", [proposal],
+            [{"turn_id": "turn-1", "customer_id": "C001", "session_id": "session-1",
+              "customer_text": "Nhà chị có bé nhỏ"}], [])
+        self.assertEqual(rejected, [])
+        self.assertEqual(accepted[0]["scope_id"], "")
+
     def test_accepts_customer_correction_with_source_turn(self):
         from app.mcp_servers.mcp_memory.services.langmem_admission import admit_profile_candidates
         accepted, rejected = admit_profile_candidates("C001", "session-1", [

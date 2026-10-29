@@ -51,6 +51,7 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
             "session_id": str(uuid4()), "source_turn_id": str(uuid4()), "attempts": 1}
         repo.distillation_turn.return_value = {"customer_text": "Tôi thích màu xanh",
             "agent_text": "Dạ", "on_date": "2026-10-15", "channel": "hotline"}
+        repo.is_erasure_blocked.return_value = False
         extractor = AsyncMock(side_effect=TimeoutError())
         self.assertTrue(await process_one(repo, extractor, None))
         repo.finish_distillation.assert_awaited_once()

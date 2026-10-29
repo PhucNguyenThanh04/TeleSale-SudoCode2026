@@ -1,5 +1,8 @@
 # LangMem Long-Term Memory Design
 
+> Historical design. The user later chose to retire the legacy long-term
+> memory path. See `2026-10-30-langmem-primary-design.md` for the active design.
+
 ## Intent
 
 Improve cross-session recall and task completion on the BTC telesale scenarios while preserving customer isolation, evidence, policy freshness, and reproducible evaluation. The team chose to adopt LangMem for extracting and consolidating long-term memories, with project-specific admission rules.

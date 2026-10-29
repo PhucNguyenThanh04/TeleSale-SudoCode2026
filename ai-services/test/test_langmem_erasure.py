@@ -46,6 +46,7 @@ class ErasureTests(unittest.IsolatedAsyncioTestCase):
             "on_date": "2026-10-15", "channel": "hotline"})
         worker_repo.lock_key = AsyncMock()
         worker_repo.is_erasure_blocked = AsyncMock(return_value=True)
+        worker_repo.save_distillation_proposals = AsyncMock()
         worker_repo.finish_distillation = AsyncMock()
         projector = AsyncMock()
         self.assertTrue(await process_one(worker_repo,

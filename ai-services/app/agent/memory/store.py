@@ -35,7 +35,7 @@ def memory_error_code(result: Any) -> str:
         "invalid_tool_result", "session_owner_mismatch", "operation_key_conflict",
         "invalid_turn_data", "invalid_facts_or_identity", "invalid_orders_or_identity",
         "customer_erasure_in_progress", "invalid_scope", "invalid_episode_delta",
-        "invalid_outcome",
+        "invalid_outcome", "memory_store_unavailable", "legacy_memory_action_disabled",
     } else "memory_error"
 
 
@@ -59,11 +59,13 @@ class MCPMemoryStore:
     supports_tool_observations = True
 
     def __init__(self, gateway: ToolGateway, namespace: str = "",
-                 include_prior: bool = True, max_episodes: int = 5) -> None:
+                 include_prior: bool = True, max_episodes: int = 5,
+                 langmem_primary: bool = False) -> None:
         self.gateway = gateway
         self.namespace = namespace
         self.include_prior = include_prior
         self.max_episodes = max_episodes
+        self.langmem_primary = langmem_primary
 
     def _id(self, customer_id: str | None) -> str | None:
         return f"{self.namespace}:{customer_id}" if customer_id and self.namespace else customer_id

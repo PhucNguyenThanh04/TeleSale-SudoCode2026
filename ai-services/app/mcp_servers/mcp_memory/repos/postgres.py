@@ -237,15 +237,16 @@ class MemoryRepo:
 
     async def enqueue_distillation(self, conn, session_id: str, customer_id: str,
                                    source_turn_id: str, tool_observations: list[dict],
-                                   mode: str = "enabled") -> None:
+                                   mode: str = "enabled", outcome: str = "khac") -> None:
         turn_no = await conn.fetchval("SELECT MAX(turn_no) FROM ai_memory.turns WHERE session_id=$1",
                                       UUID(session_id))
         await conn.execute("""INSERT INTO ai_memory.langmem_distillation_jobs
-            (session_id,customer_id,source_turn_id,turn_no,tool_observations,mode)
-            VALUES($1,$2,$3,$4,$5::jsonb,$6)
+            (session_id,customer_id,source_turn_id,turn_no,tool_observations,mode,verified_outcome)
+            VALUES($1,$2,$3,$4,$5::jsonb,$6,$7)
             ON CONFLICT(session_id,source_turn_id) DO NOTHING""",
             UUID(session_id), customer_id, UUID(source_turn_id), turn_no,
-            json.dumps(_bounded_observations(tool_observations), ensure_ascii=False), mode)
+            json.dumps(_bounded_observations(tool_observations), ensure_ascii=False), mode,
+            outcome)
 
     async def claim_distillation(self, conn, lease_seconds: int = 120) -> dict | None:
         row = await conn.fetchrow("""WITH candidate AS (
@@ -261,8 +262,16 @@ class MemoryRepo:
             lease_until=now()+($1::int * interval '1 second'),updated_at=now()
         FROM candidate WHERE j.job_id=candidate.job_id
         RETURNING j.job_id,j.session_id,j.customer_id,j.source_turn_id,j.turn_no,
-                  j.tool_observations,j.mode,j.attempts""", lease_seconds)
+                  j.tool_observations,j.mode,j.attempts,j.accepted_proposals,
+                  j.verified_outcome""", lease_seconds)
         return dict(row) if row else None
+
+    async def save_distillation_proposals(self, conn, job_id: int,
+                                          proposals: dict) -> None:
+        await conn.execute("""UPDATE ai_memory.langmem_distillation_jobs
+            SET accepted_proposals=$2::jsonb,updated_at=now()
+            WHERE job_id=$1 AND status='leased'""", job_id,
+            json.dumps(proposals, ensure_ascii=False))
 
     async def distillation_turn(self, conn, job: dict) -> dict | None:
         row = await conn.fetchrow("""SELECT customer_id,customer_text,agent_text,on_date,channel
@@ -271,10 +280,22 @@ class MemoryRepo:
         return dict(row) if row else None
 
     async def finish_distillation(self, conn, job_id: int, status: str,
-                                  error_code: str | None = None) -> None:
+                                  error_code: str | None = None,
+                                  accepted_writes: list[dict] | None = None) -> None:
         await conn.execute("""UPDATE ai_memory.langmem_distillation_jobs
-            SET status=$2,lease_until=NULL,error_code=$3,updated_at=now()
-            WHERE job_id=$1""", job_id, status, error_code)
+            SET status=$2,lease_until=NULL,error_code=$3,
+                accepted_writes=$4::jsonb,updated_at=now()
+            WHERE job_id=$1""", job_id, status, error_code,
+            json.dumps(accepted_writes or [], ensure_ascii=False))
+
+    async def completed_job_revisions(self, conn, customer_id: str,
+                                      revisions: list[int]) -> set[int]:
+        if not revisions:
+            return set()
+        rows = await conn.fetch("""SELECT job_id FROM ai_memory.langmem_distillation_jobs
+            WHERE customer_id=$1 AND status='completed' AND job_id=ANY($2::bigint[])""",
+            customer_id, revisions)
+        return {row["job_id"] for row in rows}
 
     async def upsert_episode(self, conn, session_id: str, customer_id: str, channel: str,
                              on, summary: str, outcome: str) -> None:

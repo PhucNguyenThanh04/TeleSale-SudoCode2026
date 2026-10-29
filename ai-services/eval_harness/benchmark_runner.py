@@ -16,7 +16,7 @@ import sys
 import time
 from datetime import date, timedelta
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 import asyncpg
 
 # Add ai-services to PYTHONPATH
@@ -27,7 +27,8 @@ from app.configs import Settings
 from app.mcp_servers.mcp_shared.config import database_url
 from app.schemas.agent import TextTurnRequest
 
-from eval_harness.reference_adapter import facts_used, trace_line, write_jsonl
+from eval_harness.reference_adapter import (facts_used, public_memory_writes,
+                                            trace_line, write_jsonl)
 from eval_harness.scorer import (
     evaluate_diagnostics_and_latency,
     evaluate_guardrails,
@@ -74,6 +75,7 @@ async def run_scenario_call(
     run_id: str = "benchmark",
     config: str = "full",
     call_date: date | None = None,
+    capture_source_ids: bool = False,
 ) -> list[dict[str, Any]]:
     """Execute all turns of a single call in a scenario."""
     session_id = uuid4()
@@ -122,6 +124,8 @@ async def run_scenario_call(
                          user_text, agent_text, tool_calls, memory_writes,
                          facts_used_this_turn, latency_ms, call_brief_latency,
                          input_mode)
+        if capture_source_ids:
+            row["_client_msg_id"] = str(turn_req.client_msg_id)
         trace_rows.append(row)
 
     return trace_rows
@@ -151,6 +155,7 @@ async def run_scenario_stream(
     is_baseline: bool = False,
     run_tag: str = "full",
     wait_for_jobs=None,
+    capture_writes=None,
 ) -> dict[tuple[str, str], list[dict[str, Any]]]:
     """Run all scenarios through the harness runtime."""
     trace: dict[tuple[str, str], list[dict[str, Any]]] = {}
@@ -177,10 +182,17 @@ async def run_scenario_stream(
                 run_id=run_tag,
                 config="baseline_no_memory" if is_baseline else "full",
                 call_date=scenario_call_date(calls, call_name, base_date),
+                capture_source_ids=capture_writes is not None,
             )
-            trace[(sid, call_name)] = rows
             if wait_for_jobs is not None:
                 await wait_for_jobs()
+            if capture_writes is not None:
+                source_ids = [row.pop("_client_msg_id") for row in rows]
+                writes_by_turn = await capture_writes(source_ids)
+                for row, source_id in zip(rows, source_ids):
+                    row["memory_writes"] = public_memory_writes(
+                        call_name, row["turn"], writes_by_turn.get(source_id, []))
+            trace[(sid, call_name)] = rows
 
         sc_duration = time.perf_counter() - t_sc_start
         print(f" Done ({sc_duration:.1f}s)")
@@ -206,6 +218,24 @@ async def wait_for_distillation(dsn: str, timeout_seconds: float = 180) -> None:
             if time.monotonic() >= deadline:
                 raise TimeoutError("LangMem distillation did not finish before the next call")
             await asyncio.sleep(0.5)
+    finally:
+        await conn.close()
+
+
+async def read_distillation_writes(dsn: str, source_ids: list[str]) -> dict[str, list[dict]]:
+    """Read only completed, accepted writes for the exact evaluated turns."""
+    if not source_ids:
+        return {}
+    conn = await asyncpg.connect(dsn.replace("postgresql+asyncpg://",
+                                          "postgresql://", 1))
+    try:
+        rows = await conn.fetch("""SELECT source_turn_id,accepted_writes
+            FROM ai_memory.langmem_distillation_jobs
+            WHERE source_turn_id=ANY($1::uuid[]) AND status='completed'""",
+            [UUID(item) for item in source_ids])
+        return {str(row["source_turn_id"]): (json.loads(row["accepted_writes"])
+                if isinstance(row["accepted_writes"], str) else row["accepted_writes"])
+                for row in rows}
     finally:
         await conn.close()
 
@@ -295,7 +325,11 @@ async def main() -> None:
             args.worker_wait_seconds)) if args.variant != "current" else None
         trace_full = await run_scenario_stream(runtime, scenarios, is_baseline=False,
                                                run_tag=args.variant,
-                                               wait_for_jobs=waiter)
+                                               wait_for_jobs=waiter,
+                                               capture_writes=(
+                                                   lambda ids: read_distillation_writes(
+                                                       database_url(settings), ids))
+                                               if args.variant == "enabled" else None)
 
     # Run Baseline Configuration
     if args.config in ("baseline", "both"):

@@ -1,5 +1,8 @@
 # LangMem Long-Term Memory Implementation Plan
 
+> Historical implementation plan. The active long-term store design is in
+> `../specs/2026-10-30-langmem-primary-design.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add evidence-checked LangMem profile and call-episode distillation, persistent PostgreSQL recall, and BTC-compatible evaluation without weakening the current memory contracts.

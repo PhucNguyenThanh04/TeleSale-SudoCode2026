@@ -97,6 +97,28 @@ class TestEvalHarness(unittest.TestCase):
 
 
 class TestScenarioInput(unittest.IsolatedAsyncioTestCase):
+    async def test_background_writes_are_attributed_to_source_turn(self):
+        from types import SimpleNamespace
+        from eval_harness.benchmark_runner import run_scenario_stream
+        class Runtime:
+            memory = SimpleNamespace(langmem_primary=True)
+            async def run(self, request):
+                return SimpleNamespace(agent_text="Dạ em ghi nhận.", call_brief=None)
+            def state_for(self, request):
+                return {"profile": {}, "tool_calls": [], "memory_writes": []}
+        async def wait():
+            return None
+        async def capture(ids):
+            return {ids[0]: [{"key": "preferred_color", "value": "xanh",
+                             "op": "set", "customer_id": "C1"}]}
+        traces = await run_scenario_stream(Runtime(), {"SAMPLE-01": {
+            "customer_phone": "0900000000", "calls": {"call_1": {
+                "customer_turns": ["Tôi thích màu xanh"]}}}},
+            wait_for_jobs=wait, capture_writes=capture)
+        row = traces["SAMPLE-01", "call_1"][0]
+        self.assertEqual(row["memory_writes"][0]["source"], "call_1#turn1")
+        self.assertNotIn("_client_msg_id", row)
+
     async def test_asr_turn_uses_declared_channel_and_call_date(self):
         from types import SimpleNamespace
         from eval_harness.benchmark_runner import run_scenario_call

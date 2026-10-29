@@ -6,13 +6,22 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 from app.mcp_servers.mcp_shared.pii import mask_pii
+from app.constants import PROFILE_SLOT_KEYS
+
+
+FactKey = Literal.__getitem__(tuple(sorted(PROFILE_SLOT_KEYS)))
+
+
+_IDENTIFIER_FIELDS = {"source_turn_id", "source_turn_ids", "session_id",
+                      "customer_id", "scope_id", "sku", "source_tool"}
 
 
 def _safe_strings(value: Any) -> bool:
     if isinstance(value, str):
         return mask_pii(value) == value
     if isinstance(value, dict):
-        return all(_safe_strings(item) for item in value.values())
+        return all(_safe_strings(item) for key, item in value.items()
+                   if key not in _IDENTIFIER_FIELDS)
     if isinstance(value, (list, tuple)):
         return all(_safe_strings(item) for item in value)
     return True
@@ -29,8 +38,8 @@ class SafeProposal(BaseModel):
 
 
 class ProfileFactCandidate(SafeProposal):
-    key: str
-    value: str | int | float | bool
+    key: FactKey = Field(description="Use only a supported profile slot. has_children means the customer has a child; budget_vnd and room_area_m2 are numeric slots.")
+    value: str | int | float | bool = Field(description="Use integer VND for budget_vnd and prices, integer square meters for room_area_m2, and boolean for has_children or in_stock.")
     op: Literal["set", "supersede", "delete"] = "set"
     scope_type: Literal["global", "product", "room"] = "global"
     scope_id: str = ""
@@ -59,7 +68,8 @@ class CustomerCallEpisodeCandidate(SafeProposal):
     topics: list[dict[str, Any]] = Field(default_factory=list)
     products_discussed: list[str] = Field(default_factory=list)
     quoted_prices: list[QuotedPrice] = Field(default_factory=list)
-    open_blockers: list[str] = Field(default_factory=list)
+    open_blockers: list[str] = Field(default_factory=list,
+        description="Literal customer phrases naming unresolved dependencies before a decision; do not paraphrase.")
     open_questions: list[str] = Field(default_factory=list)
     actions_completed: list[dict[str, Any]] = Field(default_factory=list)
     outcome: Literal["hen_goi_lai", "chot_don", "tu_choi", "chuyen_may", "khac"] = "khac"

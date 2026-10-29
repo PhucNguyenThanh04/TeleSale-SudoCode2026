@@ -14,6 +14,7 @@ from app.mcp_servers.mcp_shared.pii import mask_pii
 from app.mcp_servers.mcp_memory.services.episode_summary import build_episode_summary
 from app.mcp_servers.mcp_memory.services.episode_state import (
     EpisodeCapacityError, apply_episode_delta)
+from app.mcp_servers.mcp_memory.repos.langmem_projection import select_facts, select_episodes
 from app.constants import Slot
 from app.agent.guardrails.checks import safe_tool_result
 
@@ -30,7 +31,8 @@ def _valid_scope(fact: dict) -> bool:
     scope_id = fact.get("scope_id", "")
     if scope_type == "global":
         return scope_id == ""
-    if not isinstance(scope_id, str) or not _SCOPE_ID.fullmatch(scope_id):
+    if (not isinstance(scope_id, str) or not _SCOPE_ID.fullmatch(scope_id)
+            or mask_pii(scope_id) != scope_id):
         return False
     if scope_type == "product":
         return fact.get("key") in _PRODUCT_KEYS
@@ -133,6 +135,59 @@ async def read(repo, customer_id: str | None, session_id: str,
                                  if hasattr(repo, "turn_count") else len(turns))}
         if not customer_id:
             return result
+        if langmem_mode == "enabled":
+            if projector is None:
+                return {"error": "memory_store_unavailable"}
+            try:
+                async with asyncio.timeout(2.0):
+                    await repo.lock_key(conn, f"langmem:{customer_id}")
+                    fact_versions = await projector.list_fact_versions(customer_id)
+                    episode_versions = await projector.list_episode_versions(customer_id)
+                    revisions = {item.get("revision") for item in
+                        [*fact_versions, *episode_versions]
+                        if isinstance(item, dict)
+                        and type(item.get("revision")) is int
+                        and item["revision"] > 0}
+                    completed = (await repo.completed_job_revisions(
+                        conn, customer_id, sorted(revisions))
+                        if hasattr(repo, "completed_job_revisions") else revisions)
+                    facts = select_facts(fact_versions, completed)
+                    all_episodes = select_episodes(episode_versions, completed)
+                    current = next((item for item in all_episodes
+                        if item.get("session_id") == session_id), None)
+                    episodes = all_episodes if include_prior else []
+            except Exception as exc:
+                logging.getLogger(__name__).warning(
+                    "LangMem store read failed: %s", type(exc).__name__)
+                return {"error": "memory_store_unavailable"}
+            for fact in facts:
+                if (not isinstance(fact, dict) or fact.get("schema_version") != 1
+                        or not include_prior and fact.get("session_id") != session_id):
+                    continue
+                key = fact.get("key")
+                scope_type = fact.get("scope_type", "global")
+                scope_id = fact.get("scope_id", "")
+                if not isinstance(key, str) or not _valid_scope(fact):
+                    continue
+                public = {"key": key, "value": fact.get("value"),
+                          "source": fact.get("source"), "status": "active",
+                          "on": fact.get("on"), "source_kind": fact.get("source_kind"),
+                          "source_tool": fact.get("source_tool"),
+                          "evidence_quote": fact.get("evidence_quote")}
+                if scope_type == "global":
+                    result["profile"][key] = public
+                elif scope_type in {"product", "room"} and scope_id:
+                    result["scoped_facts"][scope_type].setdefault(scope_id, {})[key] = public
+            result["current_episode"] = current
+            result["episodes"] = [item for item in episodes
+                if isinstance(item, dict) and item.get("schema_version") == 1
+                and item.get("session_id") != session_id
+                and item.get("status", "active") == "active"][:max_episodes]
+            result["prior_session_ids"] = [item["session_id"]
+                for item in episodes if isinstance(item, dict)
+                and item.get("session_id") != session_id]
+            result["owned_order_ids"] = await repo.order_links(conn, customer_id) if include_prior else []
+            return result
         facts = await repo.facts(conn, customer_id, session_id, include_prior)
         for row in facts:
             fact = {"key": row["key"],
@@ -193,6 +248,8 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
                 data: dict, operation_key: str | None = None,
                 summary_turns: int = 3, summary_max_chars: int = 800,
                 langmem_mode: str = "off") -> dict:
+    if langmem_mode == "enabled" and action in {"fact", "seed_episode"}:
+        return {"error": "legacy_memory_action_disabled"}
     episode_delta = {}
     if action == "commit_turn":
         try:
@@ -225,6 +282,8 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
         observations = data.get("tool_observations", [])
         if not isinstance(observations, list) or len(observations) > 20:
             return {"error": "invalid_turn_data"}
+        if langmem_mode == "enabled" and (facts or episode_delta):
+            return {"error": "legacy_memory_action_disabled"}
     digest = hashlib.sha256(json.dumps({"action": action, "customer_id": customer_id,
         "session_id": session_id, "data": data}, sort_keys=True, default=str,
         ensure_ascii=False).encode()).hexdigest()
@@ -246,6 +305,19 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
                 customer_text = mask_pii(data["customer_text"])
                 agent_text = mask_pii(data["agent_text"])
                 on = date.fromisoformat(data["on"])
+                if action == "commit_turn" and langmem_mode == "enabled":
+                    await repo.insert_turn(conn, session_id, number, customer_id,
+                                           data["channel"], on, customer_text, agent_text)
+                    for order_id in orders:
+                        await repo.link_order(conn, customer_id, order_id)
+                    result = {"turn_no": number, "memory_writes": []}
+                    if customer_id:
+                        await repo.enqueue_distillation(conn, session_id, customer_id,
+                            str(source_turn_id), observations, "enabled",
+                            data.get("outcome", "khac"))
+                    if operation_key:
+                        await repo.finish_operation(conn, operation_key, result)
+                    return result
                 episode_state = {"topics": [], "resolved_prior_items": []}
                 episode_warning = None
                 if customer_id:
