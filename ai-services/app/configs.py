@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     agent_guardrails_enabled: bool = True
     agent_kind: Literal["deep", "react"] = "deep"
     fact_extraction_mode: Literal["fallback", "always", "off"] = "fallback"
+    langmem_mode: Literal["off", "shadow", "enabled"] = "off"
+    langmem_model: str | None = None
     langfuse_enabled: bool = False
     langfuse_capture_content: bool = False
     langfuse_public_key: str | None = None
