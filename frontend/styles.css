@@ -59,6 +59,14 @@ button:disabled{cursor:wait;opacity:.65}
 .message-meta{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#9a9081}
 .retry-button{background:none;border:0;color:var(--wine);padding:0;text-decoration:underline;font-family:Arial,Helvetica,sans-serif;font-size:11px}
 .composer-area{border-top:1px solid var(--line);padding:16px 22px 20px;background:#fdfaf4}
+.voice-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;font:11px Arial,Helvetica,sans-serif;color:var(--muted)}
+.voice-controls button{border:1px solid var(--wine);background:#fffaf2;color:var(--wine);padding:8px 11px;font:600 11px Arial,Helvetica,sans-serif}
+.voice-controls button:hover:not(:disabled){background:#f2e8dc}
+.voice-controls button:disabled{opacity:.55}
+.voice-controls #record-button.recording{background:var(--wine);color:#fffaf2}
+.pipeline-debug{margin:0 0 10px;border-left:2px solid var(--gold);padding:5px 10px;background:#f7f2e8;color:var(--muted);font:11px Arial,Helvetica,sans-serif}
+.pipeline-debug summary{cursor:pointer}
+.pipeline-debug pre{margin:8px 0 3px;white-space:pre-wrap;font:11px/1.5 Consolas,monospace;color:var(--ink)}
 .composer{border:1px solid var(--line);background:#fffdf9}
 .composer textarea{display:block;width:100%;min-height:82px;resize:vertical;border:0;background:transparent;padding:15px 16px;color:var(--ink);font-size:15px;line-height:1.45;outline:none}
 .composer:focus-within{border-color:var(--wine)}

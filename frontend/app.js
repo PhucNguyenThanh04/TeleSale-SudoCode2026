@@ -2,6 +2,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
+  const speech = window.TeleSaleSpeech;
   const ui = {
     channel: $("channel"), identity: $("identity"), callDate: $("call-date"),
     authLabel: $("auth-label"), authIndicator: $("auth-indicator"),
@@ -122,6 +123,8 @@
   async function sendTurn(turn) {
     clearError();
     setBusy(true);
+    const agentStarted = performance.now();
+    speech.setStage("agent", "đang xử lý lượt hội thoại…");
     turn.view.caption.textContent = "Đang xử lý…";
     turn.retry?.remove();
     turn.retry = null;
@@ -139,11 +142,14 @@
       }
       updateFolio(data);
       makeMessage("agent", data.agent_text, "Đã trả lời");
+      speech.setStage("agent", `xong sau ${Math.round(performance.now() - agentStarted)} ms`);
+      speech.speak(data.agent_text);
       turn.view.caption.textContent = "Đã gửi";
       pendingTurn = null;
       ui.input.value = "";
       ui.input.focus();
     } catch (error) {
+      speech.setStage("agent", `lỗi sau ${Math.round(performance.now() - agentStarted)} ms`);
       const message = error instanceof TypeError
         ? "Không kết nối được với máy chủ. Kiểm tra backend rồi thử lại."
         : error.message;
@@ -164,6 +170,7 @@
 
   ui.form.addEventListener("submit", (event) => {
     event.preventDefault();
+    speech.primePlayback();
     if (busy) return;
     clearError();
     if (pendingTurn) {
@@ -195,6 +202,22 @@
     sendTurn(turn);
   });
 
+  speech.setCanRecord(() => {
+    if (busy || pendingTurn) { showError("Hãy hoàn tất lượt hội thoại hiện tại trước khi ghi âm."); return false; }
+    if (!accessReady) { showError("Phiên truy cập chưa sẵn sàng."); return false; }
+    if (!sessionId && (!ui.identity.value.trim() || !ui.callDate.value)) {
+      showError("Hãy điền định danh từ kênh và ngày cuộc gọi trước khi ghi âm.");
+      return false;
+    }
+    clearError();
+    return true;
+  });
+  speech.setTranscriptHandler((text) => {
+    ui.input.value = text;
+    ui.inputMode.value = "asr_transcript";
+    ui.form.requestSubmit();
+  });
+
   ui.input.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
@@ -206,6 +229,9 @@
     sessionId = null;
     turnCount = 0;
     pendingTurn = null;
+    speech.stopPlayback();
+    speech.setStage("agent", "chờ lời khách");
+    speech.setStage("tts", "chờ câu trả lời");
     setSetupLocked(false);
     ui.messages.replaceChildren();
     ui.session.textContent = "Chưa bắt đầu";

@@ -63,6 +63,7 @@ artifacts/
 # Speech dataset/runs (audio, TTS cache, hypotheses) and local voice config
 speech/data/
 speech/voices.json
+speech/serving/models/
 
 # Downloaded model weights and local object storage
 *.pt

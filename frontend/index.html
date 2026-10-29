@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#f4efe4">
   <title>Sổ Tư Vấn · TeleSale</title>
   <link rel="stylesheet" href="/app/styles.css">
+  <script src="/app/speech.js" defer></script>
   <script src="/app/app.js" defer></script>
 </head>
 <body>
@@ -67,6 +68,12 @@
 
         <div class="composer-area">
           <div id="error-box" class="error-box" role="alert" hidden></div>
+          <div class="voice-controls">
+            <button id="record-button" type="button">● Bắt đầu ghi âm</button>
+            <button id="stop-voice" type="button" hidden>Dừng phát giọng</button>
+            <span id="voice-label" role="status">Giọng trả lời: VieNeu · Trúc Ly</span>
+          </div>
+          <details class="pipeline-debug"><summary>Chi tiết luồng âm thanh</summary><pre id="pipeline-status">Micro → VAD/STT → Agent → VieNeu: sẵn sàng</pre></details>
           <form id="chat-form" class="composer">
             <label for="message-input" class="sr-only">Nội dung khách hàng</label>
             <textarea id="message-input" rows="3" maxlength="8000" placeholder="Nhập lời khách hàng ở đây…" required></textarea>
