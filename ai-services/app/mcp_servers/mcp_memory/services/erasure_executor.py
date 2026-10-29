@@ -3,7 +3,7 @@
 from uuid import UUID
 
 
-async def execute_erasure(repo, request_key: str) -> dict:
+async def execute_erasure(repo, request_key: str, projector=None) -> dict:
     """Purge the authorized memory slice; other stores remain explicitly pending."""
     try:
         UUID(request_key)
@@ -22,11 +22,22 @@ async def execute_erasure(repo, request_key: str) -> dict:
             return {"request_key": request_key, "status": "completed",
                     "store_results": request["store_results"]}
         memory_result = await repo.purge_customer_memory(conn, customer_id)
+        projection_result = None
+        if projector is not None:
+            try:
+                deleted = await projector.delete_customer(customer_id)
+                projection_result = {"status": "completed", "deleted_rows": deleted}
+            except Exception:
+                projection_result = {"status": "pending", "error_code": "projection_unavailable"}
         other_stores = [store for store in request["scope"] if store != "ai_memory"]
         results = {"ai_memory": memory_result,
                    **{store: {"status": "pending"} for store in other_stores}}
+        if projection_result is not None:
+            results["langmem_store"] = projection_result
         status = ("completed" if not other_stores
-                  and memory_result["status"] == "completed" else "partial")
+                  and memory_result["status"] == "completed"
+                  and (projection_result is None or projection_result["status"] == "completed")
+                  else "partial")
         await repo.finish_erasure_request(conn, request_key, status, results)
         return {"request_key": request_key, "status": status,
                 "store_results": results}

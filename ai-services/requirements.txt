@@ -28,6 +28,7 @@ PyJWT[crypto]>=2.10,<3
 langchain[mcp]>=1.4.2,<1.5
 langchain-core>=1.3.3,<2
 langgraph>=1.2.12,<1.3
+langmem==0.0.30
 langchain-ollama>=1.1,<2
 deepagents>=0.7.23,<0.8
 langfuse>=4.17.0,<5

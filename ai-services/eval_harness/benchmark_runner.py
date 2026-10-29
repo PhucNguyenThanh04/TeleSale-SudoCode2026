@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -16,15 +17,17 @@ import time
 from datetime import date, timedelta
 from typing import Any
 from uuid import uuid4
+import asyncpg
 
 # Add ai-services to PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.agent.factory import build_runtime
 from app.configs import Settings
+from app.mcp_servers.mcp_shared.config import database_url
 from app.schemas.agent import TextTurnRequest
 
-from eval_harness.extractor import build_trace_row
+from eval_harness.reference_adapter import facts_used, trace_line, write_jsonl
 from eval_harness.scorer import (
     evaluate_diagnostics_and_latency,
     evaluate_guardrails,
@@ -68,13 +71,19 @@ async def run_scenario_call(
     base_date: date,
     customer_phone: str,
     channel: str = "hotline",
+    run_id: str = "benchmark",
+    config: str = "full",
+    call_date: date | None = None,
 ) -> list[dict[str, Any]]:
     """Execute all turns of a single call in a scenario."""
     session_id = uuid4()
     days_later = call_spec.get("days_later", 0)
-    call_date = base_date + timedelta(days=days_later)
+    call_date = call_date or base_date + timedelta(days=days_later)
+    channel = call_spec.get("channel", channel)
+    channel_identity = call_spec.get("channel_identity", customer_phone)
 
-    customer_turns = call_spec.get("customer_turns", [])
+    customer_turns = call_spec.get("customer_turns_asr") or call_spec.get("customer_turns", [])
+    input_mode = call_spec.get("input_mode", "clean")
     trace_rows = []
 
     for turn_idx, user_text in enumerate(customer_turns, start=1):
@@ -82,10 +91,10 @@ async def run_scenario_call(
             client_msg_id=str(uuid4()),
             session_id=session_id,
             channel=channel,
-            channel_identity=customer_phone,
+            channel_identity=channel_identity,
             on=call_date,
             text=user_text,
-            input_mode="clean",
+            input_mode=input_mode,
         )
 
         t_start = time.perf_counter()
@@ -98,32 +107,42 @@ async def run_scenario_call(
             agent_text = resp.agent_text or ""
             tool_calls = state.get("tool_calls", [])
             memory_writes = state.get("memory_writes", [])
-            facts_used = list(state.get("profile", {}).keys()) + [
-                k for tc in tool_calls for k in tc.get("args", {}).keys()
-            ]
+            prior_facts = state.get("profile", {})
+            facts_used_this_turn = facts_used(agent_text, tool_calls, prior_facts)
+            call_brief_latency = (resp.call_brief or {}).get("latency_ms")
 
         except Exception as exc:
             latency_ms = (time.perf_counter() - t_start) * 1000.0
             agent_text = f"[ERROR: {type(exc).__name__}: {exc}]"
             tool_calls = []
             memory_writes = []
-            facts_used = []
+            facts_used_this_turn = []
 
-        row = build_trace_row(
-            scenario_id=scenario_id,
-            call_name=call_name,
-            turn_idx=turn_idx,
-            user_text=user_text,
-            agent_text=agent_text,
-            tool_calls=tool_calls,
-            memory_writes=memory_writes,
-            facts_used=facts_used,
-            latency_ms=latency_ms,
-            call_brief_latency_ms=call_brief_latency,
-        )
+        row = trace_line(run_id, config, scenario_id, call_name, turn_idx,
+                         user_text, agent_text, tool_calls, memory_writes,
+                         facts_used_this_turn, latency_ms, call_brief_latency,
+                         input_mode)
         trace_rows.append(row)
 
     return trace_rows
+
+
+def scenario_call_date(calls: dict[str, dict], call_name: str,
+                       base_date: date) -> date:
+    current = base_date
+    for name, spec in calls.items():
+        current = (date.fromisoformat(spec["call_date"]) if spec.get("call_date")
+                   else current + timedelta(days=spec.get("days_later", 0)))
+        if name == call_name:
+            return current
+    raise KeyError(call_name)
+
+
+def make_baseline_runtime(runtime: Any) -> Any:
+    """Preserve CRM identity while isolating writes and hiding prior memory."""
+    runtime.memory.include_prior = False
+    runtime.memory.namespace = "baseline"
+    return runtime
 
 
 async def run_scenario_stream(
@@ -131,6 +150,7 @@ async def run_scenario_stream(
     scenarios: dict[str, Any],
     is_baseline: bool = False,
     run_tag: str = "full",
+    wait_for_jobs=None,
 ) -> dict[tuple[str, str], list[dict[str, Any]]]:
     """Run all scenarios through the harness runtime."""
     trace: dict[tuple[str, str], list[dict[str, Any]]] = {}
@@ -145,11 +165,7 @@ async def run_scenario_stream(
         t_sc_start = time.perf_counter()
 
         for call_name, call_spec in calls.items():
-            # In baseline mode, phone is randomized per call so NO memory carries over
-            if is_baseline:
-                call_phone = f"099{raw_phone[3:]}"  # 10 digits dummy phone for baseline
-            else:
-                call_phone = raw_phone  # True phone matching CRM records
+            call_phone = raw_phone
 
             rows = await run_scenario_call(
                 runtime=runtime,
@@ -158,13 +174,40 @@ async def run_scenario_stream(
                 call_spec=call_spec,
                 base_date=base_date,
                 customer_phone=call_phone,
+                run_id=run_tag,
+                config="baseline_no_memory" if is_baseline else "full",
+                call_date=scenario_call_date(calls, call_name, base_date),
             )
             trace[(sid, call_name)] = rows
+            if wait_for_jobs is not None:
+                await wait_for_jobs()
 
         sc_duration = time.perf_counter() - t_sc_start
         print(f" Done ({sc_duration:.1f}s)")
 
     return trace
+
+
+async def wait_for_distillation(dsn: str, timeout_seconds: float = 180) -> None:
+    """Keep cross-call evaluation from racing the background worker."""
+    conn = await asyncpg.connect(dsn.replace("postgresql+asyncpg://",
+                                            "postgresql://", 1))
+    try:
+        deadline = time.monotonic() + timeout_seconds
+        while True:
+            row = await conn.fetchrow("""SELECT
+                count(*) FILTER (WHERE status IN ('pending','leased')) AS waiting,
+                count(*) FILTER (WHERE status='failed') AS failed
+                FROM ai_memory.langmem_distillation_jobs""")
+            if row["failed"]:
+                raise RuntimeError("LangMem distillation job failed during evaluation")
+            if not row["waiting"]:
+                return
+            if time.monotonic() >= deadline:
+                raise TimeoutError("LangMem distillation did not finish before the next call")
+            await asyncio.sleep(0.5)
+    finally:
+        await conn.close()
 
 
 def print_cli_summary(agent_kind: str, results: dict[str, Any]) -> None:
@@ -202,10 +245,18 @@ async def main() -> None:
     parser = argparse.ArgumentParser(description="Eval Harness Runner for Deep vs ReAct Agent")
     parser.add_argument("--agent", choices=["deep", "react"], required=True, help="Agent core to evaluate")
     parser.add_argument("--config", choices=["full", "baseline", "both"], default="both", help="Eval config to run")
+    parser.add_argument("--variant", choices=["current", "shadow", "enabled"],
+                        default="current", help="Deployment memory mode being measured")
+    parser.add_argument("--seed", type=int, default=7,
+                        help="Identical model seed across ablation runs")
+    parser.add_argument("--worker-wait-seconds", type=float, default=180,
+                        help="Maximum wait for background memory before the next call")
     parser.add_argument("--scenarios", default="ai-services/eval_harness/benchmark_dataset.json", help="Path to scenarios")
     parser.add_argument("--dry-run", type=int, default=0, help="Run only first N scenarios for dry-run")
     parser.add_argument("--out", default=None, help="Output JSON path")
     args = parser.parse_args()
+    if args.config == "both":
+        logger.warning("--config both shares mutable business tables; use separate seeded databases for official comparison")
 
     # Determine output path
     out_path = args.out
@@ -227,6 +278,10 @@ async def main() -> None:
     # Initialize settings and runtime
     settings = Settings()
     settings.agent_kind = args.agent
+    settings.llm_seed = args.seed
+    if settings.langmem_mode != {"current": "off", "shadow": "shadow",
+                                 "enabled": "enabled"}[args.variant]:
+        raise SystemExit("LANGMEM_MODE must match --variant in the runner and MCP deployment")
     print(f"\nInitializing Runtime for Agent: '{args.agent.upper()}' (Model: {settings.llm_model})...")
     runtime = build_runtime(settings)
 
@@ -236,12 +291,23 @@ async def main() -> None:
     # Run Full Configuration
     if args.config in ("full", "both"):
         print(f"\n--- Running FULL Configuration (With Inter-Session Memory) ---")
-        trace_full = await run_scenario_stream(runtime, scenarios, is_baseline=False, run_tag="full")
+        waiter = (lambda: wait_for_distillation(database_url(settings),
+            args.worker_wait_seconds)) if args.variant != "current" else None
+        trace_full = await run_scenario_stream(runtime, scenarios, is_baseline=False,
+                                               run_tag=args.variant,
+                                               wait_for_jobs=waiter)
 
     # Run Baseline Configuration
     if args.config in ("baseline", "both"):
         print(f"\n--- Running BASELINE Configuration (No Inter-Session Memory) ---")
-        trace_baseline = await run_scenario_stream(runtime, scenarios, is_baseline=True, run_tag="baseline")
+        baseline_runtime = make_baseline_runtime(build_runtime(settings))
+        trace_baseline = await run_scenario_stream(baseline_runtime, scenarios,
+                                                   is_baseline=True, run_tag="baseline")
+
+    if trace_full:
+        write_jsonl(trace_full, out_path.removesuffix(".json") + "_full.jsonl")
+    if trace_baseline:
+        write_jsonl(trace_baseline, out_path.removesuffix(".json") + "_baseline.jsonl")
 
     # Score Results
     print("\nCalculating metrics against official BTC benchmarks...")
@@ -257,6 +323,13 @@ async def main() -> None:
         "meta": {
             "agent_kind": args.agent,
             "model": settings.llm_model,
+            "temperature": settings.llm_temperature,
+            "max_tokens": settings.llm_max_tokens,
+            "seed": settings.llm_seed,
+            "variant": args.variant,
+            "dataset_hash": hashlib.sha256(json.dumps(scenarios, sort_keys=True,
+                ensure_ascii=False).encode()).hexdigest(),
+            "scenario_ids": sorted(scenarios),
             "config": args.config,
             "reference_date": "2026-10-15",
             "total_scenarios_evaluated": len(scenarios),

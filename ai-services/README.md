@@ -19,9 +19,9 @@ settings needed for your run.
 | Group | Variables | Effect |
 |---|---|---|
 | API | `APP_NAME`, `APP_ENV`, `DEBUG`, `HOST`, `PORT`, `LOG_LEVEL`, `TIMEZONE` | API identity, environment label, debug flag, bind address, logging, callback timezone |
-| Ollama Cloud | `LLM_API_KEY`, `LLM_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_TIMEOUT_SECONDS`, `LLM_TEMPERATURE`, `LLM_MAX_TOKENS` | Model, authentication, timeout and response budget |
+| Ollama Cloud | `LLM_API_KEY`, `LLM_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_TIMEOUT_SECONDS`, `LLM_TEMPERATURE`, `LLM_MAX_TOKENS`, `LLM_SEED` | Model, authentication, timeout, response budget and reproducible sampling |
 | Harness | `AGENT_KIND`, `FACT_EXTRACTION_MODE`, `AGENT_MAX_TOOL_CALLS`, `AGENT_PROMPT_HISTORY_TURNS`, `AGENT_GUARDRAILS_ENABLED` | Select `deep` or `react`, choose fact extraction behavior, set tool and context limits, and toggle answer checks |
-| Memory | `MEMORY_MAX_EPISODES`, `MEMORY_SUMMARY_TURNS`, `MEMORY_SUMMARY_MAX_CHARS` | Prior episodes loaded and episode summary size; baseline still disables prior memory |
+| Memory | `MEMORY_MAX_EPISODES`, `MEMORY_SUMMARY_TURNS`, `MEMORY_SUMMARY_MAX_CHARS`, `LANGMEM_MODE`, `LANGMEM_MODEL` | Prior episodes, opt-in LangMem worker, and separate distillation model; baseline still disables prior memory |
 | Langfuse | `LANGFUSE_ENABLED`, `LANGFUSE_CAPTURE_CONTENT`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` | Optional one trace per chat turn, grouped by session; content capture is opt-in for development/test |
 | Internal transport | `AI_INTERNAL_TOKEN`, `MCP_INTERNAL_TOKEN`, `MCP_CATALOG_URL`, `MCP_ORDER_URL`, `MCP_MEMORY_URL` | Backend-to-AI and AI-to-MCP authentication and endpoints |
 | MCP process | `MCP_HOST`, `MCP_CATALOG_PORT`, `MCP_ORDER_PORT`, `MCP_MEMORY_PORT`, `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `MEMORY_DB_POOL_MIN_SIZE`, `MEMORY_DB_POOL_MAX_SIZE` | HTTP listener and PostgreSQL pools |
@@ -135,7 +135,9 @@ then `ai-services/migrations/0001_memory.sql`,
 `ai-services/migrations/0006_episode_identity_boundary.sql`,
 `ai-services/migrations/0007_erasure_requests.sql`, and
 `ai-services/migrations/0008_scoped_facts.sql`, then
-`ai-services/migrations/0009_structured_episodes.sql`. Apply them before starting
+`ai-services/migrations/0009_structured_episodes.sql`,
+`ai-services/migrations/0010_langmem_distillation_jobs.sql`, and
+`ai-services/migrations/0011_langmem_store.sql`. Apply them before starting
 `mcp-db-roles`. Use the same PostgreSQL database
 for the backend and all three MCP servers. Set matching `AI_INTERNAL_TOKEN`
 values in `backend/.env` and `ai-services/.env`, and a separate
@@ -174,6 +176,30 @@ memory writes `ai_memory`. All connect to `postgres:5432` on the Compose
 network. The one-shot `mcp-db-roles` service provisions roles on the existing
 database volume. The MCP ports are published only on host loopback and require
 the MCP bearer token. The backend business tool HTTP route is no longer mounted.
+
+When `LANGMEM_MODE=shadow` or `enabled`, each identified committed turn also
+creates one durable `ai_memory.langmem_distillation_jobs` row. Run one separate
+worker with `python -m app.mcp_servers.mcp_memory.distiller_worker` under the
+`mcp_memory` database role and model credentials. The worker leases jobs in
+session order, retries up to five times, and logs only error codes. A model
+timeout never rolls back the already committed customer turn. The default
+`LANGMEM_MODE=off` leaves the queue idle.
+Apply `migrations/0010_langmem_distillation_jobs.sql` and
+`migrations/0011_langmem_store.sql` after `0009`. Then, once with an admin
+`DATABASE_URL`, run `python -m scripts.setup_langmem_store` from `ai-services/`.
+This invokes `AsyncPostgresStore.setup()` with `langmem_store` as the fixed
+search path; LangGraph's concurrent index DDL must run outside a wrapping
+transaction. Re-run `scripts/provision_mcp_roles.sh` after setup to grant the
+`mcp_memory` role access to the new store tables and job sequence. Neither the
+API nor the worker runs store DDL at startup. V1 has no vector index.
+For a verified erasure request already registered in `ai_memory.erasure_requests`,
+run `python -m scripts.execute_memory_erasure REQUEST_UUID` with the memory
+role. It removes the canonical rows, queued jobs and the customer's LangGraph
+namespace under the per-customer barrier. A projection outage leaves the
+request `partial`; retry the same UUID after recovery.
+Use the BTC reference evaluator and `eval_harness.compare_langmem` on
+separately seeded current, shadow, and enabled deployments before turning on
+`enabled` for a demo. See `eval_harness/README.md` for the runbook.
 
 The code for each server lives in `app/mcp_servers/mcp_catalog`, `app/mcp_servers/mcp_order` or
 `app/mcp_servers/mcp_memory`: `tools/` validates MCP calls, `services/` holds business

@@ -1,6 +1,7 @@
 """Real PostgreSQL memory contract in an automatically removed test database."""
 
 import os
+import json
 import unittest
 from datetime import date
 from pathlib import Path
@@ -10,6 +11,10 @@ from uuid import UUID, uuid4
 import asyncpg
 
 from app.mcp_servers.mcp_memory.repos.postgres import MemoryRepo
+from app.mcp_servers.mcp_memory.repos.langmem_projection import LangMemProjection, store_dsn
+from app.mcp_servers.mcp_memory.distiller_worker import process_one
+from app.schemas.langmem import ProfileFactCandidate
+from langgraph.store.postgres.aio import AsyncPostgresStore
 from app.mcp_servers.mcp_memory.services.erasure import request_erasure
 from app.mcp_servers.mcp_memory.services.erasure_executor import execute_erasure
 from app.mcp_servers.mcp_memory.services.memory import read, write
@@ -18,6 +23,73 @@ from app.mcp_servers.mcp_memory.services.memory import read, write
 @unittest.skipUnless(os.getenv("MEMORY_INTEGRATION_ADMIN_DSN"),
                      "requires MEMORY_INTEGRATION_ADMIN_DSN with CREATEDB")
 class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
+    async def test_worker_admits_fact_projects_episode_then_erases(self):
+        async with AsyncPostgresStore.from_conn_string(store_dsn(self.dsn), index=None) as store:
+            await store.setup()
+        projection = LangMemProjection(self.dsn)
+        session, source = str(uuid4()), str(uuid4())
+        await write(self.repo, "commit_turn", "C901", session, {
+            "customer_text": "Phòng tôi 25 m²", "agent_text": "Dạ em ghi nhận",
+            "on": "2026-10-15", "channel": "hotline", "client_msg_id": source,
+            "facts": []}, langmem_mode="enabled")
+        async def extractor(messages, _existing):
+            payload = json.loads(messages[0]["content"])
+            return ([ProfileFactCandidate(key="room_area_m2", value=25,
+                source_kind="customer", source_turn_id=payload["turn_id"],
+                evidence_quote="Phòng tôi 25 m²", observed_on=date(2026, 10, 15))], None)
+        self.assertTrue(await process_one(self.repo, extractor, projection))
+        loaded = await read(self.repo, "C901", str(uuid4()),
+                            langmem_mode="enabled", projector=projection)
+        self.assertEqual(loaded["profile"]["room_area_m2"]["value"], 25)
+        self.assertEqual(len(loaded["accepted_episodes"]), 1)
+        key = str(uuid4())
+        await request_erasure(self.repo, customer_id="C901", request_key=key,
+            verification_ref="case-901", verified_by="operator-1", scope=["ai_memory"])
+        erased = await execute_erasure(self.repo, key, projection)
+        self.assertEqual(erased["status"], "completed")
+        self.assertEqual(await projection.list_episodes("C901", 5), [])
+
+    async def test_langmem_store_isolated_schema_persists_across_instances(self):
+        async with AsyncPostgresStore.from_conn_string(store_dsn(self.dsn), index=None) as store:
+            await store.setup()
+        first = LangMemProjection(self.dsn)
+        await first.put_episode("C901", "session-1", {"summary": "Đang cân nhắc",
+            "topics": [], "resolved_prior_items": []})
+        second = LangMemProjection(self.dsn)
+        self.assertEqual(len(await second.list_episodes("C901", 5)), 1)
+        self.assertEqual(await second.list_episodes("C902", 5), [])
+        async with self.repo.transaction() as conn:
+            self.assertEqual(await conn.fetchval("""SELECT count(*) FROM pg_tables
+                WHERE schemaname='langmem_store' AND tablename='store'"""), 1)
+            self.assertEqual(await conn.fetchval("""SELECT count(*) FROM pg_tables
+                WHERE schemaname='public' AND tablename='store'"""), 0)
+        self.assertEqual(await second.delete_customer("C901"), 1)
+        self.assertEqual(await first.list_episodes("C901", 5), [])
+
+    async def test_distillation_job_is_durable_and_reclaims_expired_lease(self):
+        session, source = str(uuid4()), str(uuid4())
+        payload = {"customer_text": "Tôi thích màu xanh", "agent_text": "Dạ",
+                   "on": "2026-10-15", "channel": "hotline", "client_msg_id": source,
+                   "facts": [], "tool_observations": []}
+        key = f"{session}:{source}:commit_turn"
+        first = await write(self.repo, "commit_turn", "C901", session, payload,
+                            operation_key=key, langmem_mode="shadow")
+        again = await write(self.repo, "commit_turn", "C901", session, payload,
+                            operation_key=key, langmem_mode="shadow")
+        self.assertEqual(first, again)
+        async with self.repo.transaction() as conn:
+            self.assertEqual(await conn.fetchval("""SELECT count(*)
+                FROM ai_memory.langmem_distillation_jobs WHERE session_id=$1""",
+                UUID(session)), 1)
+            job = await self.repo.claim_distillation(conn, 1)
+            self.assertEqual(str(job["source_turn_id"]), source)
+            await conn.execute("""UPDATE ai_memory.langmem_distillation_jobs
+                SET lease_until=now()-interval '1 second' WHERE job_id=$1""", job["job_id"])
+        async with self.repo.transaction() as conn:
+            reclaimed = await self.repo.claim_distillation(conn, 1)
+            self.assertEqual(reclaimed["job_id"], job["job_id"])
+            self.assertEqual(reclaimed["attempts"], 2)
+
     async def test_structured_issue_resolves_across_sessions(self):
         first, second = str(uuid4()), str(uuid4())
         opened = await write(self.repo, "commit_turn", "C901", first, {
@@ -118,7 +190,7 @@ class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
         try:
             await connection.execute("CREATE SCHEMA app_runtime")
             migration_dir = Path(__file__).resolve().parents[1] / "migrations"
-            for migration in sorted(migration_dir.glob("000*.sql")):
+            for migration in sorted(migration_dir.glob("0*.sql")):
                 await connection.execute(migration.read_text())
         finally:
             await connection.close()

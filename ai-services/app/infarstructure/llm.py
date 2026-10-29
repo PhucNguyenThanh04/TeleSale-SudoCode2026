@@ -32,4 +32,5 @@ def build_llm(settings: Settings) -> BaseChatModel:
         },
         temperature=settings.llm_temperature,
         num_predict=settings.llm_max_tokens,
+        seed=settings.llm_seed,
     )

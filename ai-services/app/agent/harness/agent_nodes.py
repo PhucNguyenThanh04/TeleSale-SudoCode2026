@@ -242,6 +242,8 @@ class AgentNodes(SessionNodes):
                 str(request.session_id), state.get("customer_id"), state["safe_text"],
                 state["agent_text"], request.on.isoformat(), request.channel,
                 str(request.client_msg_id), facts,
+                **({"tool_observations": tool_calls}
+                   if getattr(self.memory, "supports_tool_observations", False) else {}),
                 orders=[call["result"]["order_id"] for call in state.get("tool_calls", [])
                         if call.get("name") == "order.create"
                         and call.get("result", {}).get("status") == "created"

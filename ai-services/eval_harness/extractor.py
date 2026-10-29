@@ -78,19 +78,13 @@ def extract_claims(agent_text: str, tool_calls: list[dict[str, Any]]) -> list[di
             claims.append({"field": "is_human", "value": True, "text": agent_text})
             break
 
-    # Extract price claims from tool calls (most accurate source)
-    for tc in tool_calls:
-        args = tc.get("args", {})
-        if tc.get("name") in ("pricing.get_quote", "order.create"):
-            price = args.get("price_vnd")
-            if price is not None:
-                claims.append({"field": "price_vnd", "value": price, "source": "tool_call"})
-            sku = args.get("sku")
-            if sku:
-                claims.append({"field": "sku", "value": sku, "source": "tool_call"})
-            promo = args.get("promo_code")
-            if promo:
-                claims.append({"field": "promo_code", "value": promo, "source": "tool_call"})
+    # The BTC claim metric concerns what the agent said, not what a tool received.
+    for match in re.finditer(r"(?:giá|gia)\s+(?:là|la|hiện tại|hien tai|báo|bao)?\s*"
+                             r"(\d{1,3}(?:[.,]\d{3})+|\d{6,})\s*(?:đồng|đ|vnd)?",
+                             agent_text, re.IGNORECASE):
+        claims.append({"field": "price_vnd",
+                       "value": int(re.sub(r"\D", "", match.group(1))),
+                       "source": "text"})
 
     # Extract delivery / stock claims from text
     lower_text = agent_text.lower()

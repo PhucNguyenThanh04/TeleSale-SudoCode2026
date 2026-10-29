@@ -37,11 +37,14 @@ class Settings(BaseSettings):
     ollama_timeout_seconds: float = Field(default=30, gt=0)
     llm_temperature: float = Field(default=0.2, ge=0, le=1)
     llm_max_tokens: int = Field(default=256, ge=1)
+    llm_seed: int | None = None
     agent_max_tool_calls: int = Field(default=DEFAULT_MAX_TOOL_CALLS, ge=3, le=20)
     agent_prompt_history_turns: int = Field(default=DEFAULT_PROMPT_HISTORY_TURNS, ge=1, le=12)
     agent_guardrails_enabled: bool = True
     agent_kind: Literal["deep", "react"] = "deep"
     fact_extraction_mode: Literal["fallback", "always", "off"] = "fallback"
+    langmem_mode: Literal["off", "shadow", "enabled"] = "off"
+    langmem_model: str | None = None
     langfuse_enabled: bool = False
     langfuse_capture_content: bool = False
     langfuse_public_key: str | None = None
