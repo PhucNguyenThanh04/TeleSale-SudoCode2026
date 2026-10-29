@@ -59,6 +59,7 @@ class AgentNodes(SessionNodes):
         if customer_erasure_requested(state["safe_text"]):
             return await self._route_customer_erasure(state)
         business = BusinessTools(self.tools, state, self.max_tool_calls, self.clock)
+        state["langmem_primary"] = bool(getattr(self.memory, "langmem_primary", False))
         agent = build_agent(self.agent_kind, self.llm, business)
         context = prompt_context(state, self.prompt_history_turns)
         messages = []
@@ -93,6 +94,12 @@ class AgentNodes(SessionNodes):
                 and bool(call["result"]["ticket_id"]) for call in handoffs):
             draft = ("Dạ, hiện em chưa chuyển được yêu cầu. Anh/chị vui lòng "
                      "liên hệ tổng đài để được hỗ trợ ạ.")
+        if state["langmem_primary"]:
+            return {"agent_draft": draft, "fact_candidates": [],
+                    "tool_calls": state["tool_calls"],
+                    "tool_count": state.get("tool_count", 0),
+                    "needs_handoff": state.get("needs_handoff", False),
+                    "handoff_ticket_id": state.get("handoff_ticket_id")}
         proposals = state.get("model_fact_candidates", []) + model_candidates(messages)
         evidenced = accepted_candidates(state["safe_text"], state.get("tool_calls", []),
                                        proposals)
@@ -222,6 +229,27 @@ class AgentNodes(SessionNodes):
             return {"memory_writes": []}
         request = state["request"]
         tool_calls = state.get("tool_calls", [])
+        if getattr(self.memory, "langmem_primary", False):
+            try:
+                result = await self.memory.commit_turn(
+                    str(request.session_id), state.get("customer_id"),
+                    state["safe_text"], state["agent_text"], request.on.isoformat(),
+                    request.channel, str(request.client_msg_id), [],
+                    tool_observations=tool_calls,
+                    outcome=outcome_from_tool_calls(tool_calls),
+                    orders=[call["result"]["order_id"] for call in tool_calls
+                            if call.get("name") == "order.create"
+                            and call.get("result", {}).get("status") == "created"
+                            and isinstance(call.get("result", {}).get("order_id"), str)])
+            except Exception as exc:
+                log_event(state, "persist", "failed", level=logging.ERROR,
+                          operation="commit_turn", error_type=type(exc).__name__)
+                raise RuntimeError("memory_turn_write_failed") from exc
+            if (not isinstance(result, dict) or type(result.get("turn_no")) is not int
+                    or result["turn_no"] < 1
+                    or not isinstance(result.get("memory_writes"), list)):
+                raise RuntimeError("memory_turn_write_failed")
+            return {"memory_writes": result["memory_writes"]}
         proposals = [*state.get("fact_candidates", []),
                      *reported_tool_candidates(state["agent_text"], tool_calls)]
         literal_blockers = literal_blocker_candidates(state["safe_text"])
@@ -257,6 +285,8 @@ class AgentNodes(SessionNodes):
                 str(request.session_id), state.get("customer_id"), state["safe_text"],
                 state["agent_text"], request.on.isoformat(), request.channel,
                 str(request.client_msg_id), facts,
+                **({"tool_observations": tool_calls}
+                   if getattr(self.memory, "supports_tool_observations", False) else {}),
                 orders=[call["result"]["order_id"] for call in state.get("tool_calls", [])
                         if call.get("name") == "order.create"
                         and call.get("result", {}).get("status") == "created"

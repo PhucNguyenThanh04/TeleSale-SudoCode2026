@@ -18,11 +18,13 @@ def build_runtime(settings: Settings) -> AgentHarnessRuntime:
     gateway = MCPGateway(settings.mcp_catalog_url, settings.mcp_order_url,
                          settings.mcp_memory_url,
                          settings.mcp_internal_token.get_secret_value())
-    memory = MCPMemoryStore(gateway, max_episodes=settings.memory_max_episodes)
+    memory = MCPMemoryStore(gateway, max_episodes=settings.memory_max_episodes,
+                            langmem_primary=settings.langmem_mode == "enabled")
     return AgentHarnessRuntime(build_llm(settings), gateway, memory,
                               max_tool_calls=settings.agent_max_tool_calls,
                               prompt_history_turns=settings.agent_prompt_history_turns,
                               guardrails_enabled=settings.agent_guardrails_enabled,
                               tracing=LangfuseTracing(settings) if settings.langfuse_enabled else None,
                               agent_kind=settings.agent_kind,
-                              fact_extraction_mode=settings.fact_extraction_mode)
+                              fact_extraction_mode=("off" if settings.langmem_mode == "enabled"
+                                                    else settings.fact_extraction_mode))

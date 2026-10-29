@@ -1,5 +1,49 @@
 # Benchmark Dataset & Eval Harness — AI TeleSale SudoCode 2026
 
+The benchmark runner now writes `<out>_full.jsonl` and
+`<out>_baseline.jsonl` for the BTC `eval/reference_eval.py` script. Run the
+two configurations against separate, identically seeded test databases so
+orders and promotion usage from one run cannot affect the other. The
+no-memory run keeps the same CRM identity and hides prior memory instead of
+changing the customer's phone. Since the current chat API is not streaming,
+`ttft_ms` is conservatively reported as total response time; do not present
+it as a measured first-token time.
+
+## LangMem adoption runbook
+
+Run `current`, `shadow`, and `enabled` against separately seeded test databases
+with the same BTC catalog, CRM, model, temperature, max tokens, `--seed`, dates,
+and business tools. Start `mcp-memory` and the worker with matching
+`LANGMEM_MODE`; the `current` run uses `off` and no worker. Wait until
+`ai_memory.langmem_distillation_jobs` has no pending or leased rows before the
+next call in a shadow/enabled scenario. Keep traces in ignored `results/`.
+
+For each variant and for both the seven BTC public samples and 19 local
+scenarios, run `python -m eval_harness.benchmark_runner --agent deep --config
+full --variant VARIANT --seed 7 --scenarios DATASET --out results/VARIANT_DATASET.json`.
+Run `--config baseline --variant current` against a separate clone of the
+same seed database. The runner emits `*_full.jsonl` or `*_baseline.jsonl`.
+`--config both` is useful only for a quick smoke test because it reuses mutable
+business tables. Score each pair with
+the unmodified BTC script:
+
+```bash
+python /home/thanh-phuc/PyProject/sudocode/BTC-Data-Vong1-TEAMS/eval/reference_eval.py \
+  --scenarios /home/thanh-phuc/PyProject/sudocode/BTC-Data-Vong1-TEAMS/test_set/public_sample \
+  --trace results/current_public_full.jsonl \
+  --baseline results/current_public_baseline.jsonl \
+  --out results/current_public_reference.json
+```
+
+Use matching paths for shadow/enabled; for the local set, use
+`eval_harness/scenarios` as `--scenarios`. Compare one dataset at a time with
+`python -m eval_harness.compare_langmem --scenarios DATASET_DIR --current REPORT --current-manifest
+RUNNER_JSON --shadow REPORT --shadow-manifest RUNNER_JSON --enabled REPORT
+--enabled-manifest RUNNER_JSON --out AGGREGATE_JSON`. The output contains
+categorized TSR misses and a release gate. Missing denominators, Call Brief
+samples, or comparable run metadata fail the gate. `cost_per_call_usd` stays
+`null` until a billing source is attached; `ttft_ms` remains a proxy.
+
 Bộ dữ liệu kiểm chuẩn (Benchmark Dataset) và công cụ thẩm định tự động (Validator) phục vụ đo lường, so sánh hiệu năng giữa **Deep Agent** (`deepagents.create_deep_agent`) và **ReAct Agent** (`langchain.agents.create_agent`) trên toàn diện kiến trúc `ai-services`.
 
 ---

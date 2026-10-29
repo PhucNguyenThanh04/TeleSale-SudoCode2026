@@ -1,6 +1,7 @@
 """Real PostgreSQL memory contract in an automatically removed test database."""
 
 import os
+import json
 import unittest
 from datetime import date
 from pathlib import Path
@@ -10,14 +11,165 @@ from uuid import UUID, uuid4
 import asyncpg
 
 from app.mcp_servers.mcp_memory.repos.postgres import MemoryRepo
+from app.mcp_servers.mcp_memory.repos.langmem_projection import LangMemProjection, store_dsn
+from app.mcp_servers.mcp_memory.distiller_worker import process_one
+from app.schemas.langmem import ProfileFactCandidate
+from langgraph.store.postgres.aio import AsyncPostgresStore
 from app.mcp_servers.mcp_memory.services.erasure import request_erasure
 from app.mcp_servers.mcp_memory.services.erasure_executor import execute_erasure
 from app.mcp_servers.mcp_memory.services.memory import read, write
+from eval_harness.benchmark_runner import read_distillation_writes
+from scripts.backfill_langmem_store import backfill_customer
 
 
 @unittest.skipUnless(os.getenv("MEMORY_INTEGRATION_ADMIN_DSN"),
                      "requires MEMORY_INTEGRATION_ADMIN_DSN with CREATEDB")
 class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
+    async def test_unfinished_store_write_is_hidden_until_job_completes(self):
+        async with AsyncPostgresStore.from_conn_string(store_dsn(self.dsn), index=None) as store:
+            await store.setup()
+        projection = LangMemProjection(self.dsn)
+        await projection.put_facts("C901", str(uuid4()), str(uuid4()), "2026-10-15",
+            [{"key": "preferred_color", "value": "xanh", "op": "set",
+              "scope_type": "global", "scope_id": "", "source_kind": "customer",
+              "evidence_quote": "màu xanh"}], revision=999)
+        loaded = await read(self.repo, "C901", str(uuid4()),
+                            langmem_mode="enabled", projector=projection)
+        self.assertEqual(loaded["profile"], {})
+
+    async def test_unfinished_supersession_keeps_last_completed_fact_and_episode(self):
+        async with AsyncPostgresStore.from_conn_string(store_dsn(self.dsn), index=None) as store:
+            await store.setup()
+        projection = LangMemProjection(self.dsn)
+        session = str(uuid4())
+        fact = {"key": "preferred_color", "value": "xanh", "op": "set",
+                "scope_type": "global", "scope_id": "", "source_kind": "customer",
+                "evidence_quote": "màu xanh"}
+        await projection.put_facts("C901", session, str(uuid4()), "2026-10-15",
+                                   [fact], revision=-1)
+        await projection.put_episode("C901", session, {"summary": "Thích màu xanh",
+            "on_date": "2026-10-15", "topics": [], "resolved_prior_items": []})
+        await projection.put_facts("C901", session, str(uuid4()), "2026-10-16",
+                                   [{**fact, "value": "trắng", "op": "supersede"}],
+                                   revision=999)
+        await projection.put_episode("C901", session, {"summary": "Thích màu trắng",
+            "on_date": "2026-10-16", "topics": [], "resolved_prior_items": []},
+            revision=999)
+        loaded = await read(self.repo, "C901", str(uuid4()),
+                            langmem_mode="enabled", projector=projection)
+        self.assertEqual(loaded["profile"]["preferred_color"]["value"], "xanh")
+        self.assertEqual(loaded["episodes"][0]["summary"], "Thích màu xanh")
+        await projection.put_facts("C901", session, str(uuid4()), "2026-10-17",
+                                   [{**fact, "op": "delete"}], revision=1000)
+        after_pending_delete = await read(self.repo, "C901", str(uuid4()),
+                                          langmem_mode="enabled", projector=projection)
+        self.assertEqual(after_pending_delete["profile"]["preferred_color"]["value"],
+                         "xanh")
+        source = str(uuid4())
+        await write(self.repo, "commit_turn", "C901", session, {
+            "customer_text": "Lên đơn giúp tôi", "agent_text": "Dạ",
+            "on": "2026-10-18", "channel": "hotline", "client_msg_id": source,
+            "facts": [], "outcome": "chot_don"}, langmem_mode="enabled")
+        async def no_new_facts(_messages, _existing):
+            return [], None
+        self.assertTrue(await process_one(self.repo, no_new_facts, projection))
+        after_completed_turn = await read(self.repo, "C901", str(uuid4()),
+                                          langmem_mode="enabled", projector=projection)
+        self.assertIn("Thích màu xanh", after_completed_turn["episodes"][0]["summary"])
+        self.assertNotIn("Thích màu trắng", after_completed_turn["episodes"][0]["summary"])
+
+    async def test_backfill_preserves_legacy_fact_for_primary_read(self):
+        async with AsyncPostgresStore.from_conn_string(store_dsn(self.dsn), index=None) as store:
+            await store.setup()
+        session, source = str(uuid4()), str(uuid4())
+        old = await write(self.repo, "commit_turn", "C901", session, {
+            "customer_text": "Phòng tôi 25 m²", "agent_text": "Dạ em ghi nhận",
+            "on": "2026-10-15", "channel": "hotline", "client_msg_id": source,
+            "facts": [{"key": "room_area_m2", "value": 25, "op": "set",
+                       "source_kind": "customer", "evidence_quote": "Phòng tôi 25 m²"}]},
+            langmem_mode="off")
+        self.assertEqual(old["memory_writes"][0]["value"], 25)
+        projection = LangMemProjection(self.dsn)
+        counts = await backfill_customer(self.repo, projection, "C901")
+        self.assertEqual(counts["facts"], 1)
+        self.assertEqual(counts["episodes"], 1)
+        self.assertEqual(await backfill_customer(self.repo, projection, "C901"),
+                         {"facts": 0, "episodes": 0, "skipped": 0})
+        loaded = await read(self.repo, "C901", str(uuid4()),
+                            langmem_mode="enabled", projector=projection)
+        self.assertEqual(loaded["profile"]["room_area_m2"]["value"], 25)
+        self.assertEqual(loaded["episodes"][0]["session_id"], session)
+
+    async def test_worker_admits_fact_projects_episode_then_erases(self):
+        async with AsyncPostgresStore.from_conn_string(store_dsn(self.dsn), index=None) as store:
+            await store.setup()
+        projection = LangMemProjection(self.dsn)
+        session, source = str(uuid4()), str(uuid4())
+        await write(self.repo, "commit_turn", "C901", session, {
+            "customer_text": "Phòng tôi 25 m²", "agent_text": "Dạ em ghi nhận",
+            "on": "2026-10-15", "channel": "hotline", "client_msg_id": source,
+            "facts": []}, langmem_mode="enabled")
+        async def extractor(messages, _existing):
+            payload = json.loads(messages[0]["content"])
+            return ([ProfileFactCandidate(key="room_area_m2", value=25,
+                source_kind="customer", source_turn_id=payload["turn_id"],
+                evidence_quote="Phòng tôi 25 m²", observed_on=date(2026, 10, 15))], None)
+        self.assertTrue(await process_one(self.repo, extractor, projection))
+        attributed = await read_distillation_writes(self.dsn, [source])
+        self.assertEqual(attributed[source][0]["key"], "room_area_m2")
+        loaded = await read(self.repo, "C901", str(uuid4()),
+                            langmem_mode="enabled", projector=projection)
+        self.assertEqual(loaded["profile"]["room_area_m2"]["value"], 25)
+        self.assertEqual(loaded["episodes"][0]["summary"], "Phòng tôi 25 m²")
+        key = str(uuid4())
+        await request_erasure(self.repo, customer_id="C901", request_key=key,
+            verification_ref="case-901", verified_by="operator-1", scope=["ai_memory"])
+        erased = await execute_erasure(self.repo, key, projection)
+        self.assertEqual(erased["status"], "completed")
+        self.assertEqual(await projection.list_facts("C901"), [])
+        self.assertEqual(await projection.list_episodes("C901", 5), [])
+
+    async def test_langmem_store_isolated_schema_persists_across_instances(self):
+        async with AsyncPostgresStore.from_conn_string(store_dsn(self.dsn), index=None) as store:
+            await store.setup()
+        first = LangMemProjection(self.dsn)
+        await first.put_episode("C901", "session-1", {"summary": "Đang cân nhắc",
+            "topics": [], "resolved_prior_items": []})
+        second = LangMemProjection(self.dsn)
+        self.assertEqual(len(await second.list_episodes("C901", 5)), 1)
+        self.assertEqual(await second.list_episodes("C902", 5), [])
+        async with self.repo.transaction() as conn:
+            self.assertEqual(await conn.fetchval("""SELECT count(*) FROM pg_tables
+                WHERE schemaname='langmem_store' AND tablename='store'"""), 1)
+            self.assertEqual(await conn.fetchval("""SELECT count(*) FROM pg_tables
+                WHERE schemaname='public' AND tablename='store'"""), 0)
+        self.assertEqual(await second.delete_customer("C901"), 1)
+        self.assertEqual(await first.list_episodes("C901", 5), [])
+
+    async def test_distillation_job_is_durable_and_reclaims_expired_lease(self):
+        session, source = str(uuid4()), str(uuid4())
+        payload = {"customer_text": "Tôi thích màu xanh", "agent_text": "Dạ",
+                   "on": "2026-10-15", "channel": "hotline", "client_msg_id": source,
+                   "facts": [], "tool_observations": []}
+        key = f"{session}:{source}:commit_turn"
+        first = await write(self.repo, "commit_turn", "C901", session, payload,
+                            operation_key=key, langmem_mode="shadow")
+        again = await write(self.repo, "commit_turn", "C901", session, payload,
+                            operation_key=key, langmem_mode="shadow")
+        self.assertEqual(first, again)
+        async with self.repo.transaction() as conn:
+            self.assertEqual(await conn.fetchval("""SELECT count(*)
+                FROM ai_memory.langmem_distillation_jobs WHERE session_id=$1""",
+                UUID(session)), 1)
+            job = await self.repo.claim_distillation(conn, 1)
+            self.assertEqual(str(job["source_turn_id"]), source)
+            await conn.execute("""UPDATE ai_memory.langmem_distillation_jobs
+                SET lease_until=now()-interval '1 second' WHERE job_id=$1""", job["job_id"])
+        async with self.repo.transaction() as conn:
+            reclaimed = await self.repo.claim_distillation(conn, 1)
+            self.assertEqual(reclaimed["job_id"], job["job_id"])
+            self.assertEqual(reclaimed["attempts"], 2)
+
     async def test_structured_issue_resolves_across_sessions(self):
         first, second = str(uuid4()), str(uuid4())
         opened = await write(self.repo, "commit_turn", "C901", first, {
@@ -118,7 +270,7 @@ class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
         try:
             await connection.execute("CREATE SCHEMA app_runtime")
             migration_dir = Path(__file__).resolve().parents[1] / "migrations"
-            for migration in sorted(migration_dir.glob("000*.sql")):
+            for migration in sorted(migration_dir.glob("0*.sql")):
                 await connection.execute(migration.read_text())
         finally:
             await connection.close()

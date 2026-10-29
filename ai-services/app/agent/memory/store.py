@@ -3,6 +3,26 @@
 from typing import Any, Protocol
 
 from app.agent.mcp.gateway import ToolGateway
+from app.agent.guardrails.checks import safe_tool_result
+
+
+_DISTILLATION_TOOLS = {"catalog.search", "catalog.get_product", "inventory.check",
+                       "pricing.get_quote", "policy.search", "order.get_status"}
+
+
+def safe_observations(calls: list[dict]) -> list[dict]:
+    """Bound successful business observations before crossing the memory MCP."""
+    result = []
+    for call in calls[:20]:
+        if call.get("name") not in _DISTILLATION_TOOLS or not isinstance(call.get("result"), dict):
+            continue
+        if "error" in call["result"]:
+            continue
+        value = {"name": call["name"], "args": safe_tool_result(call.get("args") or {}),
+                 "result": safe_tool_result(call["result"])}
+        if len(str(value)) <= 4000:
+            result.append(value)
+    return result[:8]
 
 
 def memory_error_code(result: Any) -> str:
@@ -15,7 +35,7 @@ def memory_error_code(result: Any) -> str:
         "invalid_tool_result", "session_owner_mismatch", "operation_key_conflict",
         "invalid_turn_data", "invalid_facts_or_identity", "invalid_orders_or_identity",
         "customer_erasure_in_progress", "invalid_scope", "invalid_episode_delta",
-        "invalid_outcome",
+        "invalid_outcome", "memory_store_unavailable", "legacy_memory_action_disabled",
     } else "memory_error"
 
 
@@ -29,18 +49,23 @@ class MemoryStore(Protocol):
                           client_msg_id: str, facts: list[dict[str, Any]],
                           orders: list[str] | None = None,
                           episode_delta: dict[str, Any] | None = None,
-                          outcome: str = "khac") -> dict: ...
+                          outcome: str = "khac",
+                          tool_observations: list[dict[str, Any]] | None = None) -> dict: ...
 
 
 class MCPMemoryStore:
     """Async graph memory over memory.read/write, with no process-local facts."""
 
+    supports_tool_observations = True
+
     def __init__(self, gateway: ToolGateway, namespace: str = "",
-                 include_prior: bool = True, max_episodes: int = 5) -> None:
+                 include_prior: bool = True, max_episodes: int = 5,
+                 langmem_primary: bool = False) -> None:
         self.gateway = gateway
         self.namespace = namespace
         self.include_prior = include_prior
         self.max_episodes = max_episodes
+        self.langmem_primary = langmem_primary
 
     def _id(self, customer_id: str | None) -> str | None:
         return f"{self.namespace}:{customer_id}" if customer_id and self.namespace else customer_id
@@ -56,7 +81,8 @@ class MCPMemoryStore:
                           client_msg_id: str, facts: list[dict[str, Any]],
                           orders: list[str] | None = None,
                           episode_delta: dict[str, Any] | None = None,
-                          outcome: str = "khac") -> dict:
+                          outcome: str = "khac",
+                          tool_observations: list[dict[str, Any]] | None = None) -> dict:
         data = {"customer_text": customer_text, "agent_text": agent_text,
                 "on": on, "channel": channel, "client_msg_id": client_msg_id,
                 "facts": facts, "orders": orders or []}
@@ -64,6 +90,8 @@ class MCPMemoryStore:
             data["episode_delta"] = episode_delta
         if outcome != "khac":
             data["outcome"] = outcome
+        if tool_observations:
+            data["tool_observations"] = safe_observations(tool_observations)
         return await self.gateway.invoke("memory.write", {
             "action": "commit_turn", "session_id": session_id,
             "customer_id": self._id(customer_id),

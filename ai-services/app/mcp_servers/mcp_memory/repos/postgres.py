@@ -8,6 +8,26 @@ from uuid import UUID
 
 import asyncpg
 from sqlalchemy.engine import make_url
+from app.mcp_servers.mcp_shared.pii import mask_pii
+
+
+_BUSINESS_TOOLS = {"catalog.search", "catalog.get_product", "inventory.check",
+                   "pricing.get_quote", "policy.search", "order.get_status"}
+
+
+def _bounded_observations(calls: list[dict]) -> list[dict]:
+    safe = []
+    for call in calls[:20]:
+        if not isinstance(call, dict) or call.get("name") not in _BUSINESS_TOOLS:
+            continue
+        if not isinstance(call.get("result"), dict) or "error" in call["result"]:
+            continue
+        item = {"name": call["name"], "args": call.get("args", {}),
+                "result": call["result"]}
+        encoded = json.dumps(item, ensure_ascii=False, default=str)
+        if len(encoded) <= 4000:
+            safe.append(json.loads(mask_pii(encoded)))
+    return safe[:8]
 
 
 class MemoryRepo:
@@ -99,7 +119,7 @@ class MemoryRepo:
             customer_id, UUID(session_id), maximum)
 
     async def episode_state(self, conn, session_id: str, customer_id: str):
-        return await conn.fetchrow("""SELECT summary,outcome,topics,resolved_prior_items,status FROM ai_memory.episodes
+        return await conn.fetchrow("""SELECT session_id,channel,on_date,summary,outcome,topics,resolved_prior_items,status FROM ai_memory.episodes
             WHERE session_id=$1 AND customer_id=$2""", UUID(session_id), customer_id)
 
     async def prior_open_items(self, conn, customer_id: str, session_id: str) -> dict[str, tuple[str, str]]:
@@ -186,6 +206,9 @@ class MemoryRepo:
         await conn.execute("DELETE FROM ai_memory.pending_facts WHERE session_id=ANY($1::uuid[])",
                            [row["session_id"] for row in fully_owned])
         deleted = {}
+        job_result = await conn.execute("""DELETE FROM ai_memory.langmem_distillation_jobs
+            WHERE customer_id=$1""", customer_id)
+        deleted["langmem_distillation_jobs"] = int(job_result.rsplit(" ", 1)[-1])
         for table in ("order_links", "facts", "episodes", "turns"):
             result = await conn.execute(f"DELETE FROM ai_memory.{table} WHERE customer_id=$1",
                                         customer_id)
@@ -211,6 +234,68 @@ class MemoryRepo:
             (session_id,turn_no,customer_id,channel,on_date,customer_text,agent_text)
             VALUES($1,$2,$3,$4,$5,$6,$7)""", UUID(session_id), number, customer_id,
             channel, on, customer_text, agent_text)
+
+    async def enqueue_distillation(self, conn, session_id: str, customer_id: str,
+                                   source_turn_id: str, tool_observations: list[dict],
+                                   mode: str = "enabled", outcome: str = "khac") -> None:
+        turn_no = await conn.fetchval("SELECT MAX(turn_no) FROM ai_memory.turns WHERE session_id=$1",
+                                      UUID(session_id))
+        await conn.execute("""INSERT INTO ai_memory.langmem_distillation_jobs
+            (session_id,customer_id,source_turn_id,turn_no,tool_observations,mode,verified_outcome)
+            VALUES($1,$2,$3,$4,$5::jsonb,$6,$7)
+            ON CONFLICT(session_id,source_turn_id) DO NOTHING""",
+            UUID(session_id), customer_id, UUID(source_turn_id), turn_no,
+            json.dumps(_bounded_observations(tool_observations), ensure_ascii=False), mode,
+            outcome)
+
+    async def claim_distillation(self, conn, lease_seconds: int = 120) -> dict | None:
+        row = await conn.fetchrow("""WITH candidate AS (
+            SELECT j.job_id FROM ai_memory.langmem_distillation_jobs j
+            WHERE (j.status='pending' OR (j.status='leased' AND j.lease_until<now()))
+              AND j.attempts<5
+              AND NOT EXISTS (SELECT 1 FROM ai_memory.langmem_distillation_jobs earlier
+                  WHERE earlier.session_id=j.session_id AND earlier.turn_no<j.turn_no
+                    AND earlier.status IN ('pending','leased'))
+            ORDER BY j.created_at,j.job_id FOR UPDATE SKIP LOCKED LIMIT 1
+        ) UPDATE ai_memory.langmem_distillation_jobs j
+        SET status='leased',attempts=attempts+1,
+            lease_until=now()+($1::int * interval '1 second'),updated_at=now()
+        FROM candidate WHERE j.job_id=candidate.job_id
+        RETURNING j.job_id,j.session_id,j.customer_id,j.source_turn_id,j.turn_no,
+                  j.tool_observations,j.mode,j.attempts,j.accepted_proposals,
+                  j.verified_outcome""", lease_seconds)
+        return dict(row) if row else None
+
+    async def save_distillation_proposals(self, conn, job_id: int,
+                                          proposals: dict) -> None:
+        await conn.execute("""UPDATE ai_memory.langmem_distillation_jobs
+            SET accepted_proposals=$2::jsonb,updated_at=now()
+            WHERE job_id=$1 AND status='leased'""", job_id,
+            json.dumps(proposals, ensure_ascii=False))
+
+    async def distillation_turn(self, conn, job: dict) -> dict | None:
+        row = await conn.fetchrow("""SELECT customer_id,customer_text,agent_text,on_date,channel
+            FROM ai_memory.turns WHERE session_id=$1 AND turn_no=$2 AND customer_id=$3""",
+            job["session_id"], job["turn_no"], job["customer_id"])
+        return dict(row) if row else None
+
+    async def finish_distillation(self, conn, job_id: int, status: str,
+                                  error_code: str | None = None,
+                                  accepted_writes: list[dict] | None = None) -> None:
+        await conn.execute("""UPDATE ai_memory.langmem_distillation_jobs
+            SET status=$2,lease_until=NULL,error_code=$3,
+                accepted_writes=$4::jsonb,updated_at=now()
+            WHERE job_id=$1""", job_id, status, error_code,
+            json.dumps(accepted_writes or [], ensure_ascii=False))
+
+    async def completed_job_revisions(self, conn, customer_id: str,
+                                      revisions: list[int]) -> set[int]:
+        if not revisions:
+            return set()
+        rows = await conn.fetch("""SELECT job_id FROM ai_memory.langmem_distillation_jobs
+            WHERE customer_id=$1 AND status='completed' AND job_id=ANY($2::bigint[])""",
+            customer_id, revisions)
+        return {row["job_id"] for row in rows}
 
     async def upsert_episode(self, conn, session_id: str, customer_id: str, channel: str,
                              on, summary: str, outcome: str) -> None:

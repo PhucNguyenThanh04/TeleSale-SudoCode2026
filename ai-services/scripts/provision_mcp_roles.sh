@@ -27,6 +27,7 @@ ALTER ROLE mcp_memory PASSWORD '$memory_password';
 GRANT CONNECT ON DATABASE "$PGDATABASE" TO mcp_catalog, mcp_order, mcp_memory;
 GRANT USAGE ON SCHEMA btc_source, app_runtime TO mcp_catalog, mcp_order;
 GRANT USAGE ON SCHEMA ai_memory TO mcp_memory;
+GRANT USAGE ON SCHEMA langmem_store TO mcp_memory;
 GRANT SELECT ON btc_source.products, btc_source.variants, btc_source.promotions,
     btc_source.inventory_events, btc_source.customers, btc_source.crm_orders,
     btc_source.crm_sessions TO mcp_catalog, mcp_order;
@@ -36,5 +37,7 @@ GRANT SELECT, INSERT, UPDATE ON app_runtime.tool_orders, app_runtime.tool_update
     app_runtime.tool_callbacks, app_runtime.tool_handoffs, app_runtime.promo_uses TO mcp_order;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA app_runtime TO mcp_order;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ai_memory TO mcp_memory;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA langmem_store TO mcp_memory;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ai_memory, langmem_store TO mcp_memory;
 GRANT SELECT, INSERT, UPDATE ON app_runtime.tool_operations TO mcp_order;
 SQL

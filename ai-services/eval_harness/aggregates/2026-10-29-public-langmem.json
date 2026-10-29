@@ -1,0 +1,152 @@
+{
+  "variants": {
+    "current": {
+      "rqr_pct": 0.0,
+      "ccr_pct": 0.0,
+      "tsr_pct": 14.3,
+      "hard_tsr_pct": 33.3,
+      "price_promo_hr_pct": 0.0,
+      "guardrail_violations": 0,
+      "pii_violations": 0,
+      "call_brief_p95_ms": 53,
+      "total_p95_ms": 5087,
+      "ttft_p95_ms": 5087,
+      "cost_per_call_usd": null,
+      "tsr_failures": [
+        {
+          "scenario": "SAMPLE-01",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SAMPLE-02",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SAMPLE-03",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SAMPLE-04",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SAMPLE-05",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SAMPLE-06",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        }
+      ],
+      "rqr_relative_reduction_pct": null
+    },
+    "shadow": {
+      "rqr_pct": 0.0,
+      "ccr_pct": 0.0,
+      "tsr_pct": 14.3,
+      "hard_tsr_pct": 33.3,
+      "price_promo_hr_pct": 0.0,
+      "guardrail_violations": 0,
+      "pii_violations": 0,
+      "call_brief_p95_ms": 62,
+      "total_p95_ms": 4507,
+      "ttft_p95_ms": 4507,
+      "cost_per_call_usd": null,
+      "tsr_failures": [
+        {
+          "scenario": "SAMPLE-01",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SAMPLE-02",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SAMPLE-03",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SAMPLE-04",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SAMPLE-05",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SAMPLE-06",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        }
+      ],
+      "rqr_relative_reduction_pct": null
+    },
+    "enabled": {
+      "rqr_pct": 0.0,
+      "ccr_pct": 0.0,
+      "tsr_pct": 14.3,
+      "hard_tsr_pct": 33.3,
+      "price_promo_hr_pct": 0.0,
+      "guardrail_violations": 0,
+      "pii_violations": 0,
+      "call_brief_p95_ms": 67,
+      "total_p95_ms": 4149,
+      "ttft_p95_ms": 4149,
+      "cost_per_call_usd": null,
+      "tsr_failures": [
+        {
+          "scenario": "SAMPLE-01",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SAMPLE-02",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SAMPLE-03",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SAMPLE-04",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SAMPLE-05",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SAMPLE-06",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        }
+      ],
+      "rqr_relative_reduction_pct": null
+    }
+  },
+  "adoption_gate": {
+    "pass": false,
+    "reasons": [
+      "no_measurable_gain"
+    ]
+  },
+  "note": "TTFT is a total-latency proxy until streaming measurement exists.",
+  "dataset": "BTC public_sample (7 scenarios, 39 turns per variant)",
+  "method": "BTC reference_eval.py on separately seeded databases; trace source normalized to call#turn",
+  "deployment": "langmem_mode remains off because adoption gate failed"
+}
