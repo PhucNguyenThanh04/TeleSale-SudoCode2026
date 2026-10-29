@@ -190,6 +190,11 @@ search path; LangGraph's concurrent index DDL must run outside a wrapping
 transaction. Re-run `scripts/provision_mcp_roles.sh` after setup to grant the
 `mcp_memory` role access to the new store tables and job sequence. Neither the
 API nor the worker runs store DDL at startup. V1 has no vector index.
+For a verified erasure request already registered in `ai_memory.erasure_requests`,
+run `python -m scripts.execute_memory_erasure REQUEST_UUID` with the memory
+role. It removes the canonical rows, queued jobs and the customer's LangGraph
+namespace under the per-customer barrier. A projection outage leaves the
+request `partial`; retry the same UUID after recovery.
 
 The code for each server lives in `app/mcp_servers/mcp_catalog`, `app/mcp_servers/mcp_order` or
 `app/mcp_servers/mcp_memory`: `tools/` validates MCP calls, `services/` holds business

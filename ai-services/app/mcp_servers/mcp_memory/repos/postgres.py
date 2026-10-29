@@ -206,6 +206,9 @@ class MemoryRepo:
         await conn.execute("DELETE FROM ai_memory.pending_facts WHERE session_id=ANY($1::uuid[])",
                            [row["session_id"] for row in fully_owned])
         deleted = {}
+        job_result = await conn.execute("""DELETE FROM ai_memory.langmem_distillation_jobs
+            WHERE customer_id=$1""", customer_id)
+        deleted["langmem_distillation_jobs"] = int(job_result.rsplit(" ", 1)[-1])
         for table in ("order_links", "facts", "episodes", "turns"):
             result = await conn.execute(f"DELETE FROM ai_memory.{table} WHERE customer_id=$1",
                                         customer_id)
