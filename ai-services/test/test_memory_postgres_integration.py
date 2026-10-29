@@ -18,6 +18,30 @@ from app.mcp_servers.mcp_memory.services.memory import read, write
 @unittest.skipUnless(os.getenv("MEMORY_INTEGRATION_ADMIN_DSN"),
                      "requires MEMORY_INTEGRATION_ADMIN_DSN with CREATEDB")
 class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
+    async def test_distillation_job_is_durable_and_reclaims_expired_lease(self):
+        session, source = str(uuid4()), str(uuid4())
+        payload = {"customer_text": "Tôi thích màu xanh", "agent_text": "Dạ",
+                   "on": "2026-10-15", "channel": "hotline", "client_msg_id": source,
+                   "facts": [], "tool_observations": []}
+        key = f"{session}:{source}:commit_turn"
+        first = await write(self.repo, "commit_turn", "C901", session, payload,
+                            operation_key=key, langmem_mode="shadow")
+        again = await write(self.repo, "commit_turn", "C901", session, payload,
+                            operation_key=key, langmem_mode="shadow")
+        self.assertEqual(first, again)
+        async with self.repo.transaction() as conn:
+            self.assertEqual(await conn.fetchval("""SELECT count(*)
+                FROM ai_memory.langmem_distillation_jobs WHERE session_id=$1""",
+                UUID(session)), 1)
+            job = await self.repo.claim_distillation(conn, 1)
+            self.assertEqual(str(job["source_turn_id"]), source)
+            await conn.execute("""UPDATE ai_memory.langmem_distillation_jobs
+                SET lease_until=now()-interval '1 second' WHERE job_id=$1""", job["job_id"])
+        async with self.repo.transaction() as conn:
+            reclaimed = await self.repo.claim_distillation(conn, 1)
+            self.assertEqual(reclaimed["job_id"], job["job_id"])
+            self.assertEqual(reclaimed["attempts"], 2)
+
     async def test_structured_issue_resolves_across_sessions(self):
         first, second = str(uuid4()), str(uuid4())
         opened = await write(self.repo, "commit_turn", "C901", first, {
@@ -118,7 +142,7 @@ class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
         try:
             await connection.execute("CREATE SCHEMA app_runtime")
             migration_dir = Path(__file__).resolve().parents[1] / "migrations"
-            for migration in sorted(migration_dir.glob("000*.sql")):
+            for migration in sorted(migration_dir.glob("0*.sql")):
                 await connection.execute(migration.read_text())
         finally:
             await connection.close()

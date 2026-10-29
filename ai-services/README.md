@@ -175,6 +175,14 @@ network. The one-shot `mcp-db-roles` service provisions roles on the existing
 database volume. The MCP ports are published only on host loopback and require
 the MCP bearer token. The backend business tool HTTP route is no longer mounted.
 
+When `LANGMEM_MODE=shadow` or `enabled`, each identified committed turn also
+creates one durable `ai_memory.langmem_distillation_jobs` row. Run one separate
+worker with `python -m app.mcp_servers.mcp_memory.distiller_worker` under the
+`mcp_memory` database role and model credentials. The worker leases jobs in
+session order, retries up to five times, and logs only error codes. A model
+timeout never rolls back the already committed customer turn. The default
+`LANGMEM_MODE=off` leaves the queue idle.
+
 The code for each server lives in `app/mcp_servers/mcp_catalog`, `app/mcp_servers/mcp_order` or
 `app/mcp_servers/mcp_memory`: `tools/` validates MCP calls, `services/` holds business
 rules, and `repos/` owns SQL. Shared pure pricing/stock rules, masking and

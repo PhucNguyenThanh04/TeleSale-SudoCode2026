@@ -13,6 +13,7 @@ from app.mcp_servers.mcp_memory.services.episode_summary import build_episode_su
 from app.mcp_servers.mcp_memory.services.episode_state import (
     EpisodeCapacityError, apply_episode_delta)
 from app.constants import Slot
+from app.agent.guardrails.checks import safe_tool_result
 
 
 _FACT_KEY = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
@@ -169,7 +170,8 @@ async def read(repo, customer_id: str | None, session_id: str,
 
 async def write(repo, action: str, customer_id: str | None, session_id: str,
                 data: dict, operation_key: str | None = None,
-                summary_turns: int = 3, summary_max_chars: int = 800) -> dict:
+                summary_turns: int = 3, summary_max_chars: int = 800,
+                langmem_mode: str = "off") -> dict:
     episode_delta = {}
     if action == "commit_turn":
         try:
@@ -199,6 +201,9 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
         if data.get("outcome", "khac") not in {
                 "khac", "hen_goi_lai", "chot_don", "tu_choi", "chuyen_may"}:
             return {"error": "invalid_outcome"}
+        observations = data.get("tool_observations", [])
+        if not isinstance(observations, list) or len(observations) > 20:
+            return {"error": "invalid_turn_data"}
     digest = hashlib.sha256(json.dumps({"action": action, "customer_id": customer_id,
         "session_id": session_id, "data": data}, sort_keys=True, default=str,
         ensure_ascii=False).encode()).hexdigest()
@@ -265,6 +270,10 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
                     for order_id in orders:
                         await repo.link_order(conn, customer_id, order_id)
                     result["memory_writes"] = writes
+                    if (customer_id and langmem_mode in {"shadow", "enabled"}
+                            and hasattr(repo, "enqueue_distillation")):
+                        await repo.enqueue_distillation(conn, session_id, customer_id,
+                            str(source_turn_id), observations, langmem_mode)
                 if customer_id:
                     turns = await repo.customer_turns(conn, session_id, customer_id)
                     confirmed = (await repo.session_facts(conn, session_id, customer_id)

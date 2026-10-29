@@ -25,7 +25,8 @@ async def _invoke(repo, name: str, args: dict) -> dict:
             payload = WriteInput.model_validate(args).model_dump(mode="json")
             settings = get_settings()
             return await write(repo, **payload, summary_turns=settings.memory_summary_turns,
-                               summary_max_chars=settings.memory_summary_max_chars)
+                               summary_max_chars=settings.memory_summary_max_chars,
+                               langmem_mode=getattr(settings, "langmem_mode", "off"))
     except ValidationError as exc:
         log_mcp_validation("memory", name, exc)
         return {"error": "invalid_args"}
