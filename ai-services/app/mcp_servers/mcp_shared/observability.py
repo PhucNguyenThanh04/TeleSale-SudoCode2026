@@ -107,6 +107,7 @@ def safe_tool_input(name: str, args: dict[str, Any]) -> dict[str, Any]:
 def safe_tool_output(name: str, result: dict[str, Any]) -> dict[str, Any]:
     if name == "policy.search":
         return {"chunks_count": _count(result.get("chunks")),
+                "retrieval_status": result.get("retrieval_status", "unknown"),
                 **({"error": _safe_error(result["error"])} if "error" in result else {})}
     if name == "crm.get_customer":
         return {"found": result.get("found", False), "ambiguous": result.get("ambiguous", False),

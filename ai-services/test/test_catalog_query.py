@@ -3,7 +3,6 @@
 import json
 import unittest
 from datetime import date
-from pathlib import Path
 from uuid import uuid4
 
 from app.agent.harness.catalog_query import clean_catalog_query
@@ -11,9 +10,10 @@ from app.agent.harness.policy import prepare_tool_call
 from app.agent.harness.state import Decision
 from app.mcp_servers.mcp_shared.commerce_rules import _catalog
 from app.schemas.agent import TextTurnRequest
+from btc_data import btc_data_dir
 
 
-PRODUCTS = Path(__file__).resolve().parents[3] / "BTC-Data-Vong1-TEAMS/catalog/products.json"
+PRODUCTS = btc_data_dir() / "catalog/products.json"
 
 
 def state(query, **args):
@@ -44,7 +44,7 @@ class CatalogQueryTest(unittest.TestCase):
             lambda: None)
         self.assertEqual(prepared, ("catalog.search", {
             "query": "máy lọc không khí", "min_room_area_m2": 25}))
-        products = json.loads(PRODUCTS.read_text())["products"]
+        products = json.loads(PRODUCTS.read_text(encoding="utf-8"))["products"]
         result = _catalog(products, prepared[1])
         self.assertEqual(result["total"], 6)
         self.assertNotIn("SKU-AP-MINI", {item["sku"] for item in result["items"]})

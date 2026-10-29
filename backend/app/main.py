@@ -1,11 +1,14 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.chat import router as chat_router
 from app.api.health import router as health_router
+from app.api.operator_session import router as operator_session_router
 from app.configs import get_settings
 from app.database.pg_session import check_postgres, create_pg_engine, create_pg_sessionmaker
 from app.database.redis_session import check_redis, create_redis_client
@@ -65,6 +68,12 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(chat_router)
+app.include_router(operator_session_router)
+
+# Serve the operator console from the same origin as the authenticated API.
+_frontend_dir = Path(__file__).resolve().parents[2] / "frontend"
+if _frontend_dir.is_dir():
+    app.mount("/app", StaticFiles(directory=_frontend_dir, html=True), name="operator-console")
 
 
 @app.get("/")

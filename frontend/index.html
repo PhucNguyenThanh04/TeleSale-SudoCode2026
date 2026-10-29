@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4efe4">
+  <title>Sổ Tư Vấn · TeleSale</title>
+  <link rel="stylesheet" href="/app/styles.css">
+  <script src="/app/app.js" defer></script>
+</head>
+<body>
+  <div class="page-shell">
+    <header class="masthead">
+      <div class="brand-mark" aria-hidden="true">T<span>·</span>S</div>
+      <div class="brand-copy">
+        <p class="eyebrow">TELESALE · SỔ TƯ VẤN</p>
+        <h1>Cuộc trò chuyện đáng nhớ.</h1>
+        <p class="subhead">Bàn làm việc cho tư vấn viên · Bản thử nghiệm nội bộ</p>
+      </div>
+      <div class="masthead-side"><span class="ornament">✳</span><span id="service-state">Đang kiểm tra</span></div>
+    </header>
+
+    <main class="workspace">
+      <aside class="sidebar" aria-label="Thiết lập cuộc gọi">
+        <div class="section-heading"><span>01</span><h2>Thông tin phiên</h2></div>
+        <p class="section-intro">Mỗi cuộc gọi bắt đầu bằng kênh và danh tính do tư vấn viên xác nhận từ nguồn tiếp nhận.</p>
+
+        <form id="setup-form" class="setup-form">
+          <label for="channel">Kênh tiếp nhận</label>
+          <select id="channel" name="channel">
+            <option value="chat_fanpage">Fanpage</option>
+            <option value="zalo_oa">Zalo</option>
+            <option value="hotline">Hotline</option>
+          </select>
+
+          <label for="identity">Định danh từ kênh</label>
+          <input id="identity" name="identity" type="text" autocomplete="off" placeholder="ID hội thoại hoặc số gọi đến" required>
+          <p class="field-note">Không lấy định danh từ nội dung khách tự nhắn.</p>
+
+          <label for="call-date">Ngày cuộc gọi</label>
+          <input id="call-date" name="callDate" type="date" value="2026-10-15" required>
+          <p class="field-note">Ngày dùng để tra giá, ưu đãi và chính sách.</p>
+        </form>
+
+        <div class="rule"></div>
+        <div class="section-heading compact"><span>02</span><h2>Quyền truy cập</h2></div>
+        <p class="field-note">Phiên thử nghiệm nội bộ được thiết lập tự động trên máy này.</p>
+        <div class="auth-row"><span id="auth-indicator" class="status-dot"></span><span id="auth-label">Đang kết nối…</span></div>
+
+        <button id="new-session" class="text-button" type="button">↻ Bắt đầu cuộc gọi mới</button>
+      </aside>
+
+      <section class="conversation" aria-labelledby="conversation-title">
+        <div class="conversation-head">
+          <div><p class="eyebrow">BÀN TƯ VẤN</p><h2 id="conversation-title">Hội thoại</h2></div>
+          <div class="live-pill"><span class="status-dot green"></span><span id="connection-label">Sẵn sàng</span></div>
+        </div>
+
+        <div id="messages" class="messages" role="log" aria-live="polite" aria-label="Nội dung hội thoại">
+          <div id="empty-state" class="empty-state">
+            <div class="empty-emblem" aria-hidden="true">✦</div>
+            <p class="eyebrow">TRANG ĐẦU TIÊN</p>
+            <h3>Một lời chào mở đầu câu chuyện.</h3>
+            <p>Điền thông tin phiên rồi gửi lời khách nói hoặc nhắn. Câu trả lời sẽ xuất hiện ngay tại đây.</p>
+          </div>
+        </div>
+
+        <div class="composer-area">
+          <div id="error-box" class="error-box" role="alert" hidden></div>
+          <form id="chat-form" class="composer">
+            <label for="message-input" class="sr-only">Nội dung khách hàng</label>
+            <textarea id="message-input" rows="3" maxlength="8000" placeholder="Nhập lời khách hàng ở đây…" required></textarea>
+            <div class="composer-footer">
+              <div class="input-mode-wrap"><label for="input-mode">Kiểu đầu vào</label><select id="input-mode"><option value="clean">Văn bản</option><option value="chat_teencode">Tin nhắn tự nhiên</option><option value="asr_transcript">Bản chép âm thanh</option></select></div>
+              <div class="send-wrap"><span class="keyboard-hint">Ctrl + Enter để gửi</span><button id="send-button" type="submit">Gửi tin <span aria-hidden="true">↗</span></button></div>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <aside class="folio" aria-label="Phiếu cuộc gọi">
+        <div class="section-heading"><span>03</span><h2>Phiếu cuộc gọi</h2></div>
+        <p class="folio-kicker">Ghi nhận theo thời gian thực</p>
+        <dl class="folio-list">
+          <div><dt>Mã phiên</dt><dd id="session-value">Chưa bắt đầu</dd></div>
+          <div><dt>Danh tính</dt><dd id="identity-value">Chưa xác định</dd></div>
+          <div><dt>Chuyển tư vấn viên</dt><dd id="handoff-value">Chưa yêu cầu</dd></div>
+          <div><dt>Số lượt</dt><dd id="turn-count">00</dd></div>
+        </dl>
+        <div class="folio-divider"></div>
+        <p class="eyebrow">TÓM TẮT KHÁCH QUAY LẠI</p>
+        <div id="brief-content" class="brief-content">Chưa có thông tin từ phiên trước.</div>
+        <div class="folio-bottom"><span aria-hidden="true">✳</span> Ghi chép cho cuộc gọi hiện tại</div>
+      </aside>
+    </main>
+    <footer class="site-footer"><span>TELESALE · 2026</span><span>Giao diện thử nghiệm nội bộ</span></footer>
+  </div>
+</body>
+</html>

@@ -3,7 +3,6 @@
 import json
 import unittest
 from datetime import date, datetime, timezone
-from pathlib import Path
 from uuid import uuid4
 
 from jsonschema import Draft202012Validator, FormatChecker
@@ -14,9 +13,10 @@ from app.agent.harness.policy import prepare_tool_call
 from app.agent.implementations.business_agent import BusinessTools
 from app.agent.harness.state import Decision
 from app.schemas.agent import TextTurnRequest
+from btc_data import btc_data_dir
 
 
-SCHEMAS = Path(__file__).resolve().parents[3] / "BTC-Data-Vong1-TEAMS/schemas"
+SCHEMAS = btc_data_dir() / "schemas"
 
 
 def valid_brief(name, value):

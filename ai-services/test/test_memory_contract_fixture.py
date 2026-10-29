@@ -4,8 +4,8 @@ import unittest
 from pathlib import Path
 from datetime import date
 import json
-import os
 import re
+from btc_data import btc_data_dir
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "memory_contract_v1.json"
@@ -40,11 +40,10 @@ class MemoryContractFixtureTest(unittest.TestCase):
 
         cases = {case["case"]: case for case in load_cases(FIXTURE)}
         mentioned = set(re.findall(r"SKU-[A-Z0-9-]+", cases["many_products"]["variant"]))
-        btc_dir = Path(os.getenv("BTC_DATA_DIR", FIXTURE.parents[4] /
-                                  "BTC-Data-Vong1-TEAMS"))
-        catalog = json.loads((btc_dir / "catalog" / "products.json").read_text())
+        btc_dir = btc_data_dir()
+        catalog = json.loads((btc_dir / "catalog" / "products.json").read_text(encoding="utf-8"))
         valid = {product["sku"] for product in catalog["products"]}
-        samples = " ".join(path.read_text() for path in
+        samples = " ".join(path.read_text(encoding="utf-8") for path in
                            (btc_dir / "test_set" / "public_sample").glob("*.json"))
         self.assertEqual(len(mentioned), 4)
         self.assertLessEqual(mentioned, valid)

@@ -12,7 +12,7 @@ class CatalogRepo(Database):
                                    order_date: str | None = None) -> list[dict]:
         """Filter access and effective dates in SQL before text leaves PostgreSQL."""
         result = await session.execute(text("""SELECT chunk_id,document_id,title,body,date_basis,
-            effective_from,effective_until FROM btc_source.policy_chunks
+            effective_from,effective_until,source_hash FROM btc_source.policy_chunks
             WHERE access_level='public' AND date_basis IN ('call_date','order_date')
             AND (effective_from IS NULL OR effective_from <=
                  CASE WHEN date_basis='order_date' THEN CAST(:order_date AS date)

@@ -2,16 +2,15 @@
 
 import asyncio
 import json
-from pathlib import Path
 from uuid import uuid4
 
 from app.agent.implementations.business_agent import BusinessTools
 from app.mcp_servers.mcp_shared.commerce_rules import _catalog
 from app.schemas.agent import TextTurnRequest
+from btc_data import btc_data_dir
 
 
-PRODUCTS = json.loads((Path(__file__).resolve().parents[3] /
-                       "BTC-Data-Vong1-TEAMS/catalog/products.json").read_text())["products"]
+PRODUCTS = json.loads((btc_data_dir() / "catalog/products.json").read_text(encoding="utf-8"))["products"]
 
 
 def test_feature_words_do_not_exclude_matching_product_type():

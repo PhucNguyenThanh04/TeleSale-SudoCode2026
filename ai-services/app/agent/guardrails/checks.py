@@ -548,6 +548,41 @@ def _empty_catalog_budget_evidenced(candidate: str, customer_text: str,
     return len(money_claims) == 1 and money_claims[0] == (budget, "price", False)
 
 
+def _catalog_budget_repetition_evidenced(candidate: str, customer_text: str,
+                                        money_claims: list[tuple[int, str, bool]],
+                                        successful: list[dict[str, Any]]) -> bool:
+    """Allow an explicitly repeated customer budget, never a product price.
+
+    Catalog's max_price_vnd filters list prices. It supports saying which
+    products the search returned, but does not authorize quoting sale prices.
+    """
+    searches = [call for call in successful if call.get("name") == "catalog.search"]
+    if not searches or len(money_claims) != 1:
+        return False
+    last = searches[-1]
+    if not isinstance(last.get("result", {}).get("items"), list):
+        return False
+    budget = last.get("args", {}).get("max_price_vnd")
+    if (type(budget) is not int or budget not in customer_budget_amounts(customer_text)
+            or money_claims[0] != (budget, "price", False)):
+        return False
+    folded = _fold_text(candidate)
+    matches = list(_REPEATED_BUDGET.finditer(folded))
+    if len(matches) != 1 or _money_claims(matches[0].group()) != money_claims:
+        return False
+    # A negative availability claim needs its own evidence; do not turn a
+    # nonempty search into "no suitable product" merely by repeating budget.
+    if re.search(r"\b(?:khong|chua)\s+(?:co|tim thay)\b", folded):
+        return False
+    # Product price words in the same clause still require pricing.get_quote.
+    clause_start = max(folded.rfind(mark, 0, matches[0].start()) for mark in ".!?;,") + 1
+    clause_end = min((pos for mark in ".!?;," if (pos := folded.find(mark, matches[0].end())) >= 0),
+                     default=len(folded))
+    if _PRICE_CONTEXT.search(folded[clause_start:clause_end]):
+        return False
+    return True
+
+
 def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
                  customer_text: str = "") -> tuple[str, str | None]:
     """Return a verified answer and a stable, non-sensitive rejection reason."""
@@ -562,7 +597,9 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         for call in tool_calls
         if "error" not in call.get("result", {})
     ]
-    policy_claim = bool(_POLICY.search(candidate))
+    # A follow-up may answer a policy question with just its fee, omitting the
+    # policy topic that appeared in the customer's utterance.
+    policy_claim = bool(_POLICY.search(candidate) or _POLICY.search(customer_text))
     policy_chunks = [chunk for call in successful if call.get("name") == "policy.search"
                      for chunk in call.get("result", {}).get("chunks", [])
                      if isinstance(chunk, dict) and isinstance(chunk.get("body"), str)]
@@ -585,10 +622,13 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
                       if policy_claim else [])
     policy_values = {amount for amount, _, _ in policy_amounts}
     if money_claims and not (_money_evidenced(candidate, successful) or
-                             policy_claim and all(amount in policy_values
-                                                  for amount, _, _ in money_claims) or
+                             policy_claim and not re.search(r"(?i)\bgiá(?:\s+bán)?\b", candidate)
+                             and all(amount in policy_values
+                                     for amount, _, _ in money_claims) or
                              _empty_catalog_budget_evidenced(candidate, customer_text,
-                                                              money_claims, successful)):
+                                                              money_claims, successful) or
+                             _catalog_budget_repetition_evidenced(candidate, customer_text,
+                                                                  money_claims, successful)):
         return FALLBACK, "price_without_quote"
     if _STOCK.search(candidate):
         checks = [call for call in successful if call["name"] == "inventory.check"]

@@ -12,6 +12,7 @@ from app.agent.memory.store import MCPMemoryStore
 from app.mcp_servers.mcp_catalog.tools.handlers import create_server as catalog_server
 from app.mcp_servers.mcp_memory.tools.handlers import create_server as memory_server
 from app.mcp_servers.mcp_order.tools.handlers import create_server as order_server
+from btc_data import btc_data_dir
 
 
 class FakeRepo:
@@ -95,9 +96,7 @@ class GatewayTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_mcp_catalog_keeps_btc_search_result(self):
         import json
-        from pathlib import Path
-        products = json.loads((Path(__file__).resolve().parents[3] /
-            "BTC-Data-Vong1-TEAMS/catalog/products.json").read_text())["products"]
+        products = json.loads((btc_data_dir() / "catalog/products.json").read_text(encoding="utf-8"))["products"]
 
         class CatalogRepo(FakeRepo):
             async def rows(self, _session, table):

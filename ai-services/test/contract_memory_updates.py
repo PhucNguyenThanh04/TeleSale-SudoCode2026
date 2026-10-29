@@ -1,7 +1,6 @@
 """Executable contract for correction and four-product conversations."""
 
 import importlib.util
-import os
 import unittest
 import warnings
 from functools import lru_cache
@@ -20,16 +19,16 @@ from app.constants import DEFAULT_PROMPT_HISTORY_TURNS
 from memory_contract import check_snapshot, load_cases
 from test_deep_memory import FakeGateway, FakeMemory, FakeToolModel, turn
 from test_mcp_memory import TurnRepo
+from btc_data import btc_data_dir
 
 
-ROOT = Path(__file__).resolve().parents[2]
 CASES = {case["case"]: case for case in load_cases(
     Path(__file__).parent / "fixtures" / "memory_contract_v1.json")}
 
 
 @lru_cache(maxsize=1)
 def btc_mock():
-    data_dir = Path(os.getenv("BTC_DATA_DIR", ROOT.parent / "BTC-Data-Vong1-TEAMS"))
+    data_dir = btc_data_dir()
     path = data_dir / "eval" / "mock_tools.py"
     spec = importlib.util.spec_from_file_location("btc_reference_mock", path)
     module = importlib.util.module_from_spec(spec)

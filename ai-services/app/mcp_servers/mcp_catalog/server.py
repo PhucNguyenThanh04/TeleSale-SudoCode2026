@@ -5,11 +5,13 @@ from app.mcp_servers.mcp_catalog.repos.postgres import CatalogRepo
 from app.mcp_servers.mcp_catalog.tools.handlers import create_server
 from app.mcp_servers.mcp_shared.config import database_url, mcp_token
 from app.mcp_servers.mcp_shared.observability import configure_mcp_logging
+from app.rag.policy_retrieval import warmup
 
 
 def main() -> None:
     settings = get_settings()
     configure_mcp_logging(settings.log_level)
+    warmup()
     repo = CatalogRepo(database_url(settings), pool_size=settings.db_pool_size,
                        max_overflow=settings.db_max_overflow)
     token = mcp_token(settings)

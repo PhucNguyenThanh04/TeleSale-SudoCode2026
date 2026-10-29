@@ -35,8 +35,7 @@ httpx>=0.28.1,<0.29
 # File uploads (datasets/audio); not an audio inference dependency.
 python-multipart>=0.0.20,<0.1
 
-# Application/JWT auth. Never trust customer_id from an LLM or browser.
-PyJWT[crypto]>=2.10,<3
+# Password hashing for future operator accounts. Never trust customer_id from an LLM or browser.
 pwdlib[argon2]>=0.2,<1
 
 # Structured logs and application metrics. Redact PII before logging.
@@ -60,5 +59,4 @@ tzdata>=2025.2,<2027
 # https://docs.sqlalchemy.org/en/20/dialects/postgresql.html
 # https://docs.sqlalchemy.org/en/20/dialects/postgresql.html#module-sqlalchemy.dialects.postgresql.asyncpg
 # https://redis.readthedocs.io/en/stable/examples/asyncio_examples.html
-# https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/
 # https://docs.astral.sh/uv/pip/compile/

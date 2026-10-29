@@ -42,6 +42,9 @@ coverage/
 
 # Local runtime output
 /postgres_data/
+/.archify/
+/BTC-Data-Vong1-TEAMS/
+/frontend/preview.png
 *.log
 logs/
 tmp/

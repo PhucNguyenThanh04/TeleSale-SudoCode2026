@@ -4,34 +4,24 @@ from typing import Annotated
 
 import httpx
 from fastapi import Depends, HTTPException, Request, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jwt.exceptions import InvalidTokenError
+from redis.asyncio import Redis
 
-from app.services.auth_service import decode_token
-
-
-bearer_scheme = HTTPBearer(auto_error=False)
+from app.api.operator_session import operator_from_cookie
+from app.database.redis_session import get_redis
 
 
 async def get_current_user_id(
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+    request: Request,
+    redis: Annotated[Redis, Depends(get_redis)],
 ) -> str:
-    """Return the authenticated user ID from a valid Bearer access token."""
-    if credentials is None:
+    """Return the operator ID from a server-side, HttpOnly browser session."""
+    operator_id = await operator_from_cookie(request, redis)
+    if operator_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Thiếu Bearer token",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Phiên truy cập chưa sẵn sàng hoặc đã hết hạn",
         )
-
-    try:
-        return decode_token(credentials.credentials)
-    except InvalidTokenError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Bearer token không hợp lệ hoặc đã hết hạn",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
+    return operator_id
 
 
 CurrentUserId = Annotated[str, Depends(get_current_user_id)]

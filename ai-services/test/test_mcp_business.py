@@ -5,13 +5,13 @@ import json
 import unittest
 import warnings
 from contextlib import asynccontextmanager
-from pathlib import Path
 from jsonschema import Draft202012Validator, FormatChecker
 
 from app.mcp_servers.mcp_shared.commerce_rules import _catalog, _inventory, quote
 from app.mcp_servers.mcp_order.services.order import invoke as invoke_order
+from btc_data import btc_data_dir
 
-BTC = Path(__file__).resolve().parents[3] / "BTC-Data-Vong1-TEAMS"
+BTC = btc_data_dir()
 
 
 class FakeOrderRepo:
@@ -49,9 +49,9 @@ class BusinessTest(unittest.IsolatedAsyncioTestCase):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", ResourceWarning)
             spec.loader.exec_module(cls.mock)
-        cls.products = json.loads((BTC / "catalog/products.json").read_text())["products"]
-        cls.events = json.loads((BTC / "catalog/inventory_timeline.json").read_text())["events"]
-        cls.promos = json.loads((BTC / "catalog/promotions.json").read_text())["promotions"]
+        cls.products = json.loads((BTC / "catalog/products.json").read_text(encoding="utf-8"))["products"]
+        cls.events = json.loads((BTC / "catalog/inventory_timeline.json").read_text(encoding="utf-8"))["events"]
+        cls.promos = json.loads((BTC / "catalog/promotions.json").read_text(encoding="utf-8"))["promotions"]
 
     async def test_catalog_inventory_and_quote_match_btc(self):
         self.assertEqual(_catalog(self.products, {"sku": "SKU-AP-X"}),
@@ -78,7 +78,7 @@ class BusinessTest(unittest.IsolatedAsyncioTestCase):
         second = await invoke_order(repo, "handoff.transfer", args)
         self.assertEqual(first, second)
         self.assertEqual(repo.handoffs, 1)
-        schema = json.loads((BTC / "schemas/handoff_brief.schema.json").read_text())
+        schema = json.loads((BTC / "schemas/handoff_brief.schema.json").read_text(encoding="utf-8"))
         Draft202012Validator(schema, format_checker=FormatChecker()).validate(repo.last_brief)
 
     async def test_handoff_rejects_invalid_values_without_ticket(self):

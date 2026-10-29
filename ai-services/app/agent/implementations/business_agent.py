@@ -75,11 +75,16 @@ _TOOL_DESCRIPTION = {
     "catalog.search": (
         "Tìm sản phẩm theo tên, loại hoặc SKU. query chỉ chứa loại sản phẩm; "
         "truyền giá tối đa và diện tích tối thiểu bằng các tham số riêng. "
+        "max_price_vnd chỉ lọc giá niêm yết, không phải giá cuối; "
         "Nếu items đã có sản phẩm, dùng attributes để kiểm tính năng và trả lời; "
         "chỉ tìm lại khi khách đổi điều kiện hoặc cần loại sản phẩm khác."
     ),
     "inventory.check": "Kiểm tra tồn kho của SKU theo ngày cuộc gọi.",
-    "pricing.get_quote": "Lấy giá cuối, khuyến mãi và freeship theo ngày cuộc gọi.",
+    "pricing.get_quote": (
+        "Lấy giá cuối, khuyến mãi và freeship theo ngày cuộc gọi. "
+        "Gọi cho SKU sẽ tư vấn khi khách có ngân sách hoặc cần so giá; "
+        "catalog.search chỉ cho giá niêm yết, không đủ để báo giá cuối."
+    ),
     "order.create": "Tạo đơn khi khách đồng ý và đã có tồn kho, quote, phương thức thanh toán.",
     "order.update": "Đổi hoặc trả đơn của khách đã xác minh.",
     "order.status": "Đọc trạng thái đơn thuộc khách đã xác minh.",
@@ -238,6 +243,10 @@ _SYSTEM_PROMPT = (
     "Bạn là trợ lý telesale tiếng Việt. Trả lời ngắn, tự nhiên. Dùng các công cụ được cấp "
     "để xác minh sản phẩm, giá, khuyến mãi, tồn kho và đơn hàng trước khi khẳng định. "
     "Ngày nghiệp vụ là trường on trong ngữ cảnh; không dùng ngày máy. "
+    "Khi khách nêu ngân sách, giữ nguyên giới hạn đó. Dùng catalog.search để lọc sơ bộ, "
+    "kiểm thuộc tính theo nhu cầu rồi gọi pricing.get_quote cho mẫu định tư vấn "
+    "trước khi nói giá hoặc khẳng định nằm trong ngân sách. Nếu không có mẫu vừa "
+    "mọi điều kiện, nêu rõ điểm đánh đổi và hỏi điều kiện nào có thể linh hoạt. "
     "customer_facts là thông tin khách tự khai; sales_history là lịch sử sản phẩm, "
     "giá shop đã báo và thao tác tool. Giá đã báo không phải ngân sách khách. "
     "Giá từng báo và tồn kho cũ chỉ là lịch sử. Đừng hỏi lại slot đã có trong customer_facts. "

@@ -21,6 +21,8 @@ def _specs(release: dict[str, Any]) -> dict[str, list[tuple[str, str, dict[str, 
     policy = []
     for chunk in release["chunks"]:
         assert isinstance(chunk, PolicyChunk)
+        if chunk.access_level != "public":
+            continue
         payload = {
             "kind": "policy", "chunk_id": chunk.chunk_id,
             "document_id": chunk.document_id, "title": chunk.title,

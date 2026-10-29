@@ -1,9 +1,10 @@
 # Backend chat and structured tool contract
 
 `POST /api/chat` is an authenticated **operator/channel-adapter** endpoint for
-simulated incoming calls and messages. Its Bearer JWT authenticates the
-operator, not the customer. A real customer-channel authentication integration
-is still required before exposing this API as a public widget.
+simulated incoming calls and messages. In the local demo, `POST /api/auth/local-session`
+sets an HttpOnly cookie backed by a Redis session. It is available only from
+localhost outside production. A real operator login and customer-channel
+authentication integration are required before exposing this API publicly.
 
 ## Database and processes
 

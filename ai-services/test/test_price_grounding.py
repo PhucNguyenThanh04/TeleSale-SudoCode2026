@@ -12,6 +12,12 @@ def _empty_search(budget=2_000_000):
              "result": {"items": [], "total": 0}}]
 
 
+def _matched_search(budget=5_000_000):
+    calls = _empty_search(budget)
+    calls[0]["result"] = {"items": [{"sku": "SKU-TEST", "name": "Máy lọc Test"}], "total": 1}
+    return calls
+
+
 def _quote(price=4_890_000):
     return [{"name": "pricing.get_quote", "args": {"sku": "SKU-TEST"},
              "result": {"sku": "SKU-TEST", "list_price_vnd": price,
@@ -50,6 +56,26 @@ def test_empty_search_budget_must_match_customer_and_actual_result():
     inconsistent = _empty_search()
     inconsistent[0]["result"]["total"] = 1
     assert check_answer(answer, inconsistent, "Ngân sách 2 tr.")[1] == "price_without_quote"
+
+
+@pytest.mark.parametrize("customer,answer", [
+    ("Nhà có bé, ngân sách tầm 5 triệu.",
+     "Dạ, với ngân sách 5 triệu, em đã tìm thấy một mẫu để chị cân nhắc ạ."),
+    ("Phòng 25m2, em chỉ muốn chi tối đa 5 tr.",
+     "Dạ, theo mức tối đa 5 tr chị nêu, em tìm thấy Máy lọc Test ạ."),
+])
+def test_nonempty_catalog_may_repeat_customer_budget_without_quoting_price(customer, answer):
+    assert check_answer(answer, _matched_search(), customer) == (answer, None)
+
+
+@pytest.mark.parametrize("answer", [
+    "Dạ, Máy lọc Test giá 5 triệu ạ.",
+    "Dạ, với ngân sách 5 triệu, Máy lọc Test giá 4,9 triệu ạ.",
+    "Dạ, Máy lọc Test chỉ 5 triệu, vừa ngân sách ạ.",
+    "Dạ, chưa có mẫu phù hợp trong ngân sách 5 triệu ạ.",
+])
+def test_nonempty_catalog_budget_does_not_authorize_unquoted_prices_or_false_empty(answer):
+    assert check_answer(answer, _matched_search(), "Ngân sách tầm 5 triệu.")[1] == "price_without_quote"
 
 
 @pytest.mark.parametrize("spoken", ["2tr", "2 triệu", "2.000.000đ", "2,99 triệu"])

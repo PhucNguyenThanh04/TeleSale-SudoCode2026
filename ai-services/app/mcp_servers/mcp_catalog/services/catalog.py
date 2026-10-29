@@ -1,8 +1,7 @@
 """Catalog business rules independent of FastMCP and SQL transport."""
 
-import re
-
 from app.mcp_servers.mcp_shared.commerce_rules import _catalog, _inventory, quote
+from app.rag.policy_retrieval import retrieve
 
 
 async def get_customer(repo, session, args: dict) -> dict:
@@ -64,12 +63,4 @@ async def get_quote(repo, session, args: dict) -> dict:
 async def search_policy(repo, session, args: dict) -> dict:
     """Rank only public chunks already filtered to the applicable business date."""
     chunks = await repo.public_policy_chunks(session, args["on"], args.get("order_date"))
-    words = set(re.findall(r"\w+", args["query"].casefold()))
-    ranked = []
-    for chunk in chunks:
-        haystack = f"{chunk['title']} {chunk['body']}".casefold()
-        score = sum(word in haystack for word in words if len(word) > 1)
-        if score:
-            ranked.append((score, chunk))
-    ranked.sort(key=lambda item: (-item[0], item[1]["chunk_id"]))
-    return {"chunks": [chunk for _, chunk in ranked[:5]]}
+    return await retrieve(args["query"], chunks)

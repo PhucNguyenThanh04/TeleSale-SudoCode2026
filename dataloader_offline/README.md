@@ -44,11 +44,11 @@ embedding bên ngoài. Khi truy vấn từ agent, dùng **cùng model** và ti�
   tồn kho hoặc khuyến mãi dưới dạng vector. Giá/tồn kho phải do backend tính
   theo ngày kịch bản và đối chiếu `eval/mock_tools.py`.
 - Nội dung của `ghi-chu-nhap-hang-NOI-BO.md`, `noi-quy-nhan-vien.md` và
-  `playbook-telesale.md` được thay bằng dấu hiệu hạn chế truy cập cả trong
-  PostgreSQL lẫn Qdrant. File policy mới chưa được phân loại cũng mặc định
-  `restricted`. Chỉ metadata/mã chunk được lập chỉ mục để phục vụ đánh giá
-  truy hồi; MCP knowledge phải lọc `access_level=public` **trước** khi trả
-  nội dung cho agent.
+  `playbook-telesale.md` được thay bằng dấu hiệu hạn chế truy cập trong
+  PostgreSQL; chunk `restricted` không được nạp mới vào Qdrant. File policy
+  mới chưa được phân loại cũng mặc định `restricted`. MCP catalog vẫn lọc
+  `access_level=public` và ngày hiệu lực trong PostgreSQL trước khi truy hồi;
+  index Qdrant không phải nguồn xác nhận quyền hoặc nội dung.
 - Mỗi policy chunk giữ nguyên mã `[XX-nn]` để đối chiếu `rag/qa_labeled.json`.
   Bản đổi trả cũ có `effective_until=2026-09-30`, bản mới bắt đầu 2026-10-01;
   dùng **ngày tạo đơn** cho hai bản này. Metadata thời gian không thay cho
@@ -58,6 +58,9 @@ PostgreSQL được ghi trong một transaction; Qdrant upsert bằng UUID ổn 
 chỉ encode lại điểm có metadata hoặc nội dung thay đổi. Nếu Qdrant lỗi sau
 khi PostgreSQL đã commit, chạy lại cùng lệnh để hoàn tất. Pipeline không xóa
 điểm cũ khi nguồn bị rút bớt; cần quy trình kiểm duyệt riêng trước khi prune.
+Điểm `restricted` dạng placeholder do lần nạp cũ tạo vẫn có thể còn trong
+index cho tới khi prune, nhưng truy vấn runtime chỉ cho phép ID public đã
+được PostgreSQL xác thực.
 
 Sau khi chạy, có thể kiểm tra số bản ghi:
 

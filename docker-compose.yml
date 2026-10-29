@@ -71,7 +71,10 @@ services:
       - telesale_network
 
   mcp-catalog:
-    build: ./ai-services
+    build:
+      context: ./ai-services
+      args:
+        INSTALL_RAG: ${POLICY_RAG_ENABLED:-false}
     restart: unless-stopped
     command: ["python", "-m", "app.mcp_servers.mcp_catalog.server"]
     depends_on:
@@ -90,6 +93,9 @@ services:
       MCP_CATALOG_PORT: ${MCP_CATALOG_PORT:-8011}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
       DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-0}
+      POLICY_RAG_ENABLED: ${POLICY_RAG_ENABLED:-false}
+      QDRANT_URL: http://qdrant:6333
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-small}
     secrets:
       - mcp_catalog_password
       - mcp_internal_token

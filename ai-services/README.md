@@ -67,7 +67,20 @@ not connected yet.
 
 Policy questions use `policy.search` on mcp-catalog. PostgreSQL filters
 `btc_source.policy_chunks` for public access and the applicable call or verified
-order date before lexical ranking. Qdrant is not connected to chat. The answer
+order date before ranking. By default this uses the existing lexical baseline.
+With `POLICY_RAG_ENABLED=true`, the catalog MCP combines lexical ranking with
+Qdrant dense retrieval, validates candidate IDs and source hashes against the
+dated PostgreSQL rows, and falls back to lexical ranking on dense errors. The
+retrieval implementation lives in `app/rag/policy_retrieval.py`; catalog keeps
+the MCP tool, business service boundary and PostgreSQL repository. The
+tool returns `retrieval_status`; candidate IDs and scores are in local catalog
+logs, without query text or policy bodies. Build the policy index with
+`python -m dataloader_offline --data-dir <BTC directory>` using the same
+`EMBEDDING_MODEL` in the loader and catalog process. Install
+`requirements-rag.txt` in the catalog environment; Compose installs it when
+`POLICY_RAG_ENABLED=true` is set during build. Rebuild `mcp-catalog` after
+changing that flag. The first query loads the local model and may be slow.
+The answer
 guard checks that a policy lookup succeeded and rejects day counts absent from
 the returned chunks; it is not a general semantic proof of every policy claim.
 
@@ -105,7 +118,7 @@ the selectable Deep and ReAct agents plus shared business tools, `harness/` cont
 contains answer and evidence checks, and `mcp/gateway.py` routes business
 tools to the three servers in `app/mcp_servers/`. DeepSeek is a possible model
 choice through `LLM_MODEL` if supported by the configured endpoint, not a
-separate agent architecture. A fourth MCP server and Qdrant retrieval are not connected.
+separate agent architecture. No fourth MCP server is needed for policy RAG.
 
 ```text
 app/agent/

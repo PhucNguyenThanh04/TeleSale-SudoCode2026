@@ -36,11 +36,6 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = Field(default_factory=list)
 
-    jwt_secret_key: SecretStr
-    jwt_algorithm: Literal["HS256"] = "HS256"
-    access_token_expire_minutes: int = Field(default=60, gt=0)
-
-
 @lru_cache
 def get_settings() -> Settings:
     """Return one validated settings object per process."""
