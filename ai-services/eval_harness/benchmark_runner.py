@@ -24,7 +24,7 @@ from app.agent.factory import build_runtime
 from app.configs import Settings
 from app.schemas.agent import TextTurnRequest
 
-from eval_harness.extractor import build_trace_row
+from eval_harness.reference_adapter import facts_used, trace_line, write_jsonl
 from eval_harness.scorer import (
     evaluate_diagnostics_and_latency,
     evaluate_guardrails,
@@ -68,13 +68,19 @@ async def run_scenario_call(
     base_date: date,
     customer_phone: str,
     channel: str = "hotline",
+    run_id: str = "benchmark",
+    config: str = "full",
+    call_date: date | None = None,
 ) -> list[dict[str, Any]]:
     """Execute all turns of a single call in a scenario."""
     session_id = uuid4()
     days_later = call_spec.get("days_later", 0)
-    call_date = base_date + timedelta(days=days_later)
+    call_date = call_date or base_date + timedelta(days=days_later)
+    channel = call_spec.get("channel", channel)
+    channel_identity = call_spec.get("channel_identity", customer_phone)
 
-    customer_turns = call_spec.get("customer_turns", [])
+    customer_turns = call_spec.get("customer_turns_asr") or call_spec.get("customer_turns", [])
+    input_mode = call_spec.get("input_mode", "clean")
     trace_rows = []
 
     for turn_idx, user_text in enumerate(customer_turns, start=1):
@@ -82,10 +88,10 @@ async def run_scenario_call(
             client_msg_id=str(uuid4()),
             session_id=session_id,
             channel=channel,
-            channel_identity=customer_phone,
+            channel_identity=channel_identity,
             on=call_date,
             text=user_text,
-            input_mode="clean",
+            input_mode=input_mode,
         )
 
         t_start = time.perf_counter()
@@ -98,32 +104,42 @@ async def run_scenario_call(
             agent_text = resp.agent_text or ""
             tool_calls = state.get("tool_calls", [])
             memory_writes = state.get("memory_writes", [])
-            facts_used = list(state.get("profile", {}).keys()) + [
-                k for tc in tool_calls for k in tc.get("args", {}).keys()
-            ]
+            prior_facts = state.get("profile", {})
+            facts_used_this_turn = facts_used(agent_text, tool_calls, prior_facts)
+            call_brief_latency = (resp.call_brief or {}).get("latency_ms")
 
         except Exception as exc:
             latency_ms = (time.perf_counter() - t_start) * 1000.0
             agent_text = f"[ERROR: {type(exc).__name__}: {exc}]"
             tool_calls = []
             memory_writes = []
-            facts_used = []
+            facts_used_this_turn = []
 
-        row = build_trace_row(
-            scenario_id=scenario_id,
-            call_name=call_name,
-            turn_idx=turn_idx,
-            user_text=user_text,
-            agent_text=agent_text,
-            tool_calls=tool_calls,
-            memory_writes=memory_writes,
-            facts_used=facts_used,
-            latency_ms=latency_ms,
-            call_brief_latency_ms=call_brief_latency,
-        )
+        row = trace_line(run_id, config, scenario_id, call_name, turn_idx,
+                         user_text, agent_text, tool_calls, memory_writes,
+                         facts_used_this_turn, latency_ms, call_brief_latency,
+                         input_mode)
         trace_rows.append(row)
 
     return trace_rows
+
+
+def scenario_call_date(calls: dict[str, dict], call_name: str,
+                       base_date: date) -> date:
+    current = base_date
+    for name, spec in calls.items():
+        current = (date.fromisoformat(spec["call_date"]) if spec.get("call_date")
+                   else current + timedelta(days=spec.get("days_later", 0)))
+        if name == call_name:
+            return current
+    raise KeyError(call_name)
+
+
+def make_baseline_runtime(runtime: Any) -> Any:
+    """Preserve CRM identity while isolating writes and hiding prior memory."""
+    runtime.memory.include_prior = False
+    runtime.memory.namespace = "baseline"
+    return runtime
 
 
 async def run_scenario_stream(
@@ -145,11 +161,7 @@ async def run_scenario_stream(
         t_sc_start = time.perf_counter()
 
         for call_name, call_spec in calls.items():
-            # In baseline mode, phone is randomized per call so NO memory carries over
-            if is_baseline:
-                call_phone = f"099{raw_phone[3:]}"  # 10 digits dummy phone for baseline
-            else:
-                call_phone = raw_phone  # True phone matching CRM records
+            call_phone = raw_phone
 
             rows = await run_scenario_call(
                 runtime=runtime,
@@ -158,6 +170,9 @@ async def run_scenario_stream(
                 call_spec=call_spec,
                 base_date=base_date,
                 customer_phone=call_phone,
+                run_id=run_tag,
+                config="baseline_no_memory" if is_baseline else "full",
+                call_date=scenario_call_date(calls, call_name, base_date),
             )
             trace[(sid, call_name)] = rows
 
@@ -241,7 +256,14 @@ async def main() -> None:
     # Run Baseline Configuration
     if args.config in ("baseline", "both"):
         print(f"\n--- Running BASELINE Configuration (No Inter-Session Memory) ---")
-        trace_baseline = await run_scenario_stream(runtime, scenarios, is_baseline=True, run_tag="baseline")
+        baseline_runtime = make_baseline_runtime(build_runtime(settings))
+        trace_baseline = await run_scenario_stream(baseline_runtime, scenarios,
+                                                   is_baseline=True, run_tag="baseline")
+
+    if trace_full:
+        write_jsonl(trace_full, out_path.removesuffix(".json") + "_full.jsonl")
+    if trace_baseline:
+        write_jsonl(trace_baseline, out_path.removesuffix(".json") + "_baseline.jsonl")
 
     # Score Results
     print("\nCalculating metrics against official BTC benchmarks...")

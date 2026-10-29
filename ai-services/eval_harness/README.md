@@ -1,5 +1,14 @@
 # Benchmark Dataset & Eval Harness — AI TeleSale SudoCode 2026
 
+The benchmark runner now writes `<out>_full.jsonl` and
+`<out>_baseline.jsonl` for the BTC `eval/reference_eval.py` script. Run the
+two configurations against separate, identically seeded test databases so
+orders and promotion usage from one run cannot affect the other. The
+no-memory run keeps the same CRM identity and hides prior memory instead of
+changing the customer's phone. Since the current chat API is not streaming,
+`ttft_ms` is conservatively reported as total response time; do not present
+it as a measured first-token time.
+
 Bộ dữ liệu kiểm chuẩn (Benchmark Dataset) và công cụ thẩm định tự động (Validator) phục vụ đo lường, so sánh hiệu năng giữa **Deep Agent** (`deepagents.create_deep_agent`) và **ReAct Agent** (`langchain.agents.create_agent`) trên toàn diện kiến trúc `ai-services`.
 
 ---
