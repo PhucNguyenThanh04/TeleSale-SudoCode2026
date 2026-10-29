@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from app.configs import get_settings
 from app.mcp_servers.mcp_memory.schemas import ReadInput, WriteInput
 from app.mcp_servers.mcp_memory.services.memory import read, write
+from app.mcp_servers.mcp_memory.repos.langmem_projection import LangMemProjection
 from app.mcp_servers.mcp_shared.observability import (
     log_mcp_exception, log_mcp_validation, trace_mcp_call,
 )
@@ -20,7 +21,10 @@ async def _invoke(repo, name: str, args: dict) -> dict:
     try:
         if name == "memory.read":
             payload = ReadInput.model_validate(args).model_dump(mode="json")
-            return await read(repo, **payload)
+            mode = getattr(get_settings(), "langmem_mode", "off")
+            projector = (LangMemProjection(repo.dsn) if mode == "enabled"
+                         and hasattr(repo, "dsn") else None)
+            return await read(repo, **payload, langmem_mode=mode, projector=projector)
         if name == "memory.write":
             payload = WriteInput.model_validate(args).model_dump(mode="json")
             settings = get_settings()

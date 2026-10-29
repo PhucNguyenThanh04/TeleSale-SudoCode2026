@@ -128,6 +128,24 @@ def _safe_scoped_facts(value: Any) -> dict[str, dict[str, dict[str, Any]]]:
     return safe
 
 
+def rank_episodes(episodes: list[dict], customer_text: str, limit: int) -> list[dict]:
+    """Choose useful accepted episodes without mixing product histories."""
+    query = customer_text.casefold()
+    def score(item: dict):
+        topics = item.get("topics") or []
+        product_match = any(isinstance(topic, dict)
+            and topic.get("scope_type") == "product"
+            and isinstance(topic.get("scope_id"), str)
+            and topic["scope_id"].casefold() in query
+            for topic in topics)
+        open_blocker = any(isinstance(topic, dict)
+            and any(isinstance(entry, dict) and entry.get("kind") == "blocker"
+                    and entry.get("status") == "open"
+                    for entry in topic.get("items", [])) for topic in topics)
+        return (product_match, open_blocker, str(item.get("on", "")))
+    return sorted(episodes, key=score, reverse=True)[:limit]
+
+
 async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway,
                        clock: Callable[[], datetime]) -> dict[str, Any]:
     customer_id = state.get("customer_id")
@@ -160,6 +178,17 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
     profile = context.get("profile", {})
     scoped_facts = _safe_scoped_facts(context.get("scoped_facts", {}))
     episodes = list(context.get("episodes", []))
+    accepted = context.get("accepted_episodes") or []
+    if customer_id and getattr(memory, "include_prior", True) and accepted:
+        canonical = {str(item.get("session_id")): item for item in episodes
+                     if isinstance(item, dict)}
+        accepted = [canonical[str(item["session_id"])] for item in accepted
+                    if isinstance(item, dict) and str(item.get("session_id")) in canonical
+                    and item.get("summary") == canonical[str(item["session_id"])].get("summary")]
+        episodes = rank_episodes(accepted, state.get("safe_text", ""),
+                                getattr(memory, "max_episodes", 5)) + [item for item in episodes
+                                if item.get("session_id") not in {
+                                    accepted_item.get("session_id") for accepted_item in accepted}]
     current_episode = _mask_context(context.get("current_episode") or {})
     prior_ids = {str(item) for item in context.get("prior_session_ids", []) if item}
     prior_ids.update(str(item.get("session_id")) for item in episodes
@@ -179,7 +208,8 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
         key = str(item["session_id"])
         if key != session_id:
             unique_episodes.setdefault(key, item)
-    episodes = sorted(unique_episodes.values(), key=lambda item: item["on"], reverse=True)
+    episodes = rank_episodes(list(unique_episodes.values()), state.get("safe_text", ""),
+                             getattr(memory, "max_episodes", 5))
     episodes = episodes[:getattr(memory, "max_episodes", 5)]
     episodes = _mask_context(episodes)
     if not getattr(memory, "include_prior", True):

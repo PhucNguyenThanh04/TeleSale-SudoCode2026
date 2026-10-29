@@ -1,6 +1,8 @@
 """Memory rules: ownership, provenance, masking, supersession and replay."""
 
 import hashlib
+import asyncio
+import logging
 import json
 import math
 import re
@@ -108,7 +110,8 @@ async def _write_fact(repo, conn, customer_id: str, session_id: str, fact: dict,
 
 
 async def read(repo, customer_id: str | None, session_id: str,
-               max_episodes: int = 5, include_prior: bool = True) -> dict:
+               max_episodes: int = 5, include_prior: bool = True,
+               langmem_mode: str = "off", projector=None) -> dict:
     async with repo.transaction() as conn:
         if customer_id and hasattr(repo, "is_erasure_blocked"):
             await repo.lock_key(conn, f"erasure:{customer_id}")
@@ -162,6 +165,24 @@ async def read(repo, customer_id: str | None, session_id: str,
             "resolved_prior_items": (json.loads(row["resolved_prior_items"])
                 if isinstance(row.get("resolved_prior_items", []), str)
                 else row.get("resolved_prior_items", []))} for row in episodes]
+        if langmem_mode == "enabled":
+            result["accepted_episodes"] = []
+            if include_prior and projector is not None and max_episodes:
+                try:
+                    async with asyncio.timeout(1.0):
+                        projected = await projector.list_episodes(customer_id, max_episodes)
+                    canonical = {item["session_id"]: item for item in result["episodes"]}
+                    result["accepted_episodes"] = [canonical[item["session_id"]]
+                        for item in projected if isinstance(item, dict)
+                        and item.get("schema_version") == 1
+                        and item.get("session_id") in canonical
+                        and item.get("summary") == canonical[item["session_id"]]["summary"]
+                        and item.get("on") == canonical[item["session_id"]]["on"]
+                        and item.get("status") == "active"]
+                except Exception as exc:
+                    logging.getLogger(__name__).warning(
+                        "LangMem projection read failed: %s", type(exc).__name__)
+                    result["accepted_episodes"] = []
         if include_prior and hasattr(repo, "prior_session_ids"):
             result["prior_session_ids"] = await repo.prior_session_ids(conn, customer_id, session_id)
         result["owned_order_ids"] = await repo.order_links(conn, customer_id) if include_prior else []
