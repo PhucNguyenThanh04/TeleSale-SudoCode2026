@@ -10,6 +10,8 @@ from uuid import UUID, uuid4
 import asyncpg
 
 from app.mcp_servers.mcp_memory.repos.postgres import MemoryRepo
+from app.mcp_servers.mcp_memory.repos.langmem_projection import LangMemProjection, store_dsn
+from langgraph.store.postgres.aio import AsyncPostgresStore
 from app.mcp_servers.mcp_memory.services.erasure import request_erasure
 from app.mcp_servers.mcp_memory.services.erasure_executor import execute_erasure
 from app.mcp_servers.mcp_memory.services.memory import read, write
@@ -18,6 +20,23 @@ from app.mcp_servers.mcp_memory.services.memory import read, write
 @unittest.skipUnless(os.getenv("MEMORY_INTEGRATION_ADMIN_DSN"),
                      "requires MEMORY_INTEGRATION_ADMIN_DSN with CREATEDB")
 class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
+    async def test_langmem_store_isolated_schema_persists_across_instances(self):
+        async with AsyncPostgresStore.from_conn_string(store_dsn(self.dsn), index=None) as store:
+            await store.setup()
+        first = LangMemProjection(self.dsn)
+        await first.put_episode("C901", "session-1", {"summary": "Đang cân nhắc",
+            "topics": [], "resolved_prior_items": []})
+        second = LangMemProjection(self.dsn)
+        self.assertEqual(len(await second.list_episodes("C901", 5)), 1)
+        self.assertEqual(await second.list_episodes("C902", 5), [])
+        async with self.repo.transaction() as conn:
+            self.assertEqual(await conn.fetchval("""SELECT count(*) FROM pg_tables
+                WHERE schemaname='langmem_store' AND tablename='store'"""), 1)
+            self.assertEqual(await conn.fetchval("""SELECT count(*) FROM pg_tables
+                WHERE schemaname='public' AND tablename='store'"""), 0)
+        self.assertEqual(await second.delete_customer("C901"), 1)
+        self.assertEqual(await first.list_episodes("C901", 5), [])
+
     async def test_distillation_job_is_durable_and_reclaims_expired_lease(self):
         session, source = str(uuid4()), str(uuid4())
         payload = {"customer_text": "Tôi thích màu xanh", "agent_text": "Dạ",

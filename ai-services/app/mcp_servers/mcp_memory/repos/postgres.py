@@ -119,7 +119,7 @@ class MemoryRepo:
             customer_id, UUID(session_id), maximum)
 
     async def episode_state(self, conn, session_id: str, customer_id: str):
-        return await conn.fetchrow("""SELECT summary,outcome,topics,resolved_prior_items,status FROM ai_memory.episodes
+        return await conn.fetchrow("""SELECT session_id,channel,on_date,summary,outcome,topics,resolved_prior_items,status FROM ai_memory.episodes
             WHERE session_id=$1 AND customer_id=$2""", UUID(session_id), customer_id)
 
     async def prior_open_items(self, conn, customer_id: str, session_id: str) -> dict[str, tuple[str, str]]:
