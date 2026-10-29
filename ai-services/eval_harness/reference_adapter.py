@@ -25,13 +25,23 @@ def facts_used(agent_text: str, tool_calls: list[dict], prior_facts: dict) -> li
     return sorted(set(used))
 
 
+def public_memory_writes(call: str, turn: int, memory_writes: list[dict]) -> list[dict]:
+    """Use BTC's call/turn provenance without leaking internal UUIDs into traces."""
+    return [{**{key: value for key, value in item.items()
+                        if key in {"key", "value", "op", "customer_id",
+                                   "evidence_quote", "scope_type", "scope_id"}},
+                      "source": f"{call}#turn{turn}"}
+                     for item in memory_writes if isinstance(item, dict)]
+
+
 def trace_line(run_id: str, config: str, scenario_id: str, call: str, turn: int,
                customer_text: str, agent_text: str, tool_calls: list[dict],
                memory_writes: list[dict], used_facts: list[str],
                total_ms: float, call_brief_latency_ms: float | None,
                input_mode: str) -> dict[str, Any]:
+    public_writes = public_memory_writes(call, turn, memory_writes)
     row = build_trace_row(scenario_id, call, turn, customer_text, agent_text,
-                          tool_calls, memory_writes, used_facts, total_ms,
+                          tool_calls, public_writes, used_facts, total_ms,
                           call_brief_latency_ms)
     row["run_id"] = run_id
     row["config"] = config

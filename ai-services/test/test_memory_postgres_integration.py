@@ -1,6 +1,7 @@
 """Real PostgreSQL memory contract in an automatically removed test database."""
 
 import os
+import json
 import unittest
 from datetime import date
 from pathlib import Path
@@ -11,6 +12,8 @@ import asyncpg
 
 from app.mcp_servers.mcp_memory.repos.postgres import MemoryRepo
 from app.mcp_servers.mcp_memory.repos.langmem_projection import LangMemProjection, store_dsn
+from app.mcp_servers.mcp_memory.distiller_worker import process_one
+from app.schemas.langmem import ProfileFactCandidate
 from langgraph.store.postgres.aio import AsyncPostgresStore
 from app.mcp_servers.mcp_memory.services.erasure import request_erasure
 from app.mcp_servers.mcp_memory.services.erasure_executor import execute_erasure
@@ -20,6 +23,32 @@ from app.mcp_servers.mcp_memory.services.memory import read, write
 @unittest.skipUnless(os.getenv("MEMORY_INTEGRATION_ADMIN_DSN"),
                      "requires MEMORY_INTEGRATION_ADMIN_DSN with CREATEDB")
 class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
+    async def test_worker_admits_fact_projects_episode_then_erases(self):
+        async with AsyncPostgresStore.from_conn_string(store_dsn(self.dsn), index=None) as store:
+            await store.setup()
+        projection = LangMemProjection(self.dsn)
+        session, source = str(uuid4()), str(uuid4())
+        await write(self.repo, "commit_turn", "C901", session, {
+            "customer_text": "Phòng tôi 25 m²", "agent_text": "Dạ em ghi nhận",
+            "on": "2026-10-15", "channel": "hotline", "client_msg_id": source,
+            "facts": []}, langmem_mode="enabled")
+        async def extractor(messages, _existing):
+            payload = json.loads(messages[0]["content"])
+            return ([ProfileFactCandidate(key="room_area_m2", value=25,
+                source_kind="customer", source_turn_id=payload["turn_id"],
+                evidence_quote="Phòng tôi 25 m²", observed_on=date(2026, 10, 15))], None)
+        self.assertTrue(await process_one(self.repo, extractor, projection))
+        loaded = await read(self.repo, "C901", str(uuid4()),
+                            langmem_mode="enabled", projector=projection)
+        self.assertEqual(loaded["profile"]["room_area_m2"]["value"], 25)
+        self.assertEqual(len(loaded["accepted_episodes"]), 1)
+        key = str(uuid4())
+        await request_erasure(self.repo, customer_id="C901", request_key=key,
+            verification_ref="case-901", verified_by="operator-1", scope=["ai_memory"])
+        erased = await execute_erasure(self.repo, key, projection)
+        self.assertEqual(erased["status"], "completed")
+        self.assertEqual(await projection.list_episodes("C901", 5), [])
+
     async def test_langmem_store_isolated_schema_persists_across_instances(self):
         async with AsyncPostgresStore.from_conn_string(store_dsn(self.dsn), index=None) as store:
             await store.setup()

@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     ollama_timeout_seconds: float = Field(default=30, gt=0)
     llm_temperature: float = Field(default=0.2, ge=0, le=1)
     llm_max_tokens: int = Field(default=256, ge=1)
+    llm_seed: int | None = None
     agent_max_tool_calls: int = Field(default=DEFAULT_MAX_TOOL_CALLS, ge=3, le=20)
     agent_prompt_history_turns: int = Field(default=DEFAULT_PROMPT_HISTORY_TURNS, ge=1, le=12)
     agent_guardrails_enabled: bool = True

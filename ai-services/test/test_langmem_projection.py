@@ -12,15 +12,15 @@ class FakeStore:
     def __init__(self):
         self.rows = {}
 
-    async def put(self, namespace, key, value, index=False):
+    async def aput(self, namespace, key, value, index=False):
         self.rows[namespace, key] = value
 
-    async def search(self, namespace_prefix, *, limit=10):
+    async def asearch(self, namespace_prefix, *, limit=10):
         return [SimpleNamespace(namespace=ns, key=key, value=value)
                 for (ns, key), value in self.rows.items()
                 if ns[:len(namespace_prefix)] == namespace_prefix][:limit]
 
-    async def delete(self, namespace, key):
+    async def adelete(self, namespace, key):
         self.rows.pop((namespace, key), None)
 
 

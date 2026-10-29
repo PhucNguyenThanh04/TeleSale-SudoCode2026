@@ -19,7 +19,7 @@ settings needed for your run.
 | Group | Variables | Effect |
 |---|---|---|
 | API | `APP_NAME`, `APP_ENV`, `DEBUG`, `HOST`, `PORT`, `LOG_LEVEL`, `TIMEZONE` | API identity, environment label, debug flag, bind address, logging, callback timezone |
-| Ollama Cloud | `LLM_API_KEY`, `LLM_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_TIMEOUT_SECONDS`, `LLM_TEMPERATURE`, `LLM_MAX_TOKENS` | Model, authentication, timeout and response budget |
+| Ollama Cloud | `LLM_API_KEY`, `LLM_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_TIMEOUT_SECONDS`, `LLM_TEMPERATURE`, `LLM_MAX_TOKENS`, `LLM_SEED` | Model, authentication, timeout, response budget and reproducible sampling |
 | Harness | `AGENT_KIND`, `FACT_EXTRACTION_MODE`, `AGENT_MAX_TOOL_CALLS`, `AGENT_PROMPT_HISTORY_TURNS`, `AGENT_GUARDRAILS_ENABLED` | Select `deep` or `react`, choose fact extraction behavior, set tool and context limits, and toggle answer checks |
 | Memory | `MEMORY_MAX_EPISODES`, `MEMORY_SUMMARY_TURNS`, `MEMORY_SUMMARY_MAX_CHARS`, `LANGMEM_MODE`, `LANGMEM_MODEL` | Prior episodes, opt-in LangMem worker, and separate distillation model; baseline still disables prior memory |
 | Langfuse | `LANGFUSE_ENABLED`, `LANGFUSE_CAPTURE_CONTENT`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` | Optional one trace per chat turn, grouped by session; content capture is opt-in for development/test |
@@ -135,7 +135,9 @@ then `ai-services/migrations/0001_memory.sql`,
 `ai-services/migrations/0006_episode_identity_boundary.sql`,
 `ai-services/migrations/0007_erasure_requests.sql`, and
 `ai-services/migrations/0008_scoped_facts.sql`, then
-`ai-services/migrations/0009_structured_episodes.sql`. Apply them before starting
+`ai-services/migrations/0009_structured_episodes.sql`,
+`ai-services/migrations/0010_langmem_distillation_jobs.sql`, and
+`ai-services/migrations/0011_langmem_store.sql`. Apply them before starting
 `mcp-db-roles`. Use the same PostgreSQL database
 for the backend and all three MCP servers. Set matching `AI_INTERNAL_TOKEN`
 values in `backend/.env` and `ai-services/.env`, and a separate
@@ -195,6 +197,9 @@ run `python -m scripts.execute_memory_erasure REQUEST_UUID` with the memory
 role. It removes the canonical rows, queued jobs and the customer's LangGraph
 namespace under the per-customer barrier. A projection outage leaves the
 request `partial`; retry the same UUID after recovery.
+Use the BTC reference evaluator and `eval_harness.compare_langmem` on
+separately seeded current, shadow, and enabled deployments before turning on
+`enabled` for a demo. See `eval_harness/README.md` for the runbook.
 
 The code for each server lives in `app/mcp_servers/mcp_catalog`, `app/mcp_servers/mcp_order` or
 `app/mcp_servers/mcp_memory`: `tools/` validates MCP calls, `services/` holds business

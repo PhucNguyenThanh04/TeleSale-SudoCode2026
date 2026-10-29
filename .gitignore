@@ -55,6 +55,7 @@ temp/
 **/data/raw/
 **/data/processed/*.parquet
 **/eval/runs/
+ai-services/eval_harness/results/
 outputs/
 artifacts/
 # Speech dataset/runs (audio, TTS cache, hypotheses) and local voice config

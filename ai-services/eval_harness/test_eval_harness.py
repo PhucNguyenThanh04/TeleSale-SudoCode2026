@@ -37,6 +37,17 @@ class TestEvalHarness(unittest.TestCase):
         self.assertEqual(row["call_brief_latency_ms"], 340)
         AgentTraceLine.model_validate(row)
 
+    def test_trace_memory_source_uses_call_turn_not_internal_uuid(self):
+        from eval_harness.reference_adapter import trace_line
+        row = trace_line("run-1", "full", "SAMPLE-01", "call_1", 2,
+            "Phòng 25 m²", "Dạ", [], [{"key": "room_area_m2", "value": 25,
+            "op": "set", "customer_id": "C1",
+            "source": "aaaaaaaa-1111-2222-3333-934400000000",
+            "fact_id": "aaaaaaaa-1111-2222-3333-934400000000"}], [], 10, None,
+            "clean")
+        self.assertEqual(row["memory_writes"][0]["source"], "call_1#turn2")
+        self.assertNotIn("fact_id", row["memory_writes"][0])
+
     def test_call_dates_accumulate_from_previous_call(self):
         from eval_harness.benchmark_runner import scenario_call_date
         calls = {"call_1": {"call_date": "2026-09-25"},

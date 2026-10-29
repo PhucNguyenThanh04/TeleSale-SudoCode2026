@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -16,12 +17,14 @@ import time
 from datetime import date, timedelta
 from typing import Any
 from uuid import uuid4
+import asyncpg
 
 # Add ai-services to PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.agent.factory import build_runtime
 from app.configs import Settings
+from app.mcp_servers.mcp_shared.config import database_url
 from app.schemas.agent import TextTurnRequest
 
 from eval_harness.reference_adapter import facts_used, trace_line, write_jsonl
@@ -147,6 +150,7 @@ async def run_scenario_stream(
     scenarios: dict[str, Any],
     is_baseline: bool = False,
     run_tag: str = "full",
+    wait_for_jobs=None,
 ) -> dict[tuple[str, str], list[dict[str, Any]]]:
     """Run all scenarios through the harness runtime."""
     trace: dict[tuple[str, str], list[dict[str, Any]]] = {}
@@ -175,11 +179,35 @@ async def run_scenario_stream(
                 call_date=scenario_call_date(calls, call_name, base_date),
             )
             trace[(sid, call_name)] = rows
+            if wait_for_jobs is not None:
+                await wait_for_jobs()
 
         sc_duration = time.perf_counter() - t_sc_start
         print(f" Done ({sc_duration:.1f}s)")
 
     return trace
+
+
+async def wait_for_distillation(dsn: str, timeout_seconds: float = 180) -> None:
+    """Keep cross-call evaluation from racing the background worker."""
+    conn = await asyncpg.connect(dsn.replace("postgresql+asyncpg://",
+                                            "postgresql://", 1))
+    try:
+        deadline = time.monotonic() + timeout_seconds
+        while True:
+            row = await conn.fetchrow("""SELECT
+                count(*) FILTER (WHERE status IN ('pending','leased')) AS waiting,
+                count(*) FILTER (WHERE status='failed') AS failed
+                FROM ai_memory.langmem_distillation_jobs""")
+            if row["failed"]:
+                raise RuntimeError("LangMem distillation job failed during evaluation")
+            if not row["waiting"]:
+                return
+            if time.monotonic() >= deadline:
+                raise TimeoutError("LangMem distillation did not finish before the next call")
+            await asyncio.sleep(0.5)
+    finally:
+        await conn.close()
 
 
 def print_cli_summary(agent_kind: str, results: dict[str, Any]) -> None:
@@ -217,10 +245,18 @@ async def main() -> None:
     parser = argparse.ArgumentParser(description="Eval Harness Runner for Deep vs ReAct Agent")
     parser.add_argument("--agent", choices=["deep", "react"], required=True, help="Agent core to evaluate")
     parser.add_argument("--config", choices=["full", "baseline", "both"], default="both", help="Eval config to run")
+    parser.add_argument("--variant", choices=["current", "shadow", "enabled"],
+                        default="current", help="Deployment memory mode being measured")
+    parser.add_argument("--seed", type=int, default=7,
+                        help="Identical model seed across ablation runs")
+    parser.add_argument("--worker-wait-seconds", type=float, default=180,
+                        help="Maximum wait for background memory before the next call")
     parser.add_argument("--scenarios", default="ai-services/eval_harness/benchmark_dataset.json", help="Path to scenarios")
     parser.add_argument("--dry-run", type=int, default=0, help="Run only first N scenarios for dry-run")
     parser.add_argument("--out", default=None, help="Output JSON path")
     args = parser.parse_args()
+    if args.config == "both":
+        logger.warning("--config both shares mutable business tables; use separate seeded databases for official comparison")
 
     # Determine output path
     out_path = args.out
@@ -242,6 +278,10 @@ async def main() -> None:
     # Initialize settings and runtime
     settings = Settings()
     settings.agent_kind = args.agent
+    settings.llm_seed = args.seed
+    if settings.langmem_mode != {"current": "off", "shadow": "shadow",
+                                 "enabled": "enabled"}[args.variant]:
+        raise SystemExit("LANGMEM_MODE must match --variant in the runner and MCP deployment")
     print(f"\nInitializing Runtime for Agent: '{args.agent.upper()}' (Model: {settings.llm_model})...")
     runtime = build_runtime(settings)
 
@@ -251,7 +291,11 @@ async def main() -> None:
     # Run Full Configuration
     if args.config in ("full", "both"):
         print(f"\n--- Running FULL Configuration (With Inter-Session Memory) ---")
-        trace_full = await run_scenario_stream(runtime, scenarios, is_baseline=False, run_tag="full")
+        waiter = (lambda: wait_for_distillation(database_url(settings),
+            args.worker_wait_seconds)) if args.variant != "current" else None
+        trace_full = await run_scenario_stream(runtime, scenarios, is_baseline=False,
+                                               run_tag=args.variant,
+                                               wait_for_jobs=waiter)
 
     # Run Baseline Configuration
     if args.config in ("baseline", "both"):
@@ -279,6 +323,13 @@ async def main() -> None:
         "meta": {
             "agent_kind": args.agent,
             "model": settings.llm_model,
+            "temperature": settings.llm_temperature,
+            "max_tokens": settings.llm_max_tokens,
+            "seed": settings.llm_seed,
+            "variant": args.variant,
+            "dataset_hash": hashlib.sha256(json.dumps(scenarios, sort_keys=True,
+                ensure_ascii=False).encode()).hexdigest(),
+            "scenario_ids": sorted(scenarios),
             "config": args.config,
             "reference_date": "2026-10-15",
             "total_scenarios_evaluated": len(scenarios),

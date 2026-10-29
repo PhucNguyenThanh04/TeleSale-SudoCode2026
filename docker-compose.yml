@@ -149,11 +149,37 @@ services:
       MEMORY_DB_POOL_MAX_SIZE: ${MEMORY_DB_POOL_MAX_SIZE:-5}
       MEMORY_SUMMARY_TURNS: ${MEMORY_SUMMARY_TURNS:-3}
       MEMORY_SUMMARY_MAX_CHARS: ${MEMORY_SUMMARY_MAX_CHARS:-800}
+      LANGMEM_MODE: ${LANGMEM_MODE:-off}
     secrets:
       - mcp_memory_password
       - mcp_internal_token
     ports:
       - "127.0.0.1:${MCP_MEMORY_PORT:-8013}:${MCP_MEMORY_PORT:-8013}"
+    networks:
+      - telesale_network
+
+  langmem-worker:
+    profiles: ["langmem"]
+    build: ./ai-services
+    restart: unless-stopped
+    command: ["python", "-m", "app.mcp_servers.mcp_memory.distiller_worker"]
+    depends_on:
+      mcp-db-roles:
+        condition: service_completed_successfully
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LLM_API_KEY: ${LLM_API_KEY:?Set LLM_API_KEY in ai-services/.env}
+      LLM_MODEL: ${LLM_MODEL:-gemma4:31b}
+      LANGMEM_MODEL: ${LANGMEM_MODEL:-}
+      LANGMEM_MODE: ${LANGMEM_MODE:-off}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-https://ollama.com}
+      OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-30}
+      MCP_DB_HOST: postgres
+      MCP_DB_NAME: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      MCP_DB_USER: mcp_memory
+      MCP_DB_PASSWORD_FILE: /run/secrets/mcp_memory_password
+    secrets:
+      - mcp_memory_password
     networks:
       - telesale_network
 

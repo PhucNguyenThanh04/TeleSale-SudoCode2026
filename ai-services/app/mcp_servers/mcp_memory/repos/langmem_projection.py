@@ -13,7 +13,7 @@ def store_dsn(dsn: str) -> str:
     """Force unqualified LangGraph DDL and DML into its dedicated schema."""
     url = make_url(dsn.replace("postgresql+asyncpg://", "postgresql://", 1))
     query = dict(url.query)
-    query["options"] = "-c search_path=langmem_store"
+    query["options"] = "-csearch_path=langmem_store"
     return url.set(drivername="postgresql", query=query).render_as_string(
         hide_password=False)
 
@@ -48,13 +48,13 @@ class LangMemProjection:
             "topics": _json_array(canonical.get("topics", [])),
             "resolved_prior_items": _json_array(canonical.get("resolved_prior_items", []))})
         async with AsyncPostgresStore.from_conn_string(self.dsn, index=None) as store:
-            await store.put(self.namespace(customer_id), session_id, value, index=False)
+            await store.aput(self.namespace(customer_id), session_id, value, index=False)
 
     async def list_episodes(self, customer_id: str, limit: int) -> list[dict]:
         if limit <= 0:
             return []
         async with AsyncPostgresStore.from_conn_string(self.dsn, index=None) as store:
-            items = await store.search(self.namespace(customer_id), limit=min(limit, 20))
+            items = await store.asearch(self.namespace(customer_id), limit=min(limit, 20))
         return [item.value for item in items if item.namespace == self.namespace(customer_id)
                 and isinstance(item.value, dict) and item.value.get("schema_version") == 1]
 
@@ -65,12 +65,12 @@ class LangMemProjection:
         deleted = 0
         async with AsyncPostgresStore.from_conn_string(self.dsn, index=None) as store:
             while True:
-                items = await store.search(prefix, limit=100)
+                items = await store.asearch(prefix, limit=100)
                 if not items:
                     break
                 for item in items:
                     if item.namespace[:2] != prefix:
                         continue
-                    await store.delete(item.namespace, item.key)
+                    await store.adelete(item.namespace, item.key)
                     deleted += 1
         return deleted
