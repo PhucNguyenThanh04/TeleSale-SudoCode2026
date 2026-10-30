@@ -25,6 +25,28 @@ from scripts.backfill_langmem_store import backfill_customer
 @unittest.skipUnless(os.getenv("MEMORY_INTEGRATION_ADMIN_DSN"),
                      "requires MEMORY_INTEGRATION_ADMIN_DSN with CREATEDB")
 class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
+    async def test_single_memory_migration_can_be_reapplied(self):
+        migration_dir = Path(__file__).resolve().parents[1] / "migrations"
+        migrations = sorted(migration_dir.glob("*.sql"))
+        self.assertEqual([item.name for item in migrations], ["0001_memory.sql"])
+        async with self.repo.transaction() as conn:
+            session = uuid4()
+            await conn.execute("""INSERT INTO ai_memory.turns
+                (session_id,turn_no,customer_id,channel,on_date,customer_text,agent_text)
+                VALUES($1,1,NULL,'hotline','2026-10-15','Ẩn danh','Dạ')""", session)
+            await conn.execute("""INSERT INTO ai_memory.episodes
+                (session_id,customer_id,channel,on_date,summary)
+                VALUES($1,'C901','hotline','2026-10-15','Đã kiểm toán thủ công')""", session)
+            await conn.execute(migrations[0].read_text())
+            self.assertEqual(await conn.fetchval("""SELECT summary
+                FROM ai_memory.episodes WHERE session_id=$1""", session),
+                "Đã kiểm toán thủ công")
+            self.assertEqual(await conn.fetchval("""SELECT count(*)
+                FROM information_schema.columns
+                WHERE table_schema='ai_memory'
+                AND table_name='langmem_distillation_jobs'
+                AND column_name IN ('accepted_writes','accepted_proposals','verified_outcome')"""), 3)
+
     async def test_eval_wait_is_scoped_to_source_turn(self):
         session, pending_source = str(uuid4()), str(uuid4())
         await write(self.repo, "commit_turn", "C901", session, {

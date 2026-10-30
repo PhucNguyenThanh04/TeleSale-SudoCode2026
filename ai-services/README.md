@@ -129,23 +129,11 @@ app/mcp_servers/          # catalog, order, memory, shared infrastructure
 ## Structured MCP tools
 
 Start PostgreSQL with `docker compose up -d postgres redis`, then import the
-BTC release with `dataloader_offline`. Apply the additive
-runtime SQL migrations in order: `backend/migrations/0001_chat.sql`,
+BTC release with `dataloader_offline`. Apply the runtime SQL in order:
+`backend/migrations/0001_chat.sql`,
 `backend/migrations/0002_tools.sql`, `backend/migrations/0003_channel_identity.sql`,
 `backend/migrations/0004_erasure_suppressions.sql`,
-then `ai-services/migrations/0001_memory.sql`,
-`ai-services/migrations/0002_operations.sql`,
-`ai-services/migrations/0003_memory_provenance.sql`, and
-`ai-services/migrations/0004_pending_facts.sql`, and
-`ai-services/migrations/0005_memory_evidence_quote.sql`, then
-`ai-services/migrations/0006_episode_identity_boundary.sql`,
-`ai-services/migrations/0007_erasure_requests.sql`, and
-`ai-services/migrations/0008_scoped_facts.sql`, then
-`ai-services/migrations/0009_structured_episodes.sql`,
-`ai-services/migrations/0010_langmem_distillation_jobs.sql`, and
-`ai-services/migrations/0011_langmem_store.sql`, and
-`ai-services/migrations/0012_langmem_accepted_writes.sql`, and
-`ai-services/migrations/0013_langmem_job_proposals.sql`. Apply them before starting
+then the consolidated `ai-services/migrations/0001_memory.sql`. Apply it before starting
 `mcp-db-roles`. Use the same PostgreSQL database
 for the backend and all three MCP servers. Set matching `AI_INTERNAL_TOKEN`
 values in `backend/.env` and `ai-services/.env`, and a separate
@@ -193,9 +181,8 @@ When `LANGMEM_MODE=enabled`, each identified committed turn creates one durable
 session order, retries up to five times, and logs only error codes. A model
 timeout never rolls back the already committed customer turn. If the store is
 unavailable, customer memory reads fail closed instead of reading stale legacy facts.
-Apply `migrations/0010_langmem_distillation_jobs.sql` and
-`migrations/0011_langmem_store.sql`, `0012_langmem_accepted_writes.sql`, and
-`0013_langmem_job_proposals.sql` after `0009`. Then, once with an admin
+Apply the consolidated `migrations/0001_memory.sql` after the backend SQL.
+Then, once with an admin
 `DATABASE_URL`, run `python -m scripts.setup_langmem_store` from `ai-services/`.
 This invokes `AsyncPostgresStore.setup()` with `langmem_store` as the fixed
 search path; LangGraph's concurrent index DDL must run outside a wrapping
@@ -302,8 +289,8 @@ uv run --no-project --with 'langgraph>=1.2.12,<1.3' \
 
 ### Memory demo and manual preflight
 
-Before starting the existing MCP services, apply migrations through
-`0009_structured_episodes.sql` to their PostgreSQL database, then rerun role provisioning.
+Before starting the existing MCP services, apply `migrations/0001_memory.sql`
+to their PostgreSQL database, then rerun role provisioning.
 A table created after provisioning does not inherit the earlier table grants.
 With the administrative `psql` connection (never put passwords in the command), verify:
 
@@ -345,7 +332,8 @@ limit. Long-term profile facts are customer-scoped. Previous episodes are dedupl
 by session, preferring memory over CRM, then limited by `MEMORY_MAX_EPISODES`.
 Anonymous turns remain available during the unverified session. After identity
 verification, prior anonymous turns are excluded from the model history and the
-customer's episode; they are not converted into profile facts. Migration 0006
+customer's episode; they are not converted into profile facts. The former 0006
+section in the consolidated migration
 retracts legacy claims from anonymous turns and rebuilds mixed episodes from
 attributed turns, including facts whose anonymous commit lacked an operation key
 but whose claim result was logged. The old app always logged claim operations;

@@ -62,7 +62,9 @@ class MemoryIdentityMigrationTest(unittest.IsolatedAsyncioTestCase):
                 '{"memory_writes":[]}')
 
             migration = (Path(__file__).resolve().parents[1] / "migrations" /
-                         "0006_episode_identity_boundary.sql").read_text()
+                         "0001_memory.sql").read_text().split(
+                             "-- BEGIN 0006_episode_identity_boundary\n", 1)[1].split(
+                             "-- END 0006_episode_identity_boundary", 1)[0]
             await connection.execute(migration.replace("ai_memory.", "pg_temp."))
 
             rows = await connection.fetch("""SELECT session_id,turn_no,customer_id
