@@ -76,6 +76,7 @@ async def run_scenario_call(
     config: str = "full",
     call_date: date | None = None,
     capture_source_ids: bool = False,
+    wait_for_jobs=None,
 ) -> list[dict[str, Any]]:
     """Execute all turns of a single call in a scenario."""
     session_id = uuid4()
@@ -110,12 +111,13 @@ async def run_scenario_call(
             tool_calls = state.get("tool_calls", [])
             memory_writes = state.get("memory_writes", [])
             prior_facts = state.get("profile", {})
-            facts_used_this_turn = facts_used(agent_text, tool_calls, prior_facts)
+            facts_used_this_turn = facts_used(
+                agent_text, tool_calls, prior_facts, state.get("scoped_facts", {}))
             call_brief_latency = (resp.call_brief or {}).get("latency_ms")
 
         except Exception as exc:
             latency_ms = (time.perf_counter() - t_start) * 1000.0
-            agent_text = f"[ERROR: {type(exc).__name__}: {exc}]"
+            agent_text = f"[ERROR: {type(exc).__name__}]"
             tool_calls = []
             memory_writes = []
             facts_used_this_turn = []
@@ -127,6 +129,8 @@ async def run_scenario_call(
         if capture_source_ids:
             row["_client_msg_id"] = str(turn_req.client_msg_id)
         trace_rows.append(row)
+        if wait_for_jobs is not None:
+            await wait_for_jobs(str(turn_req.client_msg_id))
 
     return trace_rows
 
@@ -183,9 +187,8 @@ async def run_scenario_stream(
                 config="baseline_no_memory" if is_baseline else "full",
                 call_date=scenario_call_date(calls, call_name, base_date),
                 capture_source_ids=capture_writes is not None,
+                wait_for_jobs=wait_for_jobs,
             )
-            if wait_for_jobs is not None:
-                await wait_for_jobs()
             if capture_writes is not None:
                 source_ids = [row.pop("_client_msg_id") for row in rows]
                 writes_by_turn = await capture_writes(source_ids)
@@ -200,8 +203,9 @@ async def run_scenario_stream(
     return trace
 
 
-async def wait_for_distillation(dsn: str, timeout_seconds: float = 180) -> None:
-    """Keep cross-call evaluation from racing the background worker."""
+async def wait_for_distillation(dsn: str, source_turn_id: str,
+                                timeout_seconds: float = 180) -> None:
+    """Wait for this turn's job without including unrelated database jobs."""
     conn = await asyncpg.connect(dsn.replace("postgresql+asyncpg://",
                                             "postgresql://", 1))
     try:
@@ -210,13 +214,14 @@ async def wait_for_distillation(dsn: str, timeout_seconds: float = 180) -> None:
             row = await conn.fetchrow("""SELECT
                 count(*) FILTER (WHERE status IN ('pending','leased')) AS waiting,
                 count(*) FILTER (WHERE status='failed') AS failed
-                FROM ai_memory.langmem_distillation_jobs""")
+                FROM ai_memory.langmem_distillation_jobs
+                WHERE source_turn_id=$1""", UUID(source_turn_id))
             if row["failed"]:
                 raise RuntimeError("LangMem distillation job failed during evaluation")
             if not row["waiting"]:
                 return
             if time.monotonic() >= deadline:
-                raise TimeoutError("LangMem distillation did not finish before the next call")
+                raise TimeoutError("LangMem distillation did not finish before the next turn")
             await asyncio.sleep(0.5)
     finally:
         await conn.close()
@@ -274,14 +279,14 @@ def print_cli_summary(agent_kind: str, results: dict[str, Any]) -> None:
 async def main() -> None:
     parser = argparse.ArgumentParser(description="Eval Harness Runner for Deep vs ReAct Agent")
     parser.add_argument("--agent", choices=["deep", "react"], required=True, help="Agent core to evaluate")
-    parser.add_argument("--config", choices=["full", "baseline", "both"], default="both", help="Eval config to run")
+    parser.add_argument("--config", choices=["full", "baseline", "both"], default="full", help="Eval config to run")
     parser.add_argument("--variant", choices=["current", "shadow", "enabled"],
-                        default="current", help="Deployment memory mode being measured")
+                        default="enabled", help="Deployment memory mode being measured")
     parser.add_argument("--seed", type=int, default=7,
                         help="Identical model seed across ablation runs")
     parser.add_argument("--worker-wait-seconds", type=float, default=180,
-                        help="Maximum wait for background memory before the next call")
-    parser.add_argument("--scenarios", default="ai-services/eval_harness/benchmark_dataset.json", help="Path to scenarios")
+                        help="Maximum wait for background memory before the next turn")
+    parser.add_argument("--scenarios", default="eval_harness/benchmark_dataset.json", help="Path to scenarios")
     parser.add_argument("--dry-run", type=int, default=0, help="Run only first N scenarios for dry-run")
     parser.add_argument("--out", default=None, help="Output JSON path")
     args = parser.parse_args()
@@ -291,9 +296,10 @@ async def main() -> None:
     # Determine output path
     out_path = args.out
     if not out_path:
-        out_dir = "ai-services/eval_harness/results"
+        out_dir = "eval_harness/results"
         os.makedirs(out_dir, exist_ok=True)
-        out_path = os.path.join(out_dir, f"benchmark_{args.agent}_agent.json")
+        out_path = os.path.join(
+            out_dir, f"benchmark_{args.agent}_{args.variant}_{args.config}.json")
 
     # Load scenarios
     scenarios_all = load_scenarios(args.scenarios)
@@ -321,8 +327,8 @@ async def main() -> None:
     # Run Full Configuration
     if args.config in ("full", "both"):
         print(f"\n--- Running FULL Configuration (With Inter-Session Memory) ---")
-        waiter = (lambda: wait_for_distillation(database_url(settings),
-            args.worker_wait_seconds)) if args.variant != "current" else None
+        waiter = (lambda source_id: wait_for_distillation(database_url(settings),
+            source_id, args.worker_wait_seconds)) if args.variant != "current" else None
         trace_full = await run_scenario_stream(runtime, scenarios, is_baseline=False,
                                                run_tag=args.variant,
                                                wait_for_jobs=waiter,
@@ -335,8 +341,11 @@ async def main() -> None:
     if args.config in ("baseline", "both"):
         print(f"\n--- Running BASELINE Configuration (No Inter-Session Memory) ---")
         baseline_runtime = make_baseline_runtime(build_runtime(settings))
+        baseline_waiter = (lambda source_id: wait_for_distillation(database_url(settings),
+            source_id, args.worker_wait_seconds)) if args.variant != "current" else None
         trace_baseline = await run_scenario_stream(baseline_runtime, scenarios,
-                                                   is_baseline=True, run_tag="baseline")
+                                                   is_baseline=True, run_tag="baseline",
+                                                   wait_for_jobs=baseline_waiter)
 
     if trace_full:
         write_jsonl(trace_full, out_path.removesuffix(".json") + "_full.jsonl")
@@ -380,7 +389,7 @@ async def main() -> None:
     }
 
     # Save JSON output
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(output_doc, f, indent=2, ensure_ascii=False)
 

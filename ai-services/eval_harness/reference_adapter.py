@@ -8,10 +8,18 @@ from typing import Any
 from eval_harness.extractor import build_trace_row
 
 
-def facts_used(agent_text: str, tool_calls: list[dict], prior_facts: dict) -> list[str]:
+def facts_used(agent_text: str, tool_calls: list[dict], prior_facts: dict,
+               scoped_facts: dict | None = None) -> list[str]:
     """Count a prior value only when the answer or a tool argument uses it."""
     used = []
-    for key, fact in prior_facts.items():
+    candidates = list(prior_facts.items())
+    for scopes in (scoped_facts or {}).values():
+        if not isinstance(scopes, dict):
+            continue
+        for facts in scopes.values():
+            if isinstance(facts, dict):
+                candidates.extend(facts.items())
+    for key, fact in candidates:
         value = fact.get("value") if isinstance(fact, dict) else fact
         if value is None or isinstance(value, bool):
             continue

@@ -28,6 +28,13 @@ class TestEvalHarness(unittest.TestCase):
                                     {"room_area_m2": {"value": 25}}),
                          ["room_area_m2"])
 
+    def test_scoped_fact_used_in_tool_argument_is_counted(self):
+        from eval_harness.reference_adapter import facts_used
+        self.assertEqual(facts_used("Em kiểm tra mẫu trước đó ạ.", [
+            {"name": "catalog.search", "args": {"sku": "SKU-AP-X"}}
+        ], {}, {"product": {"SKU-AP-X": {
+            "product_advised": {"value": "SKU-AP-X"}}}}), ["product_advised"])
+
     def test_reference_trace_has_required_fields_and_brief_latency(self):
         from eval_harness.reference_adapter import trace_line
         row = trace_line("run-1", "full", "SAMPLE-01", "call_2", 1,
@@ -97,6 +104,44 @@ class TestEvalHarness(unittest.TestCase):
 
 
 class TestScenarioInput(unittest.IsolatedAsyncioTestCase):
+    async def test_runtime_error_text_is_not_copied_into_public_trace(self):
+        from eval_harness.benchmark_runner import run_scenario_call
+
+        class Runtime:
+            async def run(self, request):
+                raise RuntimeError("private customer detail")
+
+        rows = await run_scenario_call(Runtime(), "SAMPLE-01", "call_1",
+            {"customer_turns": ["Xin chào"]}, date(2026, 10, 15), "0900000000")
+        self.assertIn("RuntimeError", rows[0]["agent_text"])
+        self.assertNotIn("private customer detail", rows[0]["agent_text"])
+
+    async def test_worker_finishes_before_next_turn_in_same_call(self):
+        from types import SimpleNamespace
+        from eval_harness.benchmark_runner import run_scenario_stream
+
+        completed = []
+
+        class Runtime:
+            async def run(self, request):
+                if request.text == "Lượt hai":
+                    self_assert.assertEqual(len(completed), 1)
+                return SimpleNamespace(agent_text="Dạ.", call_brief=None)
+
+            def state_for(self, request):
+                return {"profile": {}, "tool_calls": [], "memory_writes": []}
+
+        self_assert = self
+
+        async def wait(source_id):
+            completed.append(source_id)
+
+        await run_scenario_stream(Runtime(), {"SAMPLE-01": {
+            "customer_phone": "0900000000", "calls": {"call_1": {
+                "customer_turns": ["Lượt một", "Lượt hai"]}}}},
+            wait_for_jobs=wait)
+        self.assertEqual(len(completed), 2)
+
     async def test_background_writes_are_attributed_to_source_turn(self):
         from types import SimpleNamespace
         from eval_harness.benchmark_runner import run_scenario_stream
@@ -106,7 +151,7 @@ class TestScenarioInput(unittest.IsolatedAsyncioTestCase):
                 return SimpleNamespace(agent_text="Dạ em ghi nhận.", call_brief=None)
             def state_for(self, request):
                 return {"profile": {}, "tool_calls": [], "memory_writes": []}
-        async def wait():
+        async def wait(source_id):
             return None
         async def capture(ids):
             return {ids[0]: [{"key": "preferred_color", "value": "xanh",

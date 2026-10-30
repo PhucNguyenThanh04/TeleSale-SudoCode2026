@@ -18,13 +18,23 @@ from langgraph.store.postgres.aio import AsyncPostgresStore
 from app.mcp_servers.mcp_memory.services.erasure import request_erasure
 from app.mcp_servers.mcp_memory.services.erasure_executor import execute_erasure
 from app.mcp_servers.mcp_memory.services.memory import read, write
-from eval_harness.benchmark_runner import read_distillation_writes
+from eval_harness.benchmark_runner import read_distillation_writes, wait_for_distillation
 from scripts.backfill_langmem_store import backfill_customer
 
 
 @unittest.skipUnless(os.getenv("MEMORY_INTEGRATION_ADMIN_DSN"),
                      "requires MEMORY_INTEGRATION_ADMIN_DSN with CREATEDB")
 class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
+    async def test_eval_wait_is_scoped_to_source_turn(self):
+        session, pending_source = str(uuid4()), str(uuid4())
+        await write(self.repo, "commit_turn", "C901", session, {
+            "customer_text": "Tôi thích màu xanh", "agent_text": "Dạ",
+            "on": "2026-10-15", "channel": "hotline",
+            "client_msg_id": pending_source, "facts": []}, langmem_mode="enabled")
+        await wait_for_distillation(self.dsn, str(uuid4()), timeout_seconds=0.05)
+        with self.assertRaises(TimeoutError):
+            await wait_for_distillation(self.dsn, pending_source, timeout_seconds=0.05)
+
     async def test_unfinished_store_write_is_hidden_until_job_completes(self):
         async with AsyncPostgresStore.from_conn_string(store_dsn(self.dsn), index=None) as store:
             await store.setup()

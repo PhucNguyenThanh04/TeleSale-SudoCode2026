@@ -15,14 +15,19 @@ Run `current`, `shadow`, and `enabled` against separately seeded test databases
 with the same BTC catalog, CRM, model, temperature, max tokens, `--seed`, dates,
 and business tools. Start `mcp-memory` and the worker with matching
 `LANGMEM_MODE`; the `current` run uses `off` and no worker. Wait until
-`ai_memory.langmem_distillation_jobs` has no pending or leased rows before the
-next call in a shadow/enabled scenario. Keep traces in ignored `results/`.
+each evaluated turn's LangMem job finishes before the next turn in a
+shadow/enabled scenario. Keep traces in ignored `results/`.
 
 For each variant and for both the seven BTC public samples and 19 local
 scenarios, run `python -m eval_harness.benchmark_runner --agent deep --config
 full --variant VARIANT --seed 7 --scenarios DATASET --out results/VARIANT_DATASET.json`.
-Run `--config baseline --variant current` against a separate clone of the
-same seed database. The runner emits `*_full.jsonl` or `*_baseline.jsonl`.
+The runner defaults to `--config full`, `--variant enabled`, and the local
+19-scenario dataset when those flags are omitted. Run from `ai-services/`.
+Run `--config baseline --variant VARIANT` against a separate clone of the
+same seed database for each full run. Give it a different `--out` path so it
+does not overwrite the full run manifest. This keeps the agent prompt and
+memory implementation identical while hiding prior memory. The runner emits
+`*_full.jsonl` or `*_baseline.jsonl`.
 `--config both` is useful only for a quick smoke test because it reuses mutable
 business tables. Score each pair with
 the unmodified BTC script:
@@ -31,7 +36,7 @@ the unmodified BTC script:
 python /home/thanh-phuc/PyProject/sudocode/BTC-Data-Vong1-TEAMS/eval/reference_eval.py \
   --scenarios /home/thanh-phuc/PyProject/sudocode/BTC-Data-Vong1-TEAMS/test_set/public_sample \
   --trace results/current_public_full.jsonl \
-  --baseline results/current_public_baseline.jsonl \
+  --baseline results/current_public_no_memory_baseline.jsonl \
   --out results/current_public_reference.json
 ```
 
