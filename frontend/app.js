@@ -270,6 +270,7 @@
     prompt.innerHTML = '<div class="empty-emblem" aria-hidden="true">✦</div><p class="eyebrow">TRANG MỚI</p><h3>Bắt đầu cuộc gọi tiếp theo.</h3><p>Kiểm tra lại định danh và ngày cuộc gọi trước khi gửi tin đầu tiên.</p>';
     ui.messages.append(prompt);
     ui.empty = prompt;
+    if (visitorMode) workspace.renderPreviousSummary();
     if (!visitorMode) ui.identity.focus();
   });
   Promise.allSettled([fetch("/health").then((response) => response.ok), speech.checkHealth()])

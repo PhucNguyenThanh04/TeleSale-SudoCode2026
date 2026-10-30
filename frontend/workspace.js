@@ -134,7 +134,15 @@
     const calls = await loadCalls();
     const previous = calls.find((call) => call.last_customer_text);
     if (!previous) return;
-    $("brief-content").textContent = `Lần trước (${previous.call_date}): ${previous.last_customer_text}\n${previous.turns} lượt trao đổi. Xem chi tiết tại Quản lý cuộc gọi.`;
+    try {
+      const response = await fetch(`/api/calls/${encodeURIComponent(previous.id)}`, {credentials: "same-origin"});
+      if (!response.ok) return;
+      const detail = await response.json();
+      const recent = detail.messages.filter((message) => message.role === "customer").slice(-3);
+      $("brief-content").textContent = `Phiên trước · ${previous.call_date} · ${previous.turns} lượt\n`
+        + recent.map((message) => `• ${message.content}`).join("\n")
+        + "\nXem toàn bộ tại Quản lý cuộc gọi.";
+    } catch (_) { /* The call list remains available for manual inspection. */ }
   }
 
   document.querySelectorAll("[data-view]").forEach((button) =>
