@@ -24,11 +24,34 @@
       `Agent: ${stages.agent}`,
       `VieNeu: ${stages.tts}`,
     ].join("\n");
+    for (const [name, value] of Object.entries(stages)) {
+      const badge = document.getElementById(`stage-${name}`);
+      if (!badge) continue;
+      badge.textContent = value.split(" · ")[0];
+      badge.parentElement.dataset.state = /lỗi|chưa sẵn sàng/.test(value) ? "error"
+        : /đang|chờ khung/.test(value) ? "active"
+        : /xong|ms|giây đã thu|đã dừng/.test(value) ? "complete" : "idle";
+    }
   }
 
   function setStage(name, value) {
     stages[name] = value;
     render();
+  }
+
+  async function checkHealth() {
+    const [core, voices] = await Promise.allSettled([
+      fetch(`${API}/health`).then(async (response) => response.ok && (await response.json()).status === "ready"),
+      fetch(`${API}/v1/speech/vieneu/voices`).then((response) => response.ok),
+    ]);
+    const speechReady = core.status === "fulfilled" && core.value;
+    const ttsReady = voices.status === "fulfilled" && voices.value;
+    if (!speechReady) {
+      setStage("vad", "dịch vụ chưa sẵn sàng");
+      setStage("stt", "dịch vụ chưa sẵn sàng");
+    }
+    if (!ttsReady) setStage("tts", "dịch vụ chưa sẵn sàng");
+    return speechReady && ttsReady;
   }
 
   function primePlayback() {
@@ -243,7 +266,7 @@
   stopButton.addEventListener("click", () => { stopPlayback(); setStage("tts", "đã dừng phát"); });
   render();
   window.TeleSaleSpeech = {
-    primePlayback, speak, stopPlayback, setStage,
+    primePlayback, speak, stopPlayback, setStage, checkHealth,
     setTranscriptHandler(handler) { onTranscript = handler; },
     setCanRecord(handler) { canRecord = handler; },
   };

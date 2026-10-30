@@ -4,26 +4,26 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f4efe4">
-  <title>Sổ Tư Vấn · TeleSale</title>
-  <link rel="stylesheet" href="/app/styles.css">
-  <script src="/app/workspace.js" defer></script>
-  <script src="/app/speech.js" defer></script>
-  <script src="/app/app.js" defer></script>
+  <title>TeleSale · Cuộc gọi AI trọn luồng</title>
+  <link rel="stylesheet" href="/app/styles.css?v=20261030-e2e">
+  <script src="/app/workspace.js?v=20261030-e2e" defer></script>
+  <script src="/app/speech.js?v=20261030-e2e" defer></script>
+  <script src="/app/app.js?v=20261030-e2e" defer></script>
 </head>
 <body>
   <div class="page-shell">
     <header class="masthead">
       <div class="brand-mark" aria-hidden="true">T<span>·</span>S</div>
       <div class="brand-copy">
-        <p class="eyebrow">TELESALE · SỔ TƯ VẤN</p>
-        <h1>Cuộc trò chuyện đáng nhớ.</h1>
-        <p class="subhead">Bàn làm việc cho tư vấn viên · Bản thử nghiệm nội bộ</p>
+        <p class="eyebrow">TELESALE · CUỘC GỌI AI</p>
+        <h1>Từ lời nói đến câu trả lời.</h1>
+        <p class="subhead">Ghi âm hoặc nhập lời khách · AI tra cứu và tư vấn · VieNeu đọc câu trả lời</p>
       </div>
       <div class="masthead-side"><span class="ornament">✳</span><span id="service-state">Đang kiểm tra</span></div>
     </header>
 
     <nav class="primary-nav" aria-label="Màn hình">
-      <button type="button" class="nav-active" data-view="conversation">Hội thoại</button>
+      <button type="button" class="nav-active" data-view="conversation">Gọi & hội thoại</button>
       <button type="button" data-view="reference">Dữ liệu tra cứu</button>
       <button type="button" data-view="calls">Quản lý cuộc gọi</button>
     </nav>
@@ -34,16 +34,16 @@
         <p class="section-intro" id="identity-help">Mỗi cuộc gọi bắt đầu bằng kênh và danh tính do tư vấn viên xác nhận từ nguồn tiếp nhận.</p>
 
         <form id="setup-form" class="setup-form">
-          <label for="channel">Kênh tiếp nhận</label>
-          <select id="channel" name="channel">
+          <label class="operator-only" for="channel">Kênh tiếp nhận</label>
+          <select class="operator-only" id="channel" name="channel">
             <option value="chat_fanpage">Fanpage</option>
             <option value="zalo_oa">Zalo</option>
             <option value="hotline">Hotline</option>
           </select>
 
-          <label for="identity">Định danh từ kênh</label>
-          <input id="identity" name="identity" type="text" autocomplete="off" placeholder="ID hội thoại hoặc số gọi đến" required>
-          <p class="field-note">Không lấy định danh từ nội dung khách tự nhắn.</p>
+          <label class="operator-only" for="identity">Định danh từ kênh</label>
+          <input class="operator-only" id="identity" name="identity" type="text" autocomplete="off" placeholder="ID hội thoại hoặc số gọi đến" required>
+          <p class="field-note operator-only">Không lấy định danh từ nội dung khách tự nhắn.</p>
 
           <label for="call-date">Ngày cuộc gọi</label>
           <input id="call-date" name="callDate" type="date" value="2026-10-15" required>
@@ -60,27 +60,38 @@
 
       <section class="conversation" aria-labelledby="conversation-title">
         <div class="conversation-head">
-          <div><p class="eyebrow">BÀN TƯ VẤN</p><h2 id="conversation-title">Hội thoại</h2></div>
+          <div><p class="eyebrow">PIPELINE TRỰC TIẾP</p><h2 id="conversation-title">Cuộc gọi AI</h2></div>
           <div class="live-pill"><span class="status-dot green"></span><span id="connection-label">Sẵn sàng</span></div>
         </div>
 
-        <div id="messages" class="messages" role="log" aria-live="polite" aria-label="Nội dung hội thoại">
-          <div id="empty-state" class="empty-state">
-            <div class="empty-emblem" aria-hidden="true">✦</div>
-            <p class="eyebrow">TRANG ĐẦU TIÊN</p>
-            <h3>Một lời chào mở đầu câu chuyện.</h3>
-            <p>Điền thông tin phiên rồi gửi lời khách nói hoặc nhắn. Câu trả lời sẽ xuất hiện ngay tại đây.</p>
-          </div>
-        </div>
-
-        <div class="composer-area">
-          <div id="error-box" class="error-box" role="alert" hidden></div>
+        <section class="voice-station" aria-label="Gọi bằng giọng">
+          <div class="voice-station-copy"><strong>Gọi bằng giọng</strong><span>Nhấn ghi âm, nói rồi nhấn dừng. Bản chép lời sẽ tự gửi sang AI; câu trả lời được đọc ngay khi VieNeu trả khung âm thanh đầu tiên.</span></div>
           <div class="voice-controls">
             <button id="record-button" type="button">● Bắt đầu ghi âm</button>
             <button id="stop-voice" type="button" hidden>Dừng phát giọng</button>
             <span id="voice-label" role="status">Giọng trả lời: VieNeu · Trúc Ly</span>
           </div>
-          <details class="pipeline-debug"><summary>Chi tiết luồng âm thanh</summary><pre id="pipeline-status">Micro → VAD/STT → Agent → VieNeu: sẵn sàng</pre></details>
+          <div class="pipeline-steps" aria-label="Trạng thái từng thành phần">
+            <div class="pipeline-step" data-stage="micro"><span>01 · Đầu vào</span><strong>Micro</strong><small id="stage-micro">Sẵn sàng</small></div>
+            <div class="pipeline-step" data-stage="vad"><span>02 · Tách lượt</span><strong>Silero VAD</strong><small id="stage-vad">Chờ âm thanh</small></div>
+            <div class="pipeline-step" data-stage="stt"><span>03 · Chép lời</span><strong>Gipformer</strong><small id="stage-stt">Chờ âm thanh</small></div>
+            <div class="pipeline-step" data-stage="agent"><span>04 · Tư vấn</span><strong>AI + tra cứu</strong><small id="stage-agent">Chờ lời khách</small></div>
+            <div class="pipeline-step" data-stage="tts"><span>05 · Đọc đáp án</span><strong>VieNeu</strong><small id="stage-tts">Chờ câu trả lời</small></div>
+          </div>
+          <details class="pipeline-debug"><summary>Nhật ký và thời gian từng bước</summary><pre id="pipeline-status">Micro → VAD/STT → Agent → VieNeu: sẵn sàng</pre></details>
+        </section>
+
+        <div id="messages" class="messages" role="log" aria-live="polite" aria-label="Nội dung hội thoại">
+          <div id="empty-state" class="empty-state">
+            <div class="empty-emblem" aria-hidden="true">✦</div>
+            <p class="eyebrow">TRANG ĐẦU TIÊN</p>
+            <h3>Bắt đầu bằng giọng nói hoặc văn bản.</h3>
+            <p>Toàn bộ lượt nói, bản chép lời và câu trả lời sẽ hiện ở đây.</p>
+          </div>
+        </div>
+
+        <div class="composer-area">
+          <div id="error-box" class="error-box" role="alert" hidden></div>
           <form id="chat-form" class="composer">
             <label for="message-input" class="sr-only">Nội dung khách hàng</label>
             <textarea id="message-input" rows="3" maxlength="8000" placeholder="Nhập lời khách hàng ở đây…" required></textarea>
@@ -118,7 +129,7 @@
       <p id="calls-status" role="status">Đang tải cuộc gọi.</p>
       <div class="calls-grid"><section><h3>Danh sách cuộc gọi</h3><div id="calls-list"></div></section><section><h3>Chi tiết</h3><div id="call-detail">Chọn một cuộc gọi để xem nội dung.</div></section></div>
     </main>
-    <footer class="site-footer"><span>TELESALE · 2026</span><span>Giao diện thử nghiệm nội bộ</span></footer>
+    <footer class="site-footer"><span>TELESALE · 2026</span><span>Gọi AI · Dữ liệu nguồn · Lịch sử cuộc gọi</span></footer>
   </div>
 </body>
 </html>

@@ -5,6 +5,7 @@
   const speech = window.TeleSaleSpeech;
   const workspace = window.TeleSaleWorkspace;
   const visitorMode = location.hostname === "telesale.ktoxz.id.vn";
+  if (visitorMode) document.body.classList.add("public-visitor");
   let returningBrowser = false;
   const ui = {
     channel: $("channel"), identity: $("identity"), callDate: $("call-date"),
@@ -271,14 +272,13 @@
     ui.empty = prompt;
     if (!visitorMode) ui.identity.focus();
   });
-  fetch("/health")
-    .then((response) => {
-      ui.serviceState.textContent = response.ok ? "Backend trực tuyến" : "Backend chưa sẵn sàng";
-      if (!response.ok) ui.connection.textContent = "Mất kết nối";
-    })
-    .catch(() => {
-      ui.serviceState.textContent = "Backend chưa sẵn sàng";
-      ui.connection.textContent = "Mất kết nối";
+  Promise.allSettled([fetch("/health").then((response) => response.ok), speech.checkHealth()])
+    .then(([backend, audio]) => {
+      const backendReady = backend.status === "fulfilled" && backend.value;
+      const audioReady = audio.status === "fulfilled" && audio.value;
+      ui.serviceState.textContent = backendReady && audioReady ? "Pipeline trực tuyến"
+        : backendReady ? "Âm thanh chưa sẵn sàng" : "Backend chưa sẵn sàng";
+      if (!backendReady) ui.connection.textContent = "Mất kết nối";
     });
   connectLocalSession().catch((error) => {
     ui.authLabel.textContent = "Chưa kết nối";
