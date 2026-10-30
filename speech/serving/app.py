@@ -45,7 +45,8 @@ VOICES = {"bao_kim", "gia_bao", "khanh_vy", "hoang_nam", "ngoc_huyen", "huu_dat"
 VIENEU_URL = "http://127.0.0.1:18111"
 WEB_URL = "http://127.0.0.1:8000"
 HOP_HEADERS = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
-               "te", "trailer", "transfer-encoding", "upgrade", "content-length"}
+               "te", "trailer", "transfer-encoding", "upgrade", "content-length",
+               "x-forwarded-for", "forwarded", "x-real-ip"}
 
 
 @app.middleware("http")
