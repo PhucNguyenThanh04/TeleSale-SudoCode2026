@@ -15,6 +15,7 @@
   let playbackGeneration = 0;
   let onTranscript = null;
   let canRecord = () => true;
+  const ACKNOWLEDGEMENT = "Dạ, em đang kiểm tra thông tin cho mình ạ.";
 
   function render() {
     debug.textContent = [
@@ -172,15 +173,15 @@
     return lines.length ? {name, data: JSON.parse(lines.join("\n"))} : null;
   }
 
-  async function speak(text) {
+  async function speak(text, {acknowledgement = false} = {}) {
     stopPlayback();
     if (!primePlayback()) return;
     const generation = playbackGeneration;
     const controller = new AbortController();
     playbackRequest = controller;
     stopButton.hidden = false;
-    label.textContent = "VieNeu đang tạo âm thanh…";
-    setStage("tts", "đang chờ khung đầu…");
+    label.textContent = acknowledgement ? "VieNeu đang xác nhận…" : "VieNeu đang tạo âm thanh…";
+    setStage("tts", acknowledgement ? "đang tạo câu xác nhận…" : "đang chờ khung đầu…");
     const started = performance.now();
     let nextAt = playback.currentTime + 0.03;
     let firstFrameMs = null;
@@ -235,8 +236,10 @@
             playbackSources.push(source);
             frames += 1;
             if (firstFrameMs === null) firstFrameMs = Math.round(performance.now() - started);
-            setStage("tts", `đang phát câu ${data.index + 1}/${totalSegments} · khung đầu ${firstFrameMs} ms · ${frames} khung`);
-            label.textContent = "VieNeu · Trúc Ly đang phát";
+            setStage("tts", acknowledgement
+              ? `đang xác nhận · khung đầu ${firstFrameMs} ms`
+              : `đang phát câu ${data.index + 1}/${totalSegments} · khung đầu ${firstFrameMs} ms · ${frames} khung`);
+            label.textContent = acknowledgement ? "VieNeu · đang xác nhận" : "VieNeu · Trúc Ly đang phát";
           }
           if (name === "segment_end") {
             completedSegments += 1;
@@ -250,8 +253,10 @@
       if (!doneEvent) throw new Error("Luồng VieNeu kết thúc sớm");
       await new Promise((resolve) => setTimeout(resolve, Math.max(0, (nextAt - playback.currentTime) * 1000)));
       if (generation !== playbackGeneration) return;
-      setStage("tts", `xong ${completedSegments} câu · khung đầu ${firstFrameMs} ms · ${frames} khung`);
-      label.textContent = "Giọng trả lời: VieNeu · Trúc Ly";
+      setStage("tts", acknowledgement
+        ? `đã xác nhận · chờ AI · khung đầu ${firstFrameMs} ms`
+        : `xong ${completedSegments} câu · khung đầu ${firstFrameMs} ms · ${frames} khung`);
+      label.textContent = acknowledgement ? "VieNeu · đang chờ kết quả tra cứu" : "Giọng trả lời: VieNeu · Trúc Ly";
       stopButton.hidden = true;
     } catch (error) {
       if (error.name !== "AbortError" && generation === playbackGeneration) {
@@ -267,6 +272,7 @@
   render();
   window.TeleSaleSpeech = {
     primePlayback, speak, stopPlayback, setStage, checkHealth,
+    acknowledge() { return speak(ACKNOWLEDGEMENT, {acknowledgement: true}); },
     setTranscriptHandler(handler) { onTranscript = handler; },
     setCanRecord(handler) { canRecord = handler; },
   };

@@ -145,6 +145,9 @@
     setBusy(true);
     const agentStarted = performance.now();
     speech.setStage("agent", "đang xử lý lượt hội thoại…");
+    // Fill the otherwise silent model/tool wait with a short, non-business
+    // acknowledgement. The verified answer replaces it as soon as it is ready.
+    speech.acknowledge();
     turn.view.caption.textContent = "Đang xử lý…";
     turn.retry?.remove();
     turn.retry = null;
