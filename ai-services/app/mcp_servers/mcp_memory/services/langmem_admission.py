@@ -1,6 +1,7 @@
 """Admit typed LangMem proposals only when committed evidence supports them."""
 
 from app.agent.guardrails.checks import fact_evidence
+from app.agent.memory.reported_facts import reported_tool_fact
 from app.mcp_servers.mcp_memory.services.memory import _valid_fact
 from app.schemas.langmem import ProfileFactCandidate, CustomerCallEpisodeCandidate
 
@@ -41,6 +42,12 @@ def admit_profile_candidates(
                              "reason": str(evidence.reason or "source_mismatch")})
             continue
         value = evidence.normalized_value if candidate.op != "delete" else candidate.value
+        if source.startswith("tool:") and not reported_tool_fact(
+                candidate.key, value, turn.get("agent_text", ""), relevant_calls,
+                candidate.scope_id if candidate.scope_type == "product" else None):
+            rejected.append({"key": candidate.key,
+                             "reason": "not_reported_in_agent_answer"})
+            continue
         scope_id = "" if candidate.scope_type == "global" else candidate.scope_id
         fact = {"key": candidate.key, "value": value, "op": candidate.op,
                 "source_kind": candidate.source_kind,

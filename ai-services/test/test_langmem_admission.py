@@ -62,6 +62,48 @@ class AdmissionTests(unittest.TestCase):
         self.assertEqual(accepted, [])
         self.assertTrue(rejected)
 
+    def test_catalog_results_are_not_all_recorded_as_products_advised(self):
+        from app.mcp_servers.mcp_memory.services.langmem_admission import admit_profile_candidates
+        calls = [{"name": "catalog.search", "source_turn_id": "turn-1", "args": {},
+                  "result": {"items": [
+                      {"sku": "SKU-PURE-X", "name": "Máy lọc khí PureHome X"},
+                      {"sku": "SKU-BUNDLE", "name": "Gói gia đình CleanHome"}]}}]
+        proposals = []
+        for sku in ("SKU-PURE-X", "SKU-BUNDLE"):
+            proposal = candidate("product_advised", sku, "máy lọc khí", source="tool")
+            proposal.source_tool = "catalog.search"
+            proposal.scope_type = "product"
+            proposal.scope_id = sku
+            proposals.append(proposal)
+        accepted, rejected = admit_profile_candidates("C001", "session-1", proposals,
+            [{"turn_id": "turn-1", "customer_id": "C001", "session_id": "session-1",
+              "customer_text": "Tư vấn giúp chị máy lọc khí.",
+              "agent_text": "Dạ, em đề xuất mẫu PureHome X cho phòng của chị."}], calls)
+        self.assertEqual([(item["key"], item["value"]) for item in accepted],
+                         [("product_advised", "SKU-PURE-X")])
+        self.assertEqual(rejected, [{"key": "product_advised",
+                                     "reason": "not_reported_in_agent_answer"}])
+
+    def test_catalog_products_explicitly_compared_are_recorded(self):
+        from app.mcp_servers.mcp_memory.services.langmem_admission import admit_profile_candidates
+        calls = [{"name": "catalog.search", "source_turn_id": "turn-1", "args": {},
+                  "result": {"items": [
+                      {"sku": "SKU-A", "name": "Máy lọc khí Breeze Mini"},
+                      {"sku": "SKU-B", "name": "Máy lọc khí Breeze Pro"}]}}]
+        proposals = []
+        for sku in ("SKU-A", "SKU-B"):
+            proposal = candidate("product_advised", sku, "hai lựa chọn", source="tool")
+            proposal.source_tool = "catalog.search"
+            proposal.scope_type = "product"
+            proposal.scope_id = sku
+            proposals.append(proposal)
+        accepted, rejected = admit_profile_candidates("C001", "session-1", proposals,
+            [{"turn_id": "turn-1", "customer_id": "C001", "session_id": "session-1",
+              "customer_text": "Có hai lựa chọn nào để so sánh không em?",
+              "agent_text": "Chị có thể so sánh Breeze Mini và Breeze Pro ạ."}], calls)
+        self.assertEqual({item["value"] for item in accepted}, {"SKU-A", "SKU-B"})
+        self.assertEqual(rejected, [])
+
     def test_conflicting_values_in_one_turn_are_not_admitted(self):
         from app.mcp_servers.mcp_memory.services.langmem_admission import admit_profile_candidates
         accepted, rejected = admit_profile_candidates("C001", "session-1", [
