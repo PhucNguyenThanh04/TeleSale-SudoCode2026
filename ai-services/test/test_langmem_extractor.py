@@ -66,7 +66,8 @@ class ExtractorTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("0912345678", content["customer_text"])
         self.assertEqual(seen["config"]["configurable"]["max_attempts"], 0)
 
-    async def test_existing_store_records_are_typed_for_manager(self):
+    async def test_existing_store_records_are_read_only_context(self):
+        import json
         from app.agent.memory.langmem_extractor import extract_candidates
         seen = {}
         class Manager:
@@ -79,7 +80,11 @@ class ExtractorTests(unittest.IsolatedAsyncioTestCase):
                 "value": "xanh", "source_kind": "customer",
                 "source_turn_id": "turn-1", "evidence_quote": "màu xanh",
                 "on": "2026-10-15", "scope_type": "global", "scope_id": ""}])
-        self.assertEqual(seen["existing"][0][1].value, "xanh")
+        self.assertNotIn("existing", seen)
+        context = seen["messages"][0]
+        self.assertEqual(context["role"], "system")
+        self.assertEqual(json.loads(context["content"].split("\n", 1)[1])[0]["value"],
+                         "xanh")
 
     async def test_returns_correction_proposal_and_open_blocker(self):
         from app.agent.memory.langmem_extractor import extract_candidates

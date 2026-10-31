@@ -84,8 +84,14 @@ async def extract_candidates(
         identifier = json.dumps([memory.scope_type, memory.scope_id, memory.key],
                                 ensure_ascii=False, separators=(",", ":"))
         typed_existing.append((identifier, memory))
-    result = await manager.ainvoke({"messages": safe_turns,
-                                   "existing": typed_existing},
+    if typed_existing:
+        current = [memory.model_dump(mode="json") for _, memory in typed_existing]
+        safe_turns.insert(0, {"role": "system", "content": (
+            "Current canonical customer facts are provided as read-only context. "
+            "Propose a supersede operation only when the new customer statement "
+            "contradicts one of them. Do not copy unchanged facts.\n" +
+            json.dumps(_mask_payload(current), ensure_ascii=False))})
+    result = await manager.ainvoke({"messages": safe_turns},
                                   config=_MANAGER_RUN_CONFIG)
     facts = []
     episode = None
