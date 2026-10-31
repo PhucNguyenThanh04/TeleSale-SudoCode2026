@@ -30,6 +30,10 @@ _INSTRUCTIONS = (
 _OPAQUE_FIELDS = {"turn_id", "source_turn_id", "session_id", "customer_id",
                   "sku", "order_id", "scope_id"}
 
+# Trustcall bounds validation repair attempts internally, but parallel schema
+# candidates can consume more than LangGraph's default 25 scheduling steps.
+_MANAGER_RUN_CONFIG = {"recursion_limit": 64}
+
 
 def _mask_payload(value: Any, field: str = "") -> Any:
     if isinstance(value, dict):
@@ -81,7 +85,8 @@ async def extract_candidates(
                                 ensure_ascii=False, separators=(",", ":"))
         typed_existing.append((identifier, memory))
     result = await manager.ainvoke({"messages": safe_turns,
-                                   "existing": typed_existing})
+                                   "existing": typed_existing},
+                                  config=_MANAGER_RUN_CONFIG)
     facts = []
     episode = None
     for item in result:
