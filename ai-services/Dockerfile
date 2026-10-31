@@ -10,5 +10,6 @@ RUN if [ "$INSTALL_RAG" = "true" ]; then \
       && pip install --no-cache-dir -r requirements-rag.txt; \
     fi
 COPY app ./app
+COPY scripts ./scripts
 
 CMD ["python", "-m", "app.mcp_servers.mcp_catalog.server"]
