@@ -23,7 +23,16 @@ CREATE TABLE IF NOT EXISTS ai_memory.facts (
     status text NOT NULL CHECK(status IN ('active','superseded','retracted')),
     supersedes_fact_id uuid
 );
-CREATE UNIQUE INDEX IF NOT EXISTS memory_facts_active_idx ON ai_memory.facts(customer_id,key) WHERE status='active';
+DO $legacy_fact_index$ BEGIN
+IF NOT EXISTS (
+    SELECT 1 FROM pg_attribute
+    WHERE attrelid = 'ai_memory.facts'::regclass
+      AND attname = 'scope_type' AND NOT attisdropped
+) THEN
+    CREATE UNIQUE INDEX IF NOT EXISTS memory_facts_active_idx
+        ON ai_memory.facts(customer_id,key) WHERE status='active';
+END IF;
+END $legacy_fact_index$;
 CREATE TABLE IF NOT EXISTS ai_memory.order_links (
     customer_id text NOT NULL, order_id text NOT NULL, PRIMARY KEY(customer_id,order_id)
 );
@@ -72,9 +81,17 @@ CREATE TABLE IF NOT EXISTS ai_memory.pending_facts (
 );
 CREATE INDEX IF NOT EXISTS memory_pending_session_idx
     ON ai_memory.pending_facts(session_id,turn_no);
-CREATE UNIQUE INDEX IF NOT EXISTS memory_facts_source_turn_key_idx
-    ON ai_memory.facts(source_session_id,source_turn_id,key)
-    WHERE source_turn_id IS NOT NULL;
+DO $legacy_source_index$ BEGIN
+IF NOT EXISTS (
+    SELECT 1 FROM pg_attribute
+    WHERE attrelid = 'ai_memory.facts'::regclass
+      AND attname = 'scope_type' AND NOT attisdropped
+) THEN
+    CREATE UNIQUE INDEX IF NOT EXISTS memory_facts_source_turn_key_idx
+        ON ai_memory.facts(source_session_id,source_turn_id,key)
+        WHERE source_turn_id IS NOT NULL;
+END IF;
+END $legacy_source_index$;
 -- END 0004_pending_facts
 
 -- BEGIN 0005_memory_evidence_quote
