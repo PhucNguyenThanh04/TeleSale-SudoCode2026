@@ -17,6 +17,25 @@ class SplitTtsTextTests(unittest.TestCase):
     def test_short_text_without_period_stays_single_segment(self):
         self.assertEqual(split_tts_text("Chị muốn nghe thêm không?"), ["Chị muốn nghe thêm không?"])
 
+    def test_does_not_split_vietnamese_thousands_separators(self):
+        self.assertEqual(
+            split_tts_text("Giá là 25.000.000 đồng. Chị thấy phù hợp không?"),
+            ["Giá là 25.000.000 đồng.", "Chị thấy phù hợp không?"],
+        )
+
+    def test_does_not_split_decimal_version_or_numeric_date(self):
+        self.assertEqual(
+            split_tts_text("Bản 2.5 có từ 15.10.2026. Em kiểm tra nhé."),
+            ["Bản 2.5 có từ 15.10.2026.", "Em kiểm tra nhé."],
+        )
+
+    def test_keeps_number_intact_when_twenty_word_limit_applies(self):
+        words = [f"từ{i}" for i in range(1, 20)] + ["25.000.000", "đồng", "ạ."]
+        self.assertEqual(
+            split_tts_text(" ".join(words)),
+            [" ".join(words[:20]), "đồng ạ."],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
