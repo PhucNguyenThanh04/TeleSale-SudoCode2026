@@ -44,6 +44,36 @@ def test_promotion_recovery_works_for_another_product_and_question_wording():
     assert "Máy lọc B" in safe_promotion_reply(state)
 
 
+def test_order_intent_with_old_numeric_discount_recovers_to_current_offer():
+    state = _state()
+    state["safe_text"] = "Chị gọi lại lấy cái Máy lọc A giảm 500k hôm trước nhé."
+    state["tool_calls"][-1]["result"]["freeship"] = True
+    result = asyncio.run(AgentNodes(None, None, None, 3, 3).verify_agent(state))
+    answer = result["agent_text"]
+    assert answer != FALLBACK
+    assert "Mức giảm mình nhắc hiện không nằm" in answer
+    assert "tặng 1 Màng lọc thay thế" in answer
+    assert "miễn phí vận chuyển" in answer
+    assert "xác nhận đặt" in answer
+    assert "500" not in answer
+    assert check_answer(answer, state["tool_calls"], state["safe_text"])[1] is None
+
+
+def test_old_discount_recovery_generalizes_to_another_product_and_amount():
+    state = _state(sku="SKU-B", name="Máy lọc B", gift="SKU-FILTER-B")
+    state["safe_text"] = "Anh chốt Máy lọc B giảm 300 nghìn lần trước."
+    answer = safe_promotion_reply(state)
+    assert "Máy lọc B" in answer
+    assert "Mức giảm mình nhắc hiện không nằm" in answer
+    assert "300" not in answer
+
+
+def test_plain_price_question_does_not_enter_promotion_recovery():
+    state = _state()
+    state["safe_text"] = "Mẫu này giá bao nhiêu?"
+    assert safe_promotion_reply(state) is None
+
+
 def test_gift_can_be_reported_by_verified_program_when_gift_name_was_not_loaded():
     state = _state()
     state["tool_calls"][1]["result"]["items"].pop()

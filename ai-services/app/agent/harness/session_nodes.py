@@ -77,8 +77,9 @@ def safe_catalog_reply(state: TurnState) -> str | None:
 
 def safe_promotion_reply(state: TurnState) -> str | None:
     """Describe only promotions applied by a current-turn quote for one SKU."""
-    if not re.search(r"(?i)\b(?:khuyến mãi|ưu đãi|giảm giá|tặng kèm)\b",
-                     state.get("safe_text", "")):
+    customer_text = state.get("safe_text", "")
+    if not re.search(r"(?i)\b(?:khuyến mãi|ưu đãi|giảm(?:\s+giá|\s+thêm)?|tặng kèm)\b",
+                     customer_text):
         return None
     calls = state.get("tool_calls", [])
     quotes = [call for call in calls if call.get("name") == "pricing.get_quote"
@@ -99,6 +100,7 @@ def safe_promotion_reply(state: TurnState) -> str | None:
         return None
     names = {item["sku"]: item["name"] for item in items}
     offers = []
+    has_money_discount = False
     for promo in quote.get("applied_promos", []):
         if not isinstance(promo, dict):
             continue
@@ -110,13 +112,24 @@ def safe_promotion_reply(state: TurnState) -> str | None:
             elif isinstance(promo.get("promo_code"), str):
                 offers.append(f"tặng quà kèm theo chương trình {promo['promo_code']}")
         elif type(discount) is int and discount > 0:
+            has_money_discount = True
             amount = f"{discount:,}".replace(",", ".")
             offers.append(f"giảm {amount}đ")
+    if quote.get("freeship") is True:
+        offers.append("miễn phí vận chuyển")
     if not offers:
         return None
+    claimed_money_discount = re.search(
+        r"(?i)\bgiảm(?:\s+giá|\s+thêm)?\s+\d[\d.,]*\s*"
+        r"(?:k|nghìn|ngàn|triệu|tr|đ|vnd)?\b", customer_text) is not None
+    correction = ("Mức giảm mình nhắc hiện không nằm trong ưu đãi đang áp dụng. "
+                  if claimed_money_discount and not has_money_discount else "")
+    confirmation = (" Mình xác nhận đặt theo ưu đãi hiện tại giúp em nhé?"
+                    if re.search(r"(?i)\b(?:lấy|mua|đặt|chốt)\b", customer_text)
+                    else "")
     return mask_pii(
-        f"Dạ, khuyến mãi đang áp dụng cho {product['name']} theo ngày cuộc gọi là "
-        + ", ".join(offers) + " ạ."
+        f"Dạ, {correction}khuyến mãi đang áp dụng cho {product['name']} "
+        f"theo ngày cuộc gọi là {', '.join(offers)} ạ.{confirmation}"
     )
 
 
