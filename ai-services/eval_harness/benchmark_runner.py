@@ -214,7 +214,7 @@ async def wait_for_distillation(dsn: str, source_turn_id: str,
             row = await conn.fetchrow("""SELECT
                 count(*) FILTER (WHERE status IN ('pending','leased')) AS waiting,
                 count(*) FILTER (WHERE status='failed') AS failed
-                FROM ai_memory.langmem_distillation_jobs
+                FROM runtime.langmem_distillation_jobs
                 WHERE source_turn_id=$1""", UUID(source_turn_id))
             if row["failed"]:
                 raise RuntimeError("LangMem distillation job failed during evaluation")
@@ -235,7 +235,7 @@ async def read_distillation_writes(dsn: str, source_ids: list[str]) -> dict[str,
                                           "postgresql://", 1))
     try:
         rows = await conn.fetch("""SELECT source_turn_id,accepted_writes
-            FROM ai_memory.langmem_distillation_jobs
+            FROM runtime.langmem_distillation_jobs
             WHERE source_turn_id=ANY($1::uuid[]) AND status='completed'""",
             [UUID(item) for item in source_ids])
         return {str(row["source_turn_id"]): (json.loads(row["accepted_writes"])
@@ -280,7 +280,7 @@ async def main() -> None:
     parser = argparse.ArgumentParser(description="Eval Harness Runner for Deep vs ReAct Agent")
     parser.add_argument("--agent", choices=["deep", "react"], required=True, help="Agent core to evaluate")
     parser.add_argument("--config", choices=["full", "baseline", "both"], default="full", help="Eval config to run")
-    parser.add_argument("--variant", choices=["current", "shadow", "enabled"],
+    parser.add_argument("--variant", choices=["enabled"],
                         default="enabled", help="Deployment memory mode being measured")
     parser.add_argument("--seed", type=int, default=7,
                         help="Identical model seed across ablation runs")
@@ -315,9 +315,6 @@ async def main() -> None:
     settings = Settings()
     settings.agent_kind = args.agent
     settings.llm_seed = args.seed
-    if settings.langmem_mode != {"current": "off", "shadow": "shadow",
-                                 "enabled": "enabled"}[args.variant]:
-        raise SystemExit("LANGMEM_MODE must match --variant in the runner and MCP deployment")
     print(f"\nInitializing Runtime for Agent: '{args.agent.upper()}' (Model: {settings.llm_model})...")
     runtime = build_runtime(settings)
 
@@ -327,22 +324,20 @@ async def main() -> None:
     # Run Full Configuration
     if args.config in ("full", "both"):
         print(f"\n--- Running FULL Configuration (With Inter-Session Memory) ---")
-        waiter = (lambda source_id: wait_for_distillation(database_url(settings),
-            source_id, args.worker_wait_seconds)) if args.variant != "current" else None
+        waiter = lambda source_id: wait_for_distillation(
+            database_url(settings), source_id, args.worker_wait_seconds)
         trace_full = await run_scenario_stream(runtime, scenarios, is_baseline=False,
                                                run_tag=args.variant,
                                                wait_for_jobs=waiter,
-                                               capture_writes=(
-                                                   lambda ids: read_distillation_writes(
-                                                       database_url(settings), ids))
-                                               if args.variant == "enabled" else None)
+                                               capture_writes=lambda ids: read_distillation_writes(
+                                                   database_url(settings), ids))
 
     # Run Baseline Configuration
     if args.config in ("baseline", "both"):
         print(f"\n--- Running BASELINE Configuration (No Inter-Session Memory) ---")
         baseline_runtime = make_baseline_runtime(build_runtime(settings))
-        baseline_waiter = (lambda source_id: wait_for_distillation(database_url(settings),
-            source_id, args.worker_wait_seconds)) if args.variant != "current" else None
+        baseline_waiter = lambda source_id: wait_for_distillation(
+            database_url(settings), source_id, args.worker_wait_seconds)
         trace_baseline = await run_scenario_stream(baseline_runtime, scenarios,
                                                    is_baseline=True, run_tag="baseline",
                                                    wait_for_jobs=baseline_waiter)

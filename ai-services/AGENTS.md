@@ -1,10 +1,36 @@
-# AI service
+# Repository Guidelines
 
-Áp dụng dưới `ai-services/`; đọc thêm `../AGENTS.md`, `../docs/harness-spec.md` và `../docs/tool-contract.md` theo phần việc.
+## Project Structure & Module Organization
 
-- Giữ `app/agent/graph.py` là LangGraph tường minh chỉ nối node; `chat.py` là entrypoint Python một lượt. Model chỉ đề xuất, `harness/policy.py` kiểm precondition, `guardrails/checks.py` kiểm câu trả lời và bằng chứng fact. `ChatRequest.on` là ngày nghiệp vụ, không lấy wall clock.
-- Ba MCP server ở `app/mcp_servers/`; tool handler mỏng, service chứa luật, repo chứa SQL và session/transaction. Catalog và order dùng cùng quy tắc giá/tồn kho trong `mcp_shared/`; memory có provenance và supersede.
-- Chính sách M1 dùng `policy.search` trong mcp-catalog từ `btc_source.policy_chunks`. Lọc `access_level=public`, `effective_from`, `effective_until` và `date_basis` trước khi đưa nội dung ra model; chính sách đổi trả đơn cũ dùng ngày tạo đơn đã xác minh qua `order.status`. Qdrant chưa nối runtime.
-- Không đưa địa chỉ/PII thô từ CRM vào prompt, checkpoint hoặc trace; tool nghiệp vụ nhận dữ liệu cần thiết qua ngữ cảnh đáng tin cậy. `address_ref` là phương án thiết kế chưa triển khai.
-- Với lỗi agent gọi tool sai, kiểm đồng thời schema/mô tả tool, bước chuẩn hóa và precondition trong harness, ngữ nghĩa tìm kiếm ở service, cùng kết quả tool thực tế. Chọn quy tắc áp dụng cho nhiều sản phẩm và nhiều cách diễn đạt; không vá riêng câu thoại hoặc SKU của sample. Nếu agent thử lại, giữ các bộ lọc đã xác minh từ yêu cầu khách và ghi đúng mọi lần gọi tool vào trace.
-- Test: từ thư mục này chạy `python -m unittest discover -s test -v`. Khi sửa catalog/order/memory, đối chiếu kết quả với mock BTC và ít nhất một sample đa phiên; không sửa trace theo đáp án.
+`app/` contains the Python service: `api/` exposes HTTP routes, `agent/` builds and runs the chat graph, and `mcp_servers/` hosts catalog, order, and memory tools. Keep business rules in MCP services and shared modules; keep tool handlers thin. SQL changes belong in numbered `migrations/` files. Unit and contract tests live in `test/`; benchmark scenarios, validators, and results live in `eval_harness/`. Use `README.md` for runtime architecture and setup details.
+
+## Build, Test, and Development Commands
+
+Run commands from `ai-services/` unless stated otherwise:
+
+```bash
+python -m venv .venv
+.venv/bin/pip install -r requirements-test.txt
+.venv/bin/python -m app
+.venv/bin/python -m app.mcp_servers.run
+.venv/bin/python -m unittest discover -s test -v
+.venv/bin/python -m pytest test eval_harness/test_eval_harness.py
+```
+
+The requirements file installs runtime and test dependencies. `python -m app` starts the API; the MCP launcher starts the three local tool services and requires configured PostgreSQL roles. The final two commands run the regression suites. From the repository root, use `docker compose --env-file .env --env-file ai-services/.env up -d --build mcp-catalog mcp-order mcp-memory` after loading data and applying migrations in the order documented in `README.md`.
+
+## Coding Style & Naming Conventions
+
+Use four spaces in Python, `snake_case` for modules, functions, and variables, and `PascalCase` for classes. Follow the surrounding type hints and async patterns. Name tests `test_*.py` and migrations `NNNN_description.sql`. No repository-wide formatter or linter is configured; keep imports and formatting consistent with adjacent files.
+
+## Testing Guidelines
+
+Most tests use `unittest`, including `IsolatedAsyncioTestCase`; some use `pytest` parametrization. Add focused regression tests for changed behavior, especially memory identity, policy grounding, and MCP contracts. There is no stated coverage percentage. Database and HTTP integration tests require dedicated environment variables and should target isolated test services.
+
+## Commit & Pull Request Guidelines
+
+Recent commits use short imperative subjects, sometimes with a type and scope such as `feat(speech): ...` or `fix: ...`. Keep each commit focused. In pull requests, describe the behavior change, affected services or migrations, test commands and results, and any configuration changes; link the relevant issue when one exists. Include screenshots only for visible UI changes.
+
+## Security & Configuration
+
+Copy `.env.example` to `.env` and supply local credentials. Never commit `.env`, API keys, database passwords, or customer data. Keep prompts, traces, and logs free of raw customer PII; see `README.md` for tracing and credential settings.

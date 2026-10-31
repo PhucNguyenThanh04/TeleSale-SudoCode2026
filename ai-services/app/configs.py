@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     agent_guardrails_enabled: bool = True
     agent_kind: Literal["deep", "react"] = "deep"
     fact_extraction_mode: Literal["fallback", "always", "off"] = "off"
-    langmem_mode: Literal["off", "shadow", "enabled"] = "enabled"
+    langmem_mode: Literal["enabled"] = "enabled"
     langmem_model: str | None = None
     langmem_max_tokens: int = Field(default=1024, ge=256, le=8192)
     langfuse_enabled: bool = False

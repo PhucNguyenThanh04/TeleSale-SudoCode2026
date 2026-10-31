@@ -41,9 +41,9 @@ class CatalogRepo(Database):
 
     async def runtime_orders(self, session, customer_id: str) -> list[dict]:
         result = await session.execute(text("""SELECT order_id,sku,qty,price_vnd,total_vnd,
-            created_on,status FROM app_runtime.tool_orders WHERE customer_id=:id"""), {"id": customer_id})
+            created_on,status FROM runtime.tool_orders WHERE customer_id=:id"""), {"id": customer_id})
         return [dict(row._mapping) for row in result]
 
     async def used_promos(self, session) -> set[tuple[str, str]]:
-        result = await session.execute(text("SELECT customer_phone,promo_code FROM app_runtime.promo_uses"))
+        result = await session.execute(text("SELECT customer_phone,promo_code FROM runtime.promo_uses"))
         return {(row[0], row[1]) for row in result}

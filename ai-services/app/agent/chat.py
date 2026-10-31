@@ -29,11 +29,11 @@ async def main() -> None:
     # Chỉnh request này để chạy thử một lượt chat, không cần tham số dòng lệnh.
     request = ChatRequest(
         client_msg_id=uuid4(),
-        session_id="2e42a0f3-f537-67a5-b4d6-1eba9eea1a64",
+        session_id="2e76a0f3-f428-67a5-b9d6-1eba9eea1a79",
         channel="zalo_oa",
-        channel_identity="zalo_hoa73",
+        channel_identity="zalo_tiến76",
         on="2026-10-15",
-        text="Ừ em lên đơn cho chị đi, giao về địa chỉ cũ nhé.",
+        text="Ừ để chị hỏi ông xã rồi gọi lại em nhé.",
         input_mode="clean",
     )
     runtime = get_runtime()

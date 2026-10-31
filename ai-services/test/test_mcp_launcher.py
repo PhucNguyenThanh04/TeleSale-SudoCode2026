@@ -12,6 +12,36 @@ from app.mcp_servers.run import run_all
 
 
 class MCPLauncherTest(unittest.TestCase):
+    def test_starts_langmem_worker_with_memory_role_and_model_credentials(self):
+        settings = SimpleNamespace(
+            database_url=SecretStr("postgresql+asyncpg://admin:hidden@127.0.0.1:5432/telesale"),
+            mcp_host="127.0.0.1", mcp_catalog_port=8011,
+            mcp_order_port=8012, mcp_memory_port=8013,
+            langmem_mode="enabled",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            secrets = Path(directory)
+            for name in ("mcp_internal_token", "mcp_catalog_password",
+                         "mcp_order_password", "mcp_memory_password"):
+                (secrets / name).write_text("test-only", encoding="utf-8")
+            children = [Mock() for _ in range(4)]
+            for child in children:
+                child.poll.return_value = 1
+            with patch("app.mcp_servers.run.get_settings", return_value=settings), \
+                 patch("app.mcp_servers.run.subprocess.Popen", side_effect=children) as popen, \
+                 patch.dict("app.mcp_servers.run.os.environ", {"LLM_API_KEY": "model-key"}):
+                with self.assertRaisesRegex(RuntimeError, "mcp-catalog exited"):
+                    run_all(secrets_dir=secrets)
+
+            self.assertEqual(popen.call_count, 4)
+            worker = popen.call_args_list[3]
+            self.assertEqual(worker.args[0][-1],
+                             "app.mcp_servers.mcp_memory.distiller_worker")
+            self.assertEqual(worker.kwargs["env"]["MCP_DB_USER"], "mcp_memory")
+            self.assertEqual(worker.kwargs["env"]["DATABASE_URL"], "")
+            self.assertEqual(worker.kwargs["env"]["LLM_API_KEY"], "model-key")
+            children[3].wait.assert_called_once()
+
     def test_starts_three_roles_and_stops_all_on_child_failure(self):
         settings = SimpleNamespace(
             database_url=SecretStr("postgresql+asyncpg://admin:hidden@127.0.0.1:5432/telesale"),
@@ -23,7 +53,7 @@ class MCPLauncherTest(unittest.TestCase):
             for name in ("mcp_internal_token", "mcp_catalog_password",
                          "mcp_order_password", "mcp_memory_password"):
                 (secrets / name).write_text("test-only", encoding="utf-8")
-            children = [Mock() for _ in range(3)]
+            children = [Mock() for _ in range(4)]
             for child in children:
                 child.poll.return_value = 1
             with patch("app.mcp_servers.run.get_settings", return_value=settings), \
@@ -31,7 +61,7 @@ class MCPLauncherTest(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "mcp-catalog exited"):
                     run_all(secrets_dir=secrets)
 
-            self.assertEqual(popen.call_count, 3)
+            self.assertEqual(popen.call_count, 4)
             for (name, port), call in zip((("catalog", 8011), ("order", 8012),
                                            ("memory", 8013)), popen.call_args_list):
                 self.assertEqual(call.args[0][-1], f"app.mcp_servers.mcp_{name}.server")

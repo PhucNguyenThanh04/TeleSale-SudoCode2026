@@ -1,15 +1,75 @@
 """Regression coverage for session memory and recoverable read failures."""
 import unittest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
 from uuid import uuid4
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
+from app.agent.harness import context as memory_context
 from app.agent.harness.context import load_context
 from app.agent.harness.agent_nodes import MEMORY_UNAVAILABLE
+from app.agent.harness.agent_nodes import AgentNodes
 from app.agent.harness.runtime import AgentHarnessRuntime
 from test_deep_memory import FakeGateway, FakeMemory, FakeToolModel, turn
 
 
 class MemoryRecoveryTest(unittest.IsolatedAsyncioTestCase):
+    async def test_primary_agent_receives_prior_turns_as_dialogue(self):
+        agent = SimpleNamespace(ainvoke=AsyncMock(return_value={
+            "messages": [AIMessage(content="Dạ, em kiểm tra ạ.")]}))
+        nodes = AgentNodes(FakeToolModel(replies=[]), FakeGateway(),
+                           SimpleNamespace(langmem_primary=True), 10, 6)
+        state = {"request": turn("Mẫu đó có khuyến mãi không?"),
+                 "safe_text": "Mẫu đó có khuyến mãi không?",
+                 "identity_status": "known", "profile": {},
+                 "history": [{"customer": "Tôi cần máy lọc cho phòng 25 m²",
+                              "agent": "Em đề xuất AirPure X ạ."}],
+                 "tool_calls": []}
+
+        with patch("app.agent.harness.agent_nodes.build_agent", return_value=agent):
+            await nodes.run_agent(state)
+
+        messages = agent.ainvoke.await_args.args[0]["messages"]
+        self.assertEqual([type(item) for item in messages],
+                         [HumanMessage, HumanMessage, AIMessage, HumanMessage])
+        self.assertIn("AirPure X", messages[2].content)
+        self.assertEqual(messages[-1].content, "Mẫu đó có khuyến mãi không?")
+
+    async def test_primary_agent_does_not_reuse_old_reply_when_no_new_reply_exists(self):
+        async def echo_input(payload, config):
+            return {"messages": payload["messages"]}
+
+        agent = SimpleNamespace(ainvoke=AsyncMock(side_effect=echo_input))
+        nodes = AgentNodes(FakeToolModel(replies=[]), FakeGateway(),
+                           SimpleNamespace(langmem_primary=True), 10, 6)
+        state = {"request": turn("Tiếp tục"), "safe_text": "Tiếp tục",
+                 "identity_status": "known", "profile": {},
+                 "history": [{"customer": "Xin chào", "agent": "Câu trả lời cũ"}],
+                 "tool_calls": []}
+
+        with patch("app.agent.harness.agent_nodes.build_agent", return_value=agent):
+            result = await nodes.run_agent(state)
+
+        self.assertNotEqual(result["agent_draft"], "Câu trả lời cũ")
+
+    def test_primary_prompt_preserves_prior_turn_roles_and_current_customer_turn(self):
+        context = {"on": "2026-10-15", "customer_facts": {},
+                   "session_history": [
+                       {"customer": "Phòng 25 m²", "agent": "Em tìm mẫu phù hợp ạ."},
+                       {"customer": "Ngân sách 5 triệu", "agent": "Em đã ghi nhận ạ."}],
+                   "customer_text": "Máy vừa nói có khuyến mãi không?"}
+
+        self.assertTrue(hasattr(memory_context, "prompt_messages"))
+        messages = memory_context.prompt_messages(context)
+
+        self.assertEqual([type(item) for item in messages],
+                         [HumanMessage, HumanMessage, AIMessage,
+                          HumanMessage, AIMessage, HumanMessage])
+        self.assertEqual([item.content for item in messages[1:]], [
+            "Phòng 25 m²", "Em tìm mẫu phù hợp ạ.",
+            "Ngân sách 5 triệu", "Em đã ghi nhận ạ.",
+            "Máy vừa nói có khuyến mãi không?"])
+        self.assertNotIn("session_history", messages[0].content)
+
     async def test_memory_errors_skip_model_without_handoff_promise(self):
         for raises in (False, True):
             with self.subTest(raises=raises):

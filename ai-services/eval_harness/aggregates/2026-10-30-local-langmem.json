@@ -1,0 +1,331 @@
+{
+  "variants": {
+    "current": {
+      "rqr_pct": 75.0,
+      "ccr_pct": 6.4,
+      "tsr_pct": 10.5,
+      "hard_tsr_pct": 13.3,
+      "price_promo_hr_pct": 0.0,
+      "guardrail_violations": 2,
+      "pii_violations": 0,
+      "call_brief_p95_ms": 63,
+      "total_p95_ms": 8650,
+      "ttft_p95_ms": 8650,
+      "cost_per_call_usd": null,
+      "tsr_failures": [
+        {
+          "scenario": "SC01",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC02",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC03",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC04",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC05",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC06",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC08",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC09",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC10",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC11",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC12",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC14",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC15",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC16",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC17",
+          "call": "call_2",
+          "category": "handoff"
+        },
+        {
+          "scenario": "SC18",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC18",
+          "call": "call_3",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC19",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        }
+      ],
+      "rqr_relative_reduction_pct": null
+    },
+    "shadow": {
+      "rqr_pct": 33.3,
+      "ccr_pct": 6.4,
+      "tsr_pct": 10.5,
+      "hard_tsr_pct": 13.3,
+      "price_promo_hr_pct": 28.6,
+      "guardrail_violations": 2,
+      "pii_violations": 0,
+      "call_brief_p95_ms": 85,
+      "total_p95_ms": 7285,
+      "ttft_p95_ms": 7285,
+      "cost_per_call_usd": null,
+      "tsr_failures": [
+        {
+          "scenario": "SC01",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC02",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC03",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC04",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC05",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC06",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC08",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC09",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC10",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC11",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC12",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC14",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC15",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC16",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC17",
+          "call": "call_2",
+          "category": "handoff"
+        },
+        {
+          "scenario": "SC18",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC18",
+          "call": "call_3",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC19",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        }
+      ],
+      "rqr_relative_reduction_pct": null
+    },
+    "enabled": {
+      "rqr_pct": 100.0,
+      "ccr_pct": 2.1,
+      "tsr_pct": 10.5,
+      "hard_tsr_pct": 13.3,
+      "price_promo_hr_pct": 0.0,
+      "guardrail_violations": 2,
+      "pii_violations": 0,
+      "call_brief_p95_ms": 80,
+      "total_p95_ms": 5276,
+      "ttft_p95_ms": 5276,
+      "cost_per_call_usd": null,
+      "tsr_failures": [
+        {
+          "scenario": "SC01",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC02",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC03",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC04",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC05",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC06",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC08",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC09",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC10",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC11",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC12",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC14",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC15",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC16",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC17",
+          "call": "call_2",
+          "category": "handoff"
+        },
+        {
+          "scenario": "SC18",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC18",
+          "call": "call_3",
+          "category": "tool_or_arguments"
+        },
+        {
+          "scenario": "SC19",
+          "call": "call_2",
+          "category": "tool_or_arguments"
+        }
+      ],
+      "rqr_relative_reduction_pct": -33.3
+    }
+  },
+  "adoption_gate": {
+    "pass": false,
+    "reasons": [
+      "context_carryover_regression",
+      "guardrail_violation",
+      "no_measurable_gain"
+    ]
+  },
+  "note": "TTFT is a total-latency proxy until streaming measurement exists."
+}

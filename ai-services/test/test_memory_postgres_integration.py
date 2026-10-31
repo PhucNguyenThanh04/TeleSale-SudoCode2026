@@ -25,25 +25,26 @@ from scripts.backfill_langmem_store import backfill_customer
 @unittest.skipUnless(os.getenv("MEMORY_INTEGRATION_ADMIN_DSN"),
                      "requires MEMORY_INTEGRATION_ADMIN_DSN with CREATEDB")
 class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
-    async def test_single_memory_migration_can_be_reapplied(self):
+    async def test_runtime_migration_can_be_reapplied(self):
         migration_dir = Path(__file__).resolve().parents[1] / "migrations"
         migrations = sorted(migration_dir.glob("*.sql"))
-        self.assertEqual([item.name for item in migrations], ["0001_memory.sql"])
+        self.assertEqual([item.name for item in migrations],
+                         ["0001_memory.sql", "0002_runtime_schema.sql"])
         async with self.repo.transaction() as conn:
             session = uuid4()
-            await conn.execute("""INSERT INTO ai_memory.turns
+            await conn.execute("""INSERT INTO runtime.turns
                 (session_id,turn_no,customer_id,channel,on_date,customer_text,agent_text)
                 VALUES($1,1,NULL,'hotline','2026-10-15','Ẩn danh','Dạ')""", session)
-            await conn.execute("""INSERT INTO ai_memory.episodes
+            await conn.execute("""INSERT INTO runtime.episodes
                 (session_id,customer_id,channel,on_date,summary)
                 VALUES($1,'C901','hotline','2026-10-15','Đã kiểm toán thủ công')""", session)
-            await conn.execute(migrations[0].read_text())
+            await conn.execute(migrations[1].read_text())
             self.assertEqual(await conn.fetchval("""SELECT summary
-                FROM ai_memory.episodes WHERE session_id=$1""", session),
+                FROM runtime.episodes WHERE session_id=$1""", session),
                 "Đã kiểm toán thủ công")
             self.assertEqual(await conn.fetchval("""SELECT count(*)
                 FROM information_schema.columns
-                WHERE table_schema='ai_memory'
+                WHERE table_schema='runtime'
                 AND table_name='langmem_distillation_jobs'
                 AND column_name IN ('accepted_writes','accepted_proposals','verified_outcome')"""), 3)
 
@@ -172,7 +173,7 @@ class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await second.list_episodes("C902", 5), [])
         async with self.repo.transaction() as conn:
             self.assertEqual(await conn.fetchval("""SELECT count(*) FROM pg_tables
-                WHERE schemaname='langmem_store' AND tablename='store'"""), 1)
+                WHERE schemaname='runtime' AND tablename='store'"""), 1)
             self.assertEqual(await conn.fetchval("""SELECT count(*) FROM pg_tables
                 WHERE schemaname='public' AND tablename='store'"""), 0)
         self.assertEqual(await second.delete_customer("C901"), 1)
@@ -191,11 +192,11 @@ class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first, again)
         async with self.repo.transaction() as conn:
             self.assertEqual(await conn.fetchval("""SELECT count(*)
-                FROM ai_memory.langmem_distillation_jobs WHERE session_id=$1""",
+                FROM runtime.langmem_distillation_jobs WHERE session_id=$1""",
                 UUID(session)), 1)
             job = await self.repo.claim_distillation(conn, 1)
             self.assertEqual(str(job["source_turn_id"]), source)
-            await conn.execute("""UPDATE ai_memory.langmem_distillation_jobs
+            await conn.execute("""UPDATE runtime.langmem_distillation_jobs
                 SET lease_until=now()-interval '1 second' WHERE job_id=$1""", job["job_id"])
         async with self.repo.transaction() as conn:
             reclaimed = await self.repo.claim_distillation(conn, 1)
@@ -242,7 +243,7 @@ class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
             "customer_text": "Tôi đang xem thử", "agent_text": "Dạ",
             "on": "2026-10-15", "channel": "hotline"})
         async with self.repo.transaction() as conn:
-            await conn.execute("""INSERT INTO ai_memory.pending_facts
+            await conn.execute("""INSERT INTO runtime.pending_facts
                 (session_id,source_turn_id,turn_no,key,value,op,source_kind,on_date)
                 VALUES($1,$2,1,'preferred_color',$3::jsonb,'set','customer',$4)""",
                 UUID(session), uuid4(), '"xanh"', date(2026, 10, 15))
@@ -255,11 +256,11 @@ class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
         result = await execute_erasure(self.repo, key)
         self.assertEqual(result["status"], "partial")
         async with self.repo.transaction() as conn:
-            rows = await conn.fetch("""SELECT customer_id,customer_text FROM ai_memory.turns
+            rows = await conn.fetch("""SELECT customer_id,customer_text FROM runtime.turns
                 WHERE session_id=$1""", UUID(session))
             self.assertEqual([(row["customer_id"], row["customer_text"]) for row in rows],
                              [(None, "Tôi đang xem thử")])
-            self.assertEqual(await conn.fetchval("""SELECT count(*) FROM ai_memory.pending_facts
+            self.assertEqual(await conn.fetchval("""SELECT count(*) FROM runtime.pending_facts
                 WHERE session_id=$1""", UUID(session)), 1)
 
     async def test_memory_only_erasure_removes_owned_rows_and_retry_is_safe(self):
@@ -281,12 +282,12 @@ class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
         async with self.repo.transaction() as conn:
             for table in ("facts", "episodes", "turns", "order_links"):
                 count = await conn.fetchval(
-                    f"SELECT count(*) FROM ai_memory.{table} WHERE customer_id='C901'")
+                    f"SELECT count(*) FROM runtime.{table} WHERE customer_id='C901'")
                 self.assertEqual(count, 0, table)
-            other = await conn.fetchval("""SELECT count(*) FROM ai_memory.facts
+            other = await conn.fetchval("""SELECT count(*) FROM runtime.facts
                 WHERE customer_id='C902' AND status='active'""")
             self.assertEqual(other, 1)
-            replay = await conn.fetchval("""SELECT result->>'error' FROM ai_memory.write_operations
+            replay = await conn.fetchval("""SELECT result->>'error' FROM runtime.write_operations
                 WHERE operation_key=$1""", f"{customer_session}:turn-1")
             self.assertEqual(replay, "erased")
 
@@ -300,7 +301,9 @@ class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
                                "/" + self.database, parts.query, parts.fragment))
         connection = await asyncpg.connect(self.dsn)
         try:
-            await connection.execute("CREATE SCHEMA app_runtime")
+            backend_migrations = Path(__file__).resolve().parents[2] / "backend" / "migrations"
+            for migration in sorted(backend_migrations.glob("000*.sql")):
+                await connection.execute(migration.read_text())
             migration_dir = Path(__file__).resolve().parents[1] / "migrations"
             for migration in sorted(migration_dir.glob("0*.sql")):
                 await connection.execute(migration.read_text())

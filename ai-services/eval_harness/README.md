@@ -9,21 +9,20 @@ changing the customer's phone. Since the current chat API is not streaming,
 `ttft_ms` is conservatively reported as total response time; do not present
 it as a measured first-token time.
 
-## LangMem adoption runbook
+## LangMem evaluation runbook
 
-Run `current`, `shadow`, and `enabled` against separately seeded test databases
-with the same BTC catalog, CRM, model, temperature, max tokens, `--seed`, dates,
-and business tools. Start `mcp-memory` and the worker with matching
-`LANGMEM_MODE`; the `current` run uses `off` and no worker. Wait until
-each evaluated turn's LangMem job finishes before the next turn in a
-shadow/enabled scenario. Keep traces in ignored `results/`.
+Run `enabled` against separately seeded test databases with the same BTC
+catalog, CRM, model, temperature, max tokens, `--seed`, dates, and business
+tools. Start `mcp-memory` and the LangMem worker together. The runner waits
+until each evaluated turn's LangMem job finishes before the next turn.
+Keep traces in ignored `results/`.
 
-For each variant and for both the seven BTC public samples and 19 local
+For both the seven BTC public samples and 19 local
 scenarios, run `python -m eval_harness.benchmark_runner --agent deep --config
-full --variant VARIANT --seed 7 --scenarios DATASET --out results/VARIANT_DATASET.json`.
+full --variant enabled --seed 7 --scenarios DATASET --out results/enabled_DATASET.json`.
 The runner defaults to `--config full`, `--variant enabled`, and the local
 19-scenario dataset when those flags are omitted. Run from `ai-services/`.
-Run `--config baseline --variant VARIANT` against a separate clone of the
+Run `--config baseline --variant enabled` against a separate clone of the
 same seed database for each full run. Give it a different `--out` path so it
 does not overwrite the full run manifest. This keeps the agent prompt and
 memory implementation identical while hiding prior memory. The runner emits
@@ -35,13 +34,14 @@ the unmodified BTC script:
 ```bash
 python /home/thanh-phuc/PyProject/sudocode/BTC-Data-Vong1-TEAMS/eval/reference_eval.py \
   --scenarios /home/thanh-phuc/PyProject/sudocode/BTC-Data-Vong1-TEAMS/test_set/public_sample \
-  --trace results/current_public_full.jsonl \
-  --baseline results/current_public_no_memory_baseline.jsonl \
-  --out results/current_public_reference.json
+  --trace results/enabled_public_full.jsonl \
+  --baseline results/enabled_public_no_memory_baseline.jsonl \
+  --out results/enabled_public_reference.json
 ```
 
-Use matching paths for shadow/enabled; for the local set, use
-`eval_harness/scenarios` as `--scenarios`. Compare one dataset at a time with
+For the local set, use `eval_harness/scenarios` as `--scenarios`. Historical
+comparison reports from earlier `current` and `shadow` runs can still be
+analyzed with
 `python -m eval_harness.compare_langmem --scenarios DATASET_DIR --current REPORT --current-manifest
 RUNNER_JSON --shadow REPORT --shadow-manifest RUNNER_JSON --enabled REPORT
 --enabled-manifest RUNNER_JSON --out AGGREGATE_JSON`. The output contains

@@ -3,8 +3,11 @@
 import time
 import logging
 import re
+import json
 from datetime import datetime
 from typing import Any, Callable
+
+from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agent.guardrails.checks import mask_pii, safe_tool_result
 from app.agent.memory.store import MemoryStore, memory_error_code
@@ -48,6 +51,21 @@ def prompt_context(state: TurnState, history_turns: int) -> dict[str, Any]:
         "tool_observations": observations,
         "customer_text": state["safe_text"],
     }
+
+
+def prompt_messages(context: dict[str, Any]) -> list[HumanMessage | AIMessage]:
+    """Give same-session turns their actual conversation roles."""
+    metadata = {key: value for key, value in context.items()
+                if key not in {"session_history", "customer_text"}}
+    messages: list[HumanMessage | AIMessage] = [HumanMessage(
+        content=json.dumps(metadata, ensure_ascii=False, default=str))]
+    for turn in context.get("session_history", []):
+        if (isinstance(turn, dict) and isinstance(turn.get("customer"), str)
+                and isinstance(turn.get("agent"), str)):
+            messages.append(HumanMessage(content=turn["customer"]))
+            messages.append(AIMessage(content=turn["agent"]))
+    messages.append(HumanMessage(content=str(context.get("customer_text", ""))))
+    return messages
 
 
 def _split_facts(profile: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:

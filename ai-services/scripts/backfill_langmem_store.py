@@ -26,7 +26,7 @@ async def backfill_customer(repo: MemoryRepo, store: LangMemProjection,
             return counts
         facts = await conn.fetch("""SELECT key,value,scope_type,scope_id,source_kind,
             source_tool,evidence_quote,source_turn_id,source_session_id,on_date
-            FROM ai_memory.facts WHERE customer_id=$1 AND status='active'
+            FROM runtime.facts WHERE customer_id=$1 AND status='active'
             ORDER BY observed_at,fact_id""", customer_id)
         for row in facts:
             source_turn_id = row["source_turn_id"]
@@ -45,7 +45,7 @@ async def backfill_customer(repo: MemoryRepo, store: LangMemProjection,
                 str(source_turn_id), on.isoformat(), [fact], revision=-1)
             counts["facts"] += len(written)
         episodes = await conn.fetch("""SELECT session_id,channel,on_date,summary,
-            outcome,status,topics,resolved_prior_items FROM ai_memory.episodes
+            outcome,status,topics,resolved_prior_items FROM runtime.episodes
             WHERE customer_id=$1 ORDER BY on_date,session_id""", customer_id)
         for row in episodes:
             session_id = str(row["session_id"])
@@ -63,8 +63,8 @@ async def main() -> None:
     counts = {"facts": 0, "episodes": 0, "skipped": 0}
     try:
         async with repo.transaction() as conn:
-            customers = await conn.fetch("""SELECT customer_id FROM ai_memory.facts
-                UNION SELECT customer_id FROM ai_memory.episodes""")
+            customers = await conn.fetch("""SELECT customer_id FROM runtime.facts
+                UNION SELECT customer_id FROM runtime.episodes""")
         for row in customers:
             result = await backfill_customer(repo, store, row["customer_id"])
             for key in counts:

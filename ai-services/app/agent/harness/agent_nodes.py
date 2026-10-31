@@ -7,7 +7,7 @@ from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from app.agent.harness.context import prompt_context
+from app.agent.harness.context import prompt_context, prompt_messages
 from app.agent.implementations import AgentKind, build_agent
 from app.agent.implementations.business_agent import BusinessTools
 from app.agent.memory.fact_candidates import (
@@ -62,16 +62,19 @@ class AgentNodes(SessionNodes):
         state["langmem_primary"] = bool(getattr(self.memory, "langmem_primary", False))
         agent = build_agent(self.agent_kind, self.llm, business)
         context = prompt_context(state, self.prompt_history_turns)
+        input_messages = (prompt_messages(context) if state["langmem_primary"] else
+            [HumanMessage(content=json.dumps(context, ensure_ascii=False, default=str))])
         messages = []
         episode_proposal = None
         try:
             result = await agent.ainvoke(
-                {"messages": [HumanMessage(content=json.dumps(context, ensure_ascii=False,
-                                                               default=str))]},
+                {"messages": input_messages},
                 config={"recursion_limit": max(12, self.max_tool_calls * 4 + 4)},
             )
             messages = result.get("messages", [])
-            finals = [item for item in messages
+            last_customer_message = max((index for index, item in enumerate(messages)
+                                         if isinstance(item, HumanMessage)), default=-1)
+            finals = [item for item in messages[last_customer_message + 1:]
                       if isinstance(item, AIMessage) and not item.tool_calls
                       and isinstance(item.content, str) and item.content.strip()]
             draft = finals[-1].content if finals else FALLBACK

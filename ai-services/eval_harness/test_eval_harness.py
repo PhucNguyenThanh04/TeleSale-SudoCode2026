@@ -17,6 +17,17 @@ from eval_harness.scorer import (
 
 
 class TestEvalHarness(unittest.TestCase):
+    def test_runner_rejects_retired_memory_variants_before_loading_scenarios(self):
+        import subprocess
+        import sys
+
+        result = subprocess.run([sys.executable, "-m", "eval_harness.benchmark_runner",
+                                 "--agent", "deep", "--variant", "shadow",
+                                 "--scenarios", "/does/not/exist"],
+                                capture_output=True, text=True, check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("invalid choice", result.stderr)
+
     def test_prior_fact_is_not_used_just_because_it_was_loaded(self):
         from eval_harness.reference_adapter import facts_used
         self.assertEqual(facts_used("Dạ em chào chị.", [],

@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS ai_memory.order_links (
 -- END 0001_memory
 
 -- BEGIN 0002_operations
-CREATE TABLE IF NOT EXISTS app_runtime.tool_operations (
+CREATE TABLE IF NOT EXISTS runtime.tool_operations (
     operation_key text PRIMARY KEY,
     tool_name text NOT NULL,
     args_hash text NOT NULL,
