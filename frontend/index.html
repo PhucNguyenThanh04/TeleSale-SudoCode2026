@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f4efe4">
   <title>TeleSale · Cuộc gọi AI trọn luồng</title>
-  <link rel="stylesheet" href="/app/styles.css?v=20261030-e2e2">
+  <link rel="stylesheet" href="/app/styles.css?v=20261101-channel-input1">
   <script src="/app/workspace.js?v=20261030-e2e2" defer></script>
   <script src="/app/speech.js?v=20261031-fast-ack1" defer></script>
-  <script src="/app/app.js?v=20261031-fast-ack1" defer></script>
+  <script src="/app/app.js?v=20261101-channel-input1" defer></script>
 </head>
 <body>
   <div class="page-shell">
@@ -34,16 +34,16 @@
         <p class="section-intro" id="identity-help">Mỗi cuộc gọi bắt đầu bằng kênh và danh tính do tư vấn viên xác nhận từ nguồn tiếp nhận.</p>
 
         <form id="setup-form" class="setup-form">
-          <label class="operator-only" for="channel">Kênh tiếp nhận</label>
-          <select class="operator-only" id="channel" name="channel">
+          <label for="channel">Kênh tiếp nhận</label>
+          <select id="channel" name="channel">
+            <option value="hotline">Hotline</option>
             <option value="chat_fanpage">Fanpage</option>
             <option value="zalo_oa">Zalo</option>
-            <option value="hotline">Hotline</option>
           </select>
 
-          <label class="operator-only" for="identity">Định danh từ kênh</label>
-          <input class="operator-only" id="identity" name="identity" type="text" autocomplete="off" placeholder="ID hội thoại hoặc số gọi đến" required>
-          <p class="field-note operator-only">Không lấy định danh từ nội dung khách tự nhắn.</p>
+          <label id="identity-label" for="identity">Số điện thoại gọi đến</label>
+          <input id="identity" name="identity" type="text" autocomplete="off" placeholder="Ví dụ: 0984726714" required>
+          <p class="field-note" id="identity-note">Số phải gồm 10 chữ số và bắt đầu bằng 0.</p>
 
           <label for="call-date">Ngày cuộc gọi</label>
           <input id="call-date" name="callDate" type="date" value="2026-10-15" required>
