@@ -30,9 +30,9 @@ _INSTRUCTIONS = (
 _OPAQUE_FIELDS = {"turn_id", "source_turn_id", "session_id", "customer_id",
                   "sku", "order_id", "scope_id"}
 
-# Trustcall bounds validation repair attempts internally, but parallel schema
-# candidates can consume more than LangGraph's default 25 scheduling steps.
-_MANAGER_RUN_CONFIG = {"recursion_limit": 64}
+# Trustcall's JSON-patch repair loop does not terminate reliably with ChatOllama.
+# Fail closed instead: keep directly valid typed outputs and discard invalid ones.
+_MANAGER_RUN_CONFIG = {"configurable": {"max_attempts": 0}}
 
 
 def _mask_payload(value: Any, field: str = "") -> Any:

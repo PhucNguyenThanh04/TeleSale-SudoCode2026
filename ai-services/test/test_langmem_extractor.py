@@ -64,7 +64,7 @@ class ExtractorTests(unittest.IsolatedAsyncioTestCase):
         content = json.loads(seen["messages"][0]["content"])
         self.assertEqual(content["turn_id"], source_id)
         self.assertNotIn("0912345678", content["customer_text"])
-        self.assertEqual(seen["config"]["recursion_limit"], 64)
+        self.assertEqual(seen["config"]["configurable"]["max_attempts"], 0)
 
     async def test_existing_store_records_are_typed_for_manager(self):
         from app.agent.memory.langmem_extractor import extract_candidates
