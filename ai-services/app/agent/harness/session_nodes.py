@@ -122,13 +122,13 @@ def safe_promotion_reply(state: TurnState) -> str | None:
     claimed_money_discount = re.search(
         r"(?i)\bgiảm(?:\s+giá|\s+thêm)?\s+\d[\d.,]*\s*"
         r"(?:k|nghìn|ngàn|triệu|tr|đ|vnd)?\b", customer_text) is not None
-    correction = ("Mức giảm mình nhắc hiện không nằm trong ưu đãi đang áp dụng. "
+    correction = ("mức giảm mình nhắc hiện không nằm trong ưu đãi đang áp dụng; "
                   if claimed_money_discount and not has_money_discount else "")
     confirmation = (" Mình xác nhận đặt theo ưu đãi hiện tại giúp em nhé?"
                     if re.search(r"(?i)\b(?:lấy|mua|đặt|chốt)\b", customer_text)
                     else "")
     return mask_pii(
-        f"Dạ, {correction}khuyến mãi đang áp dụng cho {product['name']} "
+        f"Dạ, {correction}ưu đãi hiện tại cho {product['name']} "
         f"theo ngày cuộc gọi là {', '.join(offers)} ạ.{confirmation}"
     )
 

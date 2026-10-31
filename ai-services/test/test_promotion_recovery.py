@@ -51,7 +51,7 @@ def test_order_intent_with_old_numeric_discount_recovers_to_current_offer():
     result = asyncio.run(AgentNodes(None, None, None, 3, 3).verify_agent(state))
     answer = result["agent_text"]
     assert answer != FALLBACK
-    assert "Mức giảm mình nhắc hiện không nằm" in answer
+    assert "mức giảm mình nhắc hiện không nằm" in answer
     assert "tặng 1 Màng lọc thay thế" in answer
     assert "miễn phí vận chuyển" in answer
     assert "xác nhận đặt" in answer
@@ -64,7 +64,7 @@ def test_old_discount_recovery_generalizes_to_another_product_and_amount():
     state["safe_text"] = "Anh chốt Máy lọc B giảm 300 nghìn lần trước."
     answer = safe_promotion_reply(state)
     assert "Máy lọc B" in answer
-    assert "Mức giảm mình nhắc hiện không nằm" in answer
+    assert "mức giảm mình nhắc hiện không nằm" in answer
     assert "300" not in answer
 
 
