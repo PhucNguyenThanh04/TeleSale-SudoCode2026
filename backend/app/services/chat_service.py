@@ -34,7 +34,7 @@ async def handle_chat_turn(db: AsyncSession, ai_http: httpx.AsyncClient,
                 result = await db.execute(text(f"""SELECT btc_source.customers.customer_id,
                     (suppressed.customer_id IS NOT NULL) AS suppressed
                     FROM btc_source.customers
-                    LEFT JOIN app_runtime.erasure_suppressions AS suppressed
+                    LEFT JOIN runtime.erasure_suppressions AS suppressed
                       ON suppressed.customer_id=btc_source.customers.customer_id
                     WHERE {identity_key}=:identity"""), {"identity": channel_identity})
             else:
@@ -47,7 +47,7 @@ async def handle_chat_turn(db: AsyncSession, ai_http: httpx.AsyncClient,
             customer_id = customers[0] if len(customers) == 1 else None
             call_date = request.call_date
             caller_phone = request.caller_phone or (channel_identity if channel == "hotline" else None)
-            await db.execute(text("""INSERT INTO app_runtime.chat_sessions
+            await db.execute(text("""INSERT INTO runtime.chat_sessions
                 (id,created_by,caller_phone,channel_identity,channel,call_date,customer_id,identity_status)
                 VALUES (:id,:operator_id,:caller_phone,:channel_identity,:channel,:call_date,:customer_id,:identity_status)"""),
                 {"id": str(session_id), "operator_id": operator_id, "caller_phone": caller_phone,
@@ -57,7 +57,7 @@ async def handle_chat_turn(db: AsyncSession, ai_http: httpx.AsyncClient,
         else:
             session_id = request.session_id
             result = await db.execute(text("""SELECT id, created_by, caller_phone, channel_identity, channel, call_date,
-                customer_id, identity_status, status FROM app_runtime.chat_sessions WHERE id=:id
+                customer_id, identity_status, status FROM runtime.chat_sessions WHERE id=:id
                 FOR UPDATE"""), {"id": str(session_id)})
             row = result.one_or_none()
             if row is None or row.created_by != operator_id or row.status != "open":
@@ -66,7 +66,7 @@ async def handle_chat_turn(db: AsyncSession, ai_http: httpx.AsyncClient,
             channel_identity = row.channel_identity or caller_phone
             customer_id, identity_status = row.customer_id, row.identity_status
         next_turn = await db.execute(text("""SELECT COALESCE(MAX(turn_no),0)+1
-            FROM app_runtime.chat_messages WHERE session_id=:id"""), {"id": str(session_id)})
+            FROM runtime.chat_messages WHERE session_id=:id"""), {"id": str(session_id)})
         turn_no = next_turn.scalar_one()
         safe_text = _mask(request.text)
         client_msg_id = request.client_msg_id or uuid4()
@@ -91,11 +91,11 @@ async def handle_chat_turn(db: AsyncSession, ai_http: httpx.AsyncClient,
         call_brief = parsed.call_brief
         ai_done = time.perf_counter()
         for role, content in (("customer", safe_text), ("agent", _mask(agent_text))):
-            await db.execute(text("""INSERT INTO app_runtime.chat_messages
+            await db.execute(text("""INSERT INTO runtime.chat_messages
                 (session_id,turn_no,role,content) VALUES (:session_id,:turn_no,:role,:content)"""),
                 {"session_id": str(session_id), "turn_no": turn_no, "role": role,
                  "content": content})
-        await db.execute(text("UPDATE app_runtime.chat_sessions SET updated_at=now() WHERE id=:id"),
+        await db.execute(text("UPDATE runtime.chat_sessions SET updated_at=now() WHERE id=:id"),
                          {"id": str(session_id)})
         if timings is not None:
             timings.update(identity_ms=round((identity_done-started)*1000),
@@ -111,7 +111,7 @@ async def verify_session_identity(db: AsyncSession, operator_id: str, session_id
     """Bind an open session after the operator has verified the caller separately."""
     async with db.begin():
         result = await db.execute(text("""SELECT created_by,customer_id,status FROM
-            app_runtime.chat_sessions WHERE id=:id FOR UPDATE"""), {"id": str(session_id)})
+            runtime.chat_sessions WHERE id=:id FOR UPDATE"""), {"id": str(session_id)})
         row = result.one_or_none()
         if row is None or row.created_by != operator_id or row.status != "open":
             raise HTTPException(404, "Session not found")
@@ -119,12 +119,12 @@ async def verify_session_identity(db: AsyncSession, operator_id: str, session_id
             raise HTTPException(409, "Session is bound to another customer")
         matches = await db.execute(text("""SELECT customer_id FROM btc_source.customers
             WHERE customer_id=:customer_id AND phone=:phone
-            AND NOT EXISTS (SELECT 1 FROM app_runtime.erasure_suppressions
+            AND NOT EXISTS (SELECT 1 FROM runtime.erasure_suppressions
                 WHERE erasure_suppressions.customer_id=:customer_id)"""),
             {"customer_id": payload.customer_id, "phone": payload.phone})
         if matches.one_or_none() is None:
             raise HTTPException(422, "Customer and phone do not match CRM")
-        await db.execute(text("""UPDATE app_runtime.chat_sessions
+        await db.execute(text("""UPDATE runtime.chat_sessions
             SET customer_id=:customer_id, caller_phone=:phone, identity_status='known',
                 updated_at=now() WHERE id=:id"""),
             {"id": str(session_id), "customer_id": payload.customer_id,
