@@ -172,7 +172,7 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
                 written if isinstance(written, list) else []))
     except Exception as exc:
         code = type(exc).__name__[:64]
-        logger.warning("LangMem job %d failed: %s", job_id, code)
+        logger.warning("LangMem job %d failed: %s", job_id, code, exc_info=True)
         status = "failed" if job.get("attempts", 0) >= 5 else "pending"
         async with repo.transaction() as conn:
             await repo.finish_distillation(conn, job_id, status, code)
