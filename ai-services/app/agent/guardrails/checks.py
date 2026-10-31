@@ -700,10 +700,6 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     return mask_pii(candidate.strip()), None
 
 
-def verified_answer(candidate: str, tool_calls: list[dict[str, Any]],
-                    customer_text: str = "") -> str:
-    """Compatibility wrapper for callers that only need the answer text."""
-    return check_answer(candidate, tool_calls, customer_text)[0]
 
 
 class FactRejectReason(StrEnum):

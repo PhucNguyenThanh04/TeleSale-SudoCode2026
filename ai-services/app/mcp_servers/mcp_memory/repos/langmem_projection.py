@@ -14,7 +14,7 @@ def store_dsn(dsn: str) -> str:
     """Force unqualified LangGraph DDL and DML into its dedicated schema."""
     url = make_url(dsn.replace("postgresql+asyncpg://", "postgresql://", 1))
     query = dict(url.query)
-    query["options"] = "-csearch_path=langmem_store"
+    query["options"] = "-csearch_path=runtime"
     return url.set(drivername="postgresql", query=query).render_as_string(
         hide_password=False)
 

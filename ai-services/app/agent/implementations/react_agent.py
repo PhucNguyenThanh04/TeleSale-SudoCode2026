@@ -12,4 +12,4 @@ def build_react_agent(model: BaseChatModel, tools: BusinessTools):
     return create_agent(model=model, tools=tools.langchain_tools(),
                         system_prompt=(_PRIMARY_SYSTEM_PROMPT if
                         tools.state.get("langmem_primary") else _SYSTEM_PROMPT),
-                        middleware=[BusinessOnlyMiddleware()])
+                        middleware=[BusinessOnlyMiddleware(tools)])

@@ -25,19 +25,28 @@ ALTER ROLE mcp_order PASSWORD '$order_password';
 ALTER ROLE mcp_memory PASSWORD '$memory_password';
 
 GRANT CONNECT ON DATABASE "$PGDATABASE" TO mcp_catalog, mcp_order, mcp_memory;
-GRANT USAGE ON SCHEMA btc_source, app_runtime TO mcp_catalog, mcp_order;
-GRANT USAGE ON SCHEMA ai_memory TO mcp_memory;
-GRANT USAGE ON SCHEMA langmem_store TO mcp_memory;
+GRANT USAGE ON SCHEMA btc_source TO mcp_catalog, mcp_order;
+GRANT USAGE ON SCHEMA runtime TO mcp_catalog, mcp_order, mcp_memory;
 GRANT SELECT ON btc_source.products, btc_source.variants, btc_source.promotions,
     btc_source.inventory_events, btc_source.customers, btc_source.crm_orders,
     btc_source.crm_sessions TO mcp_catalog, mcp_order;
 GRANT SELECT ON btc_source.policy_chunks TO mcp_catalog;
-GRANT SELECT ON app_runtime.tool_orders, app_runtime.promo_uses TO mcp_catalog;
-GRANT SELECT, INSERT, UPDATE ON app_runtime.tool_orders, app_runtime.tool_updates,
-    app_runtime.tool_callbacks, app_runtime.tool_handoffs, app_runtime.promo_uses TO mcp_order;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA app_runtime TO mcp_order;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ai_memory TO mcp_memory;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA langmem_store TO mcp_memory;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ai_memory, langmem_store TO mcp_memory;
-GRANT SELECT, INSERT, UPDATE ON app_runtime.tool_operations TO mcp_order;
+GRANT SELECT ON runtime.tool_orders, runtime.promo_uses TO mcp_catalog;
+GRANT SELECT, INSERT, UPDATE ON runtime.tool_orders, runtime.tool_updates,
+    runtime.tool_callbacks, runtime.tool_handoffs, runtime.promo_uses,
+    runtime.tool_operations TO mcp_order;
+GRANT USAGE, SELECT ON SEQUENCE runtime.tool_order_seq,
+    runtime.tool_updates_id_seq, runtime.tool_callbacks_callback_id_seq,
+    runtime.tool_handoffs_ticket_id_seq TO mcp_order;
+GRANT SELECT, INSERT, UPDATE, DELETE ON runtime.turns, runtime.episodes,
+    runtime.facts, runtime.order_links, runtime.write_operations,
+    runtime.pending_facts, runtime.erasure_requests,
+    runtime.langmem_distillation_jobs TO mcp_memory;
+GRANT USAGE, SELECT ON SEQUENCE runtime.langmem_distillation_jobs_job_id_seq TO mcp_memory;
+DO \$\$ BEGIN
+    IF to_regclass('runtime.store') IS NOT NULL THEN
+        GRANT SELECT, INSERT, UPDATE, DELETE ON runtime.store,
+            runtime.store_migrations TO mcp_memory;
+    END IF;
+END \$\$;
 SQL

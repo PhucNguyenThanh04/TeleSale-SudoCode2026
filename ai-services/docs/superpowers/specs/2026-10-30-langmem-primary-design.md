@@ -9,8 +9,9 @@ of `AsyncPostgresStore` in the `langmem_store` PostgreSQL schema.
 `ai_memory` remains operational storage for masked session turns, order links,
 idempotent operation results, durable distillation jobs, and verified erasure
 barriers. It is not read for long-term facts or episodes when
-`LANGMEM_MODE=enabled`. The old implementation remains callable only under
-`off` or `shadow` to compare behavior on isolated evaluation databases.
+`LANGMEM_MODE=enabled`. The service now accepts only `enabled`; `off` and
+`shadow` are retired from runtime and new benchmark runs. Historical SQL
+tables and records are retained so existing data is not deleted by deployment.
 
 The agent does not expose the old fact proposal tool in the primary mode. A
 committed turn queues a job and returns without waiting for model extraction.
@@ -25,7 +26,8 @@ closed.
 The setup sequence is: apply migrations through `0013`, run
 `scripts.setup_langmem_store` once as an admin, grant the `mcp_memory` role,
 then run `scripts.backfill_langmem_store` once for existing sourced records.
-Start the memory MCP and LangMem worker together. Erasure holds the customer
+Start the memory MCP and LangMem worker together; the local launcher starts
+both. Erasure holds the customer
 barrier while deleting both operational rows and all LangGraph namespaces.
 
 The BTC harness waits for worker completion after each call and obtains the

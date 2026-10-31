@@ -43,6 +43,12 @@ class SettingsTest(unittest.TestCase):
             Settings(_env_file=None, llm_api_key="model-key", llm_model="model",
                      agent_kind="unknown")
 
+    def test_legacy_memory_modes_cannot_start_service(self) -> None:
+        for mode in ("off", "shadow"):
+            with self.subTest(mode=mode), self.assertRaises(ValidationError):
+                Settings(_env_file=None, llm_api_key="model-key", llm_model="model",
+                         langmem_mode=mode)
+
     def test_invalid_or_missing_required_values_are_rejected(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ValidationError):

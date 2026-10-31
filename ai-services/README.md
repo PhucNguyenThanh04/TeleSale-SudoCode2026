@@ -44,13 +44,15 @@ the BTC-compatible business logic and scenario input.
 
 The API invokes an outer one-turn LangGraph. It resolves identity through
 mcp-catalog, reads mcp-memory, and runs the selected Deep or ReAct agent for
-business tools. In the default `enabled` mode, the agent commits a masked turn
-and successful order links to `ai_memory`, then a separate worker uses LangMem
+business tools. LangMem is the only supported runtime mode. The agent commits a masked turn
+and successful order links to tables in `runtime`, then a separate worker uses LangMem
 to extract profile facts and call episodes. The worker checks each proposal
 against committed customer text or a successful business tool before writing
-it to the customer namespace in `langmem_store`. The old synchronous fact
-proposal tool and schema are hidden from the model in this mode. `off` and
-`shadow` remain available only for controlled comparisons.
+it to the customer namespace in `runtime.store`. Synchronous fact and episode
+writes are disabled in the service runtime.
+Working memory is read synchronously from `runtime.turns` for every turn in
+the same session; recent customer and agent turns are passed to the model with
+their conversation roles and do not wait for LangMem distillation.
 When `AGENT_GUARDRAILS_ENABLED=false`, the outer graph returns the selected agent's
 draft reply without `check_answer` or catalog fallback. PII masking, MCP tool
 preconditions, identity checks, and memory evidence validation still apply.
@@ -129,28 +131,24 @@ app/mcp_servers/          # catalog, order, memory, shared infrastructure
 ## Structured MCP tools
 
 Start PostgreSQL with `docker compose up -d postgres redis`, then import the
-BTC release with `dataloader_offline`. Apply the additive
-runtime SQL migrations in order: `backend/migrations/0001_chat.sql`,
+BTC release with `dataloader_offline`. Apply the runtime SQL in order:
+`backend/migrations/0001_chat.sql`,
 `backend/migrations/0002_tools.sql`, `backend/migrations/0003_channel_identity.sql`,
 `backend/migrations/0004_erasure_suppressions.sql`,
-then `ai-services/migrations/0001_memory.sql`,
-`ai-services/migrations/0002_operations.sql`,
-`ai-services/migrations/0003_memory_provenance.sql`, and
-`ai-services/migrations/0004_pending_facts.sql`, and
-`ai-services/migrations/0005_memory_evidence_quote.sql`, then
-`ai-services/migrations/0006_episode_identity_boundary.sql`,
-`ai-services/migrations/0007_erasure_requests.sql`, and
-`ai-services/migrations/0008_scoped_facts.sql`, then
-`ai-services/migrations/0009_structured_episodes.sql`,
-`ai-services/migrations/0010_langmem_distillation_jobs.sql`, and
-`ai-services/migrations/0011_langmem_store.sql`, and
-`ai-services/migrations/0012_langmem_accepted_writes.sql`, and
-`ai-services/migrations/0013_langmem_job_proposals.sql`. Apply them before starting
+`backend/migrations/0005_runtime_schema.sql`, then
+`ai-services/migrations/0001_memory.sql` and
+`ai-services/migrations/0002_runtime_schema.sql`. Apply it before starting
 `mcp-db-roles`. Use the same PostgreSQL database
 for the backend and all three MCP servers. Set matching `AI_INTERNAL_TOKEN`
 values in `backend/.env` and `ai-services/.env`, and a separate
 `MCP_INTERNAL_TOKEN` in `ai-services/.env`. The values in `.env.example` are
 placeholders, not working credentials.
+
+The final database has exactly two application schemas: `btc_source` for the
+imported BTC data and `runtime` for chat, orders, memory jobs, and
+`AsyncPostgresStore` tables. Migration `0002_runtime_schema.sql` keeps existing
+rows and removes the empty legacy schemas and the empty `public` schema; it
+stops with an error if `public` contains other objects.
 
 After importing BTC data and applying the migrations, create four ignored
 secret files under `secrets/`: `mcp_catalog_password`, `mcp_order_password`,
@@ -166,7 +164,7 @@ python -m app
 ```
 
 For a local run without the three MCP Compose containers, start all three
-MCP processes in one terminal with `python -m app.mcp_servers.run` from
+MCP processes and the LangMem worker in one terminal with `python -m app.mcp_servers.run` from
 `ai-services/`. The launcher uses `DATABASE_URL` to locate PostgreSQL, then
 connects each child with its own `mcp_catalog`, `mcp_order` or `mcp_memory`
 role and the corresponding files under `../secrets/`. Provision those roles
@@ -179,25 +177,25 @@ exposes `crm.get_customer`, `catalog.search`, `inventory.check`,
 `pricing.get_quote`, `policy.search`; `mcp-order`
 exposes `order.create`, `order.update`, `order.status`, `schedule.callback`,
 `handoff.transfer`. Each MCP has its own PostgreSQL connection pool and role;
-catalog reads `btc_source`, order writes commerce tables in `app_runtime`, and
-memory writes operational turns, jobs and erasure barriers to `ai_memory`,
-and long-term facts and episodes to `langmem_store`. All connect to `postgres:5432` on the Compose
+catalog reads `btc_source`, order writes commerce tables in `runtime`, and
+memory writes operational turns, jobs and erasure barriers to `runtime`,
+and long-term facts and episodes to `runtime.store`. All connect to `postgres:5432` on the Compose
 network. The one-shot `mcp-db-roles` service provisions roles on the existing
 database volume. The MCP ports are published only on host loopback and require
 the MCP bearer token. The backend business tool HTTP route is no longer mounted.
 
-When `LANGMEM_MODE=enabled`, each identified committed turn creates one durable
-`ai_memory.langmem_distillation_jobs` row. Compose starts the worker with
-`mcp-memory`; locally run `python -m app.mcp_servers.mcp_memory.distiller_worker` under the
-`mcp_memory` database role and model credentials. The worker leases jobs in
+Each identified committed turn creates one durable
+`runtime.langmem_distillation_jobs` row. Compose starts the worker with
+`mcp-memory`; the local launcher starts it with the `mcp_memory` database role
+and model credentials from `ai-services/.env`. Restart an already-running local
+launcher after updating the code. The worker leases jobs in
 session order, retries up to five times, and logs only error codes. A model
 timeout never rolls back the already committed customer turn. If the store is
 unavailable, customer memory reads fail closed instead of reading stale legacy facts.
-Apply `migrations/0010_langmem_distillation_jobs.sql` and
-`migrations/0011_langmem_store.sql`, `0012_langmem_accepted_writes.sql`, and
-`0013_langmem_job_proposals.sql` after `0009`. Then, once with an admin
+Apply both AI service migrations after the backend SQL.
+Then, once with an admin
 `DATABASE_URL`, run `python -m scripts.setup_langmem_store` from `ai-services/`.
-This invokes `AsyncPostgresStore.setup()` with `langmem_store` as the fixed
+This invokes `AsyncPostgresStore.setup()` with `runtime` as the fixed
 search path; LangGraph's concurrent index DDL must run outside a wrapping
 transaction. Re-run `scripts/provision_mcp_roles.sh` after setup to grant the
 `mcp_memory` role access to the new store tables and job sequence. Neither the
@@ -206,7 +204,7 @@ For an existing database, run `python -m scripts.backfill_langmem_store` once
 after store setup. It copies active facts with source turn and date plus
 existing episodes, skips records that lack provenance, and preserves newer
 LangMem facts.
-For a verified erasure request already registered in `ai_memory.erasure_requests`,
+For a verified erasure request already registered in `runtime.erasure_requests`,
 run `python -m scripts.execute_memory_erasure REQUEST_UUID` with the memory
 role. It removes operational rows, queued jobs and the customer's LangGraph
 namespace under the per-customer barrier. A store outage leaves the
@@ -222,7 +220,7 @@ connection setup live in `app/mcp_servers/mcp_shared`. Order and memory write se
 an operation key derived from the chat message to return the same stored result
 when a write is retried.
 
-Each completed chat turn is written to `ai_memory.turns`; accepted long-term
+Each completed chat turn is written to `runtime.turns`; accepted long-term
 knowledge is written to the LangGraph store by the worker. A failed turn write fails the chat
 request so callers can retry with the same session and message IDs. Use an
 isolated eval database and reset mutable business tables between configurations.
@@ -302,17 +300,17 @@ uv run --no-project --with 'langgraph>=1.2.12,<1.3' \
 
 ### Memory demo and manual preflight
 
-Before starting the existing MCP services, apply migrations through
-`0009_structured_episodes.sql` to their PostgreSQL database, then rerun role provisioning.
+Before starting the existing MCP services, apply both numbered AI service migrations
+to their PostgreSQL database, then rerun role provisioning.
 A table created after provisioning does not inherit the earlier table grants.
 With the administrative `psql` connection (never put passwords in the command), verify:
 
 ```sql
-SELECT to_regclass('ai_memory.pending_facts');
-SELECT to_regclass('ai_memory.erasure_requests');
-SELECT has_table_privilege('mcp_memory', 'ai_memory.pending_facts',
+SELECT to_regclass('runtime.pending_facts');
+SELECT to_regclass('runtime.erasure_requests');
+SELECT has_table_privilege('mcp_memory', 'runtime.pending_facts',
                           'SELECT,INSERT,UPDATE,DELETE');
-SELECT has_table_privilege('mcp_memory', 'ai_memory.erasure_requests',
+SELECT has_table_privilege('mcp_memory', 'runtime.erasure_requests',
                           'SELECT,INSERT,UPDATE,DELETE');
 ```
 
@@ -321,8 +319,8 @@ documented administrative connection. For the memory tables alone, the
 administrator can run:
 
 ```sql
-GRANT SELECT, INSERT, UPDATE, DELETE ON ai_memory.pending_facts TO mcp_memory;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ai_memory.erasure_requests TO mcp_memory;
+GRANT SELECT, INSERT, UPDATE, DELETE ON runtime.pending_facts TO mcp_memory;
+GRANT SELECT, INSERT, UPDATE, DELETE ON runtime.erasure_requests TO mcp_memory;
 ```
 
 These are deployment operations; chat continues to access PostgreSQL through MCP.
@@ -345,7 +343,8 @@ limit. Long-term profile facts are customer-scoped. Previous episodes are dedupl
 by session, preferring memory over CRM, then limited by `MEMORY_MAX_EPISODES`.
 Anonymous turns remain available during the unverified session. After identity
 verification, prior anonymous turns are excluded from the model history and the
-customer's episode; they are not converted into profile facts. Migration 0006
+customer's episode; they are not converted into profile facts. The former 0006
+section in the consolidated migration
 retracts legacy claims from anonymous turns and rebuilds mixed episodes from
 attributed turns, including facts whose anonymous commit lacked an operation key
 but whose claim result was logged. The old app always logged claim operations;

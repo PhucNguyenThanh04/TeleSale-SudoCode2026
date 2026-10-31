@@ -149,7 +149,7 @@ class PriorItemQueryTest(unittest.IsolatedAsyncioTestCase):
     async def test_seeded_episode_still_owns_session(self):
         class Connection:
             async def fetchval(self, query, *_):
-                return "C01" if "ai_memory.episodes" in query else None
+                return "C01" if "runtime.episodes" in query else None
 
         repo = MemoryRepo("postgresql://localhost/test")
         self.assertEqual(await repo.owner(Connection(), str(uuid4())), "C01")

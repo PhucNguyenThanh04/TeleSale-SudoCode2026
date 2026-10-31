@@ -68,6 +68,8 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
         args = {key: value for key, value in args.items() if key in _READ_TOOL_ARGS[name]}
     if name in {"inventory.check", "pricing.get_quote"} and not isinstance(args.get("sku"), str):
         return None
+    if name == "pricing.get_quote" and not args["sku"].startswith("SKU-"):
+        return None
     if name in DATED_TOOLS:
         args["on"] = request.on.isoformat()
     if name == "policy.search":

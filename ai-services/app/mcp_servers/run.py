@@ -1,4 +1,4 @@
-"""Start the three HTTP MCP servers for local AI-service development."""
+"""Start local MCP servers and the LangMem worker together."""
 
 import os
 import subprocess
@@ -12,7 +12,7 @@ from app.configs import get_settings
 
 
 def run_all(*, secrets_dir: Path | None = None) -> None:
-    """Run catalog, order and memory with separate database roles until stopped."""
+    """Run MCP services and LangMem with separate database roles until stopped."""
     settings = get_settings()
     if not settings.database_url:
         raise RuntimeError("Set DATABASE_URL in ai-services/.env for the local MCP launcher")
@@ -59,6 +59,20 @@ def run_all(*, secrets_dir: Path | None = None) -> None:
             )
             children.append((name, child))
             print(f"Started mcp-{name} on {settings.mcp_host}:{port}", flush=True)
+        worker_env = {**os.environ,
+                      "DATABASE_URL": "",
+                      "MCP_DB_HOST": database.host,
+                      "MCP_DB_PORT": str(database.port or 5432),
+                      "MCP_DB_NAME": database.database,
+                      "MCP_DB_USER": "mcp_memory",
+                      "MCP_DB_PASSWORD_FILE": str(secrets / "mcp_memory_password"),
+                      "LANGMEM_MODE": "enabled"}
+        worker = subprocess.Popen(
+            [sys.executable, "-m", "app.mcp_servers.mcp_memory.distiller_worker"],
+            cwd=ai_root, env=worker_env, start_new_session=True,
+        )
+        children.append(("langmem-worker", worker))
+        print("Started langmem-worker", flush=True)
         while True:
             for name, child in children:
                 code = child.poll()

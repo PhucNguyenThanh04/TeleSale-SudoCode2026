@@ -5,7 +5,8 @@ from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app.mcp_servers.mcp_memory.repos.langmem_projection import LangMemProjection
+from app.mcp_servers.mcp_memory.repos.langmem_projection import LangMemProjection, store_dsn
+from sqlalchemy.engine import make_url
 
 
 class FakeStore:
@@ -29,6 +30,10 @@ class FakeStore:
 
 
 class ProjectionTests(unittest.IsolatedAsyncioTestCase):
+    def test_store_uses_runtime_schema(self):
+        url = make_url(store_dsn("postgresql://user:pass@localhost/test"))
+        self.assertEqual(url.query["options"], "-csearch_path=runtime")
+
     async def test_same_job_retry_keeps_original_write_operation(self):
         store = FakeStore()
         @asynccontextmanager

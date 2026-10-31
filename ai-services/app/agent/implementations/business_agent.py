@@ -82,6 +82,8 @@ _TOOL_DESCRIPTION = {
     "inventory.check": "Kiểm tra tồn kho của SKU theo ngày cuộc gọi.",
     "pricing.get_quote": (
         "Lấy giá cuối, khuyến mãi và freeship theo ngày cuộc gọi. "
+        "sku phải là mã SKU-...; nếu chỉ có tên sản phẩm, gọi catalog.search trước "
+        "để lấy đúng sku từ kết quả. "
         "Gọi cho SKU sẽ tư vấn khi khách có ngân sách hoặc cần so giá; "
         "catalog.search chỉ cho giá niêm yết, không đủ để báo giá cuối."
     ),
@@ -101,11 +103,16 @@ _TOOL_DESCRIPTION = {
 class BusinessOnlyMiddleware(AgentMiddleware):
     """Only expose the business tools to the model and block built-in side effects."""
 
+    def __init__(self, business: "BusinessTools") -> None:
+        self.business = business
+
     async def awrap_model_call(self, request: ModelRequest,
                                handler: Callable[[ModelRequest], Any]) -> ModelResponse:
-        tools = [tool for tool in request.tools
-                 if (tool.get("function", {}).get("name") if isinstance(tool, dict)
-                     else getattr(tool, "name", None)) in _MODEL_TOOLS]
+        tools = ([tool for tool in request.tools
+                  if (tool.get("function", {}).get("name") if isinstance(tool, dict)
+                      else getattr(tool, "name", None)) in _MODEL_TOOLS]
+                 if self.business.state.get("tool_count", 0) < self.business.max_tool_calls
+                 else [])
         return await handler(request.override(tools=tools))
 
     async def awrap_tool_call(self, request, handler):
@@ -179,6 +186,9 @@ class BusinessTools:
             self.state["tool_count"] = self.state.get("tool_count", 0) + 1
             if prepared is None:
                 log_event(self.state, "call_tool", "blocked", reason="precondition_or_arguments")
+                if name == "pricing.get_quote" and isinstance(raw.get("sku"), str) \
+                        and not raw["sku"].startswith("SKU-"):
+                    return {"error": "sku_required", "next_tool": "catalog.search"}
                 return {"error": "precondition_or_arguments"}
             _, args = prepared
             log_tool_input("call_tool", name, args)

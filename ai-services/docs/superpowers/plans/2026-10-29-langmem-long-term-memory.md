@@ -1,7 +1,8 @@
 # LangMem Long-Term Memory Implementation Plan
 
 > Historical implementation plan. The active long-term store design is in
-> `../specs/2026-10-30-langmem-primary-design.md`.
+> `../specs/2026-10-30-langmem-primary-design.md`. Its separate migration
+> filenames were later consolidated into `migrations/0001_memory.sql`.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

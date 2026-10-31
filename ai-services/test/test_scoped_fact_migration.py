@@ -25,7 +25,9 @@ class ScopedFactMigrationTest(unittest.IsolatedAsyncioTestCase):
                 VALUES ($1,'C901','price_quoted_vnd',$2,$3,'active')""",
                 legacy, uuid4(), uuid4())
             migration = (Path(__file__).resolve().parents[1] / "migrations" /
-                         "0008_scoped_facts.sql").read_text()
+                         "0001_memory.sql").read_text().split(
+                             "-- BEGIN 0008_scoped_facts\n", 1)[1].split(
+                             "-- END 0008_scoped_facts", 1)[0]
             await connection.execute(migration.replace("ai_memory.", "pg_temp."))
             row = await connection.fetchrow("""SELECT scope_type,scope_id FROM pg_temp.facts
                 WHERE fact_id=$1""", legacy)
