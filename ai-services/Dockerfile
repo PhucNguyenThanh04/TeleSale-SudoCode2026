@@ -1,7 +1,9 @@
-FROM python:3.12-slim
+ARG BASE_IMAGE=python:3.12-slim
+FROM ${BASE_IMAGE}
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /service
+RUN rm -rf /service/app /service/scripts
 COPY requirements.txt requirements-rag.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 ARG INSTALL_RAG=false

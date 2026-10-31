@@ -74,6 +74,7 @@ services:
     build:
       context: ./ai-services
       args:
+        BASE_IMAGE: ${AI_BASE_IMAGE:-python:3.12-slim}
         INSTALL_RAG: ${POLICY_RAG_ENABLED:-false}
     restart: unless-stopped
     command: ["python", "-m", "app.mcp_servers.mcp_catalog.server"]
@@ -105,7 +106,10 @@ services:
       - telesale_network
 
   mcp-order:
-    build: ./ai-services
+    build:
+      context: ./ai-services
+      args:
+        BASE_IMAGE: ${AI_BASE_IMAGE:-python:3.12-slim}
     restart: unless-stopped
     command: ["python", "-m", "app.mcp_servers.mcp_order.server"]
     depends_on:
@@ -134,7 +138,10 @@ services:
       - telesale_network
 
   mcp-memory:
-    build: ./ai-services
+    build:
+      context: ./ai-services
+      args:
+        BASE_IMAGE: ${AI_BASE_IMAGE:-python:3.12-slim}
     restart: unless-stopped
     command: ["python", "-m", "app.mcp_servers.mcp_memory.server"]
     depends_on:
@@ -167,7 +174,10 @@ services:
       - telesale_network
 
   langmem-worker:
-    build: ./ai-services
+    build:
+      context: ./ai-services
+      args:
+        BASE_IMAGE: ${AI_BASE_IMAGE:-python:3.12-slim}
     restart: unless-stopped
     command: ["python", "-m", "app.mcp_servers.mcp_memory.distiller_worker"]
     depends_on:
