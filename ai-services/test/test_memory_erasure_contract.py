@@ -20,15 +20,14 @@ CASES = {case["case"]: case for case in load_cases(
 
 
 class MemoryErasureRequestContract(unittest.IsolatedAsyncioTestCase):
-    def test_no_purge_action_exists_and_fact_delete_is_not_customer_purge(self):
+    def test_no_purge_or_legacy_fact_action_exists(self):
         with self.assertRaises(ValidationError):
             WriteInput(action="delete_customer", customer_id="C107",
                        session_id=uuid4(), data={})
-        single_fact = WriteInput(action="fact", customer_id="C107",
-                                 session_id=uuid4(),
-                                 data={"key": "blocker", "op": "delete",
-                                       "source": "synthetic-test"})
-        self.assertEqual(single_fact.action, "fact")
+        with self.assertRaises(ValidationError):
+            WriteInput(action="fact", customer_id="C107", session_id=uuid4(),
+                       data={"key": "blocker", "op": "delete",
+                             "source": "synthetic-test"})
 
     def test_unverified_request_cannot_be_confirmed_as_completed(self):
         text = CASES["erase_request"]["calls"][0]["turns"][0]["text"]

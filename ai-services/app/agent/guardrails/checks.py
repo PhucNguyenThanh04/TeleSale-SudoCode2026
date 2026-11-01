@@ -9,6 +9,7 @@ from enum import StrEnum
 from typing import Any
 
 from app.mcp_servers.mcp_shared.pii import mask_pii
+from app.mcp_servers.mcp_shared.episode_evidence import evidence_supports
 from app.constants import PROFILE_SLOT_KEYS, SLOT_SPEC_BY_KEY, TOOL_ONLY_SLOT_KEYS, Slot
 from app.agent.guardrails.skus import known_skus, mentioned_skus
 from app.agent.memory.decision_makers import PERSON_PATTERN
@@ -899,6 +900,14 @@ def _fact_evidence_source(
             direct = bool(evidence_quote and _quote_overlaps_clause(evidence_quote, customer_text)) and (
                 bool(_EXPENSIVE_PHRASE.search(customer_text)) if value == "dat_qua"
                 else value == "khac")
+        elif key == Slot.BLOCKER and not direct:
+            direct = bool(
+                isinstance(evidence_quote, str)
+                and evidence_quote.strip()
+                and _quote_overlaps_clause(evidence_quote, customer_text)
+                and evidence_supports(str(value), evidence_quote)
+                and _blocker_rejection(evidence_quote, customer_text) is None
+            )
         normalized_money = set()
         for digits, unit in re.findall(r"(?i)\b(\d+(?:[.,]\d+)?)\s*(triệu|tr|nghìn|ngàn|k)\b", customer_text):
             number = float(digits.replace(",", "."))
@@ -929,6 +938,9 @@ def _fact_evidence_source(
             "catalog.search", "inventory.check", "pricing.get_quote"
         }:
             supported = value == result.get("sku") or (
+                isinstance(value, str) and isinstance(result.get("sku"), str)
+                and result["sku"].startswith(value + "-")
+            ) or (
                 name == "catalog.search"
                 and any(value == item.get("sku") for item in result.get("items", []))
             )
@@ -946,10 +958,21 @@ def _fact_evidence_source(
             supported = any(value == variant.get("variant_sku")
                             for item in result.get("items", []) if isinstance(item, dict)
                             for variant in item.get("variants", []) if isinstance(variant, dict))
+        elif key == Slot.VARIANT_SKU and name in {"inventory.check", "pricing.get_quote"}:
+            supported = (isinstance(value, str) and value == result.get("sku")
+                         and value.count("-") >= 4)
         elif key == Slot.VARIANT_SKU and name == "order.create":
             supported = result.get("status") == "created" and value == call.get("args", {}).get("sku")
         elif key == Slot.IN_STOCK and name == "inventory.check":
             supported = value is result.get("in_stock")
+        elif key == Slot.ALT_SUGGESTED and name == "inventory.check":
+            supported = isinstance(value, str) and value == result.get("successor_sku")
+        elif key == Slot.CALLBACK_SCHEDULED and name == "schedule.callback":
+            supported = value is True and result.get("status") in {"scheduled", "ok", "created"}
+        elif key == Slot.OWNED_SKU and name == "crm.get_customer":
+            supported = isinstance(value, str) and any(
+                value in {order.get("sku"), order.get("variant_sku")}
+                for order in result.get("orders", []) if isinstance(order, dict))
         if supported:
             return f"tool:{name}"
     return None
@@ -1002,7 +1025,7 @@ def _fact_reject_reason(key: str, value: Any, op: str, customer_text: str,
     return FactRejectReason.PATTERN_NOT_MATCHED
 
 
-_CONTEXT_CLAUSE = re.compile(r"[;,](?!\d)|\b(?:nhưng|nhung|và|va|mà|ma)\b", re.IGNORECASE)
+_CONTEXT_CLAUSE = re.compile(r"(?<=[.!?])\s+|[;,](?!\d)|\b(?:nhưng|nhung|và|va|mà|ma)\b", re.IGNORECASE)
 _HYPOTHETICAL_CUE = re.compile(r"\b(?:neu|gia su|lo|vi du)\b|^nho\b")
 _QUESTION_CUE = re.compile(r"\b(?:duoc khong|khong a|phai khong|the nao|thi sao|hay sao)\b|\b(?:a|ha|nhi|chua)\s*$")
 _POLAR_CHILD_NEGATION = re.compile(r"\b(?:khong|chua)\s+(?:co\s+)?(?:con|be|em be)\b")
@@ -1020,9 +1043,10 @@ _BLOCKER_WAIT_PERSON = re.compile(
 _BLOCKER_WAIT = re.compile(
     r"\b(?:doi|cho)\b[^.!?;,]{0,45}\b(?:luong|bao gia|duyet|xac nhan|quyet dinh|mua)\b")
 _BLOCKER_DEFERRED_REPLY = re.compile(
-    r"\b(?:xem|kiem tra)\s+lai\b[^.!?;,]{0,20}\b(?:roi\s+)?bao\b")
+    r"\b(?:xem|kiem tra)\s+lai\b[^.!?;,]{0,20}\b(?:roi\s+)?bao\b|"
+    r"\b(?:can nhac\s+them|tinh)\b[^.!?;,]{0,20}\b(?:roi\s+)?(?:bao|goi)\b")
 _BLOCKER_DECISION = re.compile(
-    r"\b(?:chua quyet|chua chot|chua the mua|can nhac gia|so sanh gia)\b|"
+    r"\b(?:chua quyet|chua chot|chua the mua|can nhac gia|can nhac them|so sanh gia)\b|"
     r"\b(?:can|phai)\b[^.!?;,]{0,45}\b(?:truoc khi|roi moi)\s+(?:mua|quyet|chot)\b")
 _BLOCKER_DELIVERY = re.compile(r"\b(?:giao|nhan hang|ship|van chuyen)\b")
 _BLOCKER_PREFERENCE = re.compile(r"\b(?:khong thich|thich|uu tien|khong muon|muon|can)\b")
@@ -1038,17 +1062,21 @@ _BLOCKER_DELIVERY_STATUS = re.compile(
     r"\b(?:cho|doi)\s+(?:giao\s+)?hang\b[^.!?;,]{0,35}\b(?:ngay|tuan|chua thay|chua toi)\b")
 
 
-def _blocker_rejection(value: Any, customer_text: str) -> FactRejectReason | None:
+def _blocker_rejection(value: Any, customer_text: str,
+                       evidence_quote: str | None = None) -> FactRejectReason | None:
     """Classify a proposed blocker by the meaning of its supporting clause."""
     if not isinstance(value, str) or not value.strip() or mask_pii(value) != value:
         return None
     folded_value = _fold_text(value).strip()
+    folded_quote = _fold_text(evidence_quote).strip() if isinstance(evidence_quote, str) else ""
     clauses = [part.strip() for part in _CONTEXT_CLAUSE.split(unicodedata.normalize("NFC", customer_text))
                if part.strip()]
     reasons: list[FactRejectReason] = []
     for clause in clauses:
         folded = _fold_text(clause)
-        if folded_value not in folded:
+        if folded_value not in folded and not (
+            folded_quote and (folded_quote in folded or folded in folded_quote)
+        ):
             continue
         if _BLOCKER_PAST_CONSULT.search(folded):
             reasons.append(FactRejectReason.PAST_CONSULTATION_NOT_BLOCKER)
@@ -1118,7 +1146,13 @@ def _context_rejection(key: str, value: Any, op: str, customer_text: str,
                             or re.search(r"\b(?:lỡ|nhỡ)\b", clause.casefold()))
         if hypothetical:
             reasons.append(FactRejectReason.HYPOTHETICAL_CONTEXT)
-        elif "?" in clause or _QUESTION_CUE.search(folded):
+        elif ("?" in clause or _QUESTION_CUE.search(folded)) and not (
+            (key == Slot.OBJECTION and value == "dat_qua"
+             and re.search(r"\bdat\s+(?:hon|qua|the|vay)\b", folded)
+             and not re.search(r"\bkhong\b", folded))
+            or (key == Slot.ROOM_AREA_M2
+                and re.search(r"\bphong\s+(?:cua\s+)?(?:anh|chi|toi|minh|nha)\b", folded))
+        ):
             reasons.append(FactRejectReason.QUESTION_CONTEXT)
         elif spec.context_negation == "polar" and key == Slot.HAS_CHILDREN \
                 and value is True and _POLAR_CHILD_NEGATION.search(folded):
@@ -1165,7 +1199,7 @@ def fact_evidence(
     if context_reason is not None:
         return FactEvidence(source=None, reason=context_reason)
     if key == Slot.BLOCKER and op == "set":
-        blocker_reason = _blocker_rejection(value, customer_text)
+        blocker_reason = _blocker_rejection(value, customer_text, evidence_quote)
         if blocker_reason is not None:
             return FactEvidence(source=None, reason=blocker_reason)
     if op == "set" and SLOT_SPEC_BY_KEY[key].semantic_gate == "purchase_objection":

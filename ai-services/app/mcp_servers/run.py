@@ -66,7 +66,7 @@ def run_all(*, secrets_dir: Path | None = None) -> None:
                       "MCP_DB_NAME": database.database,
                       "MCP_DB_USER": "mcp_memory",
                       "MCP_DB_PASSWORD_FILE": str(secrets / "mcp_memory_password"),
-                      "LANGMEM_MODE": "enabled"}
+                      }
         worker = subprocess.Popen(
             [sys.executable, "-m", "app.mcp_servers.mcp_memory.distiller_worker"],
             cwd=ai_root, env=worker_env, start_new_session=True,

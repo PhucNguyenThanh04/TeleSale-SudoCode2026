@@ -27,6 +27,9 @@ class Slot:
     SIZE = "size"
     COLOR = "color"
     PAYMENT = "payment"
+    OWNED_SKU = "owned_sku"
+    CALLBACK_SCHEDULED = "callback_scheduled"
+    ALT_SUGGESTED = "alt_suggested"
 
 
 @dataclass(frozen=True)
@@ -56,25 +59,35 @@ SLOT_REGISTRY = (
     SlotSpec(Slot.HAS_CHILDREN, bool, "customer", brief_must_not_ask=True,
              context_negation="polar", value_domain="closed"),
     SlotSpec(Slot.PRODUCT_ADVISED, str, "tool", brief_must_not_ask=True),
-    SlotSpec(Slot.PRICE_QUOTED_VND, int, "tool", value_domain="closed"),
+    SlotSpec(Slot.PRICE_QUOTED_VND, int, "tool", brief_must_not_ask=True,
+             value_domain="closed"),
     SlotSpec(Slot.PROMO_CODE, str, "tool"),
     SlotSpec(Slot.PROMO_EXPIRY, str, "tool", value_domain="closed",
              value_format="date"),
     SlotSpec(Slot.BLOCKER, str, "customer", context_negation="obstacle"),
-    SlotSpec(Slot.PREFERRED_SIZE, (str, int), "customer", context_negation="selection"),
-    SlotSpec(Slot.PREFERRED_COLOR, str, "customer", context_negation="selection"),
-    SlotSpec(Slot.ORDER_ID, str, "tool"),
+    SlotSpec(Slot.PREFERRED_SIZE, (str, int), "customer", brief_must_not_ask=True,
+             context_negation="selection"),
+    SlotSpec(Slot.PREFERRED_COLOR, str, "customer", brief_must_not_ask=True,
+             context_negation="selection"),
+    SlotSpec(Slot.ORDER_ID, str, "tool", brief_must_not_ask=True),
     SlotSpec(Slot.IN_STOCK, bool, "tool", context_negation="polar",
              value_domain="closed"),
-    SlotSpec(Slot.COMPETITOR_PRICE_VND, int, "customer", value_domain="closed"),
+    SlotSpec(Slot.COMPETITOR_PRICE_VND, int, "customer", brief_must_not_ask=True,
+             value_domain="closed"),
     SlotSpec(Slot.OBJECTION, str, "customer", context_negation="objection",
              semantic_gate="purchase_objection",
              value_domain="open", allowed_values=("dat_qua", "khac")),
     SlotSpec(Slot.VARIANT_SKU, str, "tool"),
-    SlotSpec(Slot.SIZE, (str, int), "customer", context_negation="selection"),
-    SlotSpec(Slot.COLOR, str, "customer", context_negation="selection"),
-    SlotSpec(Slot.PAYMENT, str, "customer", context_negation="selection",
+    SlotSpec(Slot.SIZE, (str, int), "customer", brief_must_not_ask=True,
+             context_negation="selection"),
+    SlotSpec(Slot.COLOR, str, "customer", brief_must_not_ask=True,
+             context_negation="selection"),
+    SlotSpec(Slot.PAYMENT, str, "customer", brief_must_not_ask=True,
+             context_negation="selection",
              value_domain="closed", allowed_values=("COD", "bank", "momo", "zalopay")),
+    SlotSpec(Slot.OWNED_SKU, str, "tool"),
+    SlotSpec(Slot.CALLBACK_SCHEDULED, bool, "tool", value_domain="closed"),
+    SlotSpec(Slot.ALT_SUGGESTED, str, "tool"),
 )
 
 SLOT_SPEC_BY_KEY = {spec.key: spec for spec in SLOT_REGISTRY}

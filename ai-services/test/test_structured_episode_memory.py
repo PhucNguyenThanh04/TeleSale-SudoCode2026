@@ -1,12 +1,10 @@
 """Structured episode items retain evidence and transition without inventing state."""
 
 import unittest
-import json
 from uuid import uuid4
 
 from app.mcp_servers.mcp_memory.services.episode_state import apply_episode_delta
 from app.mcp_servers.mcp_memory.services.episode_summary import build_episode_summary
-from app.mcp_servers.mcp_memory.repos.postgres import MemoryRepo
 from app.agent.memory.store import MCPMemoryStore
 
 
@@ -129,7 +127,7 @@ class EpisodeStateTest(unittest.TestCase):
         self.assertEqual(state["resolved_prior_items"][0]["item_id"], "old-question-1")
 
 
-class PriorItemQueryTest(unittest.IsolatedAsyncioTestCase):
+class MemoryPayloadTest(unittest.IsolatedAsyncioTestCase):
     async def test_empty_episode_update_preserves_existing_write_payload(self):
         class Gateway:
             def __init__(self):
@@ -145,27 +143,3 @@ class PriorItemQueryTest(unittest.IsolatedAsyncioTestCase):
                                 "2026-10-15", "hotline", str(uuid4()), [])
         self.assertNotIn("episode_delta", gateway.args["data"])
         self.assertNotIn("outcome", gateway.args["data"])
-
-    async def test_seeded_episode_still_owns_session(self):
-        class Connection:
-            async def fetchval(self, query, *_):
-                return "C01" if "runtime.episodes" in query else None
-
-        repo = MemoryRepo("postgresql://localhost/test")
-        self.assertEqual(await repo.owner(Connection(), str(uuid4())), "C01")
-
-    async def test_decodes_jsonb_and_filters_resolved_prior_ids(self):
-        class Connection:
-            async def fetch(self, *_):
-                return [
-                    {"topics": json.dumps([{"scope_type": "product",
-                        "scope_id": "SKU-GAMMA", "items": [
-                            {"item_id": "q-1", "kind": "question", "status": "open"},
-                            {"item_id": "q-2", "kind": "question", "status": "open"}]}]),
-                     "resolved_prior_items": "[]"},
-                    {"topics": "[]", "resolved_prior_items": '[{"item_id":"q-1"}]'},
-                ]
-
-        repo = MemoryRepo("postgresql://localhost/test")
-        items = await repo.prior_open_items(Connection(), "C01", str(uuid4()))
-        self.assertEqual(items, {"q-2": ("product", "SKU-GAMMA")})

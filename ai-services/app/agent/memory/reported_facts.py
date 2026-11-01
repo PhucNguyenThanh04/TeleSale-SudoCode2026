@@ -33,6 +33,11 @@ def _product_named(answer: str, sku: str, calls: list[dict[str, Any]]) -> bool:
              and isinstance(item.get("sku"), str)]
     aliases: dict[str, set[str]] = {}
     for item in items:
+        if "+" in item["name"]:
+            full_name = item["name"].strip().casefold()
+            if len(full_name) >= 6:
+                aliases.setdefault(full_name, set()).add(item["sku"])
+            continue
         words = item["name"].split()
         for count in range(2, min(len(words), 5) + 1):
             alias = " ".join(words[-count:]).casefold()
@@ -132,6 +137,13 @@ def reported_tool_fact(key: str, value: Any, answer: str,
         if value is False:
             return bool(re.search(r"(?i)hết hàng", text))
         return False
+    if key == Slot.ALT_SUGGESTED:
+        return isinstance(value, str) and _product_named(answer, value, calls)
+    if key == Slot.CALLBACK_SCHEDULED:
+        return value is True and any(
+            call.get("name") == "schedule.callback"
+            and call.get("result", {}).get("status") in {"scheduled", "ok", "created"}
+            for call in calls)
     return True
 
 
@@ -159,6 +171,10 @@ def reported_tool_candidates(answer: str, calls: list[dict[str, Any]]) -> list[d
         elif name == "inventory.check":
             sku = result.get("sku") or call.get("args", {}).get("sku")
             pairs.append((Slot.IN_STOCK, result.get("in_stock")))
+            if isinstance(result.get("successor_sku"), str) and result.get("successor_sku"):
+                pairs.append((Slot.ALT_SUGGESTED, result.get("successor_sku")))
+        elif name == "schedule.callback" and result.get("status") in {"scheduled", "ok", "created"}:
+            pairs.append((Slot.CALLBACK_SCHEDULED, True))
         elif name == "order.create" and result.get("status") == "created":
             pairs.append((Slot.ORDER_ID, result.get("order_id")))
             ordered_sku = call.get("args", {}).get("sku")
@@ -176,7 +192,7 @@ def reported_tool_candidates(answer: str, calls: list[dict[str, Any]]) -> list[d
             if reported_tool_fact(key, value, answer, calls, item_sku):
                 candidate = {"key": key, "value": value, "source": "tool",
                              "origin": "verified_observation"}
-                if isinstance(item_sku, str) and key != Slot.ORDER_ID:
+                if isinstance(item_sku, str) and key not in {Slot.ORDER_ID, Slot.CALLBACK_SCHEDULED}:
                     candidate.update(scope_type="product", scope_id=item_sku, sku=item_sku)
                 candidates.append(candidate)
     return candidates

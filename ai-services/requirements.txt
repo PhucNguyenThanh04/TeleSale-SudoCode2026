@@ -19,7 +19,6 @@ uvicorn[standard]>=0.35,<1
 pydantic>=2.12,<3
 pydantic-settings>=2.10,<3
 httpx>=0.28.1,<0.29
-PyJWT[crypto]>=2.10,<3
 
 # Explicit StateGraph harness; LangChain models/messages/structured tools.
 # langchain[mcp] supplies the current MCPAdapter integration.
@@ -47,11 +46,9 @@ psycopg[binary,pool]>=3.2.9,<4
 # Memory/knowledge SQLAlchemy services use asyncpg; checkpointing uses psycopg above.
 SQLAlchemy[asyncio]>=2.0.54,<2.1
 asyncpg>=0.30,<1
-redis>=6.4,<9
 qdrant-client>=1.19.1,<1.20
 
 # Evaluation contracts and operational evidence.
 # BTC reference_eval.py remains authoritative; frameworks do not replace it.
 jsonschema[format]>=4.23,<5
-structlog>=25.1,<27
 tzdata>=2025.2,<2027

@@ -2,6 +2,7 @@
 
 import unittest
 from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 from app.mcp_servers.mcp_memory.services.erasure import request_erasure
@@ -41,6 +42,9 @@ class Repo:
         return None
 
     async def recent_customer_turns(self, *_):
+        return []
+
+    async def recent_turns(self, *_):
         return []
 
     async def turn_count(self, *_):
@@ -114,10 +118,13 @@ class ErasureWorkflowTest(unittest.IsolatedAsyncioTestCase):
             verification_ref="case-42", verified_by="operator-1", scope=["ai_memory"])
         self.assertEqual(await read(repo, "C901", session),
                          {"error": "customer_erasure_in_progress"})
-        other = await read(repo, "C902", session)
+        projection = AsyncMock()
+        projection.list_fact_versions.return_value = []
+        projection.list_episode_versions.return_value = []
+        other = await read(repo, "C902", session, projector=projection)
         self.assertEqual(other["profile"], {})
-        blocked = await write(repo, "turn", "C901", session, {
+        blocked = await write(repo, "commit_turn", "C901", session, {
             "customer_text": "Xin chào", "agent_text": "Dạ", "on": "2026-10-15",
-            "channel": "hotline"})
+            "channel": "hotline", "client_msg_id": str(uuid4())})
         self.assertEqual(blocked, {"error": "customer_erasure_in_progress"})
         self.assertEqual(repo.write_count, 0)

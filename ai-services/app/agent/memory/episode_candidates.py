@@ -1,8 +1,74 @@
-"""Validate model proposals for unresolved session issues."""
+"""Validate handoff episode proposals and derive committed-turn outcomes."""
+
+import re
+import unicodedata
 
 from app.agent.guardrails.checks import mask_pii
-from app.agent.memory.fact_candidates import blocker_resolution
+from app.agent.memory.decision_makers import (
+    BlockerResolutionReason, PERSON_PATTERN, person_mentions, roles_mentioned,
+)
 from app.mcp_servers.mcp_shared.episode_evidence import evidence_supports
+
+
+def _fold(value: str) -> str:
+    value = value.casefold().replace("đ", "d").replace("²", "2")
+    return "".join(char for char in unicodedata.normalize("NFD", value)
+                   if unicodedata.category(char) != "Mn")
+
+
+_APPROVAL_TAIL = re.compile(
+    r"(?:\s+(?:toi|anh|chi|em|minh|nha toi))?\s+"
+    r"(?:da\s+)?(?:(chua|khong|tam)\s+)?"
+    r"(?:dong y|chap nhan|ung ho|ok|gat dau|cho\s+roi)\b"
+)
+_RESOLUTION_CLAUSE = re.compile(r"[;,]|\b(?:nhung|va|ma)\b")
+_RESOLUTION_HYPOTHETICAL = re.compile(r"\b(?:neu|gia su|lo|nho|vi du)\b")
+_RESOLUTION_UNCERTAIN = re.compile(r"\b(?:khong biet|chua ro|chua biet)\b")
+_RESOLUTION_QUESTION = re.compile(r"[?]|\b(?:duoc khong|phai khong|chua|khong a|a|ha|nhi)\s*$")
+
+
+def blocker_resolution(customer_text: str, profile: dict[str, dict]
+                       ) -> tuple[bool, BlockerResolutionReason]:
+    prior = profile.get("blocker", {}).get("value")
+    if not isinstance(prior, str):
+        return False, BlockerResolutionReason.NO_PRIOR_BLOCKER
+    old, current = _fold(prior), _fold(customer_text)
+    old_roles = roles_mentioned(old)
+    mentioned_approval = False
+    deferred_reason = None
+    for clause in _RESOLUTION_CLAUSE.split(current):
+        for role, mention in person_mentions(clause):
+            match = _APPROVAL_TAIL.match(clause, mention.end())
+            if not match:
+                continue
+            if role not in old_roles:
+                if match.group(1) not in {"chua", "khong"}:
+                    mentioned_approval = True
+                continue
+            if match.group(1) in {"chua", "khong"}:
+                return False, BlockerResolutionReason.APPROVAL_NEGATED
+            if match.group(1) == "tam":
+                deferred_reason = BlockerResolutionReason.TENTATIVE_APPROVAL
+                continue
+            if _RESOLUTION_HYPOTHETICAL.search(clause):
+                deferred_reason = BlockerResolutionReason.HYPOTHETICAL_CONTEXT
+                continue
+            if _RESOLUTION_UNCERTAIN.search(clause):
+                deferred_reason = BlockerResolutionReason.UNCERTAIN_APPROVAL
+                continue
+            if _RESOLUTION_QUESTION.search(clause.strip()):
+                deferred_reason = BlockerResolutionReason.QUESTION_CONTEXT
+                continue
+            return True, BlockerResolutionReason.DECISION_MAKER_APPROVED
+    if deferred_reason:
+        return False, deferred_reason
+    if mentioned_approval and old_roles:
+        return False, BlockerResolutionReason.DIFFERENT_DECISION_MAKER
+    price_ok = ("gia" in old or "dat" in old) and bool(re.search(
+        r"\bthoi duoc\b|\bchap nhan gia\b|\bdong y gia\b", current))
+    if price_ok:
+        return True, BlockerResolutionReason.PRICE_ACCEPTED
+    return False, BlockerResolutionReason.NO_RESOLUTION_EVIDENCE
 
 
 def outcome_from_tool_calls(tool_calls: list[dict]) -> str:
@@ -22,69 +88,6 @@ def outcome_from_tool_calls(tool_calls: list[dict]) -> str:
                 and isinstance(result.get("callback_id"), str) and result["callback_id"]):
             return "hen_goi_lai"
     return "khac"
-
-
-def blocker_episode_delta(customer_text: str, facts: list[dict],
-                          current_episode: dict, proposed_delta: dict) -> dict:
-    """Carry a verified decision delay into the session record once."""
-    existing = {str(item.get("text", "")).casefold().strip()
-                for topic in current_episode.get("topics", [])
-                if isinstance(topic, dict) for item in topic.get("items", [])
-                if isinstance(item, dict) and item.get("kind") == "blocker"
-                and item.get("status") == "open"}
-    for update in proposed_delta.get("topic_updates", []):
-        for item in update.get("add_items", []):
-            if isinstance(item, dict) and item.get("kind") == "blocker":
-                existing.add(str(item.get("text", "")).casefold().strip())
-    additions = []
-    for fact in facts:
-        value = fact.get("value")
-        if (fact.get("key") != "blocker" or fact.get("op") != "set"
-                or fact.get("source_kind") != "customer" or not isinstance(value, str)
-                or value.casefold().strip() in existing):
-            continue
-        quote = fact.get("evidence_quote")
-        if not (_safe(quote, 200, customer_text) and evidence_supports(value, quote)):
-            quote = customer_text if _safe(customer_text, 200) else None
-        if quote and evidence_supports(value, quote):
-            additions.append({"kind": "blocker", "text": value,
-                              "evidence_quote": quote})
-            existing.add(value.casefold().strip())
-    return {"topic_updates": [{"scope_type": "unknown", "scope_id": "",
-                                "add_items": additions[:8]}]} if additions else {}
-
-
-def resolved_blocker_episode_delta(customer_text: str, current_episode: dict,
-                                   prior_episodes: list[dict], proposed_delta: dict) -> dict:
-    """Close only a specific decision delay supported by the customer's reply."""
-    if not _safe(customer_text, 200):
-        return {}
-    already = {resolution.get("item_id")
-               for update in proposed_delta.get("topic_updates", [])
-               for resolution in update.get("resolve_items", [])
-               if isinstance(resolution, dict)}
-    updates = []
-    for episode in [current_episode, *prior_episodes]:
-        for topic in episode.get("topics", []) if isinstance(episode, dict) else []:
-            if not isinstance(topic, dict):
-                continue
-            resolutions = []
-            for item in topic.get("items", []):
-                if (not isinstance(item, dict) or item.get("kind") != "blocker"
-                        or item.get("status") != "open" or not item.get("item_id")
-                        or item["item_id"] in already):
-                    continue
-                resolved, _ = blocker_resolution(customer_text, {
-                    "blocker": {"value": item.get("text", "")}})
-                if resolved:
-                    resolutions.append({"item_id": item["item_id"],
-                                        "evidence_quote": customer_text})
-                    already.add(item["item_id"])
-            if resolutions:
-                updates.append({"scope_type": topic.get("scope_type", "unknown"),
-                                "scope_id": topic.get("scope_id", ""),
-                                "resolve_items": resolutions[:8]})
-    return {"topic_updates": updates[:8]} if updates else {}
 
 
 def _safe(value: object, limit: int, turn: str | None = None) -> bool:

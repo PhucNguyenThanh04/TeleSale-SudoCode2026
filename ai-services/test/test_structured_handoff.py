@@ -27,8 +27,7 @@ class StructuredHandoffTest(unittest.TestCase):
         brief = build_handoff_brief(state, proposal,
             lambda: datetime(2026, 10, 15, tzinfo=timezone.utc))
         self.assertNotIn("giao cuối tuần", " ".join(brief.open_questions))
-        self.assertEqual(state["handoff_episode_delta"]["topic_updates"][0]
-                         ["resolve_items"][0]["item_id"], "issue-1")
+        self.assertNotIn("handoff_episode_delta", state)
 
     def test_carries_only_open_question(self):
         request = TextTurnRequest(client_msg_id=uuid4(), session_id=uuid4(),

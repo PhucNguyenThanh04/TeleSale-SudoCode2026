@@ -10,9 +10,9 @@ AgentKind = Literal["deep", "react"]
 BUILDERS = {"deep": build_deep_agent, "react": build_react_agent}
 
 
-def build_agent(kind: AgentKind, model, tools):
+def build_agent(kind: AgentKind, model, tools, system_prompt: str | None = None):
     try:
         builder = BUILDERS[kind]
     except KeyError as exc:
         raise ValueError(f"Unknown agent kind: {kind}") from exc
-    return builder(model, tools)
+    return builder(model, tools, system_prompt=system_prompt)

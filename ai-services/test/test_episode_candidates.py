@@ -2,36 +2,10 @@
 
 import unittest
 
-from app.agent.memory.episode_candidates import (
-    accepted_episode_delta, blocker_episode_delta, resolved_blocker_episode_delta,
-    outcome_from_tool_calls,
-)
+from app.agent.memory.episode_candidates import accepted_episode_delta, outcome_from_tool_calls
 
 
 class EpisodeCandidateTest(unittest.TestCase):
-    def test_spouse_approval_resolves_prior_blocker_without_model_delta(self):
-        prior = [{"topics": [{"scope_type": "unknown", "scope_id": "",
-            "items": [{"item_id": "b-1", "kind": "blocker", "status": "open",
-                       "text": "hỏi ông xã"}]}]}]
-        delta = resolved_blocker_episode_delta("Ông xã đồng ý rồi.", {}, prior, {})
-        self.assertEqual(delta["topic_updates"][0]["resolve_items"][0]["item_id"],
-                         "b-1")
-        self.assertEqual(resolved_blocker_episode_delta(
-            "Ông xã chưa đồng ý.", {}, prior, {}), {})
-        self.assertEqual(resolved_blocker_episode_delta(
-            "Vợ đồng ý rồi.", {}, prior, {}), {})
-
-    def test_verified_blocker_fact_opens_one_episode_item(self):
-        text = "Để chị hỏi ông xã rồi gọi lại nhé."
-        fact = {"key": "blocker", "value": "hỏi ông xã", "op": "set",
-                "source_kind": "customer", "evidence_quote": text}
-        delta = blocker_episode_delta(text, [fact], {}, {})
-        self.assertEqual(delta["topic_updates"][0]["add_items"][0]["text"],
-                         "hỏi ông xã")
-        current = {"topics": [{"items": [{"kind": "blocker", "status": "open",
-                                           "text": "hỏi ông xã"}]}]}
-        self.assertEqual(blocker_episode_delta(text, [fact], current, {}), {})
-
     def test_rejects_unrelated_quote_for_invented_blocker(self):
         proposal = {"topic_updates": [{"scope_type": "unknown", "scope_id": "",
             "add_items": [{"kind": "blocker", "text": "Customer cannot afford it",

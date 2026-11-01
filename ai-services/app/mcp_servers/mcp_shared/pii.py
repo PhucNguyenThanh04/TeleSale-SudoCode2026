@@ -4,7 +4,11 @@ import re
 
 _NUMERIC_PII = re.compile(r"(?<!\d)\d{9,14}(?!\d)")
 _EMAIL = re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")
-_ADDRESS = re.compile(r"(?i)\b(?:địa chỉ|dia chi)\s*[:\-]?\s*[^\n.!?]+")
+_ADDRESS = re.compile(
+    r"(?i)\b(?:địa chỉ|dia chi)(?:\s*[:\-]\s*[^\n.!?]+|"
+    r"\s+(?!(?:cũ|cu|mới|moi|nhận|nhan|giao|của|cua|ở\s+đâu|o\s+dau|"
+    r"nào|nao|để|de|và|va|giúp|giup|nhé|nhe|ạ|a|chưa|chua|không|khong)\b)[^\n.!?]+)"
+)
 _STREET = re.compile(r"(?i)\b\d+[\w/-]*\s+(?:đường|duong|phố|pho)\b[^\n.!?]*")
 _ALLEY = re.compile(r"(?i)\b(?:(?:số\s*)?\d+[\w/-]*\s+(?:ngõ|ngo|ngách|ngach|hẻm|hem)|(?:ngõ|ngo|ngách|ngach|hẻm|hem)\s+\d+[\w/-]*)\b[^\n.!?]*")
 _APARTMENT = re.compile(r"(?i)\b(?:căn(?:\s+hộ)?|can(?:\s+ho)?)\s+[A-Z]?\d+[\w/-]*\b[^\n.!?]*")

@@ -7,6 +7,10 @@ import re
 from datetime import date
 
 from app.agent.memory.langmem_extractor import extract_candidates
+from app.agent.memory.deterministic_tool_facts import (deterministic_episode_tools,
+                                                       verified_order_details,
+                                                       verified_tool_candidates,
+                                                       verified_variant_details)
 from app.constants import Slot
 from app.schemas.langmem import ProfileFactCandidate
 from app.configs import get_settings
@@ -25,6 +29,43 @@ logger = logging.getLogger(__name__)
 
 def decoded(value):
     return json.loads(value) if isinstance(value, str) else value
+
+
+def collect_prior_open_items(episodes: list[dict], current_session_id: str) -> list[dict]:
+    """Return open items from prior sessions that have not yet been resolved."""
+    resolved_ids = set()
+    for ep in episodes:
+        if not isinstance(ep, dict) or ep.get("status", "active") != "active":
+            continue
+        for item in decoded(ep.get("resolved_prior_items") or []) or []:
+            if isinstance(item, dict) and isinstance(item.get("item_id"), str):
+                resolved_ids.add(item["item_id"])
+    open_items = []
+    seen = set()
+    for ep in episodes:
+        if (not isinstance(ep, dict) or ep.get("session_id") == current_session_id
+                or ep.get("status", "active") != "active"):
+            continue
+        for topic in decoded(ep.get("topics") or []) or []:
+            if not isinstance(topic, dict):
+                continue
+            scope_type = topic.get("scope_type", "global")
+            scope_id = topic.get("scope_id", "")
+            for item in topic.get("items") or []:
+                if not isinstance(item, dict):
+                    continue
+                item_id = item.get("item_id")
+                if (isinstance(item_id, str) and item_id not in resolved_ids
+                        and item_id not in seen and item.get("status") == "open"):
+                    seen.add(item_id)
+                    open_items.append({
+                        "item_id": item_id,
+                        "kind": item.get("kind", "blocker"),
+                        "text": item.get("text", ""),
+                        "scope_type": scope_type,
+                        "scope_id": scope_id,
+                    })
+    return open_items
 
 
 async def completed_revisions(repo, customer_id: str, versions: list[dict],
@@ -70,9 +111,30 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
         if isinstance(observations, str):
             observations = json.loads(observations)
         calls = [{**call, "source_turn_id": source_turn_id} for call in observations]
-        messages = [{"role": "user", "content": json.dumps({**committed,
-            "channel": turn["channel"], "tool_observations": calls},
-            ensure_ascii=False)}]
+        window = []
+        if type(job.get("turn_no")) is int:
+            async with repo.transaction() as conn:
+                window = await repo.recent_session_turns(
+                    conn, session_id, customer_id, job["turn_no"], 5)
+        if not isinstance(window, list) or not any(
+                str(item.get("client_msg_id")) == source_turn_id
+                for item in window if isinstance(item, dict)):
+            window = [{**turn, "client_msg_id": source_turn_id}]
+        messages = []
+        for item in window:
+            if not isinstance(item, dict) or not item.get("client_msg_id"):
+                continue
+            item_on = item.get("on_date", on)
+            payload = {"turn_id": str(item["client_msg_id"]),
+                "customer_id": customer_id, "session_id": session_id,
+                "customer_text": item.get("customer_text", ""),
+                "agent_text": item.get("agent_text", ""),
+                "on": item_on.isoformat() if isinstance(item_on, date) else str(item_on),
+                "channel": item.get("channel", turn["channel"])}
+            if payload["turn_id"] == source_turn_id:
+                payload["tool_observations"] = calls
+            messages.append({"role": "user", "content": json.dumps(
+                payload, ensure_ascii=False)})
         stored = job.get("accepted_proposals")
         if isinstance(stored, str):
             stored = json.loads(stored)
@@ -80,24 +142,72 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
             versions = await projector.list_fact_versions(customer_id) if projector is not None else []
             completed = await completed_revisions(repo, customer_id, versions)
             existing = select_facts(versions, completed)
-            facts, episode = await extractor(messages, existing)
+            ep_versions = await projector.list_episode_versions(customer_id) if projector is not None else []
+            completed_eps = await completed_revisions(repo, customer_id, ep_versions)
+            prior_episodes = select_episodes(ep_versions, completed_eps)
+            prior_open_list = collect_prior_open_items(prior_episodes, session_id)
+            prior_open_map = {item["item_id"]: (item["scope_type"], item["scope_id"])
+                              for item in prior_open_list}
+            try:
+                facts, episode = await extractor(messages, existing, prior_open_list)
+            except TypeError:
+                facts, episode = await extractor(messages, existing)
+            facts = [fact for fact in facts if fact.source_kind == "customer"]
+            facts.extend(verified_tool_candidates(turn["agent_text"], calls,
+                                                  source_turn_id, on))
             accepted, rejected = admit_profile_candidates(customer_id, session_id,
                                                             facts, [committed], calls)
+            for call in calls:
+                name = call.get("name")
+                result = call.get("result", {})
+                if not isinstance(result, dict) or "error" in result:
+                    continue
+                if name == "order.create" and result.get("status") == "created":
+                    sku = call.get("args", {}).get("sku")
+                    if isinstance(sku, str):
+                        async with repo.transaction() as conn:
+                            variant = await repo.variant_details(conn, sku)
+                        accepted.extend(verified_order_details(call, variant, source_turn_id))
+                elif name in {"inventory.check", "pricing.get_quote"}:
+                    sku = result.get("sku") or call.get("args", {}).get("sku")
+                    if isinstance(sku, str) and sku.count("-") >= 3:
+                        async with repo.transaction() as conn:
+                            variant = await repo.variant_details(conn, sku)
+                        accepted.extend(verified_variant_details(call, variant, source_turn_id))
             delta = (admit_episode_candidate(customer_id, session_id, episode,
-                                             [committed], calls) if episode else None)
-            if (delta and episode and episode.open_blockers
+                                             [committed], calls, prior_open_map)
+                     if episode else None)
+            if (delta and episode
                     and not any(fact["key"] == Slot.BLOCKER for fact in accepted)):
-                blocker = episode.open_blockers[0]
-                try:
-                    proposed = ProfileFactCandidate(key=Slot.BLOCKER, value=blocker,
-                        source_kind="customer", source_turn_id=source_turn_id,
-                        evidence_quote=blocker, observed_on=date.fromisoformat(on))
-                    admitted, blocker_rejected = admit_profile_candidates(
-                        customer_id, session_id, [proposed], [committed], calls)
-                    accepted.extend(admitted)
-                    rejected.extend(blocker_rejected)
-                except ValueError:
-                    pass
+                first_blocker = None
+                if episode.open_blockers:
+                    first_blocker = episode.open_blockers[0]
+                else:
+                    for topic in episode.topics:
+                        for item in topic.open_items:
+                            if item.kind == "blocker":
+                                first_blocker = item
+                                break
+                        if first_blocker:
+                            break
+                if first_blocker is not None:
+                    blocker_text = (first_blocker.text if hasattr(first_blocker, "text")
+                                    else str(first_blocker))
+                    blocker_quote = (first_blocker.evidence_quote
+                                     if hasattr(first_blocker, "evidence_quote")
+                                     else blocker_text)
+                    try:
+                        proposed = ProfileFactCandidate(
+                            key=Slot.BLOCKER, value=blocker_text,
+                            source_kind="customer", source_turn_id=source_turn_id,
+                            evidence_quote=blocker_quote,
+                            observed_on=date.fromisoformat(on))
+                        admitted, blocker_rejected = admit_profile_candidates(
+                            customer_id, session_id, [proposed], [committed], calls)
+                        accepted.extend(admitted)
+                        rejected.extend(blocker_rejected)
+                    except ValueError:
+                        pass
             if rejected:
                 logger.info("LangMem rejected %d proposals for job %d", len(rejected), job_id)
             outcome = job.get("verified_outcome", "khac")
@@ -108,18 +218,18 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
                     and episode.outcome == "hen_goi_lai"
                     and re.search(r"gọi lại|hẹn gọi", turn["customer_text"], re.I)):
                 outcome = "hen_goi_lai"
-            stored = {"facts": accepted, "delta": delta, "outcome": outcome}
-            if job.get("mode") != "shadow":
-                async with repo.transaction() as conn:
-                    await repo.save_distillation_proposals(conn, job_id, stored)
+            actions_completed, quoted_prices = deterministic_episode_tools(calls, on)
+            stored = {"facts": accepted, "delta": delta, "outcome": outcome,
+                      "actions_completed": actions_completed,
+                      "quoted_prices": quoted_prices}
+            async with repo.transaction() as conn:
+                await repo.save_distillation_proposals(conn, job_id, stored)
         else:
-            accepted = stored["facts"]
+            accepted = stored.get("facts", [])
             delta = stored.get("delta")
             outcome = stored.get("outcome", "khac")
-        if job.get("mode") == "shadow":
-            async with repo.transaction() as conn:
-                await repo.finish_distillation(conn, job_id, "completed")
-            return True
+            actions_completed = stored.get("actions_completed", [])
+            quoted_prices = stored.get("quoted_prices", [])
         if projector is None:
             raise RuntimeError("memory_store_unavailable")
         async with repo.transaction() as conn:
@@ -132,18 +242,21 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
             completed = await completed_revisions(repo, customer_id, versions, conn)
             written = await projector.put_facts(customer_id, session_id, source_turn_id,
                 on, accepted, revision=job_id, completed_revisions=completed)
-            if delta or accepted or outcome != "khac":
+            if delta or accepted or outcome != "khac" or actions_completed or quoted_prices:
                 episode_versions = await projector.list_episode_versions(customer_id)
                 completed_episodes = await completed_revisions(
                     repo, customer_id, episode_versions, conn)
-                prior = next((item for item in select_episodes(
-                    episode_versions, completed_episodes)
+                all_eps = select_episodes(episode_versions, completed_episodes)
+                prior = next((item for item in all_eps
                     if item.get("session_id") == session_id), None)
+                prior_open_map = {item["item_id"]: (item["scope_type"], item["scope_id"])
+                                  for item in collect_prior_open_items(all_eps, session_id)}
                 old = {"topics": decoded(prior["topics"]) if prior else [],
                        "resolved_prior_items": decoded(prior["resolved_prior_items"])
                        if prior else []}
                 state = (apply_episode_delta(old, delta, source_turn_id=source_turn_id,
-                    customer_text=turn["customer_text"], agent_text=turn["agent_text"])
+                    customer_text=turn["customer_text"], agent_text=turn["agent_text"],
+                    prior_open_items=prior_open_map)
                     if delta else old)
                 fragments = []
                 previous_summary = prior.get("summary") if prior else None
@@ -160,16 +273,37 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
                 summary = " | ".join(fragments)[:800]
                 if not summary:
                     summary = "Chưa có diễn biến riêng được xác minh."
+                prior_actions = decoded(prior.get("actions_completed") or []) if prior else []
+                prior_quotes = decoded(prior.get("quoted_prices") or []) if prior else []
+                merged_actions = list(prior_actions) if isinstance(prior_actions, list) else []
+                for act in actions_completed:
+                    if act not in merged_actions:
+                        merged_actions.append(act)
+                merged_quotes = list(prior_quotes) if isinstance(prior_quotes, list) else []
+                for q in quoted_prices:
+                    if q not in merged_quotes:
+                        merged_quotes.append(q)
                 await projector.put_episode(customer_id, session_id, {
                     "channel": turn["channel"], "on_date": on,
                     "summary": summary,
                     "outcome": outcome if outcome != "khac" else (
                         prior.get("outcome", "khac") if prior else "khac"),
                     "status": "active", "topics": state["topics"],
-                    "resolved_prior_items": state["resolved_prior_items"]},
+                    "resolved_prior_items": state["resolved_prior_items"],
+                    "actions_completed": merged_actions,
+                    "quoted_prices": merged_quotes},
                     revision=job_id)
             await repo.finish_distillation(conn, job_id, "completed", accepted_writes=(
                 written if isinstance(written, list) else []))
+            if hasattr(projector, "compact_customer") and callable(
+                    getattr(projector, "compact_customer", None)):
+                try:
+                    all_revs = set(completed) | {job_id}
+                    if delta or accepted or outcome != "khac" or actions_completed or quoted_prices:
+                        all_revs |= set(completed_episodes)
+                    await projector.compact_customer(customer_id, all_revs)
+                except Exception:
+                    pass
     except Exception as exc:
         code = type(exc).__name__[:64]
         logger.warning("LangMem job %d failed: %s", job_id, code)
@@ -181,17 +315,14 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
 
 async def run() -> None:
     settings = get_settings()
-    if settings.langmem_mode == "off":
-        while True:
-            await asyncio.sleep(3600)
     model = build_llm(settings.model_copy(update={"llm_model": settings.langmem_model
                                            or settings.llm_model,
                                            "llm_max_tokens": settings.langmem_max_tokens}))
     repo = MemoryRepo(database_url(settings))
     from app.mcp_servers.mcp_memory.repos.langmem_projection import LangMemProjection
-    projector = LangMemProjection(database_url(settings)) if settings.langmem_mode == "enabled" else None
-    async def extractor(turns, existing):
-        return await extract_candidates(model, turns, existing)
+    projector = LangMemProjection(database_url(settings))
+    async def extractor(turns, existing, open_items=None):
+        return await extract_candidates(model, turns, existing, open_items)
     try:
         while True:
             if not await process_one(repo, extractor, projector):

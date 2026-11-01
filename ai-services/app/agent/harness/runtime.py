@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 import time
 from collections import defaultdict
 from contextlib import nullcontext
@@ -32,8 +33,7 @@ class AgentHarnessRuntime:
                  clock: Callable[[], datetime] | None = None,
                  guardrails_enabled: bool = True,
                  tracing: LangfuseTracing | None = None,
-                 agent_kind: AgentKind = "deep",
-                 fact_extraction_mode: str = "fallback") -> None:
+                 agent_kind: AgentKind = "deep") -> None:
         self.memory = memory
         self.tools = tools
         self.tracing = tracing
@@ -42,11 +42,12 @@ class AgentHarnessRuntime:
                       reason="cấu hình tắt kiểm tra bổ sung; kiểm tra bằng chứng vẫn chạy")
         self.graph = build_graph(llm, tools, memory, max_tool_calls,
                                  prompt_history_turns, clock, guardrails_enabled,
-                                 agent_kind, fact_extraction_mode)
+                                 agent_kind)
         self._locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._responses: dict[tuple[str, str], TextTurnResponse] = {}
         self._states: dict[tuple[str, str], TurnState] = {}
         self._session_identities: dict[str, tuple[str, dict]] = {}
+        self._session_tool_calls: dict[str, list[dict]] = defaultdict(list)
 
     def state_for(self, turn: TextTurnRequest) -> TurnState | None:
         """Return the observed graph state for an in-process evaluation runner."""
@@ -69,8 +70,16 @@ class AgentHarnessRuntime:
                 return self._responses[key]
             try:
                 with (self.tracing.turn(turn) if self.tracing else nullcontext(None)) as trace:
+                    late_phone = (
+                        bound is not None
+                        and bound[1]["identity_status"] == "unknown"
+                        and turn.channel in {"chat_fanpage", "zalo_oa"}
+                        and bool(re.search(
+                            r"(?i)\b(?:sđt|sdt|số điện thoại|so dien thoai)\D{0,20}0\d{9}\b",
+                            turn.text or ""))
+                    )
                     if bound is None or (bound[1]["identity_status"] != "known"
-                                         and turn.verified_customer_id):
+                                         and (turn.verified_customer_id or late_phone)):
                         identity, initial_calls = await initialize_identity(turn, self.tools)
                         self._session_identities[session_id] = (fingerprint, identity)
                     else:
@@ -82,11 +91,15 @@ class AgentHarnessRuntime:
                               "run_name": "process-chat-turn"}
                     if trace:
                         config["callbacks"] = [trace[0]]
+                    prior_session_calls = deepcopy(self._session_tool_calls[session_id])
                     state: TurnState = await self.graph.ainvoke(
                         {"request": turn, **deepcopy(identity),
                          "received_at_monotonic": started,
+                         "session_tool_calls": prior_session_calls,
                          "tool_calls": initial_calls}, config=config,
                     )
+                    self._session_tool_calls[session_id].extend(
+                        deepcopy(state.get("tool_calls", [])))
                     if trace:
                         trace_output = {"needs_handoff": state.get("needs_handoff", False),
                                         "tool_count": state.get("tool_count", 0),

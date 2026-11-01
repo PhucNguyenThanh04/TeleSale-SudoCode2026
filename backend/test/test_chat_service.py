@@ -54,7 +54,7 @@ class _Database:
         sql = str(statement)
         if "FROM btc_source.customers" in sql:
             return _Result([SimpleNamespace(customer_id=key) for key in self.customer_ids])
-        if "INSERT INTO app_runtime.chat_sessions" in sql:
+        if "INSERT INTO runtime.chat_sessions" in sql:
             self.sessions[values["id"]] = SimpleNamespace(
                 id=UUID(values["id"]), created_by=values["operator_id"],
                 caller_phone=values["caller_phone"],
@@ -63,15 +63,15 @@ class _Database:
                 channel=values["channel"], call_date=values["call_date"], status="open",
             )
             return _Result()
-        if "app_runtime.chat_sessions WHERE id=:id" in sql:
+        if "runtime.chat_sessions WHERE id=:id" in sql:
             session = self.sessions.get(values["id"])
             return _Result([session] if session else [])
         if "MAX(turn_no)" in sql:
             return _Result(scalar=max((message["turn_no"] for message in self.messages), default=0) + 1)
-        if "INSERT INTO app_runtime.chat_messages" in sql:
+        if "INSERT INTO runtime.chat_messages" in sql:
             self.messages.append(values)
             return _Result()
-        if "UPDATE app_runtime.chat_sessions" in sql:
+        if "UPDATE runtime.chat_sessions" in sql:
             if values and "customer_id" in values:
                 row = self.sessions[values["id"]]
                 row.customer_id = values["customer_id"]

@@ -5,13 +5,41 @@ from datetime import date
 from pathlib import Path
 from uuid import uuid4
 
+from unittest.mock import AsyncMock
 from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
 
 from app.agent.harness.runtime import DeepHarnessRuntime
 from app.mcp_servers.mcp_memory.services.memory import read, write
 from memory_contract import check_snapshot, load_cases
 from test_deep_memory import FakeGateway, FakeMemory, FakeToolModel, turn
 from test_mcp_memory import TurnRepo
+
+
+class ContractToolModel(FakeToolModel):
+    turn_replies: list[AIMessage] = []
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        if "MEMORY_FACT_EXTRACTION" in str(messages):
+            return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+        self.seen.append(str(messages))
+        reply = self.replies.pop(0)
+        self.turn_replies.append(reply)
+        return ChatResult(generations=[ChatGeneration(message=reply)])
+
+
+class ContractMemory(FakeMemory):
+    def __init__(self, model: ContractToolModel | None = None):
+        super().__init__()
+        self.model = model
+
+    async def commit_turn(self, session_id, customer_id, customer_text, agent_text,
+                          on, channel, client_msg_id, facts=None, orders=None,
+                          episode_delta=None, outcome="khac", tool_observations=None):
+        return await super().commit_turn(
+            session_id, customer_id, customer_text, agent_text, on, channel,
+            client_msg_id, facts=facts, orders=orders, episode_delta=episode_delta,
+            outcome=outcome, tool_observations=tool_observations)
 
 
 CASES = {case["case"]: case for case in load_cases(
@@ -80,12 +108,12 @@ class MemoryIdentityContract(unittest.IsolatedAsyncioTestCase):
                             "phone": "0934567812", "orders": [], "sessions": []}
                 return {"error": "unavailable"}
 
-        model = FakeToolModel(replies=[
+        model = ContractToolModel(replies=[
             AIMessage(content='{"answer":"Dạ, em ghi nhận ạ.","fact_candidates":'
                               '[{"key":"room_area_m2","value":12,"source":"customer"}]}'),
             AIMessage(content="Dạ, em tư vấn tiếp ạ."),
             AIMessage(content="Dạ, em nghe ạ.")])
-        memory = FakeMemory()
+        memory = ContractMemory(model)
         runtime = DeepHarnessRuntime(model, Gateway(), memory)
         first = turn(case["calls"][0]["turns"][0]["text"]).model_copy(update={
             "channel": "chat_fanpage", "channel_identity": "fb.synthetic.104"})
@@ -116,15 +144,23 @@ class MemoryIdentityContract(unittest.IsolatedAsyncioTestCase):
         class Repo(TurnRepo):
             def __init__(self):
                 super().__init__()
-                del self.facts
+                self.enqueue_distillation = AsyncMock()
+                self.link_order = AsyncMock()
 
-            async def facts(self, *_):
+            async def attribute_anonymous_turns(self, _conn, _session_id, _customer_id):
                 return []
 
-            async def episodes(self, *_):
-                return []
+            async def recent_turns(self, _conn, session_id, maximum):
+                return (await self.customer_turns(_conn, session_id, "C102"))[-maximum:]
 
             async def order_links(self, *_):
+                return []
+
+        class Projection:
+            async def list_fact_versions(self, _customer_id):
+                return []
+
+            async def list_episode_versions(self, _customer_id):
                 return []
 
         repo = Repo()
@@ -133,9 +169,9 @@ class MemoryIdentityContract(unittest.IsolatedAsyncioTestCase):
                                   ("C102", "Tôi xác nhận mình cần quạt DC1")):
             await write(repo, "commit_turn", customer_id, session_id, {
                 "customer_text": text, "agent_text": "Dạ", "on": "2026-10-15",
-                "channel": "hotline", "client_msg_id": str(uuid4()), "facts": []})
-        result = await read(repo, "C102", session_id)
+                "channel": "hotline", "client_msg_id": str(uuid4())})
+        result = await read(repo, "C102", session_id, projector=Projection())
         self.assertEqual([item["customer"] for item in result["history"]],
                          ["Tôi xác nhận mình cần quạt DC1"])
-        self.assertNotIn("12 m²", repo.episode_summaries[session_id])
+        self.assertEqual(repo.enqueue_distillation.await_count, 1)
         self.assertIsNone(repo.rows[session_id][0]["customer_id"])

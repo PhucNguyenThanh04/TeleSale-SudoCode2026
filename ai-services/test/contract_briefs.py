@@ -31,6 +31,38 @@ def request(text="Tôi cần hỏi thêm về sản phẩm", identity="092345678
 
 
 class BriefContract(unittest.IsolatedAsyncioTestCase):
+    async def test_call_brief_marks_verified_order_slots_as_known(self):
+        class Memory:
+            include_prior = True
+            max_episodes = 5
+
+            async def read_context(self, *_):
+                return {"history": [], "profile": {"order_id": {
+                    "value": "OD682761", "source_kind": "tool", "on": "2026-10-15"}},
+                    "episodes": [{"session_id": "old-call", "channel": "hotline",
+                        "on": "2026-10-15", "summary": "Đã đặt giày",
+                        "outcome": "chot_don"}],
+                    "scoped_facts": {"room": {}, "product": {"SKU-SN-CAS": {
+                        key: {"value": value, "source_kind": "tool", "on": "2026-10-15"}
+                        for key, value in {"variant_sku": "SKU-SN-CAS-39-DEN",
+                            "size": 39, "color": "den", "payment": "COD"}.items()}}}}
+
+        class Tools:
+            async def invoke(self, *_):
+                return {"error": "unavailable"}
+
+        req = request("Tôi muốn đổi size giày")
+        state = {"request": req, "safe_text": req.text, "customer_id": "C88",
+            "customer_phone": "0923456789", "identity_status": "known",
+            "received_at_monotonic": __import__("time").perf_counter(),
+            "tool_calls": []}
+        result = await load_context(state, Memory(), Tools(),
+            lambda: datetime(2026, 10, 19, tzinfo=timezone.utc))
+        brief = result["call_brief"]
+        self.assertIsNotNone(brief)
+        self.assertTrue({"order_id", "variant_sku", "size", "color", "payment"}
+                        <= set(brief["must_not_ask"]))
+
     def test_failed_handoff_cannot_be_announced_as_complete(self):
         failed = [{"name": "handoff.transfer", "args": {"brief": {}},
                    "result": {"ticket_id": "HT0042", "status": "failed"}}]

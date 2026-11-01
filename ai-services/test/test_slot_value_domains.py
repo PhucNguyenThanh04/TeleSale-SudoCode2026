@@ -3,7 +3,6 @@
 import unittest
 
 from app.agent.guardrails.checks import FactRejectReason, fact_evidence
-from app.agent.memory.fact_candidates import accepted_candidates
 from app.constants import SLOT_SPEC_BY_KEY, Slot
 
 
@@ -21,17 +20,9 @@ class SlotValueDomainTests(unittest.TestCase):
                 self.assertEqual(evidence.source, "customer")
                 self.assertEqual(evidence.normalized_value, "dat_qua")
                 self.assertTrue(evidence.evidence_quote)
-                accepted = accepted_candidates(text, [], [{"key": Slot.OBJECTION,
-                                                            "value": proposal}])
-                self.assertEqual(accepted[0]["value"], "dat_qua")
-                self.assertIn("evidence_quote", accepted[0])
 
     def test_other_objection_keeps_literal_quote(self):
         text = "Máy này chạy ồn quá"
-        accepted = accepted_candidates(text, [], [{"key": Slot.OBJECTION,
-            "value": "ồn quá", "evidence_quote": "chạy ồn quá"}])
-        self.assertEqual(accepted[0]["value"], "khac")
-        self.assertEqual(accepted[0]["evidence_quote"], "chạy ồn quá")
         self.assertEqual(fact_evidence(Slot.OBJECTION, "dat_qua", "set", text, [],
                                        "chạy ồn quá").reason,
                          FactRejectReason.VALUE_NOT_IN_QUOTE_WINDOW)
@@ -65,9 +56,6 @@ class SlotValueDomainTests(unittest.TestCase):
             with self.subTest(text=text):
                 evidence = fact_evidence(Slot.OBJECTION, text, "set", text, [])
                 self.assertEqual(evidence.reason, reason)
-                self.assertEqual(accepted_candidates(text, [], [
-                    {"key": Slot.OBJECTION, "value": text,
-                     "evidence_quote": text}]), [])
 
         accepted = (
             ("sợ hàng không bền", "khac"),

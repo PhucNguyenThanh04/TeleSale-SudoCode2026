@@ -164,3 +164,74 @@ class ScopedContextTest(unittest.IsolatedAsyncioTestCase):
                          {"phong_ngu", "phong_khach"})
         self.assertEqual({product["sku"] for product in context["sales_history"]["products"]},
                          {"SKU-ALPHA", "SKU-BETA"})
+
+    async def test_multi_product_brief_refreshes_up_to_three_skus_concurrently(self):
+        import asyncio
+        import time
+
+        class FourProductMemory(Memory):
+            async def read_context(self, _session_id, _customer_id):
+                return {
+                    "history": [], "profile": {}, "owned_order_ids": ["OD1001"],
+                    "episodes": [{"session_id": str(uuid4()), "channel": "hotline",
+                                  "on": "2026-01-10", "summary": "Hỏi 4 mẫu", "outcome": "hen_goi_lai"}],
+                    "scoped_facts": {
+                        "room": {},
+                        "product": {
+                            f"SKU-{idx}": {
+                                "product_advised": {"value": f"SKU-{idx}", "source_kind": "tool"},
+                                "price_quoted_vnd": {"value": 2_000_000, "source_kind": "tool",
+                                                     "on": f"2026-01-0{idx}"},
+                                "promo_expiry": {"value": "2026-05-01", "valid_until": "2026-05-01",
+                                                 "source_kind": "tool", "source_tool": "pricing.get_quote"},
+                            }
+                            for idx in (1, 2, 3, 4)
+                        },
+                    },
+                }
+
+        class DelayedTools:
+            def __init__(self):
+                self.calls = []
+
+            async def invoke(self, name, args):
+                await asyncio.sleep(0.04)
+                self.calls.append((name, args))
+                if name == "inventory.check":
+                    if args["sku"] == "SKU-4":
+                        return {"sku": "SKU-4", "in_stock": False,
+                                "discontinued": True, "successor_sku": "SKU-4-PRO"}
+                    return {"sku": args["sku"], "in_stock": True}
+                return {"sku": args["sku"], "final_price_vnd": 2_000_000, "applied_promos": []}
+
+        request = TextTurnRequest(
+            client_msg_id=uuid4(), session_id=uuid4(), channel="hotline",
+            channel_identity="0984726714", on=date(2026, 10, 15),
+            text="Chị gọi lại xem các mẫu hôm trước", input_mode="clean")
+        state = {
+            "request": request, "safe_text": request.text, "customer_id": "C900",
+            "customer_phone": "0984726714", "customer_name": "Nguyễn Thị Lan",
+            "honorific": "chị", "identity_status": "known",
+            "received_at_monotonic": time.perf_counter(), "tool_calls": [],
+            "crm_orders": [{"order_id": "OD1001", "sku": "SKU-2", "status": "delivered"}],
+        }
+        tools = DelayedTools()
+        t0 = time.perf_counter()
+        loaded = await load_context(
+            state, FourProductMemory(), tools,
+            lambda: datetime(2026, 10, 15, tzinfo=timezone.utc))
+        elapsed = time.perf_counter() - t0
+        brief = loaded["call_brief"]
+        refreshed_skus = {args["sku"] for _, args in tools.calls}
+        self.assertEqual(refreshed_skus, {"SKU-4", "SKU-3", "SKU-2"})
+        self.assertLess(elapsed, 0.18)
+        self.assertEqual(brief["orders"],
+                         [{"order_id": "OD1001", "variant_sku": "SKU-2", "status": "delivered"}])
+        joined_warnings = " | ".join(brief["stale_warnings"])
+        self.assertIn("180 ngày", joined_warnings)
+        self.assertIn("SKU-4-PRO", joined_warnings)
+        self.assertIn("2026-05-01", joined_warnings)
+        self.assertIn("SKU-1", joined_warnings)
+        self.assertIn("chị Lan", brief["suggested_opening"])
+        ctx = prompt_context({**state, **loaded}, 6)
+        self.assertEqual(ctx["sales_history"]["orders"][0]["order_id"], "OD1001")
