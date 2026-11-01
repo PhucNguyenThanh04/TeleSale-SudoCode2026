@@ -67,7 +67,10 @@ def apply_episode_delta(previous: dict, delta: dict, *, source_turn_id: str,
             topics.append(topic)
         for field in ("customer_goal", "advice_given", "next_step"):
             if field in update:
-                quote = _evidence(update.get("narrative_evidence_quote"),
+                quotes = update.get("narrative_evidence_quotes", {})
+                quote = _evidence(quotes.get(field, update.get("narrative_evidence_quote"))
+                                  if isinstance(quotes, dict)
+                                  else update.get("narrative_evidence_quote"),
                                   customer_text, agent_text)
                 value = _safe_text(update[field], 300)
                 if not evidence_supports(value, quote):

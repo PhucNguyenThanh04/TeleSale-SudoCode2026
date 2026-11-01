@@ -160,7 +160,7 @@ def admit_episode_candidate(
             if ev is not None and _valid_narrative(
                     ev.text, ev.evidence_quote, customer_source, agent_source):
                 upd[field] = ev.text
-                upd["narrative_evidence_quote"] = ev.evidence_quote
+                upd.setdefault("narrative_evidence_quotes", {})[field] = ev.evidence_quote
         for item in topic.open_items:
             if _valid_customer_item(item.text, item.evidence_quote, customer_source):
                 upd.setdefault("add_items", [])
@@ -211,7 +211,7 @@ def admit_episode_candidate(
                           else goal_text)
             if _valid_narrative(goal_text, goal_quote, customer_source, agent_source):
                 upd["customer_goal"] = goal_text
-                upd["narrative_evidence_quote"] = goal_quote
+                upd.setdefault("narrative_evidence_quotes", {})["customer_goal"] = goal_quote
         if additions:
             upd.setdefault("add_items", [])
             for item in additions:

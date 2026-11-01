@@ -164,6 +164,35 @@ class AdmissionTests(unittest.TestCase):
         self.assertIn(("global", ""), scopes)
         self.assertNotIn(("product", "SKU-FAKE"), scopes)
 
+    def test_episode_preserves_evidence_for_each_narrative_field(self):
+        from uuid import uuid4
+        from app.mcp_servers.mcp_memory.services.episode_state import apply_episode_delta
+        from app.mcp_servers.mcp_memory.services.langmem_admission import admit_episode_candidate
+        from app.schemas.langmem import EvidencedText, TopicProposal
+
+        turn_id = str(uuid4())
+        episode = CustomerCallEpisodeCandidate(
+            customer_id="C001", session_id="session-1", channel="hotline",
+            on=date(2026, 10, 15), source_turn_ids=[turn_id], topics=[TopicProposal(
+                scope_type="global", scope_id="",
+                advice_given=EvidencedText(text="Đã báo giá mẫu AirPure X",
+                    evidence_quote="Em đã báo giá mẫu AirPure X"),
+                next_step=EvidencedText(text="Sẽ gọi lại chiều mai",
+                    evidence_quote="Em sẽ gọi lại chiều mai"))])
+        turns = [{"turn_id": turn_id, "customer_id": "C001", "session_id": "session-1",
+                  "customer_text": "Được em", "agent_text":
+                  "Em đã báo giá mẫu AirPure X. Em sẽ gọi lại chiều mai."}]
+
+        delta = admit_episode_candidate("C001", "session-1", episode, turns, [])
+
+        self.assertEqual(delta["topic_updates"][0]["narrative_evidence_quotes"], {
+            "advice_given": "Em đã báo giá mẫu AirPure X",
+            "next_step": "Em sẽ gọi lại chiều mai"})
+        state = apply_episode_delta({}, delta, source_turn_id=turn_id,
+                                    customer_text="Được em", agent_text=turns[0]["agent_text"])
+        self.assertEqual(state["topics"][0]["advice_given"], "Đã báo giá mẫu AirPure X")
+        self.assertEqual(state["topics"][0]["next_step"], "Sẽ gọi lại chiều mai")
+
     def test_sample_01_flow_resolves_prior_blocker_across_sessions(self):
         from uuid import uuid4
         from app.mcp_servers.mcp_memory.services.episode_state import apply_episode_delta

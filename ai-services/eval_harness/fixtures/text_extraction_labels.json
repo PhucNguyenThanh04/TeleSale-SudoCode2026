@@ -1,0 +1,16 @@
+{
+  "questions": [
+    {"text": "Phòng mình rộng bao nhiêu m² ạ?", "expected": [{"slot": "room_area_m2", "type": "open"}]},
+    {"text": "Chị vẫn cần mẫu cho phòng 25 m², đúng không ạ?", "expected": [{"slot": "room_area_m2", "type": "confirm"}]},
+    {"text": "Nhà mình có trẻ nhỏ không chị?", "expected": [{"slot": "has_children", "type": "open"}]},
+    {"text": "Chị muốn cỡ 41, đúng không ạ?", "expected": [{"slot": "size", "type": "confirm"}]},
+    {"text": "Dạ em đã kiểm tra giá rồi ạ.", "expected": []}
+  ],
+  "claims": [
+    {"text": "Giá hiện tại là 5tr2 ạ.", "expected": [{"field": "price_vnd", "value": 5200000}]},
+    {"text": "Mẫu này hiện hết hàng ạ.", "expected": [{"field": "in_stock", "value": false}]},
+    {"text": "Khuyến mãi AIR-OCT còn hiệu lực ạ.", "expected": [{"field": "promo_AIR-OCT_active", "value": true}]},
+    {"text": "Khuyến mãi AIR-OCT đã hết hạn ạ.", "expected": [{"field": "promo_AIR-OCT_active", "value": false}]},
+    {"text": "Ngân sách của chị là 5 triệu phải không ạ?", "expected": []}
+  ]
+}

@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.agent.guardrails.checks import _money_claims
+
 # Question detection patterns
 CONFIRM_PATTERNS = [
     re.compile(r"(đúng không|phải không|có phải|chuẩn chưa|đúng chưa|xác nhận lại)\b", re.IGNORECASE),
@@ -16,7 +18,7 @@ CONFIRM_PATTERNS = [
 ]
 
 SLOT_QUESTION_PATTERNS = [
-    ("room_area_m2", re.compile(r"(bao nhiêu mét|diện tích|m2|rộng bao nhiêu)", re.IGNORECASE)),
+    ("room_area_m2", re.compile(r"(bao nhiêu mét|diện tích|m2|m²|rộng bao nhiêu)", re.IGNORECASE)),
     ("has_children", re.compile(r"(có trẻ nhỏ|trẻ em|bé nhỏ|bé sơ sinh|con nhỏ)", re.IGNORECASE)),
     ("budget_vnd", re.compile(r"(ngân sách|tầm tiền|tầm giá|khoảng bao nhiêu tiền)", re.IGNORECASE)),
     ("preferred_color", re.compile(r"(màu gì|thích màu|chọn màu|màu sắc)", re.IGNORECASE)),
@@ -79,12 +81,20 @@ def extract_claims(agent_text: str, tool_calls: list[dict[str, Any]]) -> list[di
             break
 
     # The BTC claim metric concerns what the agent said, not what a tool received.
-    for match in re.finditer(r"(?:giá|gia)\s+(?:là|la|hiện tại|hien tai|báo|bao)?\s*"
-                             r"(\d{1,3}(?:[.,]\d{3})+|\d{6,})\s*(?:đồng|đ|vnd)?",
-                             agent_text, re.IGNORECASE):
-        claims.append({"field": "price_vnd",
-                       "value": int(re.sub(r"\D", "", match.group(1))),
-                       "source": "text"})
+    for clause in re.split(r"\.(?!\d)|[!?;\n]", agent_text):
+        if re.search(r"giá|\bchỉ\b|\bcòn\b", clause, re.IGNORECASE):
+            for amount, kind, _ in _money_claims(clause):
+                if kind == "price" and amount >= 100_000:
+                    claims.append({"field": "price_vnd", "value": amount,
+                                   "source": "text"})
+        if re.search(r"khuyến mãi|giảm giá|ưu đãi", clause, re.IGNORECASE):
+            code = re.search(r"\b[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+\b", clause)
+            inactive = bool(re.search(
+                r"(?:đã\s+)?hết\s+(?:hạn|hiệu lực|khuyến mãi)|"
+                r"không\s+còn|chưa\s+có|không\s+có", clause, re.IGNORECASE))
+            field = f"promo_{code.group()}_active" if code else "promo_active"
+            claims.append({"field": field, "value": not inactive,
+                           "source": "text"})
 
     # Extract delivery / stock claims from text
     lower_text = agent_text.lower()

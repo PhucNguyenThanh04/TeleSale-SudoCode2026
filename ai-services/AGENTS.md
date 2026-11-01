@@ -1,36 +1,53 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Architecture Rules
 
-`app/` contains the Python service: `api/` exposes HTTP routes, `agent/` builds and runs the chat graph, and `mcp_servers/` hosts catalog, order, and memory tools. Keep business rules in MCP services and shared modules; keep tool handlers thin. SQL changes belong in numbered `migrations/` files. Unit and contract tests live in `test/`; benchmark scenarios, validators, and results live in `eval_harness/`. Use `README.md` for runtime architecture and setup details.
+- `app/` is the Python service: `api/` (HTTP), `agent/` (chat graph), `mcp_servers/` (catalog, order, memory tools).
+- Keep business rules in MCP services and shared modules; keep tool handlers thin.
+- SQL changes go in numbered migrations: `migrations/NNNN_description.sql`.
+- `eval_harness/` holds benchmark scenarios, validators, adapters and results. See `README.md` for runtime setup.
 
-## Build, Test, and Development Commands
+## Working Style (read first)
 
-Run commands from `ai-services/` unless stated otherwise:
+- Work directly in this repository. Do NOT create git worktrees or copy the project.
+- Do exactly what was asked, nothing more. If you notice related work (dashboards, extra metrics, refactors), list it at the end and ask; do not build it.
+- Small tasks (bug fix, 1-3 files): no spec, no plan, no sub-agents. Edit, test, show the diff.
+- Larger features: propose a short plan (max ~10 lines) and wait for approval before coding.
+- Ask before any costly or hard-to-undo action: resetting databases, killing processes, deleting directories, installing dependencies.
+- Do not commit or `git add` unless asked.
+
+## Commands
+
+Run from `ai-services/`:
 
 ```bash
-python -m venv .venv
-.venv/bin/pip install -r requirements-test.txt
-.venv/bin/python -m app
-.venv/bin/python -m app.mcp_servers.run
-.venv/bin/python -m unittest discover -s test -v
-.venv/bin/python -m pytest test eval_harness/test_eval_harness.py
+.venv/bin/python -m app                      # start API
+.venv/bin/python -m app.mcp_servers.run      # start MCP tool services (needs PostgreSQL roles)
+.venv/bin/python -m pytest path/to/test_file.py::test_name   # one test
+.venv/bin/python -m pytest test eval_harness/test_eval_harness.py   # full regression
+.venv/bin/python -m eval_harness.run_official --help         # official eval options
 ```
 
-The requirements file installs runtime and test dependencies. `python -m app` starts the API; the MCP launcher starts the three local tool services and requires configured PostgreSQL roles. The final two commands run the regression suites. From the repository root, use `docker compose --env-file .env --env-file ai-services/.env up -d --build mcp-catalog mcp-order mcp-memory` after loading data and applying migrations in the order documented in `README.md`.
+## Testing Rules
 
-## Coding Style & Naming Conventions
+- While iterating, run only the tests for the file you changed.
+- Run the full suite once, right before reporting done.
+- Add a focused regression test for every behavior change, especially memory identity, policy grounding, MCP contracts, and trace/PII handling.
+- Style: four spaces, `snake_case` functions/modules, `PascalCase` classes, `test_*.py` files. Match adjacent files; no repo-wide formatter.
 
-Use four spaces in Python, `snake_case` for modules, functions, and variables, and `PascalCase` for classes. Follow the surrounding type hints and async patterns. Name tests `test_*.py` and migrations `NNNN_description.sql`. No repository-wide formatter or linter is configured; keep imports and formatting consistent with adjacent files.
+## Eval Harness Rules
 
-## Testing Guidelines
+- Running the real eval (19 scenarios) calls the live model and costs quota. Never start it without explicit permission. Prefer replaying existing traces offline.
+- Do not edit BTC scenarios or validators. Fix the adapter or the agent instead.
+- Never publish or report a score from an incomplete or interrupted run.
 
-Most tests use `unittest`, including `IsolatedAsyncioTestCase`; some use `pytest` parametrization. Add focused regression tests for changed behavior, especially memory identity, policy grounding, and MCP contracts. There is no stated coverage percentage. Database and HTTP integration tests require dedicated environment variables and should target isolated test services.
+## PII and Trace Rules
 
-## Commit & Pull Request Guidelines
+- Mask PII by field path (e.g. `args.customer_name`, `args.customer_phone`), never by key name alone.
+- Never mask tool names, call ids, or any field the scorer compares (`args_match`).
+- Any change to `reference_adapter.py` needs a test asserting every `tool_call["name"]` survives unchanged.
+- Never commit `.env`, API keys, DB passwords, or raw customer data. Keep prompts, traces and logs free of raw PII.
 
-Recent commits use short imperative subjects, sometimes with a type and scope such as `feat(speech): ...` or `fix: ...`. Keep each commit focused. In pull requests, describe the behavior change, affected services or migrations, test commands and results, and any configuration changes; link the relevant issue when one exists. Include screenshots only for visible UI changes.
+## Commits and PRs
 
-## Security & Configuration
-
-Copy `.env.example` to `.env` and supply local credentials. Never commit `.env`, API keys, database passwords, or customer data. Keep prompts, traces, and logs free of raw customer PII; see `README.md` for tracing and credential settings.
+Short imperative subjects, optional type/scope (`fix:`, `feat(speech):`). One focused change per commit. PR descriptions list behavior change, affected services/migrations, test commands with results, and config changes.

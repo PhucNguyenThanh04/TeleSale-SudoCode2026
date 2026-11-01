@@ -67,6 +67,14 @@ def prompt_context(state: TurnState, history_turns: int) -> dict[str, Any]:
             {"room": room, **facts} for room, facts in rooms.items()
             if isinstance(room, str) and isinstance(facts, dict)]
     if isinstance(products, dict) and products:
+        product_preferences = []
+        for sku, facts in products.items():
+            if isinstance(sku, str) and isinstance(facts, dict):
+                preferences, _ = _split_facts(facts)
+                if preferences:
+                    product_preferences.append({"sku": sku, **preferences})
+        if product_preferences:
+            customer_facts["products"] = product_preferences
         sales_history["products"] = [
             {"sku": sku, **facts} for sku, facts in products.items()
             if isinstance(sku, str) and isinstance(facts, dict)]

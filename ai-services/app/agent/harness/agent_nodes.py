@@ -65,6 +65,16 @@ class AgentNodes(SessionNodes):
         if customer_erasure_requested(state["safe_text"]):
             return await self._route_customer_erasure(state)
         business = BusinessTools(self.tools, state, self.max_tool_calls, self.clock)
+        if (re.search(r"(?:chuyển(?: máy)?|gặp|nói chuyện với).{0,35}(?:nhân viên|chuyên viên|quản lý|người thật)",
+                      state["safe_text"], re.I)
+                and not re.search(r"(?:không|chưa|đừng).{0,12}(?:chuyển|gặp)", state["safe_text"], re.I)):
+            result = await business.invoke("handoff.transfer", {"brief": {
+                "escalation_reason": "khach_yeu_cau_gap_nguoi"}})
+            queued = state.get("needs_handoff", False)
+            return {"agent_draft": ("Dạ, yêu cầu của mình đã được chuyển để nhân viên tiếp nhận ạ."
+                                     if queued else "Dạ, hiện em chưa chuyển được yêu cầu. Anh/chị vui lòng liên hệ tổng đài để được hỗ trợ ạ."),
+                    "tool_calls": state["tool_calls"], "tool_count": state.get("tool_count", 0),
+                    "needs_handoff": queued, "handoff_ticket_id": state.get("handoff_ticket_id")}
         system_prompt = await asyncio.to_thread(text_prompt, SALES_PROMPT, _SYSTEM_PROMPT)
         agent = build_agent(self.agent_kind, self.llm, business, system_prompt)
         context = prompt_context(state, self.prompt_history_turns)
@@ -75,6 +85,27 @@ class AgentNodes(SessionNodes):
                 {"messages": input_messages},
                 config={"recursion_limit": max(12, self.max_tool_calls * 4 + 4)},
             )
+            calls = state.get("tool_calls", [])
+            purchase = re.search(r"\b(lên đơn|chốt đơn|đặt hàng|đặt mua)\b", state["safe_text"], re.I)
+            negated = re.search(r"\b(không|chưa|đừng|hủy)\b", state["safe_text"], re.I)
+            ready = {call.get("args", {}).get("sku") for call in calls
+                     if call.get("name") == "inventory.check"
+                     and call.get("result", {}).get("in_stock") is True} & {
+                         call.get("args", {}).get("sku") for call in calls
+                         if call.get("name") == "pricing.get_quote"
+                         and type(call.get("result", {}).get("final_price_vnd")) is int
+                         and "error" not in call.get("result", {})}
+            if (purchase and not negated and len(ready) == 1
+                    and state.get("identity_status") == "known"
+                    and state.get("tool_count", 0) < self.max_tool_calls
+                    and not any(call.get("name") == "order.create" for call in calls)):
+                result = await agent.ainvoke(
+                    {"messages": [*result.get("messages", input_messages), HumanMessage(content=(
+                        "Khách đã yêu cầu tạo đơn; công cụ vừa xác minh tồn kho và giá. "
+                        "Tiếp tục gọi order.create nếu đã đủ lựa chọn và điều kiện; "
+                        "không hỏi địa chỉ/phương thức thanh toán khi có mặc định. "
+                        "Nếu thiếu điều kiện khác, nêu rõ điều kiện còn thiếu."))]},
+                    config={"recursion_limit": max(12, self.max_tool_calls * 4 + 4)})
             messages = result.get("messages", [])
             last_customer_message = max((index for index, item in enumerate(messages)
                                          if isinstance(item, HumanMessage)), default=-1)
@@ -87,6 +118,50 @@ class AgentNodes(SessionNodes):
                 if final_payload and isinstance(final_payload.get("answer"), str):
                     draft = final_payload["answer"]
             draft = mask_pii(draft)
+            # A previous turn's offer is not evidence of today's promotion.
+            # Refresh once when the product is unambiguous, then let the agent
+            # rewrite its answer using the current tool result before verification.
+            if (self.guardrails_enabled
+                    and check_answer(draft, state.get("tool_calls", []), state["safe_text"])[1]
+                    == "promotion_quote_missing"
+                    and state.get("tool_count", 0) < self.max_tool_calls
+                    and not any(call.get("name") == "pricing.get_quote"
+                                for call in state.get("tool_calls", []))):
+                observations = [*state.get("session_tool_calls", []), *state.get("tool_calls", [])]
+                skus = {call.get("args", {}).get("sku") for call in observations
+                        if call.get("name") == "pricing.get_quote"
+                        and isinstance(call.get("result"), dict)
+                        and "error" not in call["result"]}
+                skus.update(item.get("sku") for call in observations
+                            if call.get("name") == "catalog.search"
+                            for item in call.get("result", {}).get("items", [])
+                            if isinstance(item, dict))
+                if not skus:
+                    skus.update(state.get("scoped_facts", {}).get("product", {}))
+                    remembered = state.get("profile", {}).get("product_advised", {}).get("value")
+                    if isinstance(remembered, str) and remembered.startswith("SKU-"):
+                        skus.add(remembered)
+                skus.discard(None)
+                if len(skus) == 1:
+                    sku = next(iter(skus))
+                    quote = await business.invoke("pricing.get_quote", {"sku": sku})
+                    if ("error" not in quote and quote.get("sku") == sku
+                            and type(quote.get("final_price_vnd")) is int):
+                        result = await agent.ainvoke(
+                            {"messages": [*messages, HumanMessage(content=(
+                                "Bản nháp nói về ưu đãi nhưng chưa có bằng chứng trong lượt này. "
+                                "Báo giá công cụ vừa xác minh theo ngày hiện tại: "
+                                + json.dumps(quote, ensure_ascii=False)
+                                + ". Hãy viết lại câu trả lời chỉ theo báo giá này; "
+                                "không dùng ưu đãi cũ hoặc hứa quà không có trong applied_promos."))]},
+                            config={"recursion_limit": max(12, self.max_tool_calls * 4 + 4)})
+                        refreshed = result.get("messages", [])
+                        last_human = max((i for i, item in enumerate(refreshed)
+                                          if isinstance(item, HumanMessage)), default=-1)
+                        finals = [item for item in refreshed[last_human + 1:]
+                                  if isinstance(item, AIMessage) and not item.tool_calls
+                                  and isinstance(item.content, str) and item.content.strip()]
+                        draft = mask_pii(finals[-1].content) if finals else FALLBACK
         except Exception as exc:
             log_event(state, "run_agent", "model_failed", level=logging.WARNING,
                       error_type=type(exc).__name__)
