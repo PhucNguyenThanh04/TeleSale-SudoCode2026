@@ -29,7 +29,8 @@ class MCPGateway:
             result = response.data if isinstance(response.data, dict) else response.structured_content
             if not isinstance(result, dict) or "error" in result:
                 return {"error": "invalid_tool_result"}
-            return {key: result.get(key) for key in ("database", "host", "port")}
+            return {key: result.get(key) for key in
+                    ("database", "host", "port", "server_started_at")}
         except Exception:
             return {"error": "mcp_unavailable"}
 

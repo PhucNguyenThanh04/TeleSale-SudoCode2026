@@ -18,7 +18,11 @@ def _tree_digest(paths: list[Path], root: Path) -> str:
     digest = hashlib.sha256()
     for path in sorted(set(paths)):
         if path.is_file() and not path.is_symlink():
-            digest.update(str(path.relative_to(root)).encode())
+            try:
+                label = str(path.relative_to(root))
+            except ValueError:
+                label = f"external-scenario/{path.name}"
+            digest.update(label.encode())
             digest.update(b"\0")
             digest.update(path.read_bytes())
             digest.update(b"\0")
@@ -28,9 +32,11 @@ def _tree_digest(paths: list[Path], root: Path) -> str:
 def source_snapshot_digest(root: Path) -> str:
     root = root.resolve()
     folders = (root / "ai-services" / "app", root / "ai-services" / "migrations",
-               root / "ai-services" / "config", root / "eval")
+               root / "ai-services" / "config", root / "ai-services" / "eval_harness",
+               root / "eval")
     files = [p for folder in folders if folder.exists() for p in folder.rglob("*")
-             if p.is_file() and "__pycache__" not in p.parts and "runs" not in p.parts
+             if p.is_file() and "__pycache__" not in p.parts
+             and "runs" not in p.parts and "results" not in p.parts
              and not p.name.startswith(".env") and p.suffix in {".py", ".sql", ".yml", ".yaml", ".json"}]
     for name in ("run_eval.py", "ai-services/requirements.txt"):
         path = root / name
@@ -41,8 +47,8 @@ def source_snapshot_digest(root: Path) -> str:
     return _tree_digest(files, root)
 
 
-def _btc_digest(scenarios_dir: Path) -> str:
-    root = scenarios_dir.resolve().parents[1]
+def _btc_digest(scenarios_dir: Path, btc_root: Path | None = None) -> str:
+    root = btc_root.resolve() if btc_root else scenarios_dir.resolve().parents[1]
     paths = list(scenarios_dir.glob("*.json"))
     for name in ("schemas", "catalog", "policy"):
         folder = root / name
@@ -70,8 +76,10 @@ def _expected_turns(scenarios_dir: Path) -> list[tuple[str, str, int]]:
     return expected
 
 
-def audit_trace(scenarios_dir: Path, trace_path: Path, expected_config: str) -> dict:
-    schema = scenarios_dir.resolve().parents[1] / "schemas" / "trace_log.schema.json"
+def audit_trace(scenarios_dir: Path, trace_path: Path, expected_config: str,
+                btc_root: Path | None = None) -> dict:
+    root = btc_root.resolve() if btc_root else scenarios_dir.resolve().parents[1]
+    schema = root / "schemas" / "trace_log.schema.json"
     validator = Draft202012Validator(json.loads(schema.read_text(encoding="utf-8")))
     expected = _expected_turns(scenarios_dir)
     rows, errors = [], []
@@ -89,6 +97,10 @@ def audit_trace(scenarios_dir: Path, trace_path: Path, expected_config: str) -> 
             errors.append(f"line {line_no}: schema")
         if row.get("config") != expected_config:
             errors.append(f"line {line_no}: config")
+        if row.get("memory_error"):
+            errors.append(f"line {line_no}: memory_error")
+        if str(row.get("agent_text", "")).startswith("[ERROR:"):
+            errors.append(f"line {line_no}: turn_error")
     raw_ids = [row.get("run_id") for row in rows]
     run_ids = {value for value in raw_ids if isinstance(value, str) and value}
     if len(run_ids) != 1 or len(raw_ids) != sum(isinstance(i, str) and bool(i)
@@ -118,8 +130,12 @@ def audit_trace(scenarios_dir: Path, trace_path: Path, expected_config: str) -> 
 def _reject_secret_keys(value: object) -> None:
     if isinstance(value, dict):
         for key, item in value.items():
-            if any(word in key.casefold() for word in
-                   ("password", "secret", "token", "api_key", "dsn", "credential")):
+            normalized = key.casefold()
+            if (any(word in normalized for word in
+                    ("password", "secret", "api_key", "dsn", "credential")) or
+                    normalized == "token" or
+                    re.search(r"(?:^|_)(?:access|refresh|bearer|auth|session|id)_token$",
+                              normalized)):
                 raise ValueError("Secret-bearing manifest field")
             _reject_secret_keys(item)
     elif isinstance(value, list):
@@ -136,8 +152,11 @@ def build_manifest(*, trace_path: Path, scenarios_dir: Path, config: str,
                    source_digest: str, seed_id: str, seed_digest: str,
                    model_id: str, model_params: dict, tool_mode: str,
                    guardrails: dict, database_identity: dict, hardware: dict,
-                   started_at_utc: str, scorer_report_path: Path) -> dict:
-    audit = audit_trace(scenarios_dir, trace_path, config)
+                   started_at_utc: str, scorer_report_path: Path,
+                   btc_root: Path | None = None,
+                   expected_database: str | None = None,
+                   app_env: str = "test") -> dict:
+    audit = audit_trace(scenarios_dir, trace_path, config, btc_root=btc_root)
     if audit["errors"]:
         raise ValueError(f"Trace audit failed: {audit['errors']}")
     metadata = dict(source_digest=source_digest, seed_id=seed_id,
@@ -150,8 +169,12 @@ def build_manifest(*, trace_path: Path, scenarios_dir: Path, config: str,
         raise ValueError("Incomplete manifest metadata")
     if config not in {"full", "baseline_no_memory"}:
         raise ValueError("Invalid configuration")
-    if database_identity.get("database", "").startswith("telesale_eval") is False:
-        raise ValueError("Not an eval database")
+    if app_env == "production":
+        raise ValueError("Cannot build an evaluation manifest in production")
+    database_name = database_identity.get("database", "")
+    if (database_name != expected_database if expected_database else
+            not database_name.startswith("telesale_eval")):
+        raise ValueError("database_identity does not match the approved test database")
     runner_report_path = trace_path.with_suffix(".report.json")
     runner_report = json.loads(runner_report_path.read_text(encoding="utf-8"))
     if (runner_report.get("database_identity") != database_identity or
@@ -162,7 +185,8 @@ def build_manifest(*, trace_path: Path, scenarios_dir: Path, config: str,
     if not score_inputs_path.is_file():
         raise ValueError("score provenance sidecar is unavailable")
     score_inputs = json.loads(score_inputs_path.read_text(encoding="utf-8"))
-    scorer = scenarios_dir.resolve().parents[1] / "eval" / "reference_eval.py"
+    root = btc_root.resolve() if btc_root else scenarios_dir.resolve().parents[1]
+    scorer = root / "eval" / "reference_eval.py"
     input_key = "full_trace_sha256" if config == "full" else "baseline_trace_sha256"
     if (score_inputs.get(input_key) != _sha(trace_path) or
             score_inputs.get("score_sha256") != _sha(scorer_report_path) or
@@ -178,7 +202,7 @@ def build_manifest(*, trace_path: Path, scenarios_dir: Path, config: str,
             "scorer_sha256": _sha(scorer),
             "score_inputs_sha256": _sha(score_inputs_path),
             "runner_report_sha256": _sha(runner_report_path),
-            "btc_data_digest": _btc_digest(scenarios_dir), **metadata}
+            "btc_data_digest": _btc_digest(scenarios_dir, btc_root), **metadata}
 
 
 def audit_pair(full_manifest: dict, baseline_manifest: dict) -> list[str]:
@@ -188,7 +212,7 @@ def audit_pair(full_manifest: dict, baseline_manifest: dict) -> list[str]:
     for name in ("source_digest", "btc_data_digest", "seed_id", "seed_digest",
                  "model_id", "model_params", "tool_mode", "guardrails", "hardware",
                  "expected_rows", "trace_rows", "scorer_sha256",
-                 "scorer_report_sha256", "score_inputs_sha256"):
+                 "scorer_report_sha256", "score_inputs_sha256", "database_identity"):
         if name not in full_manifest or name not in baseline_manifest:
             errors.append(f"missing {name}")
         elif full_manifest[name] != baseline_manifest[name]:

@@ -30,6 +30,7 @@ from app.schemas.agent import TextTurnRequest
 from eval_harness.memory_recall import evaluate_memory_recall
 from eval_harness.reference_adapter import (facts_used, public_memory_writes,
                                             trace_line, write_jsonl)
+from eval_harness.runtime_reset import reset_runtime_database
 from eval_harness.scorer import (
     evaluate_diagnostics_and_latency,
     evaluate_guardrails,
@@ -81,6 +82,7 @@ async def run_scenario_call(
     capture_writes=None,
     on_row=None,
     rows_out: list[dict[str, Any]] | None = None,
+    customer_name: str | None = None,
 ) -> list[dict[str, Any]]:
     """Execute all turns of a single call in a scenario."""
     session_id = uuid4()
@@ -117,7 +119,8 @@ async def run_scenario_call(
             memory_writes = state.get("memory_writes", [])
             prior_facts = state.get("profile", {})
             facts_used_this_turn = facts_used(
-                agent_text, tool_calls, prior_facts, state.get("scoped_facts", {}))
+                agent_text, tool_calls, prior_facts, state.get("scoped_facts", {}),
+                current_session_id=str(session_id))
             call_brief_latency = (resp.call_brief or {}).get("latency_ms")
 
         except Exception as exc:
@@ -130,7 +133,7 @@ async def run_scenario_call(
         row = trace_line(run_id, config, scenario_id, call_name, turn_idx,
                          user_text, agent_text, tool_calls, memory_writes,
                          facts_used_this_turn, latency_ms, call_brief_latency,
-                         input_mode)
+                         input_mode, customer_name=customer_name)
         source_id = str(turn_req.client_msg_id)
         source_ids.append(source_id)
         if wait_for_jobs is not None:
@@ -193,6 +196,25 @@ def make_baseline_runtime(runtime: Any) -> Any:
     return runtime
 
 
+async def prepare_runtime_for_eval(runtime: Any, settings: Settings) -> dict:
+    """Clear mutable rows only after all MCP services identify one database."""
+    identities = []
+    for service in ("catalog", "order", "memory"):
+        identity = await runtime.tools.database_identity(service)
+        if not isinstance(identity, dict) or identity.get("error"):
+            raise RuntimeError(f"Cannot verify {service} MCP database identity")
+        identities.append((identity.get("database"), identity.get("host"),
+                           identity.get("port"), identity.get("server_started_at")))
+    if len(set(identities)) != 1 or not identities[0][0]:
+        raise RuntimeError("MCP services point to different databases")
+    await reset_runtime_database(database_url(settings),
+                                 expected_database=identities[0][0],
+                                 expected_server_started_at=identities[0][3],
+                                 app_env=settings.app_env)
+    return {"database": identities[0][0], "host": identities[0][1],
+            "port": identities[0][2], "server_started_at": identities[0][3]}
+
+
 async def run_scenario_stream(
     runtime: Any,
     scenarios: dict[str, Any],
@@ -227,6 +249,7 @@ async def run_scenario_stream(
                 call_spec=call_spec,
                 base_date=base_date,
                 customer_phone=call_phone,
+                customer_name=sc.get("customer_name"),
                 run_id=run_tag,
                 config="baseline_no_memory" if is_baseline else "full",
                 call_date=scenario_call_date(calls, call_name, base_date),
@@ -252,6 +275,27 @@ def memory_failure_counts(trace: dict[tuple[str, str], list[dict[str, Any]]]) ->
     return counts
 
 
+def assert_trace_ready(scenarios: dict[str, Any],
+                       trace: dict[tuple[str, str], list[dict[str, Any]]]) -> None:
+    """Refuse to score a run with missing turns or operational errors."""
+    expected = []
+    for scenario_id, scenario in scenarios.items():
+        for call_name, call in scenario.get("calls", {}).items():
+            turns = call.get("customer_turns_asr") or call.get("customer_turns", [])
+            expected.extend((scenario_id, call_name, index)
+                            for index in range(1, len(turns) + 1))
+    actual = [(row.get("scenario_id"), row.get("call"), row.get("turn"))
+              for rows in trace.values() for row in rows]
+    if actual != expected:
+        raise RuntimeError("trace coverage does not match the scenario turns")
+    for rows in trace.values():
+        for row in rows:
+            if row.get("memory_error"):
+                raise RuntimeError("memory job failed during evaluation")
+            if str(row.get("agent_text", "")).startswith("[ERROR:"):
+                raise RuntimeError("turn failed during evaluation")
+
+
 async def wait_for_distillation(dsn: str, source_turn_id: str,
                                 timeout_seconds: float = 180) -> None:
     """Wait for this turn's job without including unrelated database jobs."""
@@ -260,11 +304,18 @@ async def wait_for_distillation(dsn: str, source_turn_id: str,
     try:
         deadline = time.monotonic() + timeout_seconds
         while True:
+            turn = await conn.fetchrow("""SELECT customer_id FROM runtime.turns
+                WHERE client_msg_id=$1""", UUID(source_turn_id))
+            if turn is None:
+                raise RuntimeError("missing turn for LangMem job")
             row = await conn.fetchrow("""SELECT
+                count(*) AS total,
                 count(*) FILTER (WHERE status IN ('pending','leased')) AS waiting,
                 count(*) FILTER (WHERE status='failed') AS failed
                 FROM runtime.langmem_distillation_jobs
                 WHERE source_turn_id=$1""", UUID(source_turn_id))
+            if (turn["customer_id"] and row["total"] != 1) or row["total"] > 1:
+                raise RuntimeError("missing job or duplicate LangMem job for identified turn")
             if row["failed"]:
                 raise RuntimeError("LangMem distillation job failed during evaluation")
             if not row["waiting"]:
@@ -304,7 +355,7 @@ def print_cli_summary(agent_kind: str, results: dict[str, Any]) -> None:
     diag = sum_full["diagnostics"]
 
     print("\n" + "=" * 65)
-    print(f"   BENCHMARK EVALUATION RESULTS: AGENT '{agent_kind.upper()}'")
+    print(f"   INTERNAL DIAGNOSTICS: AGENT '{agent_kind.upper()}'")
     print("=" * 65)
     print(f"Scenarios: {tsr['total']} | Total Turns Evaluated: {diag['total_turns_measured']}")
     print("-" * 65)
@@ -341,9 +392,8 @@ async def main() -> None:
     parser.add_argument("--scenarios", default="eval_harness/benchmark_dataset.json", help="Path to scenarios")
     parser.add_argument("--dry-run", type=int, default=0, help="Run only first N scenarios for dry-run")
     parser.add_argument("--out", default=None, help="Output JSON path")
+    parser.add_argument("--run-id", default=None, help="Unique ID shared by this paired run")
     args = parser.parse_args()
-    if args.config == "both":
-        logger.warning("--config both shares mutable business tables; use separate seeded databases for official comparison")
 
     # Determine output path
     out_path = args.out
@@ -373,6 +423,13 @@ async def main() -> None:
 
     trace_full: dict[tuple[str, str], list[dict[str, Any]]] = {}
     trace_baseline: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    database_identity = None
+
+    def write_runner_report(path: str, config: str, run_id: str) -> None:
+        report = {"run_id": run_id, "config": config,
+                  "database_identity": database_identity}
+        with open(path.removesuffix(".jsonl") + ".report.json", "w", encoding="utf-8") as stream:
+            json.dump(report, stream, ensure_ascii=False)
 
     def trace_writer(path: str):
         stream = open(path, "w", encoding="utf-8")
@@ -386,6 +443,7 @@ async def main() -> None:
     try:
         # Run Full Configuration
         if args.config in ("full", "both"):
+            database_identity = await prepare_runtime_for_eval(runtime, settings)
             print(f"\n--- Running FULL Configuration (With Inter-Session Memory) ---")
             waiter = lambda source_id: wait_for_distillation(
                 database_url(settings), source_id, args.worker_wait_seconds)
@@ -393,7 +451,8 @@ async def main() -> None:
             stream, append = trace_writer(path)
             try:
                 await run_scenario_stream(runtime, scenarios, is_baseline=False,
-                    run_tag=args.variant, wait_for_jobs=waiter,
+                    run_tag=f"{args.run_id}-full" if args.run_id else args.variant,
+                    wait_for_jobs=waiter,
                     capture_writes=lambda ids: read_distillation_writes(
                         database_url(settings), ids), on_row=append, trace=trace_full)
             except Exception:
@@ -401,26 +460,36 @@ async def main() -> None:
             finally:
                 stream.close()
                 write_jsonl(trace_full, path)
+            assert_trace_ready(scenarios, trace_full)
+            write_runner_report(path, "full", f"{args.run_id}-full" if args.run_id else args.variant)
 
         # Run Baseline Configuration
         if args.config in ("baseline", "both"):
-            print(f"\n--- Running BASELINE Configuration (No Inter-Session Memory) ---")
             baseline_runtime = make_baseline_runtime(build_runtime(settings))
+            database_identity = await prepare_runtime_for_eval(baseline_runtime, settings)
+            print(f"\n--- Running BASELINE Configuration (No Inter-Session Memory) ---")
             baseline_waiter = lambda source_id: wait_for_distillation(
                 database_url(settings), source_id, args.worker_wait_seconds)
             path = out_path.removesuffix(".json") + "_baseline.jsonl"
             stream, append = trace_writer(path)
             try:
                 await run_scenario_stream(baseline_runtime, scenarios,
-                    is_baseline=True, run_tag="baseline", wait_for_jobs=baseline_waiter,
+                    is_baseline=True,
+                    run_tag=f"{args.run_id}-baseline" if args.run_id else "baseline",
+                    wait_for_jobs=baseline_waiter,
                     on_row=append, trace=trace_baseline)
             except Exception:
                 logger.exception("Baseline evaluation stopped unexpectedly; partial trace retained")
             finally:
                 stream.close()
-    finally:
+            assert_trace_ready(scenarios, trace_baseline)
+            write_runner_report(path, "baseline_no_memory",
+                                f"{args.run_id}-baseline" if args.run_id else "baseline")
+    except Exception:
+        raise
+    else:
         # Score Results
-        print("\nCalculating metrics against official BTC benchmarks...")
+        print("\nCalculating internal diagnostic metrics...")
         eval_target_trace = trace_full if trace_full else (trace_baseline or {})
 
         tsr_results = evaluate_task_success(scenarios, eval_target_trace)

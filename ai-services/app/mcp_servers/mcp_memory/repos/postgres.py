@@ -45,11 +45,13 @@ class MemoryRepo:
         """Report the database reached by this pool, without exposing credentials."""
         async with self.transaction() as conn:
             row = await conn.fetchrow(
-                "SELECT current_database() AS database"
+                "SELECT current_database() AS database, "
+                "pg_postmaster_start_time() AS server_started_at"
             )
         url = make_url(self.dsn)
         return {"database": row["database"], "host": url.host,
-                "port": url.port or 5432}
+                "port": url.port or 5432,
+                "server_started_at": row["server_started_at"].isoformat()}
 
     async def owner(self, conn, session_id: str) -> str | None:
         return await conn.fetchval("""SELECT customer_id FROM runtime.turns

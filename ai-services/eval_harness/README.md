@@ -1,19 +1,50 @@
 # Benchmark Dataset & Eval Harness — AI TeleSale SudoCode 2026
 
-The benchmark runner now writes `<out>_full.jsonl` and
-`<out>_baseline.jsonl` for the BTC `eval/reference_eval.py` script. Run the
-two configurations against separate, identically seeded test databases so
-orders and promotion usage from one run cannot affect the other. The
-no-memory run keeps the same CRM identity and hides prior memory instead of
-changing the customer's phone. Since the current chat API is not streaming,
+## Chạy đánh giá text chính thức
+
+Từ `ai-services/`, khi PostgreSQL, ba MCP service, LangMem worker và model đã
+sẵn sàng, chạy:
+
+```bash
+python -m eval_harness.run_official --btc-root /path/to/BTC-Data-Vong1-TEAMS \
+  --scenarios eval_harness/scenarios --agent deep --seed 7
+streamlit run eval_harness/visualize_benmark.py
+```
+
+Lệnh đầu tạo một thư mục `results/<run-id>/`, reset schema `runtime` trước
+`full` và trước `baseline`, kiểm tra fingerprint dữ liệu `btc_source`, kiểm tra
+đủ lượt thoại/job LangMem và dùng nguyên `eval/reference_eval.py` của BTC để
+chấm cặp trace. Chỉ `btc_score.json` cùng hai manifest là điểm hội thoại chính
+thức. Các file `*.diagnostics.json` từ scorer nội bộ là chẩn đoán. Trace dở
+dang được giữ lại nếu run lỗi, nhưng không có `run.json` hợp lệ để dashboard
+hiển thị. Dashboard chỉ đọc một run đã xác minh và chỉ vẽ dữ liệu tổng hợp.
+
+Phần RAG truy hồi 60 câu dùng `btc_source.policy_chunks` hiện hành và
+`reference_eval.py --rag`. `rag_summary.json` chỉ công bố Recall@3/@5 cùng
+multi-hop recall; abstention câu trả lời và version accuracy giữ trạng thái
+`not_measured` khi chưa có câu trả lời/nhãn hiệu chuẩn. API hiện không
+streaming, nên TTFT là tổng thời gian phản hồi ước tính, không phải timestamp
+token đầu tiên. Cần ít nhất 100 lượt để diễn giải p95 ổn định.
+
+The benchmark runner writes `<out>_full.jsonl` and `<out>_baseline.jsonl`
+for the BTC `eval/reference_eval.py` script. Before each configuration it
+verifies that all three MCP servers use one database, then clears mutable
+tables in its `runtime` schema through `DATABASE_URL`. It preserves the
+schema and `runtime.store_migrations`, resets runtime sequences, and leaves
+`btc_source` untouched. The configured `DATABASE_URL` must have permission to
+truncate runtime tables and must point to the MCP database. The reset is
+disabled when `APP_ENV=production`. Use this runner only with test data in
+`runtime`. The no-memory run keeps the same CRM identity and hides prior
+memory instead of changing the customer's phone. Since the current chat API is not streaming,
 `ttft_ms` is conservatively reported as total response time; do not present
 it as a measured first-token time.
 
 ## LangMem evaluation runbook
 
-Run `enabled` against separately seeded test databases with the same BTC
-catalog, CRM, model, temperature, max tokens, `--seed`, dates, and business
-tools. Start `mcp-memory` and the LangMem worker together. The runner waits
+Run `enabled` with the same BTC catalog, CRM, model, temperature, max tokens,
+`--seed`, dates, and business tools for both configurations. A single test
+database is sufficient because the runner resets `runtime` before each one.
+Start `mcp-memory` and the LangMem worker together. The runner waits
 until each evaluated turn's LangMem job finishes before the next turn.
 Keep traces in ignored `results/`.
 
@@ -22,13 +53,13 @@ scenarios, run `python -m eval_harness.benchmark_runner --agent deep --config
 full --variant enabled --seed 7 --scenarios DATASET --out results/enabled_DATASET.json`.
 The runner defaults to `--config full`, `--variant enabled`, and the local
 19-scenario dataset when those flags are omitted. Run from `ai-services/`.
-Run `--config baseline --variant enabled` against a separate clone of the
-same seed database for each full run. Give it a different `--out` path so it
-does not overwrite the full run manifest. This keeps the agent prompt and
+Run `--config baseline --variant enabled` after a full run, or use `--config both`
+to run both configurations in one invocation. The runner resets `runtime`
+before baseline in either case. Give separate invocations different `--out`
+paths so they do not overwrite reports. This keeps the agent prompt and
 memory implementation identical while hiding prior memory. The runner emits
 `*_full.jsonl` or `*_baseline.jsonl`.
-`--config both` is useful only for a quick smoke test because it reuses mutable
-business tables. Score each pair with
+Score each pair with
 the unmodified BTC script:
 
 ```bash

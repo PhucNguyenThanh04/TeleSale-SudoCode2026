@@ -66,6 +66,33 @@ class TraceAuditTest(unittest.TestCase):
         (source / "logic.py").write_text("x = 2\n", encoding="utf-8")
         self.assertNotEqual(before, source_snapshot_digest(self.root))
 
+    def test_harness_code_change_affects_source_digest(self):
+        harness = self.root / "ai-services" / "eval_harness"
+        harness.mkdir(parents=True)
+        path = harness / "benchmark_runner.py"
+        path.write_text("value = 1\n", encoding="utf-8")
+        before = source_snapshot_digest(self.root)
+        path.write_text("value = 2\n", encoding="utf-8")
+        self.assertNotEqual(before, source_snapshot_digest(self.root))
+
+    def test_generated_results_do_not_change_source_digest(self):
+        harness = self.root / "ai-services" / "eval_harness"
+        harness.mkdir(parents=True)
+        (harness / "benchmark_runner.py").write_text("x = 1\n", encoding="utf-8")
+        before = source_snapshot_digest(self.root)
+        results = harness / "results" / "run-a"
+        results.mkdir(parents=True)
+        (results / "btc_score.json").write_text('{"score": 100}', encoding="utf-8")
+        self.assertEqual(before, source_snapshot_digest(self.root))
+
+    def test_local_scenarios_use_explicit_btc_schema(self):
+        local = self.root / "local_scenarios"
+        local.mkdir()
+        (local / "case.json").write_bytes((self.scenarios / "case.json").read_bytes())
+        self.write_rows(self.rows)
+        audit = audit_trace(local, self.trace, "full", btc_root=self.root / "BTC")
+        self.assertEqual(audit["errors"], [])
+
     def test_manifest_and_pair_reject_secret_and_configuration_drift(self):
         self.write_rows(self.rows)
         report = self.root / "score.json"
@@ -85,20 +112,25 @@ class TraceAuditTest(unittest.TestCase):
             "score_sha256": digest(report)}), encoding="utf-8")
         self.trace.with_suffix(".report.json").write_text(json.dumps({
             "run_id": "run-a", "config": "full", "database_identity": {
-                "database": "telesale_eval_full", "host": "localhost", "port": 5432}}),
+                "database": "telesale", "host": "localhost", "port": 5432}}),
             encoding="utf-8")
         inputs = dict(trace_path=self.trace, scenarios_dir=self.scenarios,
                       config="full", source_digest="src-hash", seed_id="seed-1",
                       seed_digest="seed-hash", model_id="model-A",
                       model_params={"temperature": 0}, tool_mode="mcp",
                       guardrails={"enabled": True},
-                      database_identity={"database": "telesale_eval_full",
+                      database_identity={"database": "telesale",
                                          "host": "localhost", "port": 5432},
+                      expected_database="telesale", app_env="test",
                       hardware={"cpu": "test"},
                       started_at_utc="2026-10-22T00:00:00Z",
                       scorer_report_path=report)
         full = build_manifest(**inputs)
         self.assertEqual(full["run_id"], "run-a")
+        self.assertEqual(build_manifest(**{**inputs, "model_params": {
+            "temperature": 0, "max_tokens": 256}})["model_params"]["max_tokens"], 256)
+        with self.assertRaisesRegex(ValueError, "production"):
+            build_manifest(**{**inputs, "app_env": "production"})
         self.assertEqual(audit_pair(full, {**full, "config": "baseline_no_memory",
                                            "run_id": "run-b"}), [])
         self.assertIn("seed", " ".join(audit_pair(full, {
@@ -107,6 +139,9 @@ class TraceAuditTest(unittest.TestCase):
         self.assertIn("model", " ".join(audit_pair(full, {
             **full, "config": "baseline_no_memory", "run_id": "run-b",
             "model_id": "model-B"})))
+        self.assertIn("database_identity", " ".join(audit_pair(full, {
+            **full, "config": "baseline_no_memory", "run_id": "run-b",
+            "database_identity": {"database": "other"}})))
         with self.assertRaises(ValueError):
             build_manifest(**{**inputs, "model_params": {"api_key": "secret"}})
         with self.assertRaises(ValueError):

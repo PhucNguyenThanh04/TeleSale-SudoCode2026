@@ -137,10 +137,13 @@ def accepted_episode_delta(customer_text: str, agent_text: str, proposal: object
         accepted = {"scope_type": scope, "scope_id": scope_id}
         for field in ("customer_goal", "advice_given", "next_step"):
             if field in update and _safe(update[field], 300):
-                quote = update.get("narrative_evidence_quote")
+                quotes = update.get("narrative_evidence_quotes", {})
+                quote = (quotes.get(field, update.get("narrative_evidence_quote"))
+                         if isinstance(quotes, dict)
+                         else update.get("narrative_evidence_quote"))
                 if _safe(quote, 200, source) and evidence_supports(update[field], quote):
                     accepted[field] = update[field]
-                    accepted["narrative_evidence_quote"] = quote
+                    accepted.setdefault("narrative_evidence_quotes", {})[field] = quote
         additions = []
         for item in update.get("add_items", [])[:8] if isinstance(update.get("add_items", []), list) else []:
             if (isinstance(item, dict) and item.get("kind") in {"question", "blocker"}

@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Any, Callable
+import unicodedata
 
 from app.agent.harness.catalog_query import clean_catalog_query
 from app.agent.harness.handoff_brief import build_handoff_brief
@@ -36,6 +37,33 @@ def _single_catalog_sku(state: TurnState) -> str | None:
     return sku if isinstance(sku, str) and sku else None
 
 
+def catalog_variant(state: TurnState, args: dict[str, Any]) -> str | None:
+    """Resolve a parent only from catalog variants and explicit scoped preferences."""
+    sku = args.get("sku")
+    items = [item for call in [*state.get("session_tool_calls", []), *state.get("tool_calls", [])]
+             if call.get("name") == "catalog.search"
+             for item in call.get("result", {}).get("items", []) if isinstance(item, dict)]
+    parent = next((item for item in reversed(items) if item.get("sku") == sku), None)
+    if not parent or not parent.get("variants"):
+        return sku
+    facts = state.get("scoped_facts", {}).get("product", {}).get(sku, {})
+    size = args.get("size")
+    color = args.get("color")
+    if size is None:
+        size = facts.get("size", facts.get("preferred_size", {})).get("value")
+    if color is None:
+        color = facts.get("color", facts.get("preferred_color", {})).get("value")
+    def folded(value):
+        return "".join(char for char in unicodedata.normalize(
+            "NFD", str(value).casefold().replace("đ", "d"))
+            if unicodedata.category(char) != "Mn")
+
+    variants = [v for v in parent["variants"] if isinstance(v, dict)
+                and (size is None or str(v.get("size")) == str(size))
+                and (color is None or folded(v.get("color", "")) == folded(color))]
+    return variants[0].get("variant_sku") if len(variants) == 1 else None
+
+
 def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[str, dict[str, Any]] | None:
     """Validate a proposed tool call and supply trusted business arguments."""
     request = state["request"]
@@ -64,6 +92,15 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
         sku = _single_catalog_sku(state)
         if sku:
             args["sku"] = sku
+    if name in {"inventory.check", "pricing.get_quote", "order.create"}:
+        selected = catalog_variant(state, args)
+        if selected is None and name != "order.create" and args.get("size") is None and args.get("color") is None:
+            selected = args.get("sku")
+        args["sku"] = selected
+        args.pop("size", None)
+        args.pop("color", None)
+        if not args["sku"]:
+            return None
     if name in _READ_TOOL_ARGS:
         args = {key: value for key, value in args.items() if key in _READ_TOOL_ARGS[name]}
     if name in {"inventory.check", "pricing.get_quote"} and not isinstance(args.get("sku"), str):

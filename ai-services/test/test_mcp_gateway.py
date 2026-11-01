@@ -21,7 +21,8 @@ class FakeRepo:
         yield object()
 
     async def database_identity(self):
-        return {"database": "telesale_eval", "host": "eval-postgres", "port": 5432}
+        return {"database": "telesale_eval", "host": "eval-postgres", "port": 5432,
+                "server_started_at": "2026-11-01T00:00:00+00:00"}
 
 
 class GatewayTest(unittest.IsolatedAsyncioTestCase):
@@ -31,7 +32,8 @@ class GatewayTest(unittest.IsolatedAsyncioTestCase):
         for service in ("catalog", "order", "memory"):
             result = await gateway.database_identity(service)
             self.assertEqual(result, {"database": "telesale_eval",
-                                      "host": "eval-postgres", "port": 5432})
+                                      "host": "eval-postgres", "port": 5432,
+                                      "server_started_at": "2026-11-01T00:00:00+00:00"})
         self.assertEqual(await gateway.invoke("eval.database_identity", {}),
                          {"error": "unknown_tool"})
 
@@ -50,7 +52,8 @@ class GatewayTest(unittest.IsolatedAsyncioTestCase):
         gateway = MCPGateway(catalog_server(LeakyRepo()), None, None)
         result = await gateway.database_identity("catalog")
         self.assertEqual(result, {"database": "telesale_eval", "host": "eval-postgres",
-                                  "port": 5432})
+                                  "port": 5432,
+                                  "server_started_at": "2026-11-01T00:00:00+00:00"})
 
     async def test_database_identity_timeout_fails_closed(self):
         class SlowRepo(FakeRepo):

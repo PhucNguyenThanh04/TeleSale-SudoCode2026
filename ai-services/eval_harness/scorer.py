@@ -46,7 +46,8 @@ def p95(xs: list[float | int]) -> float | int | None:
     return s[idx]
 
 
-def args_match(expected: dict[str, Any] | None, actual: dict[str, Any] | None) -> bool:
+def args_match(expected: dict[str, Any] | None, actual: dict[str, Any] | None,
+               order_aliases=()) -> bool:
     """Subset comparison: expected ⊆ actual."""
     if not expected:
         return True
@@ -54,6 +55,8 @@ def args_match(expected: dict[str, Any] | None, actual: dict[str, Any] | None) -
         return False
     for k, v in expected.items():
         if v is None:
+            continue
+        if k == "order_id" and actual.get(k) in order_aliases:
             continue
         if actual.get(k) != v:
             return False
@@ -112,8 +115,17 @@ def evaluate_task_success(scenarios: dict[str, Any], trace: dict[tuple[str, str]
                     call_ok = False
                     call_reasons.append("không gọi handoff.transfer")
             elif expected_tool:
+                order_aliases = {
+                    tc["result"]["order_id"]
+                    for earlier in sorted(calls) if earlier < call_name
+                    for row in trace.get((sid, earlier), [])
+                    for tc in row.get("tool_calls", [])
+                    if tc.get("name") == "order.create"
+                    and isinstance(tc.get("result"), dict)
+                    and tc["result"].get("order_id")
+                }
                 match_tool = any(
-                    tc.get("name") == expected_tool and args_match(si.get("args_match"), tc.get("args", {}))
+                    tc.get("name") == expected_tool and args_match(si.get("args_match"), tc.get("args", {}), order_aliases)
                     for tc in tool_calls
                 )
                 if not match_tool:
@@ -407,7 +419,7 @@ def evaluate_guardrails(
             # 2. Over-escalation check
             expected_outcome = call_spec.get("expected_outcome")
             si_tool = (call_spec.get("success_if") or {}).get("tool_called")
-            if expected_outcome != "chuyen_nhan_vien" and si_tool != "handoff.transfer":
+            if expected_outcome != "chuyen_may" and si_tool != "handoff.transfer":
                 if any(tc.get("name") == "handoff.transfer" for r in rows for tc in r.get("tool_calls", [])):
                     violations["over_escalation"] += 1
                     examples.append({"scenario_id": sid, "call": call_name, "type": "over_escalation"})

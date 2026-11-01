@@ -24,7 +24,9 @@ class Database:
         """Report the database reached by this pool, without exposing credentials."""
         async with self.transaction() as session:
             row = (await session.execute(text(
-                "SELECT current_database() AS database"
+                "SELECT current_database() AS database, "
+                "pg_postmaster_start_time() AS server_started_at"
             ))).one()
         return {"database": row.database, "host": self.engine.url.host,
-                "port": self.engine.url.port or 5432}
+                "port": self.engine.url.port or 5432,
+                "server_started_at": row.server_started_at.isoformat()}
