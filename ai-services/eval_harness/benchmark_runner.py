@@ -27,6 +27,7 @@ from app.configs import Settings
 from app.mcp_servers.mcp_shared.config import database_url
 from app.schemas.agent import TextTurnRequest
 
+from eval_harness.memory_recall import evaluate_memory_recall
 from eval_harness.reference_adapter import (facts_used, public_memory_writes,
                                             trace_line, write_jsonl)
 from eval_harness.scorer import (
@@ -77,6 +78,9 @@ async def run_scenario_call(
     call_date: date | None = None,
     capture_source_ids: bool = False,
     wait_for_jobs=None,
+    capture_writes=None,
+    on_row=None,
+    rows_out: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Execute all turns of a single call in a scenario."""
     session_id = uuid4()
@@ -87,7 +91,8 @@ async def run_scenario_call(
 
     customer_turns = call_spec.get("customer_turns_asr") or call_spec.get("customer_turns", [])
     input_mode = call_spec.get("input_mode", "clean")
-    trace_rows = []
+    trace_rows = rows_out if rows_out is not None else []
+    source_ids: list[str] = []
 
     for turn_idx, user_text in enumerate(customer_turns, start=1):
         turn_req = TextTurnRequest(
@@ -126,11 +131,46 @@ async def run_scenario_call(
                          user_text, agent_text, tool_calls, memory_writes,
                          facts_used_this_turn, latency_ms, call_brief_latency,
                          input_mode)
-        if capture_source_ids:
-            row["_client_msg_id"] = str(turn_req.client_msg_id)
-        trace_rows.append(row)
+        source_id = str(turn_req.client_msg_id)
+        source_ids.append(source_id)
         if wait_for_jobs is not None:
-            await wait_for_jobs(str(turn_req.client_msg_id))
+            try:
+                await wait_for_jobs(source_id)
+            except TimeoutError:
+                row["memory_error"] = "timeout"
+            except Exception as exc:
+                row["memory_error"] = "job_failed"
+                logger.warning("Distillation wait failed for %s: %s", source_id,
+                               type(exc).__name__)
+        if capture_writes is not None and "memory_error" not in row:
+            try:
+                writes = await capture_writes([source_id])
+                row["memory_writes"] = public_memory_writes(
+                    call_name, turn_idx, writes.get(source_id, []))
+            except Exception as exc:
+                row["memory_error"] = "capture_failed"
+                row["memory_writes"] = []
+                logger.warning("Distillation capture failed for %s: %s", source_id,
+                               type(exc).__name__)
+        if capture_source_ids:
+            row["_client_msg_id"] = source_id
+        trace_rows.append(row)
+        if on_row is not None:
+            on_row(row)
+
+    if capture_writes is not None and source_ids:
+        try:
+            if wait_for_jobs is not None:
+                for sid in source_ids:
+                    await wait_for_jobs(sid)
+            final_writes = await capture_writes(source_ids)
+            for row, source_id in zip(trace_rows, source_ids):
+                if "memory_error" not in row:
+                    row["memory_writes"] = public_memory_writes(
+                        call_name, row["turn"], final_writes.get(source_id, []))
+        except Exception as exc:
+            logger.warning("Final distillation attribution failed for %s: %s",
+                           call_name, type(exc).__name__)
 
     return trace_rows
 
@@ -160,9 +200,11 @@ async def run_scenario_stream(
     run_tag: str = "full",
     wait_for_jobs=None,
     capture_writes=None,
+    on_row=None,
+    trace: dict[tuple[str, str], list[dict[str, Any]]] | None = None,
 ) -> dict[tuple[str, str], list[dict[str, Any]]]:
     """Run all scenarios through the harness runtime."""
-    trace: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    trace = trace if trace is not None else {}
     base_date = date(2026, 10, 15)
 
     total_sc = len(scenarios)
@@ -175,8 +217,10 @@ async def run_scenario_stream(
 
         for call_name, call_spec in calls.items():
             call_phone = raw_phone
+            rows: list[dict[str, Any]] = []
+            trace[(sid, call_name)] = rows
 
-            rows = await run_scenario_call(
+            await run_scenario_call(
                 runtime=runtime,
                 scenario_id=sid,
                 call_name=call_name,
@@ -186,21 +230,26 @@ async def run_scenario_stream(
                 run_id=run_tag,
                 config="baseline_no_memory" if is_baseline else "full",
                 call_date=scenario_call_date(calls, call_name, base_date),
-                capture_source_ids=capture_writes is not None,
                 wait_for_jobs=wait_for_jobs,
+                capture_writes=capture_writes,
+                on_row=on_row,
+                rows_out=rows,
             )
-            if capture_writes is not None:
-                source_ids = [row.pop("_client_msg_id") for row in rows]
-                writes_by_turn = await capture_writes(source_ids)
-                for row, source_id in zip(rows, source_ids):
-                    row["memory_writes"] = public_memory_writes(
-                        call_name, row["turn"], writes_by_turn.get(source_id, []))
-            trace[(sid, call_name)] = rows
 
         sc_duration = time.perf_counter() - t_sc_start
         print(f" Done ({sc_duration:.1f}s)")
 
     return trace
+
+
+def memory_failure_counts(trace: dict[tuple[str, str], list[dict[str, Any]]]) -> dict[str, int]:
+    counts = {"timeout": 0, "job_failed": 0, "capture_failed": 0}
+    for rows in trace.values():
+        for row in rows:
+            code = row.get("memory_error")
+            if code in counts:
+                counts[code] += 1
+    return counts
 
 
 async def wait_for_distillation(dsn: str, source_turn_id: str,
@@ -267,6 +316,9 @@ def print_cli_summary(agent_kind: str, results: dict[str, Any]) -> None:
         print(f"  RQR Baseline                    : {mem['rqr_baseline_pct']}%")
         print(f"  Δ RQR Giảm Tương Đối            : {mem.get('delta_rqr_relative_pct')}% [Target: ≥40%]")
     print(f"  CCR (Context Carryover Rate)    : {mem['ccr_pct']}% ({mem['facts_carried']}/{mem['facts_required']})")
+    recall = sum_full.get("memory_recall") or {}
+    if recall.get("overall_recall_pct") is not None:
+        print(f"  Memory Recall / Precision       : {recall.get('overall_recall_pct')}% ({recall.get('matched')}/{recall.get('expected')}) / {recall.get('overall_precision_pct')}%")
     print(f"  HR Giá & Khuyến Mãi             : {hallu['price_promo_hr_pct']}% [Target: ≤5%]")
     print(f"  HR Tổng Quát                    : {hallu['hallucination_rate_pct']}%")
     print(f"  Guardrail Violations (An toàn)  : {guard['total_violations']} [Target: 0]")
@@ -300,6 +352,7 @@ async def main() -> None:
         os.makedirs(out_dir, exist_ok=True)
         out_path = os.path.join(
             out_dir, f"benchmark_{args.agent}_{args.variant}_{args.config}.json")
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
 
     # Load scenarios
     scenarios_all = load_scenarios(args.scenarios)
@@ -318,79 +371,102 @@ async def main() -> None:
     print(f"\nInitializing Runtime for Agent: '{args.agent.upper()}' (Model: {settings.llm_model})...")
     runtime = build_runtime(settings)
 
-    trace_full = {}
-    trace_baseline = None
+    trace_full: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    trace_baseline: dict[tuple[str, str], list[dict[str, Any]]] = {}
 
-    # Run Full Configuration
-    if args.config in ("full", "both"):
-        print(f"\n--- Running FULL Configuration (With Inter-Session Memory) ---")
-        waiter = lambda source_id: wait_for_distillation(
-            database_url(settings), source_id, args.worker_wait_seconds)
-        trace_full = await run_scenario_stream(runtime, scenarios, is_baseline=False,
-                                               run_tag=args.variant,
-                                               wait_for_jobs=waiter,
-                                               capture_writes=lambda ids: read_distillation_writes(
-                                                   database_url(settings), ids))
+    def trace_writer(path: str):
+        stream = open(path, "w", encoding="utf-8")
 
-    # Run Baseline Configuration
-    if args.config in ("baseline", "both"):
-        print(f"\n--- Running BASELINE Configuration (No Inter-Session Memory) ---")
-        baseline_runtime = make_baseline_runtime(build_runtime(settings))
-        baseline_waiter = lambda source_id: wait_for_distillation(
-            database_url(settings), source_id, args.worker_wait_seconds)
-        trace_baseline = await run_scenario_stream(baseline_runtime, scenarios,
-                                                   is_baseline=True, run_tag="baseline",
-                                                   wait_for_jobs=baseline_waiter)
+        def append(row: dict[str, Any]) -> None:
+            stream.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+            stream.flush()
 
-    if trace_full:
-        write_jsonl(trace_full, out_path.removesuffix(".json") + "_full.jsonl")
-    if trace_baseline:
-        write_jsonl(trace_baseline, out_path.removesuffix(".json") + "_baseline.jsonl")
+        return stream, append
 
-    # Score Results
-    print("\nCalculating metrics against official BTC benchmarks...")
-    eval_target_trace = trace_full if trace_full else (trace_baseline or {})
+    try:
+        # Run Full Configuration
+        if args.config in ("full", "both"):
+            print(f"\n--- Running FULL Configuration (With Inter-Session Memory) ---")
+            waiter = lambda source_id: wait_for_distillation(
+                database_url(settings), source_id, args.worker_wait_seconds)
+            path = out_path.removesuffix(".json") + "_full.jsonl"
+            stream, append = trace_writer(path)
+            try:
+                await run_scenario_stream(runtime, scenarios, is_baseline=False,
+                    run_tag=args.variant, wait_for_jobs=waiter,
+                    capture_writes=lambda ids: read_distillation_writes(
+                        database_url(settings), ids), on_row=append, trace=trace_full)
+            except Exception:
+                logger.exception("Full evaluation stopped unexpectedly; partial trace retained")
+            finally:
+                stream.close()
+                write_jsonl(trace_full, path)
 
-    tsr_results = evaluate_task_success(scenarios, eval_target_trace)
-    mem_results = evaluate_memory_metrics(scenarios, eval_target_trace, trace_baseline if args.config == "both" else None)
-    hallu_results = evaluate_hallucination(scenarios, eval_target_trace)
-    guard_results = evaluate_guardrails(scenarios, eval_target_trace)
-    diag_results = evaluate_diagnostics_and_latency(eval_target_trace, warm_up_turns=0 if args.dry_run else 3)
+        # Run Baseline Configuration
+        if args.config in ("baseline", "both"):
+            print(f"\n--- Running BASELINE Configuration (No Inter-Session Memory) ---")
+            baseline_runtime = make_baseline_runtime(build_runtime(settings))
+            baseline_waiter = lambda source_id: wait_for_distillation(
+                database_url(settings), source_id, args.worker_wait_seconds)
+            path = out_path.removesuffix(".json") + "_baseline.jsonl"
+            stream, append = trace_writer(path)
+            try:
+                await run_scenario_stream(baseline_runtime, scenarios,
+                    is_baseline=True, run_tag="baseline", wait_for_jobs=baseline_waiter,
+                    on_row=append, trace=trace_baseline)
+            except Exception:
+                logger.exception("Baseline evaluation stopped unexpectedly; partial trace retained")
+            finally:
+                stream.close()
+    finally:
+        # Score Results
+        print("\nCalculating metrics against official BTC benchmarks...")
+        eval_target_trace = trace_full if trace_full else (trace_baseline or {})
 
-    output_doc = {
-        "meta": {
-            "agent_kind": args.agent,
-            "model": settings.llm_model,
-            "temperature": settings.llm_temperature,
-            "max_tokens": settings.llm_max_tokens,
-            "seed": settings.llm_seed,
-            "variant": args.variant,
-            "dataset_hash": hashlib.sha256(json.dumps(scenarios, sort_keys=True,
-                ensure_ascii=False).encode()).hexdigest(),
-            "scenario_ids": sorted(scenarios),
-            "config": args.config,
-            "reference_date": "2026-10-15",
-            "total_scenarios_evaluated": len(scenarios),
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        },
-        "full_metrics": {
-            "tsr": tsr_results,
-            "memory": mem_results,
-            "hallucination": hallu_results,
-            "guardrails": guard_results,
-            "diagnostics": diag_results,
-        },
-        "scenarios_breakdown": tsr_results.get("scenario_details", {}),
-    }
+        tsr_results = evaluate_task_success(scenarios, eval_target_trace)
+        mem_results = evaluate_memory_metrics(scenarios, eval_target_trace, trace_baseline if args.config == "both" else None)
+        recall_results = evaluate_memory_recall(scenarios, eval_target_trace)
+        hallu_results = evaluate_hallucination(scenarios, eval_target_trace)
+        guard_results = evaluate_guardrails(scenarios, eval_target_trace)
+        diag_results = evaluate_diagnostics_and_latency(eval_target_trace, warm_up_turns=0 if args.dry_run else 3)
 
-    # Save JSON output
-    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(output_doc, f, indent=2, ensure_ascii=False)
+        output_doc = {
+            "meta": {
+                "agent_kind": args.agent,
+                "model": settings.llm_model,
+                "temperature": settings.llm_temperature,
+                "max_tokens": settings.llm_max_tokens,
+                "seed": settings.llm_seed,
+                "variant": args.variant,
+                "dataset_hash": hashlib.sha256(json.dumps(scenarios, sort_keys=True,
+                    ensure_ascii=False).encode()).hexdigest(),
+                "scenario_ids": sorted(scenarios),
+                "config": args.config,
+                "reference_date": "2026-10-15",
+                "total_scenarios_evaluated": len(scenarios),
+                "scenarios_with_trace": len({sid for sid, _ in eval_target_trace}),
+                "memory_job_errors": {"full": memory_failure_counts(trace_full),
+                                      "baseline": memory_failure_counts(trace_baseline)},
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+            "full_metrics": {
+                "tsr": tsr_results,
+                "memory": mem_results,
+                "memory_recall": recall_results,
+                "hallucination": hallu_results,
+                "guardrails": guard_results,
+                "diagnostics": diag_results,
+            },
+            "scenarios_breakdown": tsr_results.get("scenario_details", {}),
+        }
 
-    print_cli_summary(args.agent, output_doc)
-    print(f"Saved complete benchmark results to: {out_path}")
+        # Save JSON output
+        os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(output_doc, f, indent=2, ensure_ascii=False)
 
+        print_cli_summary(args.agent, output_doc)
+        print(f"Saved complete benchmark results to: {out_path}")
 
 if __name__ == "__main__":
     asyncio.run(main())

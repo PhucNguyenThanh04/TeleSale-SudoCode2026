@@ -4,7 +4,6 @@ import unittest
 from dataclasses import FrozenInstanceError
 
 from app.agent.guardrails.checks import fact_evidence
-from app.agent.memory.fact_candidates import _CUSTOMER_KEYS, accepted_candidates
 from app.constants import (
     BRIEF_MUST_NOT_ASK_KEYS, PROFILE_SLOT_KEYS, SLOT_REGISTRY,
     TOOL_ONLY_SLOT_KEYS, Slot,
@@ -26,27 +25,20 @@ class SlotRegistryTests(unittest.TestCase):
         self.assertEqual(TOOL_ONLY_SLOT_KEYS, {
             Slot.PRODUCT_ADVISED, Slot.PRICE_QUOTED_VND, Slot.PROMO_CODE,
             Slot.PROMO_EXPIRY, Slot.ORDER_ID, Slot.IN_STOCK, Slot.VARIANT_SKU,
+            Slot.OWNED_SKU, Slot.CALLBACK_SCHEDULED, Slot.ALT_SUGGESTED,
         })
         self.assertEqual(BRIEF_MUST_NOT_ASK_KEYS, (
             Slot.ROOM_AREA_M2, Slot.BUDGET_VND, Slot.HAS_CHILDREN,
-            Slot.PRODUCT_ADVISED,
+            Slot.PRODUCT_ADVISED, Slot.PRICE_QUOTED_VND,
+            Slot.PREFERRED_SIZE, Slot.PREFERRED_COLOR, Slot.ORDER_ID,
+            Slot.COMPETITOR_PRICE_VND, Slot.SIZE, Slot.COLOR, Slot.PAYMENT,
         ))
-        self.assertEqual(_CUSTOMER_KEYS,
-                         sorted(PROFILE_SLOT_KEYS - TOOL_ONLY_SLOT_KEYS))
 
     def test_customer_and_tool_evidence_gates_are_unchanged(self):
         self.assertEqual(fact_evidence(Slot.BUDGET_VND, 5_000_000, "set",
                                        "Ngân sách tôi 5 triệu", []).source, "customer")
         self.assertIsNone(fact_evidence(Slot.PRODUCT_ADVISED, "SKU-AP-X", "set",
                                         "Tôi thích SKU-AP-X", []).source)
-        calls = [{"name": "catalog.search", "args": {"query": "máy lọc"},
-                  "result": {"items": [{"sku": "SKU-AP-X", "name": "AirPure X"}]}}]
-        proposals = [{"key": Slot.PRODUCT_ADVISED, "value": "SKU-AP-X"}]
-        self.assertEqual(accepted_candidates("Tư vấn giúp tôi", calls, proposals,
-                                             "Em gợi ý AirPure X ạ.")[0]["source_kind"],
-                         "tool")
-        self.assertEqual(accepted_candidates("Tư vấn giúp tôi", calls, proposals,
-                                             "Em sẽ kiểm tra thêm ạ."), [])
 
 
 if __name__ == "__main__":

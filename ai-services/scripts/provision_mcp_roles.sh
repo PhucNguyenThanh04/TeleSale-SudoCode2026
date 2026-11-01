@@ -25,12 +25,13 @@ ALTER ROLE mcp_order PASSWORD '$order_password';
 ALTER ROLE mcp_memory PASSWORD '$memory_password';
 
 GRANT CONNECT ON DATABASE "$PGDATABASE" TO mcp_catalog, mcp_order, mcp_memory;
-GRANT USAGE ON SCHEMA btc_source TO mcp_catalog, mcp_order;
+GRANT USAGE ON SCHEMA btc_source TO mcp_catalog, mcp_order, mcp_memory;
 GRANT USAGE ON SCHEMA runtime TO mcp_catalog, mcp_order, mcp_memory;
 GRANT SELECT ON btc_source.products, btc_source.variants, btc_source.promotions,
     btc_source.inventory_events, btc_source.customers, btc_source.crm_orders,
     btc_source.crm_sessions TO mcp_catalog, mcp_order;
 GRANT SELECT ON btc_source.policy_chunks TO mcp_catalog;
+GRANT SELECT ON btc_source.variants TO mcp_memory;
 GRANT SELECT ON runtime.tool_orders, runtime.promo_uses TO mcp_catalog;
 GRANT SELECT, INSERT, UPDATE ON runtime.tool_orders, runtime.tool_updates,
     runtime.tool_callbacks, runtime.tool_handoffs, runtime.promo_uses,
@@ -38,9 +39,8 @@ GRANT SELECT, INSERT, UPDATE ON runtime.tool_orders, runtime.tool_updates,
 GRANT USAGE, SELECT ON SEQUENCE runtime.tool_order_seq,
     runtime.tool_updates_id_seq, runtime.tool_callbacks_callback_id_seq,
     runtime.tool_handoffs_ticket_id_seq TO mcp_order;
-GRANT SELECT, INSERT, UPDATE, DELETE ON runtime.turns, runtime.episodes,
-    runtime.facts, runtime.order_links, runtime.write_operations,
-    runtime.pending_facts, runtime.erasure_requests,
+GRANT SELECT, INSERT, UPDATE, DELETE ON runtime.turns,
+    runtime.order_links, runtime.write_operations, runtime.erasure_requests,
     runtime.langmem_distillation_jobs TO mcp_memory;
 GRANT USAGE, SELECT ON SEQUENCE runtime.langmem_distillation_jobs_job_id_seq TO mcp_memory;
 DO \$\$ BEGIN

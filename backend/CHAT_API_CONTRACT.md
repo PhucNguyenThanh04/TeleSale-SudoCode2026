@@ -8,13 +8,11 @@ authentication integration are required before exposing this API publicly.
 
 ## Database and processes
 
-Import the BTC release into `btc_source`, then apply these additive migrations
-in order: `backend/migrations/0001_chat.sql`, `backend/migrations/0002_tools.sql`,
-`backend/migrations/0003_channel_identity.sql`, and
-`ai-services/migrations/0001_memory.sql` through
-`ai-services/migrations/0004_pending_facts.sql`. The first schema is the immutable BTC
-snapshot; `app_runtime` holds chat, orders, callbacks and handoffs; `ai_memory`
-holds turns, episodes and facts. Set the same `AI_INTERNAL_TOKEN` in
+Import the BTC release into `btc_source`, then apply backend migrations
+`0001_chat.sql` through `0005_runtime_schema.sql`, then the AI service migration
+`0001_current_memory_schema.sql`. `btc_source`
+holds the BTC snapshot; `runtime` holds chat, commerce, operational memory,
+and the LangGraph store. Set the same `AI_INTERNAL_TOKEN` in
 `backend/.env` and `ai-services/.env` for the backend-to-AI request header.
 
 ## Operator chat request

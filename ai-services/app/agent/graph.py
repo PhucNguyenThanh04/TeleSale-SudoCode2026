@@ -19,11 +19,10 @@ def build_graph(llm: BaseChatModel, tools: ToolGateway, memory: MemoryStore,
                 prompt_history_turns: int = DEFAULT_PROMPT_HISTORY_TURNS,
                 clock: Callable[[], datetime] | None = None,
                 guardrails_enabled: bool = True,
-                agent_kind: AgentKind = "deep",
-                fact_extraction_mode: str = "fallback"):
+                agent_kind: AgentKind = "deep"):
     """Production outer graph shared by the selectable agent implementations."""
     nodes = AgentNodes(llm, tools, memory, max_tool_calls, prompt_history_turns, clock,
-                       agent_kind=agent_kind, fact_extraction_mode=fact_extraction_mode)
+                       agent_kind=agent_kind)
     nodes.guardrails_enabled = guardrails_enabled
     graph = StateGraph(TurnState)
     graph.add_node("accept", nodes.accept)

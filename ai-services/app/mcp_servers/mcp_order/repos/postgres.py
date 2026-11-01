@@ -21,7 +21,13 @@ class OrderRepo(Database):
         result = await session.execute(text(
             f"SELECT customer_id,phone FROM btc_source.customers WHERE {column}=:identity"
         ), {"identity": identity})
-        return [dict(row._mapping) for row in result]
+        rows = [dict(row._mapping) for row in result]
+        if not rows and column != "phone" and len(identity) == 10 and identity.startswith("0") and identity.isdigit():
+            fallback = await session.execute(text(
+                "SELECT customer_id,phone FROM btc_source.customers WHERE phone=:identity"
+            ), {"identity": identity})
+            rows = [dict(row._mapping) for row in fallback]
+        return rows
 
     async def phone_owned(self, session, phone: str, customer_id: str) -> bool:
         result = await session.execute(text("""SELECT 1 FROM btc_source.customers

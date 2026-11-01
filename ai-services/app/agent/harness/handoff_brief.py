@@ -113,7 +113,6 @@ def build_handoff_brief(state: TurnState, proposal: dict,
             current_episode = apply_episode_delta(current_episode, provisional,
                 source_turn_id=str(state["request"].client_msg_id),
                 customer_text=text, agent_text="", prior_open_items=prior_open)
-            state["handoff_episode_delta"] = provisional
         except ValueError:
             pass
     for item in _open_episode_items([current_episode, *prior_episodes], "question"):

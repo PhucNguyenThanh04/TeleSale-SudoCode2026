@@ -50,7 +50,7 @@ class ReferenceGateway:
 
 
 class MemoryFreshnessContract(unittest.IsolatedAsyncioTestCase):
-    async def test_initial_call_establishes_customer_room_area(self):
+    async def test_initial_call_keeps_same_session_history_without_immediate_fact(self):
         case = CASES["return_after_months"]
         first_call = case["calls"][0]
         model = FakeToolModel(replies=[
@@ -60,12 +60,12 @@ class MemoryFreshnessContract(unittest.IsolatedAsyncioTestCase):
         memory = FakeMemory()
         runtime = DeepHarnessRuntime(model, FakeGateway(customer_id="C106"), memory)
         session = uuid4()
-        for item in first_call["turns"]:
+        for index, item in enumerate(first_call["turns"], start=1):
             request = turn(item["text"], session)
             await runtime.run(request)
-            actual = {"customer_id": runtime.state_for(request).get("customer_id"),
-                      "profile": memory.profile}
-            self.assertEqual(check_snapshot(item["expected_after_turn"], actual), [])
+            self.assertEqual(runtime.state_for(request).get("customer_id"), "C106")
+            self.assertEqual(len(memory.turns[str(session)]), index)
+            self.assertEqual(memory.profile, {})
 
     def test_old_quote_cannot_be_presented_as_current_price(self):
         sku, on = "SKU-AP-MINI", "2027-06-15"

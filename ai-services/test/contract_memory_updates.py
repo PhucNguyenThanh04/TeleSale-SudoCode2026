@@ -4,20 +4,27 @@ import importlib.util
 import unittest
 import warnings
 from functools import lru_cache
+from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 from uuid import uuid4
 
 from langchain_core.messages import AIMessage
 
 from app.agent.harness.runtime import DeepHarnessRuntime
 from app.agent.harness.context import prompt_context
-from app.agent.memory.fact_candidates import accepted_candidates
 from app.agent.memory.reported_facts import reported_tool_candidates
+from app.mcp_servers.mcp_memory.distiller_worker import process_one
+from app.mcp_servers.mcp_memory.repos.langmem_projection import LangMemProjection
 from app.mcp_servers.mcp_memory.services.memory import write
 from app.constants import DEFAULT_PROMPT_HISTORY_TURNS
+from app.schemas.langmem import (CustomerCallEpisodeCandidate, EvidencedText,
+                                 TopicProposal)
+from contract_memory_identity import ContractMemory, ContractToolModel
 from memory_contract import check_snapshot, load_cases
-from test_deep_memory import FakeGateway, FakeMemory, FakeToolModel, turn
+from test_deep_memory import FakeGateway, turn
+from test_langmem_projection import FakeStore
 from test_mcp_memory import TurnRepo
 from btc_data import btc_data_dir
 
@@ -79,9 +86,9 @@ class MemoryUpdateContract(unittest.IsolatedAsyncioTestCase):
                     return mock.pricing_get_quote(sku=args["sku"], on=args["on"])
                 return {"error": "unavailable"}
 
-        model = FakeToolModel(replies=[])
+        model = ContractToolModel(replies=[])
         gateway = Gateway()
-        memory = FakeMemory()
+        memory = ContractMemory(model)
         runtime = DeepHarnessRuntime(model, gateway, memory)
         session = uuid4()
         final_first_call_context = None
@@ -127,7 +134,7 @@ class MemoryUpdateContract(unittest.IsolatedAsyncioTestCase):
         case = CASES["correction"]
         first, second, hypothetical = case["calls"][0]["turns"]
         later = case["calls"][1]["turns"][0]
-        model = FakeToolModel(replies=[
+        model = ContractToolModel(replies=[
             AIMessage(content='{"answer":"Dạ.","fact_candidates":'
                               '[{"key":"preferred_color","value":"đen","source":"customer"}]}'),
             AIMessage(content='{"answer":"Dạ, màu trắng ạ.","fact_candidates":'
@@ -135,7 +142,7 @@ class MemoryUpdateContract(unittest.IsolatedAsyncioTestCase):
             AIMessage(content='{"answer":"Dạ, em giải thích thêm ạ.","fact_candidates":'
                               '[{"key":"preferred_color","value":"xanh","source":"customer"}]}'),
             AIMessage(content="Dạ, em tư vấn tiếp ạ.")])
-        memory = FakeMemory()
+        memory = ContractMemory(model)
         runtime = DeepHarnessRuntime(model, FakeGateway(customer_id="C101"), memory)
         session = uuid4()
         for item in (first, second, hypothetical):
@@ -152,53 +159,113 @@ class MemoryUpdateContract(unittest.IsolatedAsyncioTestCase):
                                         {"profile": memory.profile}), [])
 
     async def test_long_episode_keeps_all_four_product_references(self):
+        import json
+
+        class DistillRepo(TurnRepo):
+            def __init__(self):
+                super().__init__()
+                self.jobs = []
+                self.completed = set()
+
+            async def insert_turn(self, _conn, session_id, number, customer_id,
+                                  channel, on, customer_text, agent_text,
+                                  client_msg_id=None):
+                self.rows.setdefault(session_id, []).append({
+                    "turn_no": number, "customer_id": customer_id,
+                    "channel": channel, "on_date": on,
+                    "customer_text": customer_text, "agent_text": agent_text,
+                    "client_msg_id": client_msg_id,
+                })
+
+            async def enqueue_distillation(self, _conn, session_id, customer_id,
+                                           source_turn_id, tool_observations,
+                                           outcome="khac", turn_no=None):
+                num = turn_no or len(self.rows.get(session_id, []))
+                self.jobs.append({
+                    "job_id": len(self.jobs) + 1, "session_id": session_id,
+                    "customer_id": customer_id, "source_turn_id": source_turn_id,
+                    "turn_no": num, "tool_observations": tool_observations,
+                    "verified_outcome": outcome, "attempts": 1,
+                    "accepted_proposals": None,
+                })
+
+            async def claim_distillation(self, _conn, _lease):
+                return self.jobs.pop(0) if self.jobs else None
+
+            async def is_erasure_blocked(self, *_):
+                return False
+
+            async def distillation_turn(self, _conn, job):
+                return next((r for r in self.rows.get(job["session_id"], [])
+                             if r["turn_no"] == job["turn_no"]), None)
+
+            async def recent_session_turns(self, _conn, session_id, _customer_id,
+                                           through_turn_no, limit=5):
+                return [r for r in self.rows.get(session_id, [])
+                        if r["turn_no"] <= through_turn_no][-limit:]
+
+            async def save_distillation_proposals(self, _conn, _job_id, _stored):
+                pass
+
+            async def finish_distillation(self, _conn, job_id, status, *_args, **_kwargs):
+                if status == "completed":
+                    self.completed.add(job_id)
+
+            async def completed_job_revisions(self, _conn, _customer_id, revisions):
+                return self.completed & set(revisions)
+
+        product_skus = (("Mini", "SKU-AP-MINI"), ("Pro", "SKU-AP-PRO"),
+                        ("RO9", "SKU-WF-RO9"), ("DC1", "SKU-FAN-DC1"))
+
+        async def extractor(messages, _existing, _open_items=None):
+            payload = json.loads(messages[-1]["content"])
+            text = payload["customer_text"]
+            topics = [
+                TopicProposal(
+                    scope_type="product", scope_id=sku,
+                    customer_goal=EvidencedText(text=text, evidence_quote=text),
+                )
+                for label, sku in product_skus if label in text
+            ]
+            if not topics:
+                return [], None
+            return [], CustomerCallEpisodeCandidate(
+                customer_id=payload["customer_id"],
+                session_id=payload["session_id"],
+                channel=payload["channel"],
+                on=payload["on"],
+                source_turn_ids=[payload["turn_id"]],
+                topics=topics,
+            )
+
         case = CASES["many_products"]
-        repo = TurnRepo()
+        repo = DistillRepo()
+        store = FakeStore()
+
+        @asynccontextmanager
+        async def connect(*_args, **_kwargs):
+            yield store
+
+        projection = LangMemProjection("postgresql://user:pass@localhost/test")
         session_id = str(uuid4())
-        for item in case["calls"][0]["turns"]:
-            await write(repo, "commit_turn", "C105", session_id, {
-                "customer_text": item["text"], "agent_text": "Dạ, em ghi nhận.",
-                "on": "2026-10-15", "channel": "hotline",
-                "client_msg_id": str(uuid4()), "facts": []})
-        summary = repo.episode_summaries[session_id]
+        with patch("app.mcp_servers.mcp_memory.repos.langmem_projection."
+                   "AsyncPostgresStore.from_conn_string", connect):
+            for item in case["calls"][0]["turns"]:
+                quote = item["expected_after_turn"].get("tool_calls", {}).get("contains")
+                obs = ([{"name": "pricing.get_quote", "args": quote["args"],
+                         "result": {"sku": quote["args"]["sku"],
+                                    "final_price_vnd": 1_000_000,
+                                    "applied_promos": []}}] if quote else [])
+                await write(repo, "commit_turn", "C105", session_id, {
+                    "customer_text": item["text"], "agent_text": "Dạ, em ghi nhận.",
+                    "on": "2026-10-15", "channel": "hotline",
+                    "client_msg_id": str(uuid4()), "tool_observations": obs})
+                await process_one(repo, extractor, projection)
+            episode = await projection.get_episode("C105", session_id)
+        summary = episode["summary"]
         for product in ("Mini", "Pro", "RO9", "DC1"):
             with self.subTest(product=product):
                 self.assertIn(product, summary)
-
-    def test_two_quotes_in_one_turn_retain_each_sku(self):
-        mock = btc_mock()
-        skus = ("SKU-AP-MINI", "SKU-AP-PRO")
-        on = "2026-10-15"
-        calls = [{"name": "pricing.get_quote", "args": {"sku": sku, "on": on},
-                  "result": mock.pricing_get_quote(sku=sku, on=on)} for sku in skus]
-        answer = " | ".join(
-            f"{sku}: {call['result']['final_price_vnd']:,} đồng"
-            for sku, call in zip(skus, calls))
-        accepted = accepted_candidates("Cho tôi giá hai mẫu đó.", calls,
-                                       reported_tool_candidates(answer, calls), answer)
-        remembered_skus = {fact["value"] for fact in accepted
-                           if fact["key"] == "product_advised"}
-        self.assertEqual(remembered_skus, set(skus))
-
-    def test_one_quote_still_retains_its_sku(self):
-        mock = btc_mock()
-        sku = "SKU-AP-MINI"
-        quote = mock.pricing_get_quote(sku=sku, on="2026-10-15")
-        calls = [{"name": "pricing.get_quote",
-                  "args": {"sku": sku, "on": "2026-10-15"}, "result": quote}]
-        answer = f"{sku}: {quote['final_price_vnd']:,} đồng"
-        accepted = accepted_candidates("Giá mẫu Mini?", calls,
-                                       reported_tool_candidates(answer, calls), answer)
-        self.assertIn(sku, {fact["value"] for fact in accepted
-                            if fact["key"] == "product_advised"})
-
-    def test_two_room_constraints_need_separate_scope(self):
-        text = "Phòng ngủ 12 m², còn phòng khách 45 m²."
-        proposals = [{"key": "room_area_m2", "value": area, "source": "customer"}
-                     for area in (12, 45)]
-        accepted = accepted_candidates(text, [], proposals)
-        self.assertEqual({fact["value"] for fact in accepted
-                          if fact["key"] == "room_area_m2"}, {12, 45})
 
     def test_reported_quote_and_promo_keep_sku_association(self):
         mock = btc_mock()

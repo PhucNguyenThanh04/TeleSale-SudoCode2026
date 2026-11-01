@@ -11,7 +11,7 @@ from app.mcp_servers.mcp_shared.pii import mask_pii
 
 
 def store_dsn(dsn: str) -> str:
-    """Force unqualified LangGraph DDL and DML into its dedicated schema."""
+    """Force unqualified LangGraph DDL and DML into the runtime schema."""
     url = make_url(dsn.replace("postgresql+asyncpg://", "postgresql://", 1))
     query = dict(url.query)
     query["options"] = "-csearch_path=runtime"
@@ -147,19 +147,25 @@ class LangMemProjection:
                 write_op = (same_value.get("write_op", "set")
                     if isinstance(same_value, dict) else
                     "supersede" if previous and not previous.get("deleted") else "set")
-                value = _safe({"schema_version": 1, "key": fact["key"],
+                raw_record = {"schema_version": 1, "key": fact["key"],
                     "value": fact["value"], "scope_type": scope_type,
                     "scope_id": scope_id, "source_kind": fact["source_kind"],
                     "source_tool": fact.get("source_tool"),
                     "evidence_quote": fact.get("evidence_quote"),
                     "source_turn_id": source_turn_id, "session_id": session_id,
                     "source": f"langmem:{session_id}:{source_turn_id}", "on": on,
-                    "revision": revision, "write_op": write_op})
+                    "revision": revision, "write_op": write_op}
+                if fact.get("valid_until"):
+                    raw_record["valid_until"] = fact["valid_until"]
+                value = _safe(raw_record)
                 await store.aput(namespace, key, value, index=False)
-                written.append({"key": fact["key"], "value": fact["value"],
-                                "op": write_op, "customer_id": customer_id,
-                                "scope_type": scope_type, "scope_id": scope_id,
-                                "evidence_quote": fact.get("evidence_quote")})
+                entry = {"key": fact["key"], "value": fact["value"],
+                         "op": write_op, "customer_id": customer_id,
+                         "scope_type": scope_type, "scope_id": scope_id,
+                         "evidence_quote": fact.get("evidence_quote")}
+                if fact.get("valid_until"):
+                    entry["valid_until"] = fact["valid_until"]
+                written.append(entry)
         return written
 
     async def list_fact_versions(self, customer_id: str) -> list[dict]:
@@ -180,17 +186,74 @@ class LangMemProjection:
 
     async def put_episode(self, customer_id: str, session_id: str,
                           canonical: dict, *, revision: int = -1) -> None:
-        value = _safe({"schema_version": 1, "session_id": session_id,
+        record = {"schema_version": 1, "session_id": session_id,
             "revision": revision,
             "channel": canonical.get("channel"), "on": canonical.get("on_date"),
             "summary": canonical.get("summary", ""),
             "outcome": canonical.get("outcome", "khac"),
             "status": canonical.get("status", "active"),
             "topics": _json_array(canonical.get("topics", [])),
-            "resolved_prior_items": _json_array(canonical.get("resolved_prior_items", []))})
+            "resolved_prior_items": _json_array(canonical.get("resolved_prior_items", []))}
+        if canonical.get("actions_completed"):
+            record["actions_completed"] = _json_array(canonical["actions_completed"])
+        if canonical.get("quoted_prices"):
+            record["quoted_prices"] = _json_array(canonical["quoted_prices"])
+        value = _safe(record)
         async with AsyncPostgresStore.from_conn_string(self.dsn, index=None) as store:
             key = json.dumps([session_id, revision], separators=(",", ":"))
             await store.aput(self.namespace(customer_id), key, value, index=False)
+
+    async def compact_customer(self, customer_id: str,
+                               completed_revisions: set[int]) -> int:
+        """Delete superseded completed fact and episode revisions while keeping latest."""
+        if not customer_id or not completed_revisions:
+            return 0
+        deleted = 0
+        fact_ns = self.fact_namespace(customer_id)
+        ep_ns = self.namespace(customer_id)
+        async with AsyncPostgresStore.from_conn_string(self.dsn, index=None) as store:
+            fact_items = [item for item in await _search_all(store, fact_ns)
+                          if item.namespace == fact_ns and isinstance(item.value, dict)
+                          and item.value.get("schema_version") == 1]
+            fact_groups: dict[tuple[str, str, str], list] = {}
+            for item in fact_items:
+                rev = _revision(item.value)
+                if rev > 0 and rev not in completed_revisions:
+                    continue
+                ident = (item.value.get("scope_type", "global"),
+                         item.value.get("scope_id", ""),
+                         str(item.value.get("key", "")))
+                if ident[2]:
+                    fact_groups.setdefault(ident, []).append(item)
+            for group in fact_groups.values():
+                if len(group) <= 1:
+                    continue
+                newest = max(group, key=lambda x: _revision(x.value))
+                for item in group:
+                    if item.key != newest.key:
+                        await store.adelete(item.namespace, item.key)
+                        deleted += 1
+
+            ep_items = [item for item in await _search_all(store, ep_ns)
+                        if item.namespace == ep_ns and isinstance(item.value, dict)
+                        and item.value.get("schema_version") == 1]
+            ep_groups: dict[str, list] = {}
+            for item in ep_items:
+                rev = _revision(item.value)
+                if rev > 0 and rev not in completed_revisions:
+                    continue
+                sid = item.value.get("session_id")
+                if isinstance(sid, str) and sid:
+                    ep_groups.setdefault(sid, []).append(item)
+            for group in ep_groups.values():
+                if len(group) <= 1:
+                    continue
+                newest = max(group, key=lambda x: _revision(x.value))
+                for item in group:
+                    if item.key != newest.key:
+                        await store.adelete(item.namespace, item.key)
+                        deleted += 1
+        return deleted
 
     async def list_episode_versions(self, customer_id: str) -> list[dict]:
         namespace = self.namespace(customer_id)

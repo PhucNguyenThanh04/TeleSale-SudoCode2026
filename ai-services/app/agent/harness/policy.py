@@ -119,12 +119,24 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
             return None
     if name == "order.create":
         sku = args.get("sku")
-        observations = state.get("tool_calls", [])
-        stocked = any(call["name"] == "inventory.check" and call["args"].get("sku") == sku
-                      and call["result"].get("in_stock") is True for call in observations)
-        quoted = any(call["name"] == "pricing.get_quote" and call["args"].get("sku") == sku
-                     and call["result"].get("final_price_vnd") == args.get("price_vnd")
-                     for call in observations)
+        observations = [*state.get("session_tool_calls", []),
+                        *state.get("tool_calls", [])]
+        stocked = any(
+            call["name"] == "inventory.check"
+            and (call["args"].get("sku") == sku
+                 or (isinstance(sku, str) and isinstance(call["args"].get("sku"), str)
+                     and sku.startswith(call["args"]["sku"] + "-")))
+            and call["result"].get("in_stock") is True
+            for call in observations
+        )
+        quoted = any(
+            call["name"] == "pricing.get_quote"
+            and (call["args"].get("sku") == sku
+                 or (isinstance(sku, str) and isinstance(call["args"].get("sku"), str)
+                     and sku.startswith(call["args"]["sku"] + "-")))
+            and call["result"].get("final_price_vnd") == args.get("price_vnd")
+            for call in observations
+        )
         if not stocked or not quoted:
             return None
     return name, args

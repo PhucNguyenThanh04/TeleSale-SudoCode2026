@@ -3,26 +3,12 @@
 from typing import Any, Protocol
 
 from app.agent.mcp.gateway import ToolGateway
-from app.agent.guardrails.checks import safe_tool_result
-
-
-_DISTILLATION_TOOLS = {"catalog.search", "catalog.get_product", "inventory.check",
-                       "pricing.get_quote", "policy.search", "order.get_status"}
+from app.mcp_servers.mcp_shared.memory_observations import memory_observations
 
 
 def safe_observations(calls: list[dict]) -> list[dict]:
     """Bound successful business observations before crossing the memory MCP."""
-    result = []
-    for call in calls[:20]:
-        if call.get("name") not in _DISTILLATION_TOOLS or not isinstance(call.get("result"), dict):
-            continue
-        if "error" in call["result"]:
-            continue
-        value = {"name": call["name"], "args": safe_tool_result(call.get("args") or {}),
-                 "result": safe_tool_result(call["result"])}
-        if len(str(value)) <= 4000:
-            result.append(value)
-    return result[:8]
+    return memory_observations(calls)
 
 
 def memory_error_code(result: Any) -> str:
@@ -46,9 +32,8 @@ class MemoryStore(Protocol):
 
     async def commit_turn(self, session_id: str, customer_id: str | None,
                           customer_text: str, agent_text: str, on: str, channel: str,
-                          client_msg_id: str, facts: list[dict[str, Any]],
+                          client_msg_id: str,
                           orders: list[str] | None = None,
-                          episode_delta: dict[str, Any] | None = None,
                           outcome: str = "khac",
                           tool_observations: list[dict[str, Any]] | None = None) -> dict: ...
 
@@ -59,13 +44,11 @@ class MCPMemoryStore:
     supports_tool_observations = True
 
     def __init__(self, gateway: ToolGateway, namespace: str = "",
-                 include_prior: bool = True, max_episodes: int = 5,
-                 langmem_primary: bool = False) -> None:
+                 include_prior: bool = True, max_episodes: int = 5) -> None:
         self.gateway = gateway
         self.namespace = namespace
         self.include_prior = include_prior
         self.max_episodes = max_episodes
-        self.langmem_primary = langmem_primary
 
     def _id(self, customer_id: str | None) -> str | None:
         return f"{self.namespace}:{customer_id}" if customer_id and self.namespace else customer_id
@@ -78,16 +61,13 @@ class MCPMemoryStore:
 
     async def commit_turn(self, session_id: str, customer_id: str | None,
                           customer_text: str, agent_text: str, on: str, channel: str,
-                          client_msg_id: str, facts: list[dict[str, Any]],
+                          client_msg_id: str,
                           orders: list[str] | None = None,
-                          episode_delta: dict[str, Any] | None = None,
                           outcome: str = "khac",
                           tool_observations: list[dict[str, Any]] | None = None) -> dict:
         data = {"customer_text": customer_text, "agent_text": agent_text,
                 "on": on, "channel": channel, "client_msg_id": client_msg_id,
-                "facts": facts, "orders": orders or []}
-        if episode_delta:
-            data["episode_delta"] = episode_delta
+                "orders": orders or []}
         if outcome != "khac":
             data["outcome"] = outcome
         if tool_observations:

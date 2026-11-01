@@ -17,7 +17,6 @@ class MCPLauncherTest(unittest.TestCase):
             database_url=SecretStr("postgresql+asyncpg://admin:hidden@127.0.0.1:5432/telesale"),
             mcp_host="127.0.0.1", mcp_catalog_port=8011,
             mcp_order_port=8012, mcp_memory_port=8013,
-            langmem_mode="enabled",
         )
         with tempfile.TemporaryDirectory() as directory:
             secrets = Path(directory)

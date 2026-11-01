@@ -1,4 +1,4 @@
-"""The enabled path uses LangGraph store for durable customer knowledge."""
+"""LangGraph store is the only durable customer knowledge path."""
 
 import unittest
 from unittest.mock import AsyncMock
@@ -19,18 +19,18 @@ class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
     async def test_legacy_long_term_actions_are_rejected_in_primary_mode(self):
         self.assertEqual(await write(None, "fact", "C1", str(uuid4()),
             {"key": "preferred_color", "op": "set", "value": "xanh",
-             "source": "customer"}, langmem_mode="enabled"),
-            {"error": "legacy_memory_action_disabled"})
+             "source": "customer"}),
+            {"error": "unknown_memory_action"})
         self.assertEqual(await write(None, "seed_episode", "C1", str(uuid4()),
             {"on": "2026-10-15", "summary": "hỏi máy lọc"},
-            langmem_mode="enabled"),
-            {"error": "legacy_memory_action_disabled"})
+            ),
+            {"error": "unknown_memory_action"})
         self.assertEqual(await write(None, "commit_turn", "C1", str(uuid4()),
             {"client_msg_id": str(uuid4()), "customer_text": "Tôi thích màu xanh",
              "agent_text": "Dạ", "channel": "hotline", "on": "2026-10-15",
              "facts": [{"key": "preferred_color", "value": "xanh", "op": "set",
                         "source_kind": "customer", "evidence_quote": "màu xanh"}]},
-            langmem_mode="enabled"),
+            ),
             {"error": "legacy_memory_action_disabled"})
 
     def test_phone_cannot_be_used_as_fact_scope(self):
@@ -46,7 +46,6 @@ class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_agent_commits_turn_without_legacy_proposals(self):
         memory = AsyncMock()
-        memory.langmem_primary = True
         memory.supports_tool_observations = True
         memory.commit_turn.return_value = {"turn_no": 1, "memory_writes": []}
         nodes = AgentNodes(None, None, memory, 10, 5,
@@ -54,13 +53,11 @@ class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
         request = SimpleNamespace(session_id=uuid4(), client_msg_id=uuid4(),
                                   on=date(2026, 10, 15), channel="hotline")
         from unittest.mock import patch
-        with patch("app.agent.harness.agent_nodes.accepted_candidates",
-                   side_effect=AssertionError("legacy extraction used")):
-            result = await nodes.persist_agent({"request": request,
-                "safe_text": "Tôi thích màu xanh", "agent_text": "Dạ",
-                "customer_id": "C1", "tool_calls": []})
+        result = await nodes.persist_agent({"request": request,
+            "safe_text": "Tôi thích màu xanh", "agent_text": "Dạ",
+            "customer_id": "C1", "tool_calls": []})
         self.assertEqual(result, {"memory_writes": []})
-        self.assertEqual(memory.commit_turn.await_args.args[7], [])
+        self.assertEqual(len(memory.commit_turn.await_args.args), 7)
 
     async def test_read_uses_store_without_legacy_fact_or_episode_queries(self):
         class Repo(TurnRepo):
@@ -84,7 +81,7 @@ class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
             "on": "2026-10-15", "schema_version": 1}]
         projection.list_episode_versions.return_value = []
         result = await read(repo, "C1", str(uuid4()),
-                            langmem_mode="enabled", projector=projection)
+                            projector=projection)
         self.assertEqual(result["profile"]["preferred_color"]["value"], "xanh")
         projection.list_fact_versions.assert_awaited_once_with("C1")
 
@@ -95,7 +92,7 @@ class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
             async def order_links(self, *_):
                 return []
         result = await read(Repo(), "C1", str(uuid4()),
-                            langmem_mode="enabled", projector=projection)
+                            projector=projection)
         self.assertEqual(result, {"error": "memory_store_unavailable"})
 
     async def test_commit_does_not_write_legacy_facts_or_episodes(self):
@@ -113,7 +110,7 @@ class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
         result = await write(repo, "commit_turn", "C1", session,
             {"client_msg_id": turn, "customer_text": "Tôi thích màu xanh",
              "agent_text": "Dạ", "channel": "hotline", "on": "2026-10-15",
-             "facts": []}, langmem_mode="enabled")
+             })
         self.assertEqual(result, {"turn_no": 1, "memory_writes": []})
         repo.enqueue_distillation.assert_awaited_once()
         repo.insert_fact.assert_not_awaited()
@@ -263,3 +260,70 @@ class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
         extractor = AsyncMock(return_value=([], None))
         self.assertTrue(await process_one(repo, extractor, projection))
         self.assertEqual(projection.put_episode.await_args.args[2]["outcome"], "chot_don")
+
+    async def test_successful_order_fact_survives_empty_langmem_proposal(self):
+        from contextlib import asynccontextmanager
+        repo = AsyncMock()
+        @asynccontextmanager
+        async def transaction():
+            yield object()
+        repo.transaction = transaction
+        session, turn = str(uuid4()), str(uuid4())
+        repo.claim_distillation.return_value = {"job_id": 9, "customer_id": "C1",
+            "session_id": session, "source_turn_id": turn, "attempts": 1,
+            "tool_observations": [{"name": "order.create",
+                "args": {"sku": "SKU-SN-CAS-39-DEN", "payment": "COD"},
+                "result": {"status": "created", "order_id": "OD682761"}}],
+            "verified_outcome": "chot_don"}
+        repo.distillation_turn.return_value = {"customer_text": "Lên đơn giúp tôi",
+            "agent_text": "Dạ, đơn OD682761 đã tạo.",
+            "on_date": "2026-10-15", "channel": "hotline"}
+        repo.is_erasure_blocked.return_value = False
+        repo.variant_details.return_value = {"variant_sku": "SKU-SN-CAS-39-DEN",
+            "parent_sku": "SKU-SN-CAS",
+            "size": 39, "color": "den"}
+        projection = AsyncMock()
+        projection.list_fact_versions.return_value = []
+        projection.list_episode_versions.return_value = []
+        projection.put_facts.return_value = [{"key": "order_id", "value": "OD682761",
+                                             "op": "set", "customer_id": "C1"}]
+        extractor = AsyncMock(return_value=([], None))
+        await process_one(repo, extractor, projection)
+        facts = projection.put_facts.await_args.args[4]
+        self.assertIn({"key": "order_id", "value": "OD682761", "op": "set",
+            "scope_type": "global", "scope_id": "", "source_kind": "tool",
+            "source_tool": "order.create", "source_turn_id": turn,
+            "evidence_quote": "order.create:OD682761"}, facts)
+        self.assertEqual({fact["key"]: fact["value"] for fact in facts
+                          if fact["key"] in {"variant_sku", "size", "color", "payment"}},
+                         {"variant_sku": "SKU-SN-CAS-39-DEN", "size": 39,
+                          "color": "den", "payment": "COD"})
+
+    async def test_distiller_sees_recent_turns_from_same_verified_session(self):
+        from contextlib import asynccontextmanager
+        import json
+        repo = AsyncMock()
+        @asynccontextmanager
+        async def transaction():
+            yield object()
+        repo.transaction = transaction
+        session, earlier, current = str(uuid4()), str(uuid4()), str(uuid4())
+        repo.claim_distillation.return_value = {"job_id": 10, "customer_id": "C1",
+            "session_id": session, "source_turn_id": current, "turn_no": 2,
+            "attempts": 1, "tool_observations": []}
+        repo.distillation_turn.return_value = {"customer_text": "Màu đen",
+            "agent_text": "Dạ", "on_date": "2026-10-15", "channel": "hotline"}
+        repo.recent_session_turns.return_value = [
+            {"client_msg_id": earlier, "customer_text": "Size 39",
+             "agent_text": "Dạ", "on_date": "2026-10-15", "channel": "hotline"},
+            {"client_msg_id": current, "customer_text": "Màu đen",
+             "agent_text": "Dạ", "on_date": "2026-10-15", "channel": "hotline"}]
+        repo.is_erasure_blocked.return_value = False
+        projection = AsyncMock()
+        projection.list_fact_versions.return_value = []
+        projection.list_episode_versions.return_value = []
+        extractor = AsyncMock(return_value=([], None))
+        await process_one(repo, extractor, projection)
+        messages = extractor.await_args.args[0]
+        self.assertEqual([json.loads(message["content"])["turn_id"]
+                          for message in messages], [earlier, current])

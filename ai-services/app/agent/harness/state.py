@@ -22,6 +22,7 @@ class TurnState(TypedDict, total=False):
     customer_name: str | None
     honorific: str | None
     crm_sessions: list[dict[str, Any]]
+    crm_orders: list[dict[str, Any]]
     received_at_monotonic: float
     owned_order_ids: list[str]
     history: list[dict[str, str]]
@@ -29,12 +30,11 @@ class TurnState(TypedDict, total=False):
     scoped_facts: dict[str, dict[str, dict[str, Any]]]
     episodes: list[dict[str, Any]]
     current_episode: dict[str, Any] | None
-    episode_proposal: dict[str, Any] | None
-    handoff_episode_delta: dict[str, Any] | None
     remembered_order_ids: list[str]
     call_brief: dict[str, Any] | None
     turn_no: int
     decision: Decision
+    session_tool_calls: list[dict[str, Any]]
     tool_calls: list[dict[str, Any]]
     tool_count: int
     tool_failed: bool
@@ -43,9 +43,6 @@ class TurnState(TypedDict, total=False):
     agent_text: str
     agent_draft: str
     verifier_events: list[dict[str, Any]]
-    fact_candidates: list[dict[str, Any]]
-    model_fact_candidates: list[dict[str, Any]]
-    plan_envelopes: list[dict[str, Any]]
     needs_handoff: bool
     handoff_ticket_id: str | None
     memory_writes: list[dict[str, Any]]

@@ -4,7 +4,6 @@ import unittest
 
 from app.agent.guardrails.checks import (FactRejectReason, customer_budget_amounts,
                                          fact_evidence)
-from app.agent.memory.fact_candidates import accepted_candidates, customer_slot_cues
 from app.constants import Slot
 
 
@@ -14,7 +13,6 @@ class BudgetBoundsTests(unittest.TestCase):
                      "tối đa 4 triệu", "dưới 4 triệu", "khong vuot 4tr",
                      "tôi muốn máy giá dưới 4 triệu"):
             with self.subTest(text=text):
-                self.assertIn(Slot.BUDGET_VND, customer_slot_cues(text))
                 self.assertEqual(customer_budget_amounts(text), {4_000_000})
                 self.assertEqual(fact_evidence(Slot.BUDGET_VND, 4_000_000, "set", text, []).source,
                                  "customer")
@@ -29,8 +27,6 @@ class BudgetBoundsTests(unittest.TestCase):
                 self.assertNotIn(4_000_000, customer_budget_amounts(text))
                 self.assertEqual(fact_evidence(Slot.BUDGET_VND, 4_000_000, "set", text, []).reason,
                                  FactRejectReason.UNSUPPORTED_FLOOR)
-                self.assertEqual(accepted_candidates(text, [], [
-                    {"key": Slot.BUDGET_VND, "value": 4_000_000}]), [])
 
     def test_an_independent_ceiling_survives_a_floor(self):
         text = "Tôi chi ít nhất 4 triệu nhưng tối đa 6 triệu."

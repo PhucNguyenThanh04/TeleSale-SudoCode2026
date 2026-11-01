@@ -17,6 +17,16 @@ from eval_harness.scorer import (
 
 
 class TestEvalHarness(unittest.TestCase):
+    def test_ccr_does_not_credit_carryover_after_prior_job_failure(self):
+        scenarios = {"S1": {"calls": {"call_1": {},
+            "call_2": {"must_carry_over": ["size"]}}}}
+        trace = {("S1", "call_1"): [{"memory_error": "job_failed"}],
+                 ("S1", "call_2"): [{"facts_used": ["size"],
+                     "tool_calls": [{"args": {"size": 39}}]}]}
+        result = evaluate_memory_metrics(scenarios, trace)
+        self.assertEqual(result["ccr_pct"], 0.0)
+        self.assertEqual(result["memory_unavailable_calls"], 1)
+
     def test_runner_rejects_retired_memory_variants_before_loading_scenarios(self):
         import subprocess
         import sys
@@ -157,7 +167,7 @@ class TestScenarioInput(unittest.IsolatedAsyncioTestCase):
         from types import SimpleNamespace
         from eval_harness.benchmark_runner import run_scenario_stream
         class Runtime:
-            memory = SimpleNamespace(langmem_primary=True)
+            memory = SimpleNamespace()
             async def run(self, request):
                 return SimpleNamespace(agent_text="Dạ em ghi nhận.", call_brief=None)
             def state_for(self, request):
@@ -174,6 +184,112 @@ class TestScenarioInput(unittest.IsolatedAsyncioTestCase):
         row = traces["SAMPLE-01", "call_1"][0]
         self.assertEqual(row["memory_writes"][0]["source"], "call_1#turn1")
         self.assertNotIn("_client_msg_id", row)
+
+    async def test_failed_distillation_keeps_later_scenarios_and_streams_turns(self):
+        from types import SimpleNamespace
+        from eval_harness.benchmark_runner import run_scenario_stream
+
+        class Runtime:
+            memory = SimpleNamespace()
+
+            async def run(self, request):
+                return SimpleNamespace(agent_text="Dạ em ghi nhận.", call_brief=None)
+
+            def state_for(self, request):
+                return {"profile": {}, "tool_calls": [], "memory_writes": []}
+
+        seen = []
+        waits = 0
+
+        async def wait(_source_id):
+            nonlocal waits
+            waits += 1
+            if waits == 1:
+                raise TimeoutError("worker timed out")
+
+        async def capture(_ids):
+            return {}
+
+        scenarios = {sid: {"customer_phone": "0900000000", "calls": {
+            "call_1": {"customer_turns": ["Tôi cần tư vấn"]}}}
+            for sid in ("SAMPLE-01", "SAMPLE-02")}
+        trace = await run_scenario_stream(Runtime(), scenarios,
+            wait_for_jobs=wait, capture_writes=capture, on_row=seen.append)
+        self.assertEqual(len(seen), 2)
+        self.assertEqual(len(trace), 2)
+        self.assertEqual(trace["SAMPLE-01", "call_1"][0]["memory_error"], "timeout")
+        self.assertNotIn("memory_error", trace["SAMPLE-02", "call_1"][0])
+        self.assertEqual(seen[0]["scenario_id"], "SAMPLE-01")
+
+    def test_memory_failure_report_counts_failed_and_timed_out_turns(self):
+        from eval_harness.benchmark_runner import memory_failure_counts
+
+        trace = {("S1", "call_1"): [
+            {"memory_error": "timeout"}, {"memory_error": "job_failed"}],
+            ("S2", "call_1"): [{"memory_error": "timeout"}, {}]}
+        self.assertEqual(memory_failure_counts(trace),
+                         {"timeout": 2, "job_failed": 1, "capture_failed": 0})
+
+    async def test_partial_trace_survives_unexpected_stream_failure(self):
+        from types import SimpleNamespace
+        from eval_harness.benchmark_runner import run_scenario_stream
+
+        class Runtime:
+            memory = SimpleNamespace()
+
+            async def run(self, request):
+                return SimpleNamespace(agent_text="Dạ.", call_brief=None)
+
+            def state_for(self, request):
+                return {"profile": {}, "tool_calls": [], "memory_writes": []}
+
+        trace = {}
+        seen = []
+
+        def append(row):
+            seen.append(row)
+            if row["turn"] == 2:
+                raise OSError("disk full")
+
+        scenarios = {"SAMPLE-01": {"customer_phone": "0900000000", "calls": {
+            "call_1": {"customer_turns": ["Một", "Hai"]}}}}
+        with self.assertRaises(OSError):
+            await run_scenario_stream(Runtime(), scenarios, on_row=append,
+                                      trace=trace)
+        self.assertEqual([row["turn"] for row in trace["SAMPLE-01", "call_1"]],
+                         [1, 2])
+
+    async def test_late_identity_backfill_is_attributed_to_original_turn(self):
+        from types import SimpleNamespace
+        from eval_harness.benchmark_runner import run_scenario_stream
+
+        class Runtime:
+            memory = SimpleNamespace()
+
+            async def run(self, request):
+                return SimpleNamespace(agent_text="Dạ.", call_brief=None)
+
+            def state_for(self, request):
+                return {"profile": {}, "tool_calls": [], "memory_writes": []}
+
+        sources = []
+
+        async def wait(source_id):
+            sources.append(source_id)
+
+        async def capture(ids):
+            if len(sources) < 2:
+                return {}
+            return {ids[0]: [{"key": "size", "value": 39, "op": "set",
+                              "customer_id": "C001"}]}
+
+        trace = await run_scenario_stream(Runtime(), {"SAMPLE-03": {
+            "customer_phone": "0900000000", "calls": {"call_1": {
+                "customer_turns": ["Size 39", "Tôi xác minh danh tính"]}}}},
+            wait_for_jobs=wait, capture_writes=capture)
+        rows = trace["SAMPLE-03", "call_1"]
+        self.assertEqual(rows[0]["memory_writes"][0]["value"], 39)
+        self.assertEqual(rows[0]["memory_writes"][0]["source"], "call_1#turn1")
 
     async def test_asr_turn_uses_declared_channel_and_call_date(self):
         from types import SimpleNamespace
@@ -255,6 +371,40 @@ class TestScenarioInput(unittest.IsolatedAsyncioTestCase):
         res = evaluate_guardrails(scenarios, trace_leak)
         self.assertEqual(res["total_violations"], 1)
         self.assertFalse(res["is_safe"])
+
+    def test_memory_recall_matches_budget_tolerance_and_free_text_blocker(self):
+        from eval_harness.memory_recall import evaluate_memory_recall
+
+        scenarios = {
+            "SAMPLE-01": {
+                "calls": {
+                    "call_1": {
+                        "facts_established": {
+                            "room_area_m2": 25,
+                            "budget_vnd": 5700000,
+                            "blocker": "hỏi ông xã",
+                            "phone_provided": "0912345678",
+                        }
+                    }
+                }
+            }
+        }
+        trace = {
+            ("SAMPLE-01", "call_1"): [
+                {
+                    "memory_writes": [
+                        {"key": "room_area_m2", "value": 25, "op": "set"},
+                        {"key": "budget_vnd", "value": 5000000, "op": "set"},
+                        {"key": "blocker", "value": "để chị hỏi ông xã rồi gọi lại", "op": "set"},
+                    ]
+                }
+            ]
+        }
+        report = evaluate_memory_recall(scenarios, trace)
+        self.assertEqual(report["expected"], 3)
+        self.assertEqual(report["matched"], 3)
+        self.assertEqual(report["overall_recall_pct"], 100.0)
+        self.assertEqual(report["by_slot"]["budget_vnd"]["recall_pct"], 100.0)
 
 
 if __name__ == "__main__":

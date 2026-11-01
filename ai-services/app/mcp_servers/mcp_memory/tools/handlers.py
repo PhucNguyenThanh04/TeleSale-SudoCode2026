@@ -4,7 +4,6 @@ from fastmcp import FastMCP
 from fastmcp.server.auth import StaticTokenVerifier
 from pydantic import ValidationError
 
-from app.configs import get_settings
 from app.mcp_servers.mcp_memory.schemas import ReadInput, WriteInput
 from app.mcp_servers.mcp_memory.services.memory import read, write
 from app.mcp_servers.mcp_memory.repos.langmem_projection import LangMemProjection
@@ -21,16 +20,11 @@ async def _invoke(repo, name: str, args: dict) -> dict:
     try:
         if name == "memory.read":
             payload = ReadInput.model_validate(args).model_dump(mode="json")
-            mode = getattr(get_settings(), "langmem_mode", "off")
-            projector = (LangMemProjection(repo.dsn) if mode == "enabled"
-                         and hasattr(repo, "dsn") else None)
-            return await read(repo, **payload, langmem_mode=mode, projector=projector)
+            projector = LangMemProjection(repo.dsn) if hasattr(repo, "dsn") else None
+            return await read(repo, **payload, projector=projector)
         if name == "memory.write":
             payload = WriteInput.model_validate(args).model_dump(mode="json")
-            settings = get_settings()
-            return await write(repo, **payload, summary_turns=settings.memory_summary_turns,
-                               summary_max_chars=settings.memory_summary_max_chars,
-                               langmem_mode=getattr(settings, "langmem_mode", "off"))
+            return await write(repo, **payload)
     except ValidationError as exc:
         log_mcp_validation("memory", name, exc)
         return {"error": "invalid_args"}

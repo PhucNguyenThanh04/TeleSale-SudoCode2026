@@ -115,3 +115,25 @@ class ProjectionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await projection.put_facts("C1", "session-1", "turn-1",
                 "2026-10-15", [source], revision=1), [])
             self.assertEqual(await projection.list_facts("C1"), [])
+
+    async def test_compact_customer_removes_superseded_completed_revisions(self):
+        store = FakeStore()
+        @asynccontextmanager
+        async def connect(*args, **kwargs):
+            yield store
+        projection = LangMemProjection("postgresql://user:pass@localhost/test")
+        fact = {"key": "preferred_color", "value": "xanh", "op": "set",
+                "scope_type": "global", "scope_id": "", "source_kind": "customer",
+                "evidence_quote": "màu xanh"}
+        with patch("app.mcp_servers.mcp_memory.repos.langmem_projection.AsyncPostgresStore.from_conn_string", connect):
+            await projection.put_facts("C1", "s1", "t1", "2026-10-15", [fact], revision=1)
+            await projection.put_facts("C1", "s1", "t2", "2026-10-16",
+                                       [{**fact, "value": "đen", "op": "supersede"}], revision=2)
+            await projection.put_episode("C1", "s1", {"summary": "v1", "on_date": "2026-10-15"}, revision=1)
+            await projection.put_episode("C1", "s1", {"summary": "v2", "on_date": "2026-10-15"}, revision=2)
+            self.assertEqual(len(store.rows), 4)
+            removed = await projection.compact_customer("C1", {1, 2})
+            self.assertEqual(removed, 2)
+            self.assertEqual(len(store.rows), 2)
+            self.assertEqual((await projection.list_facts("C1"))[0]["value"], "đen")
+            self.assertEqual((await projection.get_episode("C1", "s1"))["summary"], "v2")

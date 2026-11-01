@@ -96,12 +96,12 @@ class BackendErasureIntegration(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as session, session.begin():
             for session_id, owner, status in zip(ids, ("C901", "C902", None),
                                                   ("known", "known", "ambiguous")):
-                await session.execute(text("""INSERT INTO app_runtime.chat_sessions
+                await session.execute(text("""INSERT INTO runtime.chat_sessions
                     (id,created_by,caller_phone,channel,call_date,customer_id,identity_status)
                     VALUES (:id,'operator','0900000901','hotline',:on,:owner,:status)"""),
                     {"id": session_id, "on": date(2026, 10, 15),
                      "owner": owner, "status": status})
-                await session.execute(text("""INSERT INTO app_runtime.chat_messages
+                await session.execute(text("""INSERT INTO runtime.chat_messages
                     (session_id,turn_no,role,content) VALUES (:id,1,'customer','Xin chào')"""),
                     {"id": session_id})
         key = str(uuid4())
@@ -110,11 +110,11 @@ class BackendErasureIntegration(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as session:
             second = await erase_verified_customer_chats(session, "C901", key)
             rows = (await session.execute(text("""SELECT id,customer_id
-                FROM app_runtime.chat_sessions ORDER BY customer_id NULLS LAST"""))).all()
+                FROM runtime.chat_sessions ORDER BY customer_id NULLS LAST"""))).all()
             messages = (await session.execute(text("""SELECT session_id
-                FROM app_runtime.chat_messages"""))).all()
+                FROM runtime.chat_messages"""))).all()
             suppression = (await session.execute(text("""SELECT customer_id,request_key
-                FROM app_runtime.erasure_suppressions"""))).one()
+                FROM runtime.erasure_suppressions"""))).one()
         self.assertEqual(first["deleted_sessions"], 1)
         self.assertEqual(second["deleted_sessions"], 0)
         self.assertEqual({str(row.id) for row in rows}, {ids[1], ids[2]})

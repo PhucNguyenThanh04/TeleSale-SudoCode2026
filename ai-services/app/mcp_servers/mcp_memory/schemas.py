@@ -14,7 +14,7 @@ class ReadInput(BaseModel):
 
 
 class WriteInput(BaseModel):
-    action: Literal["turn", "fact", "order", "seed_episode", "commit_turn"]
+    action: Literal["commit_turn"]
     customer_id: str | None = None
     session_id: UUID
     data: dict
@@ -22,16 +22,9 @@ class WriteInput(BaseModel):
 
     @model_validator(mode="after")
     def validate_data(self):
-        fields = {
-            "turn": {"customer_text", "agent_text", "on", "channel"},
-            "commit_turn": {"customer_text", "agent_text", "on", "channel", "client_msg_id", "facts"},
-            "fact": {"key", "op", "source"},
-            "order": {"order_id"},
-            "seed_episode": {"on"},
-        }[self.action]
+        fields = {"customer_text", "agent_text", "on", "channel", "client_msg_id"}
         if not fields <= self.data.keys():
             raise ValueError("missing memory data fields")
-        if self.action == "commit_turn":
-            if not isinstance(self.data["facts"], list) or len(self.data["facts"]) > 20:
-                raise ValueError("facts must be a list of at most 20 items")
+        if "facts" in self.data or "episode_delta" in self.data:
+            raise ValueError("legacy memory proposals are unavailable")
         return self

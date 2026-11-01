@@ -2,6 +2,7 @@
 
 import re
 import time
+import unicodedata
 from datetime import datetime, timezone
 from typing import Any, Callable
 
@@ -9,11 +10,17 @@ from langchain_core.language_models.chat_models import BaseChatModel
 
 from app.agent.harness.context import load_context
 from app.agent.guardrails.checks import mask_pii
-from app.agent.memory.fact_candidates import customer_slot_cues
 from app.agent.memory.store import MemoryStore
 from app.agent.harness.observability import log_event, trace_node
 from app.agent.harness.state import TurnState
 from app.agent.mcp.gateway import ToolGateway
+
+
+def _mentions_children(text: str) -> bool:
+    folded = text.casefold().replace("đ", "d")
+    folded = "".join(char for char in unicodedata.normalize("NFD", folded)
+                     if unicodedata.category(char) != "Mn")
+    return bool(re.search(r"\b(?:con|be|tre nho|em be)\b", folded))
 
 
 def safe_catalog_reply(state: TurnState) -> str | None:
@@ -47,7 +54,7 @@ def safe_catalog_reply(state: TurnState) -> str | None:
                 and quote.get("sku", item["sku"]) == item["sku"]
                 and type(quote.get("final_price_vnd")) is int
                 and (type(budget) is not int or quote["final_price_vnd"] <= budget)]
-    wants_child_safety = "has_children" in customer_slot_cues(state["safe_text"])
+    wants_child_safety = _mentions_children(state["safe_text"])
     if eligible:
         if wants_child_safety:
             eligible.sort(key=lambda item: item.get("attributes", {}).get("child_safe_lock") is not True)

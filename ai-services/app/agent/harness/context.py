@@ -1,22 +1,60 @@
 """Assemble the small, masked model context for a text turn."""
 
+import asyncio
 import time
 import logging
 import re
 import json
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Callable
 
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agent.guardrails.checks import mask_pii, safe_tool_result
+from app.agent.harness.brief_opening import build_suggested_opening
 from app.agent.memory.store import MemoryStore, memory_error_code
 from app.agent.harness.observability import log_event, log_tool_input, log_tool_output
 from app.agent.harness.state import TurnState
 from app.agent.mcp.gateway import ToolGateway
-from app.constants import (BRIEF_MUST_NOT_ASK_KEYS, PROFILE_SLOT_KEYS,
+from app.constants import (PROFILE_SLOT_KEYS,
                            SLOT_SPEC_BY_KEY, TOOL_ONLY_SLOT_KEYS, Slot)
 from app.schemas.brief import CallBrief
+
+
+def _build_brief_orders(state: TurnState, remembered_order_ids: list[str] | None = None,
+                        profile: dict[str, Any] | None = None,
+                        scoped_products: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    orders_by_id: dict[str, dict[str, Any]] = {}
+    for item in state.get("crm_orders") or []:
+        if not isinstance(item, dict) or not isinstance(item.get("order_id"), str):
+            continue
+        oid = item["order_id"]
+        variant = item.get("variant_sku") or item.get("sku")
+        entry: dict[str, Any] = {
+            "order_id": oid,
+            "status": str(item.get("status") or "created"),
+        }
+        if isinstance(variant, str) and variant:
+            entry["variant_sku"] = variant
+        orders_by_id[oid] = entry
+    known_variant = None
+    for facts in (scoped_products or {}).values():
+        if isinstance(facts, dict) and isinstance(facts.get(Slot.VARIANT_SKU, {}).get("value"), str):
+            known_variant = facts[Slot.VARIANT_SKU]["value"]
+            break
+    for oid in [*(state.get("owned_order_ids") or []), *(remembered_order_ids or [])]:
+        if isinstance(oid, str) and oid and oid not in orders_by_id:
+            entry = {"order_id": oid, "status": "created"}
+            if known_variant:
+                entry["variant_sku"] = known_variant
+            orders_by_id[oid] = entry
+    prof_oid = (profile or {}).get(Slot.ORDER_ID, {}).get("value")
+    if isinstance(prof_oid, str) and prof_oid and prof_oid not in orders_by_id:
+        entry = {"order_id": prof_oid, "status": "created"}
+        if known_variant:
+            entry["variant_sku"] = known_variant
+        orders_by_id[prof_oid] = entry
+    return list(orders_by_id.values())
 
 
 def prompt_context(state: TurnState, history_turns: int) -> dict[str, Any]:
@@ -32,6 +70,12 @@ def prompt_context(state: TurnState, history_turns: int) -> dict[str, Any]:
         sales_history["products"] = [
             {"sku": sku, **facts} for sku, facts in products.items()
             if isinstance(sku, str) and isinstance(facts, dict)]
+    orders = _build_brief_orders(state, state.get("remembered_order_ids"),
+                                 state.get("profile"), products)
+    if orders:
+        sales_history["orders"] = orders
+    if state.get("remembered_order_ids"):
+        sales_history["remembered_order_ids"] = list(state["remembered_order_ids"])
     observations = [
         {"name": call["name"], "result": safe_tool_result(call["result"])}
         for call in state.get("tool_calls", []) if call["name"] != "crm.get_customer"
@@ -84,7 +128,7 @@ def _split_facts(profile: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any
             continue
         public = {"key": key, "value": value,
                   "status": "active", "source_kind": fact.get("source_kind")}
-        for field in ("on", "source_tool", "source"):
+        for field in ("on", "source_tool", "source", "valid_until"):
             if isinstance(fact.get(field), str) and mask_pii(fact[field]) == fact[field]:
                 public[field] = fact[field]
         if fact.get("source_kind") == "tool" or key in sales_keys:
@@ -246,45 +290,82 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
     scoped_products = scoped_facts["product"]
     requested_skus = [sku for sku in scoped_products
                       if sku.casefold() in state.get("safe_text", "").casefold()]
-    if not requested_skus and len(scoped_products) == 1:
-        requested_skus = list(scoped_products)
-    refresh_skus = requested_skus + ([advised] if isinstance(advised, str)
-                                     and (not scoped_products or len(scoped_products) == 1) else [])
-    refresh_skus = list(dict.fromkeys(refresh_skus))
+    if requested_skus:
+        candidate_skus = list(requested_skus)
+    else:
+        def _sku_recency(sku: str) -> str:
+            facts = scoped_products.get(sku, {})
+            dates = [str(f.get("on", "")) for f in facts.values()
+                     if isinstance(f, dict) and f.get("on")]
+            return max(dates) if dates else ""
+        ordered_scoped = sorted(scoped_products.keys(), key=_sku_recency, reverse=True)
+        candidate_skus = ordered_scoped + ([advised] if isinstance(advised, str)
+                                           and advised not in scoped_products else [])
+    candidate_skus = list(dict.fromkeys(candidate_skus))
+    refresh_skus = candidate_skus[:3]
+    skipped_skus = candidate_skus[3:]
     quotes_by_sku = {}
     freshness_request = bool(re.search(
         r"(?i)giá|khuyến mãi|tồn kho|còn hàng|bao nhiêu|giảm giá|ưu đãi",
         state.get("safe_text") or state["request"].text))
-    for refresh_sku in refresh_skus if create_brief or (episodes and freshness_request) else []:
+    should_refresh = create_brief or (episodes and freshness_request)
+
+    async def _invoke_refresh(name: str, args: dict[str, Any]) -> dict[str, Any]:
+        log_event(state, "retrieve_context", "refresh_invoking", tool=name)
+        log_tool_input("retrieve_context", name, args)
+        try:
+            if hasattr(tools, "invoke_trusted"):
+                res = await tools.invoke_trusted(
+                    name, args, customer_id,
+                    state["request"].channel, state["request"].channel_identity)
+            else:
+                res = await tools.invoke(name, args)
+        except Exception:
+            res = {"error": "tool_error"}
+        if not isinstance(res, dict):
+            res = {"error": "invalid_tool_result"}
+        log_event(state, "retrieve_context", "refresh_result", tool=name,
+                  success="error" not in res)
+        log_tool_output(state, "retrieve_context", name, res)
+        return res
+
+    async def _refresh_one_sku(refresh_sku: str):
+        inv_args = {"sku": refresh_sku, "on": state["request"].on.isoformat()}
+        quote_args = {
+            "sku": refresh_sku, "on": state["request"].on.isoformat(),
+            **({"customer_phone": state["customer_phone"]}
+               if state.get("customer_phone") else {}),
+        }
+        stock_res, quote_res = await asyncio.gather(
+            _invoke_refresh("inventory.check", inv_args),
+            _invoke_refresh("pricing.get_quote", quote_args),
+        )
+        return refresh_sku, inv_args, stock_res, quote_args, quote_res
+
+    if should_refresh and refresh_skus:
+        refresh_results = await asyncio.gather(
+            *(_refresh_one_sku(sku) for sku in refresh_skus))
+    else:
+        refresh_results = []
+
+    for refresh_sku, inv_args, stock, quote_args, quote in refresh_results:
+        fresh_calls.append({"name": "inventory.check", "args": inv_args, "result": stock})
+        fresh_calls.append({"name": "pricing.get_quote", "args": quote_args, "result": quote})
         history_facts = scoped_products.get(refresh_sku, safe_sales)
-        for name, args in (
-            ("inventory.check", {"sku": refresh_sku, "on": state["request"].on.isoformat()}),
-            ("pricing.get_quote", {"sku": refresh_sku, "on": state["request"].on.isoformat(),
-                                   **({"customer_phone": state["customer_phone"]}
-                                      if state.get("customer_phone") else {})}),
-        ):
-            log_event(state, "retrieve_context", "refresh_invoking", tool=name)
-            log_tool_input("retrieve_context", name, args)
-            try:
-                if hasattr(tools, "invoke_trusted"):
-                    result = await tools.invoke_trusted(name, args, customer_id,
-                        state["request"].channel, state["request"].channel_identity)
-                else:
-                    result = await tools.invoke(name, args)
-            except Exception:
-                result = {"error": "tool_error"}
-            log_event(state, "retrieve_context", "refresh_result", tool=name,
-                      success="error" not in result)
-            log_tool_output(state, "retrieve_context", name, result)
-            fresh_calls.append({"name": name, "args": args, "result": result})
-        stock = fresh_calls[-2]["result"]
-        quote = fresh_calls[-1]["result"]
         if (isinstance(quote, dict) and "error" not in quote
                 and type(quote.get("final_price_vnd")) is int
                 and isinstance(quote.get("applied_promos"), list)
                 and quote.get("sku", refresh_sku) == refresh_sku):
             quotes_by_sku[refresh_sku] = quote
-        if stock.get("in_stock") is False:
+        if stock.get("discontinued") is True:
+            succ = stock.get("successor_sku")
+            if isinstance(succ, str) and succ:
+                warnings.append(
+                    f"{refresh_sku}: Sản phẩm đã hết hàng và ngừng kinh doanh; gợi ý mẫu thay thế {succ}.")
+            else:
+                warnings.append(
+                    f"{refresh_sku}: Sản phẩm đã hết hàng và ngừng kinh doanh; cần tư vấn lại.")
+        elif stock.get("in_stock") is False:
             warnings.append(f"{refresh_sku}: Sản phẩm đã hết hàng; cần tư vấn lại.")
         elif "error" in stock:
             warnings.append(f"{refresh_sku}: Chưa kiểm tra được tồn kho hiện tại.")
@@ -297,9 +378,36 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
             warnings.append(f"{refresh_sku}: Khuyến mãi cũ không còn được áp dụng.")
         elif old_promo and refresh_sku not in quotes_by_sku:
             warnings.append(f"{refresh_sku}: Chưa kiểm tra được khuyến mãi hiện tại.")
+    if should_refresh and skipped_skus:
+        warnings.append(
+            f"Chưa làm mới tự động cho {', '.join(skipped_skus)}; cần kiểm tra lại khi khách hỏi.")
     brief = None
     if create_brief:
         last = episodes[0]
+        call_date = state["request"].on
+        try:
+            last_on = (last["on"] if isinstance(last["on"], date)
+                       else date.fromisoformat(str(last["on"])))
+            if (call_date - last_on).days > 180:
+                warnings.append(
+                    "Phiên tư vấn trước cách đây hơn 180 ngày; cần xác nhận lại địa chỉ giao hàng.")
+        except (KeyError, TypeError, ValueError):
+            pass
+        all_fact_entries: list[tuple[str, dict[str, Any]]] = [
+            *[(k, v) for k, v in profile.items() if isinstance(v, dict)],
+            *[(f"{sku}:{k}", v) for sku, facts in scoped_products.items()
+              if isinstance(facts, dict) for k, v in facts.items() if isinstance(v, dict)],
+        ]
+        for label, fact_item in all_fact_entries:
+            until_raw = fact_item.get("valid_until")
+            if isinstance(until_raw, str) and until_raw:
+                try:
+                    if date.fromisoformat(until_raw) < call_date:
+                        msg = f"{label}: Thông tin đã hết hạn hiệu lực ({until_raw})."
+                        if msg not in warnings:
+                            warnings.append(msg)
+                except ValueError:
+                    pass
         advised_products = []
         for sku, facts in scoped_products.items():
             if not isinstance(sku, str) or not isinstance(facts, dict):
@@ -332,14 +440,26 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
                 known_slots.update(facts)
         if advised_products and not refresh_skus:
             warnings.append("Chưa kiểm tra lại giá, khuyến mãi và tồn kho của các sản phẩm đã tư vấn.")
-        prior_point = (f"mẫu {requested_skus[0]}" if len(requested_skus) == 1
-                       else f"mẫu {advised_products[0]['sku']}" if len(advised_products) == 1
-                       else "các sản phẩm lần trước" if advised_products
-                       else str(safe_customer[Slot.BLOCKER]["value"])
-                       if Slot.BLOCKER in safe_customer else "nội dung lần trước")
         next_action = ("Kiểm lại giá hoặc khuyến mãi trước khi tư vấn tiếp." if warnings
                        else "Tiếp tục tư vấn theo nhu cầu đã ghi nhận.")
         structured_blockers = _open_episode_items(episodes, "blocker")
+        resolved_any = any(
+            isinstance(ep, dict) and bool(ep.get("resolved_prior_items"))
+            for ep in episodes
+        )
+        open_blockers = (structured_blockers if structured_blockers else
+                         [str(safe_customer[Slot.BLOCKER]["value"])]
+                         if (Slot.BLOCKER in safe_customer and not resolved_any) else [])
+        brief_orders = _build_brief_orders(
+            state, context.get("owned_order_ids", []), profile, scoped_products)
+        opening = build_suggested_opening(
+            honorific=state.get("honorific"),
+            customer_name=state.get("customer_name"),
+            last_session=last,
+            requested_skus=requested_skus,
+            advised_products=advised_products,
+            open_blockers=open_blockers,
+        )
         brief = CallBrief(
             customer_phone=state["customer_phone"], customer_name=state.get("customer_name"),
             honorific=state.get("honorific"), is_returning=True,
@@ -348,12 +468,11 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
                           "channel": last["channel"], "summary": last["summary"],
                           "outcome": last["outcome"]},
             products_advised=advised_products,
-            open_blockers=(structured_blockers if structured_blockers else
-                [str(safe_customer[Slot.BLOCKER]["value"])]
-                if Slot.BLOCKER in safe_customer else []),
+            orders=brief_orders,
+            open_blockers=open_blockers,
             open_questions=_open_episode_items(episodes, "question"),
-            must_not_ask=[key for key in BRIEF_MUST_NOT_ASK_KEYS if key in known_slots],
-            suggested_opening=f"Dạ, lần trước mình đã trao đổi về {prior_point}. Mình muốn tiếp tục phần đó ạ?",
+            must_not_ask=sorted(known_slots & PROFILE_SLOT_KEYS),
+            suggested_opening=opening,
             suggested_next_action=next_action,
             generated_at=clock(),
             latency_ms=int((time.perf_counter() - state["received_at_monotonic"]) * 1000),
@@ -365,6 +484,9 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
             for optional in ("quoted_on", Slot.PRICE_QUOTED_VND):
                 if product.get(optional) is None:
                     product.pop(optional, None)
+        for order_entry in brief.get("orders", []):
+            if order_entry.get("variant_sku") is None:
+                order_entry.pop("variant_sku", None)
     return {"history": history, "profile": profile,
             "scoped_facts": scoped_facts,
             "episodes": episodes, "current_episode": current_episode,

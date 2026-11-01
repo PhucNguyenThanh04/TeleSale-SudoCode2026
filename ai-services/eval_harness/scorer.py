@@ -283,18 +283,25 @@ def evaluate_memory_metrics(
     # 3. Context Carryover Rate (CCR)
     used_facts = 0
     required_facts = 0
+    memory_unavailable_calls = 0
     for sid, s in scenarios.items():
+        prior_job_failed = False
         for call_name, call_spec in s.get("calls", {}).items():
             mco = call_spec.get("must_carry_over", [])
-            if not mco:
-                continue
-            required_facts += len(mco)
-            seen = set()
-            for r in trace_full.get((sid, call_name), []):
-                seen.update(r.get("facts_used", []))
-                for tc in r.get("tool_calls", []):
-                    seen.update(tc.get("args", {}).keys())
-            used_facts += len(set(mco) & seen)
+            if mco:
+                required_facts += len(mco)
+                if prior_job_failed:
+                    memory_unavailable_calls += 1
+                else:
+                    seen = set()
+                    for r in trace_full.get((sid, call_name), []):
+                        seen.update(r.get("facts_used", []))
+                        for tc in r.get("tool_calls", []):
+                            seen.update(tc.get("args", {}).keys())
+                    used_facts += len(set(mco) & seen)
+            if any(row.get("memory_error") for row in
+                   trace_full.get((sid, call_name), [])):
+                prior_job_failed = True
 
     ccr_pct = pct(used_facts, required_facts) or 0.0
 
@@ -308,6 +315,7 @@ def evaluate_memory_metrics(
         "ccr_pct": ccr_pct,
         "facts_carried": used_facts,
         "facts_required": required_facts,
+        "memory_unavailable_calls": memory_unavailable_calls,
         "examples_redundant": rqr_examples_full[:10],
     }
 

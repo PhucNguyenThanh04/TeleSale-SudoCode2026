@@ -20,9 +20,9 @@ settings needed for your run.
 |---|---|---|
 | API | `APP_NAME`, `APP_ENV`, `DEBUG`, `HOST`, `PORT`, `LOG_LEVEL`, `TIMEZONE` | API identity, environment label, debug flag, bind address, logging, callback timezone |
 | Ollama Cloud | `LLM_API_KEY`, `LLM_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_TIMEOUT_SECONDS`, `LLM_TEMPERATURE`, `LLM_MAX_TOKENS`, `LLM_SEED` | Model, authentication, timeout, response budget and reproducible sampling |
-| Harness | `AGENT_KIND`, `FACT_EXTRACTION_MODE`, `AGENT_MAX_TOOL_CALLS`, `AGENT_PROMPT_HISTORY_TURNS`, `AGENT_GUARDRAILS_ENABLED` | Select `deep` or `react`, set tool and context limits, and toggle answer checks; old extraction is only for comparison mode |
-| Memory | `MEMORY_MAX_EPISODES`, `LANGMEM_MODE`, `LANGMEM_MODEL` | Customer-scoped LangMem knowledge and a separate distillation model; `enabled` is the default |
-| Langfuse | `LANGFUSE_ENABLED`, `LANGFUSE_CAPTURE_CONTENT`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` | Optional one trace per chat turn, grouped by session; content capture is opt-in for development/test |
+| Harness | `AGENT_KIND`, `AGENT_MAX_TOOL_CALLS`, `AGENT_PROMPT_HISTORY_TURNS`, `AGENT_GUARDRAILS_ENABLED` | Select `deep` or `react`, set tool and context limits, and toggle answer checks |
+| Memory | `MEMORY_MAX_EPISODES`, `LANGMEM_MODEL` | Customer-scoped LangMem knowledge and a separate distillation model; LangMem is the only runtime memory path |
+| Langfuse | `LANGFUSE_ENABLED`, `LANGFUSE_PROMPTS_ENABLED`, `LANGFUSE_CAPTURE_CONTENT`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` | Optional tracing and production-labeled prompt management; content capture is opt-in for development/test |
 | Internal transport | `AI_INTERNAL_TOKEN`, `MCP_INTERNAL_TOKEN`, `MCP_CATALOG_URL`, `MCP_ORDER_URL`, `MCP_MEMORY_URL` | Backend-to-AI and AI-to-MCP authentication and endpoints |
 | MCP process | `MCP_HOST`, `MCP_CATALOG_PORT`, `MCP_ORDER_PORT`, `MCP_MEMORY_PORT`, `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `MEMORY_DB_POOL_MIN_SIZE`, `MEMORY_DB_POOL_MAX_SIZE` | HTTP listener and PostgreSQL pools |
 | MCP database | `DATABASE_URL` **or** `MCP_DB_HOST`, `MCP_DB_PORT`, `MCP_DB_NAME`, `MCP_DB_USER`, `MCP_DB_PASSWORD_FILE`; `MCP_INTERNAL_TOKEN_FILE` | Local connection or Compose role-specific secret files |
@@ -81,6 +81,19 @@ the returned chunks; it is not a general semantic proof of every policy claim.
 
 ### Langfuse Cloud tracing
 
+To manage the sales-agent and LangMem extraction instructions in Langfuse,
+configure the three Langfuse credentials and run
+`python -m scripts.publish_langfuse_prompts` once from `ai-services/`.
+This creates text prompts `telesale-sales-agent` and
+`telesale-langmem-extraction` with the `production` label. Set
+`LANGFUSE_PROMPTS_ENABLED=true` in both the API and LangMem worker environments,
+then restart them. The SDK caches prompt versions and uses the checked-in
+instructions if Langfuse cannot serve a prompt. Update instructions in Langfuse
+and promote the desired version to `production`. The publisher skips existing
+production prompts. The first prompt fetch requires network access;
+subsequent calls use the SDK cache. Prompt management can be enabled without
+enabling tracing.
+
 Create a project in [Langfuse Cloud](https://cloud.langfuse.com/), copy its
 project public and secret API keys into `ai-services/.env`, and set
 `LANGFUSE_BASE_URL` to that project's regional endpoint. Set
@@ -136,8 +149,7 @@ BTC release with `dataloader_offline`. Apply the runtime SQL in order:
 `backend/migrations/0002_tools.sql`, `backend/migrations/0003_channel_identity.sql`,
 `backend/migrations/0004_erasure_suppressions.sql`,
 `backend/migrations/0005_runtime_schema.sql`, then
-`ai-services/migrations/0001_memory.sql` and
-`ai-services/migrations/0002_runtime_schema.sql`. Apply it before starting
+`ai-services/migrations/0001_current_memory_schema.sql`. Apply them before starting
 `mcp-db-roles`. Use the same PostgreSQL database
 for the backend and all three MCP servers. Set matching `AI_INTERNAL_TOKEN`
 values in `backend/.env` and `ai-services/.env`, and a separate
@@ -146,7 +158,7 @@ placeholders, not working credentials.
 
 The final database has exactly two application schemas: `btc_source` for the
 imported BTC data and `runtime` for chat, orders, memory jobs, and
-`AsyncPostgresStore` tables. Migration `0002_runtime_schema.sql` keeps existing
+`AsyncPostgresStore` tables. The AI service migration keeps existing
 rows and removes the empty legacy schemas and the empty `public` schema; it
 stops with an error if `public` contains other objects.
 
@@ -192,7 +204,7 @@ launcher after updating the code. The worker leases jobs in
 session order, retries up to five times, and logs only error codes. A model
 timeout never rolls back the already committed customer turn. If the store is
 unavailable, customer memory reads fail closed instead of reading stale legacy facts.
-Apply both AI service migrations after the backend SQL.
+Apply `0001_current_memory_schema.sql` after the backend SQL on a new database.
 Then, once with an admin
 `DATABASE_URL`, run `python -m scripts.setup_langmem_store` from `ai-services/`.
 This invokes `AsyncPostgresStore.setup()` with `runtime` as the fixed
@@ -200,10 +212,13 @@ search path; LangGraph's concurrent index DDL must run outside a wrapping
 transaction. Re-run `scripts/provision_mcp_roles.sh` after setup to grant the
 `mcp_memory` role access to the new store tables and job sequence. Neither the
 API nor the worker runs store DDL at startup. V1 has no vector index.
-For an existing database, run `python -m scripts.backfill_langmem_store` once
-after store setup. It copies active facts with source turn and date plus
-existing episodes, skips records that lack provenance, and preserves newer
-LangMem facts.
+For an existing database with rows in `runtime.facts` or `runtime.episodes`,
+run `python -m scripts.backfill_langmem_store` once before the AI service migration.
+It copies active facts with source turn and date plus existing episodes,
+skips records that lack provenance, and preserves newer LangMem facts.
+Archive and clear legacy rows after verifying the backfill; the migration
+refuses to remove tables that still contain rows. On an existing `runtime`
+database, apply only `0001_current_memory_schema.sql`.
 For a verified erasure request already registered in `runtime.erasure_requests`,
 run `python -m scripts.execute_memory_erasure REQUEST_UUID` with the memory
 role. It removes operational rows, queued jobs and the customer's LangGraph
@@ -257,10 +272,14 @@ idempotency do not span multiple workers.
 The backend creates `session_id` before calling this endpoint. A frontend's
 first-turn `session_id: null` is not valid here. The response echoes both IDs,
 returns `agent_text`, handoff fields, and an optional `call_brief` on a returning
-customer's new session. The brief includes refreshed quote and stock warnings
-when an existing profile has an advised SKU. New chat turns may create profile
-facts from validated model proposals grounded in customer text or verified
-tool results.
+customer's new session. The brief includes `orders`, `open_blockers` (excluding
+blockers resolved in later sessions), `must_not_ask` across all 12 BTC slots,
+outcome-aware `suggested_opening`, and concurrent refresh of up to the 3 most
+recent advised SKUs with stale warnings for expired `valid_until`, discontinued
+SKUs (`successor_sku`), and sessions older than 180 days. New chat turns may
+create profile facts from validated model proposals grounded in customer text or
+verified tool results, while the distillation worker compacts superseded store
+revisions after each completed job.
 
 ## Theo dõi một lượt chat
 
@@ -300,26 +319,25 @@ uv run --no-project --with 'langgraph>=1.2.12,<1.3' \
 
 ### Memory demo and manual preflight
 
-Before starting the existing MCP services, apply both numbered AI service migrations
+Before starting the existing MCP services, apply the current AI service migration
 to their PostgreSQL database, then rerun role provisioning.
 A table created after provisioning does not inherit the earlier table grants.
 With the administrative `psql` connection (never put passwords in the command), verify:
 
 ```sql
-SELECT to_regclass('runtime.pending_facts');
+SELECT to_regclass('runtime.pending_facts') IS NULL;
+SELECT to_regclass('runtime.facts') IS NULL;
+SELECT to_regclass('runtime.episodes') IS NULL;
 SELECT to_regclass('runtime.erasure_requests');
-SELECT has_table_privilege('mcp_memory', 'runtime.pending_facts',
-                          'SELECT,INSERT,UPDATE,DELETE');
 SELECT has_table_privilege('mcp_memory', 'runtime.erasure_requests',
                           'SELECT,INSERT,UPDATE,DELETE');
 ```
 
-If either table lacks grants, rerun `scripts/provision_mcp_roles.sh` with the
+If the table lacks grants, rerun `scripts/provision_mcp_roles.sh` with the
 documented administrative connection. For the memory tables alone, the
 administrator can run:
 
 ```sql
-GRANT SELECT, INSERT, UPDATE, DELETE ON runtime.pending_facts TO mcp_memory;
 GRANT SELECT, INSERT, UPDATE, DELETE ON runtime.erasure_requests TO mcp_memory;
 ```
 

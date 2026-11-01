@@ -1,4 +1,4 @@
-"""Memory provenance, supersession and replay checks."""
+"""LangMem turn persistence, session history and replay checks."""
 
 import hashlib
 import json
@@ -66,11 +66,23 @@ class TurnRepo(FakeRepo):
         return len(self.rows.get(session_id, [])) + 1
 
     async def insert_turn(self, _conn, session_id, number, customer_id,
-                          channel, on, customer_text, agent_text):
+                          channel, on, customer_text, agent_text,
+                          client_msg_id=None):
         self.rows.setdefault(session_id, []).append({
             "turn_no": number, "customer_id": customer_id,
             "customer_text": customer_text, "agent_text": agent_text,
+            "client_msg_id": client_msg_id,
         })
+
+    async def attribute_anonymous_turns(self, _conn, session_id, customer_id):
+        attributed = []
+        for row in self.rows.get(session_id, []):
+            if row["customer_id"] is None:
+                row["customer_id"] = customer_id
+                row["attributed_after_verification"] = True
+                attributed.append({"turn_no": row["turn_no"],
+                                   "source_turn_id": row["client_msg_id"]})
+        return attributed
 
     async def turns(self, _conn, session_id):
         return self.rows.get(session_id, [])
@@ -82,6 +94,9 @@ class TurnRepo(FakeRepo):
     async def recent_customer_turns(self, _conn, session_id, customer_id, maximum):
         return (await self.customer_turns(_conn, session_id, customer_id))[-maximum:]
 
+    async def recent_turns(self, _conn, session_id, maximum):
+        return self.rows.get(session_id, [])[-maximum:]
+
     async def turn_count(self, _conn, session_id):
         return len(self.rows.get(session_id, []))
 
@@ -91,400 +106,87 @@ class TurnRepo(FakeRepo):
 
 
 class MemoryServiceTest(unittest.IsolatedAsyncioTestCase):
-    async def test_full_episode_does_not_abort_turn(self):
-        class FullRepo(TurnRepo):
-            async def episode_state(self, *_):
-                return {"topics": [{"scope_type": "unknown", "scope_id": "",
-                    "items": [{"item_id": str(index), "status": "resolved"}
-                              for index in range(40)]}],
-                    "resolved_prior_items": []}
-
-            async def upsert_episode_state(self, _conn, _session, _customer,
-                                           _channel, _on, summary, outcome, topics,
-                                           resolved_prior_items):
-                self.saved_topics = topics
-
-        repo = FullRepo()
-        session_id = str(uuid4())
-        result = await write(repo, "commit_turn", "C001", session_id, {
-            "customer_text": "Có giao cuối tuần không?", "agent_text": "Em kiểm tra",
-            "on": "2026-10-15", "channel": "hotline", "client_msg_id": str(uuid4()),
-            "facts": [], "episode_delta": {"topic_updates": [{
-                "scope_type": "unknown", "scope_id": "", "add_items": [{
-                    "kind": "question", "text": "Có giao cuối tuần không?",
-                    "evidence_quote": "Có giao cuối tuần không?"}]}]}},
-            operation_key="full-episode")
-        self.assertEqual(result["turn_no"], 1)
-        self.assertEqual(result["episode_warning"], "capacity_reached")
-        self.assertEqual(len(repo.rows[session_id]), 1)
-        self.assertEqual(len(repo.saved_topics[0]["items"]), 40)
-
-    async def test_commit_turn_persists_structured_issue_and_replays_idempotently(self):
-        class StructuredRepo(TurnRepo):
-            def __init__(self):
-                super().__init__()
-                self.structured = None
-
-            async def episode_state(self, *_):
-                return self.structured
-
-            async def upsert_episode_state(self, _conn, _session_id, _customer_id,
-                                           _channel, _on, summary, outcome, topics,
-                                           resolved_prior_items):
-                self.structured = {"summary": summary, "outcome": outcome,
-                                   "topics": topics,
-                                   "resolved_prior_items": resolved_prior_items}
-
-        repo = StructuredRepo()
-        session_id, message_id = str(uuid4()), str(uuid4())
-        data = {"customer_text": "Tôi còn phải hỏi người thân", "agent_text": "Dạ vâng",
-                "on": "2026-10-15", "channel": "hotline", "client_msg_id": message_id,
-                "facts": [], "episode_delta": {"topic_updates": [{
-                    "scope_type": "unknown", "scope_id": "",
-                    "add_items": [{"kind": "blocker", "text": "Cần hỏi người thân",
-                                   "evidence_quote": "phải hỏi người thân"}]}]}}
-        first = await write(repo, "commit_turn", "C001", session_id, data,
-                            operation_key="structured-1")
-        replay = await write(repo, "commit_turn", "C001", session_id, data,
-                             operation_key="structured-1")
-        self.assertEqual(first, replay)
-        self.assertEqual(len(repo.rows[session_id]), 1)
-        self.assertEqual(repo.structured["topics"][0]["items"][0]["status"], "open")
-        forged = {**data, "client_msg_id": str(uuid4()),
-                  "episode_delta": {"topic_updates": [{"scope_type": "unknown",
-                      "scope_id": "", "add_items": [{"kind": "question",
-                          "text": "Khách hỏi về giao hàng",
-                          "evidence_quote": "Khách hỏi về giao hàng"}]}]}}
-        rejected = await write(repo, "commit_turn", "C001", session_id, forged,
-                               operation_key="structured-forged")
-        self.assertEqual(rejected, {"error": "invalid_episode_delta"})
-        self.assertEqual(len(repo.rows[session_id]), 1)
-
-    async def test_read_returns_all_prior_ids_separately_from_capped_episodes(self):
-        class Readable(TurnRepo):
-            def __init__(self):
-                super().__init__()
-                del self.facts
-
-            async def facts(self, *_):
-                return []
-
-            async def episodes(self, *_):
-                return [{"session_id": str(uuid4()), "channel": "hotline",
-                         "on_date": __import__("datetime").date(2026, 10, 14),
-                         "summary": "Một lần tư vấn", "outcome": "khac"} for _ in range(5)]
-
-            async def prior_session_ids(self, *_):
-                return [f"old-{index}" for index in range(7)]
-
-            async def order_links(self, *_):
-                return []
-
-        result = await read(Readable(), "C88", str(uuid4()), max_episodes=5)
-        self.assertEqual(len(result["episodes"]), 5)
-        self.assertEqual(len(result["prior_session_ids"]), 7)
-
-    async def test_other_objection_quote_is_checked_and_passed_to_storage(self):
-        class QuoteRepo(TurnRepo):
-            async def insert_fact(self, _conn, fact_id, customer_id, key, value,
-                                  source, session_id, previous, **metadata):
-                self.facts.append((key, value, metadata))
-
-        repo = QuoteRepo()
-        session_id = str(uuid4())
-        base = {"customer_text": "Máy này chạy ồn quá", "agent_text": "Dạ em hiểu.",
-                "on": "2026-10-15", "channel": "hotline", "client_msg_id": str(uuid4())}
-        bad = await write(repo, "commit_turn", "C001", session_id, {
-            **base, "facts": [{"key": "objection", "op": "set", "value": "khac",
-                               "source_kind": "customer",
-                               "evidence_quote": "máy chạy quá nóng"}]}, "bad-quote")
-        self.assertEqual(bad, {"error": "invalid_facts_or_identity"})
-        self.assertEqual(repo.facts, [])
-        for private_quote in ("chạy ồn quá, gọi 0912345678",
-                              "chạy ồn quá, địa chỉ 12 đường Hoa Mai"):
-            with self.subTest(quote=private_quote):
-                blocked = await write(repo, "commit_turn", "C001", session_id, {
-                    **base, "customer_text": f"Máy này {private_quote}",
-                    "facts": [{"key": "objection", "op": "set",
-                                       "value": "khac", "source_kind": "customer",
-                                       "evidence_quote": private_quote}]})
-                self.assertEqual(blocked, {"error": "invalid_facts_or_identity"})
-                self.assertEqual(repo.facts, [])
-                direct = await write(repo, "fact", "C001", session_id, {
-                    "key": "objection", "op": "set", "value": "khac",
-                    "source": "synthetic-test", "evidence_quote": private_quote})
-                self.assertEqual(direct, {"error": "pii_rejected"})
-                self.assertEqual(repo.facts, [])
-        good = await write(repo, "commit_turn", "C001", session_id, {
-            **base, "facts": [{"key": "objection", "op": "set", "value": "khac",
-                               "source_kind": "customer",
-                               "evidence_quote": "chạy ồn quá"}]}, "good-quote")
-        self.assertEqual(repo.facts[0][2]["evidence_quote"], "chạy ồn quá")
-        self.assertEqual(good["memory_writes"][0]["evidence_quote"], "chạy ồn quá")
-
-    async def test_customer_purge_is_not_a_supported_memory_action(self):
+    async def test_commit_stores_turn_and_queues_distillation_once(self):
+        from unittest.mock import AsyncMock
         repo = TurnRepo()
-        session_id = str(uuid4())
-        await write(repo, "fact", "C001", session_id,
-                    {"key": "budget_vnd", "value": 5_000_000, "op": "set",
-                     "source": "synthetic-test"})
-        stored_before = list(repo.facts)
-        with self.assertRaises(ValidationError):
-            WriteInput(action="delete_customer", customer_id="C001",
-                       session_id=session_id, data={})
-        result = await write(repo, "delete_customer", "C001", session_id, {})
-        self.assertEqual(result, {"error": "unknown_memory_action"})
-        self.assertEqual(repo.facts, stored_before)
-
-    async def test_failed_replacement_rolls_back_blocker_retraction(self):
-        class FailingRepo(TurnRepo):
-            def __init__(self):
-                super().__init__()
-                self.values = {}
-
-            @asynccontextmanager
-            async def transaction(self):
-                snapshot = copy.deepcopy((self.values, self.rows,
-                                          self.episode_summaries, self.statuses,
-                                          self.operations))
-                try:
-                    yield object()
-                except Exception:
-                    (self.values, self.rows, self.episode_summaries,
-                     self.statuses, self.operations) = snapshot
-                    raise
-
-            async def active_fact_record(self, _conn, customer_id, key):
-                return self.values.get((customer_id, key))
-
-            async def set_fact_status(self, _conn, fact_id, status):
-                self.statuses.append((fact_id, status))
-                for entry in list(self.values):
-                    if self.values[entry]["fact_id"] == fact_id:
-                        del self.values[entry]
-
-            async def insert_fact(self, _conn, fact_id, customer_id, key, value,
-                                  source, session_id, previous, **metadata):
-                if value == "chờ lương":
-                    raise RuntimeError("simulated_insert_failure")
-                self.values[(customer_id, key)] = {"fact_id": fact_id,
-                                                    "value": json.dumps(value)}
-
-        repo = FailingRepo()
-        session_id = str(uuid4())
-        base = {"agent_text": "Dạ, em ghi nhận ạ.", "on": "2026-10-15",
-                "channel": "hotline"}
-        await write(repo, "commit_turn", "C001", session_id, {
-            **base, "client_msg_id": str(uuid4()),
-            "customer_text": "Tôi cần hỏi chồng", "facts": [
-                {"key": "blocker", "op": "set", "value": "hỏi chồng",
-                 "source_kind": "customer"}],
-        }, "old")
-        old = copy.deepcopy(repo.values[("C001", "blocker")])
-        with self.assertRaisesRegex(RuntimeError, "simulated_insert_failure"):
-            await write(repo, "commit_turn", "C001", session_id, {
-                **base, "client_msg_id": str(uuid4()),
-                "customer_text": "Chồng đồng ý nhưng phải chờ lương",
-                "facts": [
-                    {"key": "blocker", "op": "delete", "source_kind": "customer"},
-                    {"key": "blocker", "op": "set", "value": "chờ lương",
-                     "source_kind": "customer"}],
-            }, "failed-replacement")
-        self.assertEqual(repo.values[("C001", "blocker")], old)
-        self.assertEqual(len(repo.rows[session_id]), 1)
-        self.assertEqual(repo.statuses, [])
-
-    async def test_resolved_blocker_is_retracted_before_new_blocker_is_opened(self):
-        class BlockerRepo(TurnRepo):
-            def __init__(self):
-                super().__init__()
-                self.values = {}
-
-            async def active_fact_record(self, _conn, customer_id, key):
-                return self.values.get((customer_id, key))
-
-            async def set_fact_status(self, _conn, fact_id, status):
-                await super().set_fact_status(_conn, fact_id, status)
-                for entry in list(self.values):
-                    if self.values[entry]["fact_id"] == fact_id:
-                        del self.values[entry]
-
-            async def insert_fact(self, _conn, fact_id, customer_id, key, value,
-                                  source, session_id, previous, **metadata):
-                self.values[(customer_id, key)] = {"fact_id": fact_id,
-                                                    "value": json.dumps(value)}
-
-        repo = BlockerRepo()
-        session_id = str(uuid4())
-        base = {
-            "agent_text": "Dạ, em ghi nhận ạ.", "on": "2026-10-15",
-            "channel": "hotline", "client_msg_id": str(uuid4())}
-        await write(repo, "commit_turn", "C001", session_id, {
-            **base, "customer_text": "Tôi phải hỏi chồng đã",
-            "facts": [{"key": "blocker", "op": "set", "value": "hỏi chồng",
-                       "source_kind": "customer"}],
-        }, "prior-blocker")
-        result = await write(repo, "commit_turn", "C001", session_id, {
-            **base, "client_msg_id": str(uuid4()),
-            "customer_text": "Chồng đồng ý nhưng phải chờ lương",
-            "facts": [
-                {"key": "blocker", "op": "delete", "source_kind": "customer"},
-                {"key": "blocker", "op": "set", "value": "chờ lương",
-                 "source_kind": "customer"},
-            ],
-        }, "resolve-and-replace")
-        self.assertEqual([item["op"] for item in result["memory_writes"]],
-                         ["delete", "set"])
-        self.assertEqual(json.loads(repo.values[("C001", "blocker")]["value"]),
-                         "chờ lương")
-
-    async def test_anonymous_turn_keeps_history_without_profile_fact(self):
-        class NoPendingRepo(TurnRepo):
-            async def stage_fact(self, *_):
-                raise AssertionError("anonymous facts must not be staged")
-
-        repo = NoPendingRepo()
-        session_id, message_id = str(uuid4()), str(uuid4())
-        data = {"customer_text": "Phòng anh 25 m²", "agent_text": "Dạ, em ghi nhận ạ.",
-                "on": "2026-10-15", "channel": "hotline", "client_msg_id": message_id,
-                "facts": [{"key": "room_area_m2", "value": 25, "op": "set",
-                           "source_kind": "customer", "evidence_quote": "25 m²"}]}
-        result = await write(repo, "commit_turn", None, session_id, data, "anonymous-turn")
-        self.assertEqual(result["memory_writes"], [])
-        self.assertEqual(repo.facts, [])
-        self.assertEqual(repo.rows[session_id][0]["customer_id"], None)
-        self.assertEqual((await read(repo, None, session_id))["history"][0]["customer"],
-                         "Phòng anh 25 m²")
-        with self.assertRaises(ValidationError):
-            WriteInput(action="claim_pending", customer_id="C001",
-                       session_id=session_id, data={})
-
-    async def test_turn_write_creates_history_without_prior_session_and_replays_retry(self):
-        repo = TurnRepo()
-        session_id = str(uuid4())
-        first_data = {"customer_text": "Gọi 0984726714 hỏi AirPure X",
-                      "agent_text": "Dạ, em thấy AirPure X ạ.",
-                      "on": "2026-10-15", "channel": "chat_fanpage"}
-        first = await write(repo, "turn", None, session_id, first_data,
-                            f"{session_id}:msg-1:turn")
-        replay = await write(repo, "turn", None, session_id, first_data,
-                             f"{session_id}:msg-1:turn")
-        self.assertEqual(first, {"turn_no": 1})
+        repo.enqueue_distillation = AsyncMock()
+        repo.link_order = AsyncMock()
+        session_id, turn_id = str(uuid4()), str(uuid4())
+        data = {"customer_text": "Tôi thích màu xanh", "agent_text": "Dạ",
+                "on": "2026-10-15", "channel": "hotline", "client_msg_id": turn_id}
+        first = await write(repo, "commit_turn", "C001", session_id, data, "op-1")
+        replay = await write(repo, "commit_turn", "C001", session_id, data, "op-1")
+        self.assertEqual(first, {"turn_no": 1, "memory_writes": []})
         self.assertEqual(replay, first)
         self.assertEqual(len(repo.rows[session_id]), 1)
-        self.assertNotIn("0984726714", repo.rows[session_id][0]["customer_text"])
-        self.assertEqual((await read(repo, None, session_id))["history"][0]["agent"],
-                         first_data["agent_text"])
+        repo.enqueue_distillation.assert_awaited_once()
 
-        second_data = {**first_data, "customer_text": "Giá bao nhiêu?",
-                       "agent_text": "Dạ, em sẽ kiểm tra giá ạ."}
-        self.assertEqual(await write(repo, "turn", None, session_id, second_data,
-                                     f"{session_id}:msg-2:turn"), {"turn_no": 2})
-        self.assertEqual(len((await read(repo, None, session_id))["history"]), 2)
-
-    async def test_known_customer_turn_without_state_has_conservative_summary(self):
+    async def test_anonymous_session_history_is_immediate(self):
         repo = TurnRepo()
         session_id = str(uuid4())
-        data = {"customer_text": "Tìm AirPure X", "agent_text": "Dạ, có AirPure X ạ.",
-                "on": "2026-10-15", "channel": "chat_fanpage"}
-        self.assertEqual(await write(repo, "turn", "C001", session_id, data),
-                         {"turn_no": 1})
-        self.assertEqual(repo.episode_summaries[session_id],
-                         "Chưa có diễn biến riêng được xác minh.")
+        result = await write(repo, "commit_turn", None, session_id, {
+            "customer_text": "Xin chào", "agent_text": "Dạ chào anh/chị",
+            "on": "2026-10-15", "channel": "hotline",
+            "client_msg_id": str(uuid4())})
+        self.assertEqual(result["turn_no"], 1)
+        remembered = await read(repo, None, session_id)
+        self.assertEqual(remembered["history"],
+                         [{"customer": "Xin chào", "agent": "Dạ chào anh/chị"}])
 
-    async def test_late_verification_does_not_promote_anonymous_turn_to_episode(self):
-        class ReadableTurnRepo(TurnRepo):
-            def __init__(self):
-                super().__init__()
-                del self.facts
+    async def test_verified_customer_keeps_earlier_anonymous_turn_in_same_session(self):
+        from unittest.mock import AsyncMock
 
-            async def facts(self, *_):
+        repo = TurnRepo()
+        repo.enqueue_distillation = AsyncMock()
+        repo.link_order = AsyncMock()
+        repo.order_links = AsyncMock(return_value=[])
+        session_id = str(uuid4())
+        for customer_id, text in ((None, "Tôi muốn size 39"),
+                                  ("C001", "Tôi là khách đã xác minh")):
+            result = await write(repo, "commit_turn", customer_id, session_id, {
+                "customer_text": text, "agent_text": "Dạ", "on": "2026-10-15",
+                "channel": "hotline", "client_msg_id": str(uuid4())})
+            self.assertEqual(result["turn_no"], len(repo.rows[session_id]))
+
+        class Projection:
+            async def list_fact_versions(self, _customer_id):
                 return []
 
-            async def episodes(self, *_):
+            async def list_episode_versions(self, _customer_id):
                 return []
 
-            async def order_links(self, *_):
-                return []
+        context = await read(repo, "C001", session_id, projector=Projection())
+        self.assertEqual(len(context["history"]), 2)
+        self.assertEqual(context["history"][0]["customer"], "Tôi muốn size 39")
 
-        repo = ReadableTurnRepo()
+    async def test_late_verification_queues_prior_anonymous_turns_once(self):
+        from unittest.mock import AsyncMock
+
+        repo = TurnRepo()
+        repo.enqueue_distillation = AsyncMock()
+        repo.link_order = AsyncMock()
         session_id = str(uuid4())
-        base = {"agent_text": "Dạ, em ghi nhận ạ.", "on": "2026-10-15",
-                "channel": "hotline"}
-        await write(repo, "commit_turn", None, session_id, {
-            **base, "client_msg_id": str(uuid4()),
-            "customer_text": "Tôi cần máy cho phòng 48 m²", "facts": []})
-        await write(repo, "commit_turn", "C001", session_id, {
-            **base, "client_msg_id": str(uuid4()),
-            "customer_text": "Tôi đã xác minh, muốn hỏi loại ít ồn", "facts": []})
-        summary = repo.episode_summaries[session_id]
-        self.assertNotIn("loại ít ồn", summary)
-        self.assertNotIn("48 m²", summary)
-        self.assertEqual(repo.rows[session_id][0]["customer_id"], None)
+        for customer_id, text in ((None, "Size 39"), (None, "Màu đen"),
+                                  ("C001", "Tôi xác nhận danh tính")):
+            await write(repo, "commit_turn", customer_id, session_id, {
+                "customer_text": text, "agent_text": "Dạ", "on": "2026-10-15",
+                "channel": "hotline", "client_msg_id": str(uuid4())})
+        self.assertEqual([row["customer_id"] for row in repo.rows[session_id]],
+                         ["C001", "C001", "C001"])
+        self.assertEqual([row.get("attributed_after_verification")
+                          for row in repo.rows[session_id]], [True, True, None])
+        self.assertEqual(repo.enqueue_distillation.await_count, 3)
 
-        known_context = await read(repo, "C001", session_id)
-        self.assertEqual([item["customer"] for item in known_context["history"]],
-                         ["Tôi đã xác minh, muốn hỏi loại ít ồn"])
-        self.assertEqual(await read(repo, "C002", session_id),
-                         {"error": "session_owner_mismatch"})
-
-    async def test_supersession_and_retry(self):
-        repo = FakeRepo()
+    async def test_old_actions_and_proposals_are_unavailable(self):
+        repo = TurnRepo()
         session_id = str(uuid4())
-        for index, (value, op) in enumerate(((5000000, "set"), (5700000, "supersede")), 1):
-            data = {"key": "budget_vnd", "value": value, "op": op, "source": f"turn{index}"}
-            repo.digest = hashlib.sha256(json.dumps({"action": "fact", "customer_id": "C001",
-                "session_id": session_id, "data": data}, sort_keys=True,
-                ensure_ascii=False).encode()).hexdigest()
-            first = await write(repo, "fact", "C001", session_id, data, f"op-{index}")
-            self.assertEqual(await write(repo, "fact", "C001", session_id, data, f"op-{index}"), first)
-        self.assertEqual(len(repo.facts), 2)
-        self.assertEqual(repo.statuses, [(repo.facts[0][0], "superseded")])
-        self.assertEqual(repo.facts[1][1], repo.facts[0][0])
-
-    async def test_commit_turn_writes_facts_once_and_supersedes_changed_value(self):
-        class CommitRepo(TurnRepo):
-            def __init__(self):
-                super().__init__()
-                self.values = {}
-
-            async def active_fact_record(self, _conn, customer_id, key):
-                return self.values.get((customer_id, key))
-
-            async def insert_fact(self, _conn, fact_id, customer_id, key, value,
-                                  source, session_id, previous, **metadata):
-                self.facts.append((fact_id, previous, metadata))
-                self.values[(customer_id, key)] = {"fact_id": fact_id, "value": value}
-
-        repo = CommitRepo()
-        session_id = str(uuid4())
-        first_msg, second_msg = str(uuid4()), str(uuid4())
-        base = {"customer_text": "Phòng anh 25 m²", "agent_text": "Dạ, em tư vấn ạ.",
-                "on": "2026-10-15", "channel": "hotline", "client_msg_id": first_msg,
-                "facts": [{"key": "room_area_m2", "value": 25, "op": "set",
-                           "source_kind": "customer"}]}
-        first = await write(repo, "commit_turn", "C001", session_id, base, "commit-1")
-        replay = await write(repo, "commit_turn", "C001", session_id, base, "commit-1")
-        self.assertEqual(first, replay)
-        self.assertEqual(first["memory_writes"][0]["op"], "set")
-        self.assertEqual(first["memory_writes"][0]["source"], f"{session_id}:{first_msg}")
-        self.assertEqual(len(repo.rows[session_id]), 1)
-        self.assertEqual(len(repo.facts), 1)
-        self.assertEqual(repo.facts[0][2]["on_date"].isoformat(), "2026-10-15")
-
-        same = await write(repo, "commit_turn", "C001", session_id,
-                           {**base, "client_msg_id": second_msg}, "commit-2")
-        self.assertEqual(same["memory_writes"], [])
-        changed = await write(repo, "commit_turn", "C001", session_id,
-                              {**base, "client_msg_id": str(uuid4()),
-                               "customer_text": "Phòng anh 28 m²",
-                               "facts": [{"key": "room_area_m2", "value": 28,
-                                          "op": "set", "source_kind": "customer"}]},
-                              "commit-3")
-        self.assertEqual(changed["memory_writes"][0]["op"], "supersede")
-        self.assertEqual(repo.statuses, [(repo.facts[0][0], "superseded")])
-        self.assertEqual(len(repo.facts), 2)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        self.assertEqual(await write(repo, "fact", "C001", session_id,
+                                     {"key": "color", "value": "xanh"}),
+                         {"error": "unknown_memory_action"})
+        self.assertEqual(await write(repo, "commit_turn", "C001", session_id, {
+            "customer_text": "Xin chào", "agent_text": "Dạ", "on": "2026-10-15",
+            "channel": "hotline", "client_msg_id": str(uuid4()), "facts": []}),
+            {"error": "legacy_memory_action_disabled"})
+        with self.assertRaises(ValidationError):
+            WriteInput(action="fact", customer_id="C001", session_id=uuid4(),
+                       data={"key": "color", "value": "xanh"})

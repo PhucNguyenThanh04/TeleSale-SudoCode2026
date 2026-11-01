@@ -33,7 +33,7 @@ class RecallTests(unittest.IsolatedAsyncioTestCase):
         projection.list_episode_versions.return_value = [
             {**episode("prior", "đúng"), "schema_version": 1}]
         result = await read(repo, "C1", str(uuid4()),
-                            langmem_mode="enabled", projector=projection)
+                            projector=projection)
         self.assertEqual([item["session_id"] for item in result["episodes"]], ["prior"])
         projection.list_episode_versions.assert_awaited_once_with("C1")
 
@@ -52,7 +52,7 @@ class RecallTests(unittest.IsolatedAsyncioTestCase):
         projection.list_fact_versions.return_value = []
         projection.list_episode_versions.side_effect = OSError("offline")
         result = await read(Repo(), "C1", str(uuid4()),
-                            langmem_mode="enabled", projector=projection)
+                            projector=projection)
         self.assertEqual(result, {"error": "memory_store_unavailable"})
 
     def test_product_and_open_blocker_outrank_recent_unrelated_episode(self):
