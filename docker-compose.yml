@@ -74,6 +74,7 @@ services:
     build:
       context: ./ai-services
       args:
+        BASE_IMAGE: ${AI_BASE_IMAGE:-python:3.12-slim}
         INSTALL_RAG: ${POLICY_RAG_ENABLED:-false}
     restart: unless-stopped
     command: ["python", "-m", "app.mcp_servers.mcp_catalog.server"]
@@ -105,7 +106,10 @@ services:
       - telesale_network
 
   mcp-order:
-    build: ./ai-services
+    build:
+      context: ./ai-services
+      args:
+        BASE_IMAGE: ${AI_BASE_IMAGE:-python:3.12-slim}
     restart: unless-stopped
     command: ["python", "-m", "app.mcp_servers.mcp_order.server"]
     depends_on:
@@ -134,7 +138,10 @@ services:
       - telesale_network
 
   mcp-memory:
-    build: ./ai-services
+    build:
+      context: ./ai-services
+      args:
+        BASE_IMAGE: ${AI_BASE_IMAGE:-python:3.12-slim}
     restart: unless-stopped
     command: ["python", "-m", "app.mcp_servers.mcp_memory.server"]
     depends_on:
@@ -164,7 +171,10 @@ services:
       - telesale_network
 
   langmem-worker:
-    build: ./ai-services
+    build:
+      context: ./ai-services
+      args:
+        BASE_IMAGE: ${AI_BASE_IMAGE:-python:3.12-slim}
     restart: unless-stopped
     command: ["python", "-m", "app.mcp_servers.mcp_memory.distiller_worker"]
     depends_on:
@@ -180,7 +190,7 @@ services:
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-https://ollama.com}
+      OLLAMA_BASE_URL: ${LANGMEM_OLLAMA_BASE_URL:-https://ollama.com}
       OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-30}
       MCP_DB_HOST: postgres
       MCP_DB_NAME: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
