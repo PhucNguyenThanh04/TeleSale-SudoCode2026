@@ -53,8 +53,13 @@ async def local_session(request: Request, response: Response,
 async def visitor_session(request: Request, response: Response,
                           redis: Redis = Depends(get_redis)) -> dict[str, str | bool]:
     """Anonymous web identity bound to this browser, never a verified CRM identity."""
-    if (request.url.hostname != "telesale.ktoxz.id.vn"
-            or request.client is None or request.client.host not in ("127.0.0.1", "::1")):
+    # The production backend is published on the host loopback interface, but
+    # Docker presents that host-side connection to the container using its
+    # bridge gateway address. Restricting request.client to loopback therefore
+    # rejects every legitimate request forwarded by Cloudflare. The exact
+    # public hostname is the stable boundary here; the container port remains
+    # bound to 127.0.0.1 on the host.
+    if request.url.hostname != "telesale.ktoxz.id.vn":
         raise HTTPException(403, "Public web session is unavailable")
     operator_id = await operator_from_cookie(request, redis)
     returning = bool(operator_id and operator_id.startswith("web-visitor:"))
