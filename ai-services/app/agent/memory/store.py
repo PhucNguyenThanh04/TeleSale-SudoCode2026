@@ -35,13 +35,15 @@ class MemoryStore(Protocol):
                           client_msg_id: str,
                           orders: list[str] | None = None,
                           outcome: str = "khac",
-                          tool_observations: list[dict[str, Any]] | None = None) -> dict: ...
+                          tool_observations: list[dict[str, Any]] | None = None,
+                          knowledge_evidence: dict | None = None) -> dict: ...
 
 
 class MCPMemoryStore:
     """Async graph memory over memory.read/write, with no process-local facts."""
 
     supports_tool_observations = True
+    supports_knowledge_signals = True
 
     def __init__(self, gateway: ToolGateway, namespace: str = "",
                  include_prior: bool = True, max_episodes: int = 5) -> None:
@@ -64,10 +66,13 @@ class MCPMemoryStore:
                           client_msg_id: str,
                           orders: list[str] | None = None,
                           outcome: str = "khac",
-                          tool_observations: list[dict[str, Any]] | None = None) -> dict:
+                          tool_observations: list[dict[str, Any]] | None = None,
+                          knowledge_evidence: dict | None = None) -> dict:
         data = {"customer_text": customer_text, "agent_text": agent_text,
                 "on": on, "channel": channel, "client_msg_id": client_msg_id,
                 "orders": orders or []}
+        if knowledge_evidence:
+            data["knowledge_evidence"] = knowledge_evidence
         if outcome != "khac":
             data["outcome"] = outcome
         if tool_observations:

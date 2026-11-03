@@ -8,6 +8,7 @@ from typing import Any
 
 from app.mcp_servers.mcp_shared.pii import mask_pii
 from eval_harness.extractor import build_trace_row
+from app.agent.guardrails.checks import _money_claims
 
 
 _SCORER_ARG_FIELDS = frozenset({
@@ -58,51 +59,79 @@ def _safe_tool_calls(tool_calls: list[dict]) -> list[dict]:
     return result
 
 
+def _source_session_id(source: Any) -> str | None:
+    if not isinstance(source, str):
+        return None
+    parts = source.split(":")
+    if parts[0] == "langmem":
+        return parts[1] if len(parts) == 3 and all(parts) else None
+    return parts[0] if len(parts) == 2 and all(parts) else None
+
+
+def _fold(value: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFD", value.casefold().replace("đ", "d"))
+                   if unicodedata.category(c) != "Mn")
+
+
+def _spoken_fact(key: str, value: Any, text: str) -> bool:
+    folded = _fold(text)
+    if type(value) is bool:
+        if key == "has_children":
+            negative = bool(re.search(r"\b(?:khong|chua)\s+(?:co\s+)?(?:tre nho|con nho|em be|be nho)\b", folded))
+            positive = bool(re.search(r"\b(?:co\s+(?:tre nho|con nho|em be|be nho)|be nha minh)\b", folded))
+        elif key == "in_stock":
+            negative = bool(re.search(r"\b(?:het hang|tam het hang)\b", folded))
+            positive = bool(re.search(r"\b(?:con hang|co hang|san hang)\b", folded))
+        else:
+            return False
+        return negative if not value else positive and not negative
+    if key.endswith("_vnd"):
+        expected_kind = "competitor" if key == "competitor_price_vnd" else "price"
+        if key == "budget_vnd" and not re.search(r"ngan sach|tam tien|tam gia", folded):
+            return False
+        return any(amount == value and kind == expected_kind for amount, kind, _ in _money_claims(text))
+    if key == "room_area_m2":
+        return bool(re.search(r"(?<!\d)" + re.escape(str(value)) + r"\s*(?:m2|m²|met vuong)(?!\w)", folded))
+    return isinstance(value, (str, int)) and bool(re.search(
+        r"(?<![\w-])" + re.escape(_fold(str(value))) + r"(?![\w-])", folded))
+
+
 def facts_used(agent_text: str, tool_calls: list[dict], prior_facts: dict,
                scoped_facts: dict | None = None,
-               current_session_id: str | None = None) -> list[str]:
-    """Count a prior value only when the answer or a tool argument uses it."""
-    used = []
-    candidates = list(prior_facts.items())
+               current_session_id: str | None = None, *, customer_text: str = "") -> list[str]:
+    """Only observable use of a sourced fact from before this call counts."""
+    candidates = [(key, fact, None) for key, fact in prior_facts.items()]
     for scopes in (scoped_facts or {}).values():
-        if not isinstance(scopes, dict):
-            continue
-        for facts in scopes.values():
-            if isinstance(facts, dict):
-                candidates.extend(facts.items())
-    for key, fact in candidates:
+        if isinstance(scopes, dict):
+            for scope_id, facts in scopes.items():
+                if isinstance(facts, dict):
+                    candidates.extend((key, fact, scope_id) for key, fact in facts.items())
+    arg_fields = {"product_advised": {"sku"}, "variant_sku": {"sku", "new_variant_sku"},
+                  "price_quoted_vnd": {"price_vnd"}, "order_id": {"order_id"},
+                  "payment": {"payment"}, "size": {"size"}, "color": {"color"},
+                  "preferred_size": {"size"}, "preferred_color": {"color"},
+                  "promo_code": {"promo_code"}}
+    used = set()
+    for key, fact, scope_id in candidates:
         if current_session_id is not None:
-            source = fact.get("source") if isinstance(fact, dict) else None
-            if not isinstance(source, str) or source.split(":", 1)[0] == current_session_id:
+            source = _source_session_id(fact.get("source") if isinstance(fact, dict) else None)
+            if source is None or source == current_session_id:
                 continue
         value = fact.get("value") if isinstance(fact, dict) else fact
-        if value is None:
+        if value is None or customer_text and _spoken_fact(key, value, customer_text):
             continue
-        if isinstance(value, bool):
-            folded = "".join(char for char in unicodedata.normalize(
-                "NFD", agent_text.casefold().replace("đ", "d"))
-                if unicodedata.category(char) != "Mn")
-            negative = bool(re.search(r"\b(?:khong|chua)\s+(?:co\s+)?"
-                                      r"(?:tre nho|con nho|em be|be nho)\b", folded))
-            positive = bool(re.search(r"\b(?:co|nha minh co)\s+"
-                                      r"(?:tre nho|con nho|em be|be nho)\b", folded))
-            stock_negative = bool(re.search(r"\b(?:het hang|tam het hang)\b", folded))
-            stock_positive = bool(re.search(r"\b(?:con hang|co hang|san hang)\b", folded))
-            spoken = ((negative if not value else positive and not negative)
-                      if key == "has_children" else
-                      (stock_negative if not value else stock_positive and not stock_negative)
-                      if key == "in_stock" else False)
-            if spoken:
-                used.append(key)
-            continue
-        literal = str(value)
-        spoken = bool(re.search(r"(?<!\d)" + re.escape(literal) + r"(?!\d)", agent_text,
-                                re.IGNORECASE))
-        passed = any(value == arg for call in tool_calls
-                     for arg in (call.get("args") or {}).values())
+        spoken = any(_spoken_fact(key, value, clause) and (
+            scope_id is None or str(scope_id).casefold() in clause.casefold())
+            for clause in re.split(r"[!?;\n]|\.(?!\d)", agent_text))
+        passed = any(
+            (scope_id is None or call.get("args", {}).get("sku") == scope_id
+             or call.get("args", {}).get("room") == scope_id)
+            and any(type(arg) is type(value) and arg == value
+                    for field, arg in call.get("args", {}).items() if field in arg_fields.get(key, {key}))
+            for call in tool_calls if "error" not in call.get("result", {}))
         if spoken or passed:
-            used.append(key)
-    return sorted(set(used))
+            used.add(key)
+    return sorted(used)
 
 
 def public_memory_writes(call: str, turn: int, memory_writes: list[dict]) -> list[dict]:

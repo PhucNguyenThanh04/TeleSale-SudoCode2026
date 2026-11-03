@@ -3,6 +3,8 @@
 import argparse
 import asyncio
 import json
+import os
+from app.knowledge.run_context import capture_release, release_context, selected_release
 import platform
 import subprocess
 import sys
@@ -32,10 +34,13 @@ def require_same_seed(full_digest: str, baseline_digest: str) -> str:
 def _run_one(config: str, scenarios: Path, agent: str, seed: int,
              run_id: str, out: Path) -> Path:
     report = out / f"{config}.diagnostics.json"
+    env = dict(os.environ)
+    if selected_release():
+        env['KNOWLEDGE_RELEASE_ID'] = selected_release()
     subprocess.run([sys.executable, "-m", "eval_harness.benchmark_runner",
                     "--agent", agent, "--config", config, "--seed", str(seed),
                     "--scenarios", str(scenarios), "--run-id", run_id,
-                    "--out", str(report)], cwd=SERVICE, check=True)
+                    "--out", str(report)], cwd=SERVICE, check=True, env=env)
     trace = report.with_name(report.stem + f"_{config}.jsonl")
     if not trace.is_file():
         raise RuntimeError(f"{config} trace was not written")
@@ -53,13 +58,16 @@ async def run_pair(*, scenarios: Path, btc_root: Path, agent: str,
     started = datetime.now(timezone.utc).isoformat()
     source_before = source_snapshot_digest(PROJECT)
     dsn = database_url(settings)
+    knowledge_release = await capture_release(dsn)
     seed_before_full = await fingerprint_btc_source(dsn)
-    full = _run_one("full", scenarios, agent, seed, run_id, out)
+    with release_context(knowledge_release["release_id"]):
+        full = _run_one("full", scenarios, agent, seed, run_id, out)
     seed_after_full = await fingerprint_btc_source(dsn)
     require_same_seed(seed_before_full, seed_after_full)
     seed_before_base = await fingerprint_btc_source(dsn)
     require_same_seed(seed_before_full, seed_before_base)
-    baseline = _run_one("baseline", scenarios, agent, seed, run_id, out)
+    with release_context(knowledge_release["release_id"]):
+        baseline = _run_one("baseline", scenarios, agent, seed, run_id, out)
     seed_after_base = await fingerprint_btc_source(dsn)
     seed_digest = require_same_seed(seed_before_full, seed_after_base)
     if source_before != source_snapshot_digest(PROJECT):
@@ -80,7 +88,7 @@ async def run_pair(*, scenarios: Path, btc_root: Path, agent: str,
                     database_identity=full_identity,
                     hardware={"platform": platform.platform(), "machine": platform.machine()},
                     started_at_utc=started, expected_database=full_identity["database"],
-                    app_env=settings.app_env)
+                    app_env=settings.app_env, knowledge_release=knowledge_release)
     result = publish_pair(scenarios, full, baseline, out / "btc_score.json",
                           metadata, btc_root=btc_root)
     if include_rag:

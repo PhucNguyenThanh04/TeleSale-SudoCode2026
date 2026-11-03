@@ -1,8 +1,10 @@
 """Existing deterministic tool boundaries, separate from graph wiring."""
 
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 import unicodedata
+import re
 
 from app.agent.harness.catalog_query import clean_catalog_query
 from app.agent.harness.handoff_brief import build_handoff_brief
@@ -37,31 +39,58 @@ def _single_catalog_sku(state: TurnState) -> str | None:
     return sku if isinstance(sku, str) and sku else None
 
 
-def catalog_variant(state: TurnState, args: dict[str, Any]) -> str | None:
-    """Resolve a parent only from catalog variants and explicit scoped preferences."""
+@dataclass(frozen=True)
+class ProductSelection:
+    status: Literal["resolved", "catalog_required", "selection_required", "selection_unavailable"]
+    sku: str | None = None
+    parent_sku: str | None = None
+    missing_fields: tuple[str, ...] = ()
+
+
+def resolve_product_selection(state: TurnState, args: dict[str, Any]) -> ProductSelection:
+    """Resolve only from successful catalog metadata, preserving unknown state."""
     sku = args.get("sku")
     items = [item for call in [*state.get("session_tool_calls", []), *state.get("tool_calls", [])]
-             if call.get("name") == "catalog.search"
+             if call.get("name") == "catalog.search" and "error" not in call.get("result", {})
              for item in call.get("result", {}).get("items", []) if isinstance(item, dict)]
-    parent = next((item for item in reversed(items) if item.get("sku") == sku), None)
-    if not parent or not parent.get("variants"):
-        return sku
-    facts = state.get("scoped_facts", {}).get("product", {}).get(sku, {})
-    size = args.get("size")
-    color = args.get("color")
-    if size is None:
-        size = facts.get("size", facts.get("preferred_size", {})).get("value")
-    if color is None:
-        color = facts.get("color", facts.get("preferred_color", {})).get("value")
+    parent = next((item for item in reversed(items) if item.get("sku") == sku or any(
+        v.get("variant_sku") == sku for v in item.get("variants", []) if isinstance(v, dict))), None)
+    if parent is None or not isinstance(parent.get("variants"), list):
+        return ProductSelection("catalog_required")
+    parent_sku = parent["sku"]
+    if not parent["variants"]:
+        return ProductSelection("resolved", sku, parent_sku)
+    facts = state.get("scoped_facts", {}).get("product", {}).get(parent_sku, {})
     def folded(value):
         return "".join(char for char in unicodedata.normalize(
             "NFD", str(value).casefold().replace("đ", "d"))
             if unicodedata.category(char) != "Mn")
-
+    selections = {}
+    customer_text = folded(state.get("safe_text", ""))
+    for key, cue in (("size", r"(?:size|co|kich co)"), ("color", "mau")):
+        current = {str(v.get(key)): v.get(key) for v in parent["variants"] if isinstance(v, dict)
+                   and v.get(key) is not None and re.search(
+                       r"\b" + cue + r"\s+" + re.escape(folded(v[key])) + r"(?!\w)", customer_text)}
+        if len(current) > 1:
+            return ProductSelection("selection_required", parent_sku=parent_sku, missing_fields=(key,))
+        selections[key] = next(iter(current.values())) if current else args.get(key)
+        if selections[key] is None and sku == parent_sku:
+            selections[key] = facts.get(key, facts.get("preferred_" + key, {})).get("value")
     variants = [v for v in parent["variants"] if isinstance(v, dict)
-                and (size is None or str(v.get("size")) == str(size))
-                and (color is None or folded(v.get("color", "")) == folded(color))]
-    return variants[0].get("variant_sku") if len(variants) == 1 else None
+                and (sku == parent_sku or v.get("variant_sku") == sku)
+                and all(value is None or folded(v.get(key)) == folded(value)
+                        for key, value in selections.items())]
+    if len(variants) == 1:
+        return ProductSelection("resolved", variants[0]["variant_sku"], parent_sku)
+    if not variants:
+        return ProductSelection("selection_unavailable", parent_sku=parent_sku)
+    missing = tuple(key for key, value in selections.items() if value is None
+                    and len({str(v.get(key)) for v in variants}) > 1)
+    return ProductSelection("selection_required", parent_sku=parent_sku, missing_fields=missing)
+
+
+def catalog_variant(state: TurnState, args: dict[str, Any]) -> str | None:
+    return resolve_product_selection(state, args).sku
 
 
 def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[str, dict[str, Any]] | None:
@@ -155,25 +184,36 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
         else:
             return None
     if name == "order.create":
+        if state.get("identity_status") != "known":
+            return None
         sku = args.get("sku")
         observations = [*state.get("session_tool_calls", []),
                         *state.get("tool_calls", [])]
+        on = request.on.isoformat()
+        qty = args.get("qty", 1)
+        latest = {}
+        for call in observations:
+            if call.get("args", {}).get("sku") == sku:
+                latest[call.get("name")] = call
+        observations = list(latest.values())
         stocked = any(
-            call["name"] == "inventory.check"
-            and (call["args"].get("sku") == sku
-                 or (isinstance(sku, str) and isinstance(call["args"].get("sku"), str)
-                     and sku.startswith(call["args"]["sku"] + "-")))
+            call.get("name") == "inventory.check"
+            and call.get("args", {}).get("sku") == sku
+            and call.get("args", {}).get("on") == on
+            and "error" not in call.get("result", {})
             and call["result"].get("in_stock") is True
-            for call in observations
-        )
+            and call["result"].get("qty", 1) >= qty
+            for call in observations)
         quoted = any(
-            call["name"] == "pricing.get_quote"
-            and (call["args"].get("sku") == sku
-                 or (isinstance(sku, str) and isinstance(call["args"].get("sku"), str)
-                     and sku.startswith(call["args"]["sku"] + "-")))
+            call.get("name") == "pricing.get_quote"
+            and call.get("args", {}).get("sku") == sku
+            and call.get("args", {}).get("on") == on
+            and call.get("args", {}).get("qty", 1) == qty
+            and all(call.get("args", {}).get(key) == args.get(key)
+                    for key in ("address", "basket_skus"))
+            and "error" not in call.get("result", {})
             and call["result"].get("final_price_vnd") == args.get("price_vnd")
-            for call in observations
-        )
+            for call in observations)
         if not stocked or not quoted:
             return None
     return name, args

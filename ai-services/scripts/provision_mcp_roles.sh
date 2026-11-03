@@ -48,5 +48,12 @@ DO \$\$ BEGIN
         GRANT SELECT, INSERT, UPDATE, DELETE ON runtime.store,
             runtime.store_migrations TO mcp_memory;
     END IF;
+    IF to_regnamespace('knowledge') IS NOT NULL THEN
+        GRANT USAGE ON SCHEMA knowledge TO mcp_catalog, mcp_memory;
+        GRANT SELECT ON knowledge.active, knowledge.releases TO mcp_catalog;
+        GRANT SELECT,INSERT,UPDATE ON knowledge.events,knowledge.jobs,knowledge.erasures,
+            knowledge.gaps,knowledge.revisions,knowledge.regression_cases,knowledge.decisions,
+            knowledge.releases,knowledge.active,knowledge.backend_outbox TO mcp_memory;
+    END IF;
 END \$\$;
 SQL

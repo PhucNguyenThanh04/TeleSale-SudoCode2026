@@ -13,7 +13,7 @@ from pydantic import Field, create_model
 
 from app.agent.harness.observability import log_event, log_tool_input, log_tool_output
 from app.agent.guardrails.checks import safe_tool_result
-from app.agent.harness.policy import ALLOWED_TOOLS, catalog_variant, filter_owned_orders, prepare_tool_call
+from app.agent.harness.policy import ALLOWED_TOOLS, catalog_variant, resolve_product_selection, filter_owned_orders, prepare_tool_call
 from app.agent.harness.state import Decision, TurnState
 from app.agent.mcp.gateway import ToolGateway
 
@@ -123,71 +123,94 @@ class BusinessTools:
 
     async def invoke(self, name: str, proposed: dict[str, Any]) -> dict[str, Any]:
         async with self.lock:
-            raw = dict(proposed)
-            if name in {"inventory.check", "pricing.get_quote", "order.create"} and raw.get("sku"):
-                items = [item for call in self.state.get("tool_calls", [])
-                         if call.get("name") == "catalog.search"
-                         for item in call.get("result", {}).get("items", [])
-                         if isinstance(item, dict)]
-                known_skus = {item.get("sku") for item in items}
-                known_skus.update(variant.get("variant_sku") for item in items
-                                  for variant in item.get("variants", []) if isinstance(variant, dict))
-                if known_skus and raw["sku"] not in known_skus:
-                    return {"error": "unverified_sku", "next_tool": "catalog.search"}
-            args = {key: value for key, value in raw.items() if value is not None}
-            self.state["decision"] = Decision(action="tool", tool_name=name, tool_args=args)
-            prepared = prepare_tool_call(self.state, self.clock)
-            if prepared is None:
-                log_event(self.state, "call_tool", "blocked", reason="precondition_or_arguments")
-                if name in {"inventory.check", "pricing.get_quote", "order.create"} and not catalog_variant(self.state, raw):
-                    return {"error": "variant_selection_required",
-                            "next_action": "Use catalog variant_sku or specify size/color; ask only missing selection."}
-                if name == "pricing.get_quote" and isinstance(raw.get("sku"), str) \
-                        and not raw["sku"].startswith("SKU-"):
-                    return {"error": "sku_required", "next_tool": "catalog.search"}
-                return {"error": "precondition_or_arguments"}
-            _, args = prepared
-            if name in {"catalog.search", "inventory.check", "pricing.get_quote", "policy.search"}:
-                for cached in reversed(self.state.get("tool_calls", [])):
-                    if cached.get("name") in {"order.create", "order.update"}:
-                        break
-                    if (cached.get("name") == name and cached.get("args") == args
-                            and isinstance(cached.get("result"), dict)
-                            and "error" not in cached["result"]):
-                        return safe_tool_result(cached["result"])
-            if self.state.get("tool_count", 0) >= self.max_tool_calls:
-                return {"error": "tool_limit"}
-            self.state["tool_count"] = self.state.get("tool_count", 0) + 1
-            log_tool_input("call_tool", name, args)
-            request = self.state["request"]
-            operation_key = (f"{request.session_id}:{request.client_msg_id}:{name}:"
-                             f"{self.state['tool_count']}")
-            try:
-                if hasattr(self.gateway, "invoke_trusted"):
-                    result = await self.gateway.invoke_trusted(
-                        name, args, self.state.get("customer_id"), request.channel,
-                        request.channel_identity, operation_key)
-                else:
-                    result = await self.gateway.invoke(name, args)
-            except Exception as exc:
-                log_event(self.state, "call_tool", "tool_failed", level=logging.WARNING,
-                          tool=name, error_type=type(exc).__name__)
-                result = {"error": "tool_error"}
-            if not isinstance(result, dict):
-                result = {"error": "invalid_tool_result"}
-            result = filter_owned_orders(name, args, result, self.state)
-            log_tool_output(self.state, "call_tool", name, result)
-            self.state.setdefault("tool_calls", []).append(
-                {"name": name, "args": args, "result": result})
-            if (name == "handoff.transfer" and "error" not in result
-                    and result.get("status") == "queued"
-                    and isinstance(result.get("ticket_id"), str)
-                    and result["ticket_id"]):
-                self.state["needs_handoff"] = True
-                self.state["handoff_ticket_id"] = result["ticket_id"]
-            if name == "order.create" and result.get("status") == "created" and result.get("order_id"):
-                self.state.setdefault("owned_order_ids", []).append(result["order_id"])
-            return safe_tool_result(result)
+            return await self._invoke_locked(name, proposed)
+
+    async def _invoke_locked(self, name: str, proposed: dict[str, Any]) -> dict[str, Any]:
+        raw = dict(proposed)
+        if name == "order.create" and self.state.get("identity_status") != "known":
+            return {"error": "identity_required"}
+        if name == "order.create" and raw.get("sku"):
+            selection = resolve_product_selection(self.state, raw)
+            if selection.status == "catalog_required":
+                await self._invoke_locked("catalog.search", {"sku": raw["sku"]})
+                selection = resolve_product_selection(self.state, raw)
+            if selection.status != "resolved":
+                return {"error": selection.status, "missing_fields": list(selection.missing_fields),
+                        "next_tool": "catalog.search" if selection.status == "catalog_required" else None}
+        if name in {"inventory.check", "pricing.get_quote"} and any(
+                raw.get(key) is not None for key in ("size", "color")):
+            if resolve_product_selection(self.state, raw).status == "catalog_required":
+                return {"error": "catalog_required", "next_tool": "catalog.search"}
+        if name in {"inventory.check", "pricing.get_quote", "order.create"} and raw.get("sku"):
+            items = [item for call in self.state.get("tool_calls", [])
+                     if call.get("name") == "catalog.search"
+                     for item in call.get("result", {}).get("items", [])
+                     if isinstance(item, dict)]
+            known_skus = {item.get("sku") for item in items}
+            known_skus.update(variant.get("variant_sku") for item in items
+                              for variant in item.get("variants", []) if isinstance(variant, dict))
+            if known_skus and raw["sku"] not in known_skus:
+                return {"error": "unverified_sku", "next_tool": "catalog.search"}
+        args = {key: value for key, value in raw.items() if value is not None}
+        self.state["decision"] = Decision(action="tool", tool_name=name, tool_args=args)
+        prepared = prepare_tool_call(self.state, self.clock)
+        if prepared is None:
+            log_event(self.state, "call_tool", "blocked", reason="precondition_or_arguments")
+            if name == "pricing.get_quote" and isinstance(raw.get("sku"), str) \
+                    and not raw["sku"].startswith("SKU-"):
+                return {"error": "sku_required", "next_tool": "catalog.search"}
+            if name in {"inventory.check", "pricing.get_quote", "order.create"}:
+                selection = resolve_product_selection(self.state, raw)
+                if selection.status != "resolved":
+                    return {"error": selection.status, "missing_fields": list(selection.missing_fields),
+                            "next_tool": "catalog.search" if selection.status == "catalog_required" else None}
+            if name == "order.create":
+                return {"error": "purchase_evidence_required", "sku": catalog_variant(self.state, raw),
+                        "next_tools": ["inventory.check", "pricing.get_quote"],
+                        "next_action": "Verify stock and quote for this exact SKU and quantity before create."}
+            return {"error": "precondition_or_arguments"}
+        _, args = prepared
+        if name in {"catalog.search", "inventory.check", "pricing.get_quote", "policy.search"}:
+            for cached in reversed(self.state.get("tool_calls", [])):
+                if cached.get("name") in {"order.create", "order.update"}:
+                    break
+                if (cached.get("name") == name and cached.get("args") == args
+                        and isinstance(cached.get("result"), dict)
+                        and "error" not in cached["result"]):
+                    return safe_tool_result(cached["result"])
+        if self.state.get("tool_count", 0) >= self.max_tool_calls:
+            return {"error": "tool_limit"}
+        self.state["tool_count"] = self.state.get("tool_count", 0) + 1
+        log_tool_input("call_tool", name, args)
+        request = self.state["request"]
+        operation_key = (f"{request.session_id}:{request.client_msg_id}:{name}:"
+                         f"{self.state['tool_count']}")
+        try:
+            if hasattr(self.gateway, "invoke_trusted"):
+                result = await self.gateway.invoke_trusted(
+                    name, args, self.state.get("customer_id"), request.channel,
+                    request.channel_identity, operation_key)
+            else:
+                result = await self.gateway.invoke(name, args)
+        except Exception as exc:
+            log_event(self.state, "call_tool", "tool_failed", level=logging.WARNING,
+                      tool=name, error_type=type(exc).__name__)
+            result = {"error": "tool_error"}
+        if not isinstance(result, dict):
+            result = {"error": "invalid_tool_result"}
+        result = filter_owned_orders(name, args, result, self.state)
+        log_tool_output(self.state, "call_tool", name, result)
+        self.state.setdefault("tool_calls", []).append(
+            {"name": name, "args": args, "result": result})
+        if (name == "handoff.transfer" and "error" not in result
+                and result.get("status") == "queued"
+                and isinstance(result.get("ticket_id"), str)
+                and result["ticket_id"]):
+            self.state["needs_handoff"] = True
+            self.state["handoff_ticket_id"] = result["ticket_id"]
+        if name == "order.create" and result.get("status") == "created" and result.get("order_id"):
+            self.state.setdefault("owned_order_ids", []).append(result["order_id"])
+        return safe_tool_result(result)
 
     def langchain_tools(self) -> list[StructuredTool]:
         tools = []
@@ -218,9 +241,11 @@ _SYSTEM_PROMPT = (
     "Không hỏi lại thông tin đã có trong customer_facts. Nếu danh tính mơ hồ, không "
     "dùng hồ sơ hoặc đơn hàng của ứng viên. Không tự tạo giá, mã đơn, mã ticket, "
     "chính sách hay ngày giao. Với thuộc tính boolean, true là có và false là không. "
-    "Khi khách có con nhỏ (has_children=true hoặc nói nhà có bé nhỏ), ưu tiên tư vấn "
-    "và gọi pricing.get_quote cho mẫu có khóa trẻ em (child_safe_lock=true, ví dụ SKU-AP-Y) "
-    "ngay cả khi giá nhỉnh hơn ngân sách dự kiến một chút. "
+    "Chọn sản phẩm theo nhu cầu, thuộc tính catalog và ngân sách khách; nếu chưa có "
+    "mẫu đáp ứng, nêu ràng buộc và xin khách quyết định trước khi đổi yêu cầu. "
+    "Khi khách quay lại, nhắc nhu cầu đã biết bằng câu khẳng định; chỉ hỏi tiến độ "
+    "blocker còn mở, không hỏi lại blocker đã giải quyết. Yêu cầu mua hiện tại "
+    "ưu tiên hơn suggested_opening. "
     "Khi khách hỏi chính sách, gọi policy.search trước khi trả lời. "
     "Khi khách đồng ý mua, chốt đơn hoặc nói 'lên đơn', phải lập tức kiểm tra tồn kho "
     "(inventory.check) và lấy báo giá (pricing.get_quote) nếu trong phiên hiện tại chưa gọi, "

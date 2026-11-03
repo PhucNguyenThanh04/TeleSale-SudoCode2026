@@ -1,6 +1,9 @@
 """Single MCP tool boundary with an injectable protocol."""
+from app.knowledge.config import enabled, configured_url, pinned_release
 
 import asyncio
+import os
+from app.knowledge.run_context import selected_release, BASE_ONLY
 from typing import Any, Protocol
 
 from fastmcp import Client
@@ -34,6 +37,17 @@ class MCPGateway:
         except Exception:
             return {"error": "mcp_unavailable"}
 
+    async def knowledge_release(self) -> dict:
+        pinned = pinned_release()
+        if not enabled():
+            return {"release_id": BASE_ONLY, "manifest_hash": BASE_ONLY}
+        async with Client(self.transports["catalog"], auth=self.token) as client:
+            response = await client.call_tool("eval.knowledge_release", {"release_id": pinned})
+        result = response.data if isinstance(response.data, dict) else response.structured_content
+        if response.is_error or not isinstance(result, dict) or "error" in result:
+            raise RuntimeError("Knowledge release cannot be pinned")
+        return result
+
     async def invoke(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
         key = args.get("operation_key") if name == "memory.write" else None
         return await self.invoke_trusted(name, args, None, operation_key=key)
@@ -50,6 +64,11 @@ class MCPGateway:
                                                 "schedule.callback", "handoff.transfer"}:
             return {"error": "unknown_tool"}
         payload = dict(args)
+        payload.pop("knowledge_release_id", None)
+        if name == "policy.search":
+            release_id = selected_release() or pinned_release()
+            if release_id:
+                payload["knowledge_release_id"] = release_id
         payload.pop("verified_customer_id", None)
         payload.pop("source_channel", None)
         payload.pop("source_identity", None)

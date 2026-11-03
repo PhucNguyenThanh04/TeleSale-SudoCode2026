@@ -53,6 +53,8 @@ def test_repeat_reads_do_not_spend_budget_and_writes_are_not_cached():
 
 async def _repeat_reads():
     current = state()
+    current["session_tool_calls"] = [{"name": "catalog.search", "result": {
+        "items": [{"sku": "SKU-TEST", "variants": []}]}}]
     gateway = AsyncMock()
     gateway.invoke_trusted.return_value = {"sku": "SKU-TEST", "in_stock": True}
     business = BusinessTools(gateway, current, 3, lambda: None)

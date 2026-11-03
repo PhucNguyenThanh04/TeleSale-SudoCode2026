@@ -5,10 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f4efe4">
   <title>TeleSale · Cuộc gọi AI trọn luồng</title>
-  <link rel="stylesheet" href="/app/styles.css?v=20261030-e2e2">
-  <script src="/app/workspace.js?v=20261030-e2e2" defer></script>
-  <script src="/app/speech.js?v=20261030-e2e2" defer></script>
-  <script src="/app/app.js?v=20261030-e2e2" defer></script>
+  <link rel="stylesheet" href="/app/styles.css?v=20261102-knowledge">
+  <script src="/app/knowledge.js?v=20261102" defer></script>
+  <script src="/app/workspace.js?v=20261102-knowledge" defer></script>
+  <script src="/app/speech.js?v=20261102-knowledge" defer></script>
+  <script src="/app/app.js?v=20261102-knowledge" defer></script>
 </head>
 <body>
   <div class="page-shell">
@@ -26,6 +27,7 @@
       <button type="button" class="nav-active" data-view="conversation">Gọi & hội thoại</button>
       <button type="button" data-view="reference">Dữ liệu tra cứu</button>
       <button type="button" data-view="calls">Quản lý cuộc gọi</button>
+      <button type="button" data-view="knowledge" id="knowledge-nav">Cải tiến tri thức</button>
     </nav>
 
     <main class="workspace" id="conversation-screen">
@@ -128,6 +130,13 @@
       <header class="screen-head"><div><p class="eyebrow">LỊCH SỬ</p><h2>Quản lý cuộc gọi</h2><p>Chỉ hiển thị các cuộc gọi thuộc phiên truy cập này.</p></div><button id="refresh-calls" type="button">Làm mới</button></header>
       <p id="calls-status" role="status">Đang tải cuộc gọi.</p>
       <div class="calls-grid"><section><h3>Danh sách cuộc gọi</h3><div id="calls-list"></div></section><section><h3>Chi tiết</h3><div id="call-detail">Chọn một cuộc gọi để xem nội dung.</div></section></div>
+    </main>
+    <main class="secondary-screen" id="knowledge-screen" hidden>
+      <header class="screen-head"><div><p class="eyebrow">KNOWLEDGE GAP LOOP</p><h2>Cải tiến tri thức</h2><p>Thu phản ánh, kiểm tra nguồn, duyệt nội dung và xác minh sau phát hành.</p><small id="knowledge-actor"></small></div></header>
+      <div class="knowledge-filters"><label>Mục <select id="knowledge-resource"><option value="gaps">Vấn đề</option><option value="events">Feedback</option><option value="revisions">Bản sửa</option><option value="regression_cases">Test hồi quy</option><option value="releases">Phiên bản phát hành</option><option value="jobs">Công việc phân tích</option><option value="backend_outbox">Đồng bộ feedback</option><option value="sources">Nguồn công khai</option><option value="verification_runs">Kết quả xác minh</option><option value="audit">Lịch sử</option></select></label><label>Trạng thái <input id="knowledge-filter-status" placeholder="Tất cả"></label><label>Nguồn <select id="knowledge-filter-source"><option value="">Tất cả</option><option value="operator_feedback">Nhân viên</option><option value="evaluation_result">Đánh giá tự động</option><option value="runtime_signal">Hệ thống</option></select></label><button id="knowledge-refresh" type="button">Làm mới</button><button id="knowledge-prev" type="button">Trước</button><button id="knowledge-next" type="button">Sau</button></div>
+      <p id="knowledge-status" role="status"></p>
+      <div class="calls-grid"><section id="knowledge-list"></section><section id="knowledge-detail">Chọn một mục để xử lý.</section></div>
+      <section class="knowledge-release"><h3>Chuẩn bị bản phát hành</h3><p>Điền mã các bản sửa đã duyệt. Danh sách này là toàn bộ nội dung bổ sung của phiên bản mới.</p><textarea id="knowledge-release-items" aria-label="Mã bản sửa" placeholder="Mỗi mã một dòng"></textarea><button id="knowledge-prepare" type="button">Kiểm tra và chuẩn bị</button><p id="knowledge-active"></p></section>
     </main>
     <footer class="site-footer"><span>TELESALE · 2026</span><span>Gọi AI · Dữ liệu nguồn · Lịch sử cuộc gọi</span></footer>
   </div>

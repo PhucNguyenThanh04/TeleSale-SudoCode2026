@@ -143,3 +143,13 @@ body.public-visitor .operator-only{display:none!important}
 .pipeline-step[data-state="error"]{border-color:#b2584e;background:#fff0ed}
 .voice-station .pipeline-debug{margin:0}
 @media(max-width:760px){.conversation{order:0;min-height:0}.sidebar{order:1;border-top:0}.folio{order:2}.voice-station{padding:15px}.voice-station-copy strong{font-size:17px}.pipeline-steps{display:flex;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:3px}.pipeline-step{flex:0 0 130px;scroll-snap-align:start}.messages{min-height:160px}.empty-state{padding:15px}}
+
+/* Knowledge review follows the existing internal console. */
+.knowledge-filters { display:flex; flex-wrap:wrap; gap:12px; align-items:end; margin:20px 0; }
+#knowledge-detail label, #knowledge-detail fieldset { display:block; margin:14px 0; }
+#knowledge-detail input:not([type=checkbox]), #knowledge-detail textarea, #knowledge-detail select,
+.knowledge-release textarea { display:block; width:100%; padding:8px; box-sizing:border-box; }
+#knowledge-detail textarea, .knowledge-release textarea { min-height:90px; }
+#knowledge-detail pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:450px; overflow:auto; }
+#knowledge-detail button { margin:5px; }
+.public-visitor #knowledge-nav, .public-visitor #knowledge-screen { display:none; }

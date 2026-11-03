@@ -1,4 +1,5 @@
 """Catalog business rules independent of FastMCP and SQL transport."""
+from app.knowledge.config import enabled, configured_url, pinned_release
 
 from app.mcp_servers.mcp_shared.commerce_rules import _catalog, _inventory, quote
 from app.rag.policy_retrieval import retrieve
@@ -63,4 +64,23 @@ async def get_quote(repo, session, args: dict) -> dict:
 async def search_policy(repo, session, args: dict) -> dict:
     """Rank only public chunks already filtered to the applicable business date."""
     chunks = await repo.public_policy_chunks(session, args["on"], args.get("order_date"))
-    return await retrieve(args["query"], chunks)
+    import os
+    from app.knowledge.run_context import BASE_ONLY
+    release_id = args.get("knowledge_release_id")
+    status = "disabled"
+    if enabled() and release_id != BASE_ONLY:
+        try:
+            supplements = await repo.knowledge_candidates(session, release_id, args["on"], args.get("order_date"))
+            by_id = {c['chunk_id']: c for c in chunks}
+            for item in supplements:
+                by_id[item['chunk_id']] = item
+            chunks = list(by_id.values())
+            status = "ready"
+        except Exception:
+            if release_id:
+                raise  # Invalid explicit pin must not silently change the experiment.
+            status = "degraded_btc_only"
+    result = await retrieve(args["query"], chunks)
+    result['knowledge_status'] = status
+    result['knowledge_release_id'] = release_id
+    return result

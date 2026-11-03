@@ -127,6 +127,58 @@ def safe_promotion_reply(state: TurnState) -> str | None:
     )
 
 
+def transaction_selection_mismatch(state: TurnState) -> bool:
+    from app.agent.harness.policy import resolve_product_selection
+    for call in state.get("tool_calls", []):
+        if call.get("name") == "order.create" and call.get("result", {}).get("status") == "created":
+            selection = resolve_product_selection(state, call.get("args", {}))
+            if selection.status != "catalog_required" and selection.sku != call.get("args", {}).get("sku"):
+                return True
+    return False
+
+
+def safe_transaction_reply(state: TurnState) -> str | None:
+    """Describe a completed write without causing another side effect."""
+    writes = [c for c in state.get("tool_calls", []) if c.get("name") == "order.create"]
+    if not writes:
+        return None
+    uncertain = "Dạ, trạng thái đơn hàng cần được kiểm tra lại trước khi xác nhận ạ."
+    if len(writes) != 1:
+        return uncertain
+    call = writes[0]
+    result, args = call.get("result", {}), call.get("args", {})
+    if result.get("status") != "created" or not isinstance(result.get("order_id"), str):
+        if result.get("error") in {"out_of_stock", "price_mismatch", "variant_selection_required",
+                                   "invalid_payment", "invalid_qty", "cod_limit_exceeded"}:
+            return "Dạ, yêu cầu tạo đơn chưa thành công. Mình cần kiểm tra lại điều kiện đặt hàng ạ."
+        return uncertain
+    if transaction_selection_mismatch(state):
+        return uncertain
+    answer = f"Dạ, em đã tạo đơn {result['order_id']} cho mình."
+    # Omit price here: a successful order alone does not supply a current quote
+    # in every transport. The identifier is enough to acknowledge the transaction.
+    return mask_pii(answer)
+
+
+def safe_quote_reply(state: TurnState) -> str | None:
+    if any(c.get("name") == "order.create" for c in state.get("tool_calls", [])):
+        return None
+    request = state.get("request")
+    if request is None:
+        return None
+    on = request.on.isoformat()
+    quotes = [c for c in state.get("tool_calls", []) if c.get("name") == "pricing.get_quote"
+              and "error" not in c.get("result", {}) and c.get("args", {}).get("on") == on]
+    if not quotes or len({c.get("args", {}).get("sku") for c in quotes}) != 1:
+        return None
+    quote = quotes[-1]
+    sku, result = quote["args"].get("sku"), quote["result"]
+    price = result.get("final_price_vnd")
+    if not isinstance(sku, str) or result.get("sku") != sku or type(price) is not int:
+        return None
+    return mask_pii(f"Dạ, giá hiện tại của {sku} là {price:,}đ ạ.".replace(",", "."))
+
+
 class SessionNodes:
     def __init__(self, llm: BaseChatModel, tools: ToolGateway, memory: MemoryStore,
                  max_tool_calls: int, prompt_history_turns: int,

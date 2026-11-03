@@ -78,6 +78,34 @@ class SettingsTest(unittest.TestCase):
                             langfuse_base_url="https://cloud.langfuse.com")
         self.assertNotIn("sk-lf-private", repr(settings))
 
+    def test_disabled_langfuse_accepts_empty_optional_url_from_compose(self) -> None:
+        for value in ("", "   ", None):
+            with self.subTest(value=value), patch.dict(os.environ, {}, clear=True):
+                settings = Settings(_env_file=None, llm_api_key="offline-key", llm_model="offline",
+                                    langfuse_base_url=value)
+                self.assertIsNone(settings.langfuse_base_url)
+
+    def test_compose_empty_url_environment_allows_worker_settings(self) -> None:
+        with patch.dict(os.environ, {"LLM_API_KEY": "offline-key", "LLM_MODEL": "offline",
+                                     "LANGFUSE_BASE_URL": "", "LANGFUSE_PROMPTS_ENABLED": "false"}, clear=True):
+            settings = Settings(_env_file=None)
+            self.assertIsNone(settings.langfuse_base_url)
+            self.assertFalse(settings.langfuse_prompts_enabled)
+
+    def test_blank_langfuse_url_does_not_bypass_enabled_validation(self) -> None:
+        for flag in ("langfuse_enabled", "langfuse_prompts_enabled"):
+            with self.subTest(flag=flag), patch.dict(os.environ, {}, clear=True):
+                with self.assertRaises(ValidationError) as caught:
+                    Settings(_env_file=None, llm_api_key="offline-key", llm_model="offline",
+                             langfuse_base_url="", langfuse_public_key="pk-test",
+                             langfuse_secret_key="sk-test", **{flag: True})
+                self.assertIn("requires public key", str(caught.exception))
+
+    def test_nonempty_invalid_langfuse_url_is_still_rejected(self) -> None:
+        with patch.dict(os.environ, {}, clear=True), self.assertRaises(ValidationError):
+            Settings(_env_file=None, llm_api_key="offline-key", llm_model="offline",
+                     langfuse_base_url="invalid-url")
+
     def test_raw_langfuse_content_is_limited_to_nonproduction(self) -> None:
         with self.assertRaises(ValidationError):
             Settings(_env_file=None, llm_api_key="model-key", llm_model="model",

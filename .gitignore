@@ -85,4 +85,4 @@ Thumbs.db
 *.swp
 *.swo
 .graphifyignore
-graphify-out/
+graphify-out/dataset/

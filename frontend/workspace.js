@@ -12,13 +12,14 @@
   let activeView = "conversation";
 
   function switchView(view) {
-    for (const name of ["conversation", "reference", "calls"]) {
+    for (const name of ["conversation", "reference", "calls", "knowledge"]) {
       $(`${name}-screen`).hidden = name !== view;
       document.querySelector(`[data-view="${name}"]`).classList.toggle("nav-active", name === view);
     }
     activeView = view;
     if (view === "reference") loadReference();
     if (view === "calls") loadCalls();
+    if (view === "knowledge") window.TeleSaleKnowledge.refresh();
   }
 
   function card(parent, title, meta, body) {
@@ -110,6 +111,7 @@
         const item = el("div", "call-detail-message");
         item.append(el("small", "", `${message.role === "customer" ? "Khách hàng" : "Tư vấn viên AI"} · lượt ${message.turn_no}`),
           el("div", "", message.content));
+        if (message.role === "agent") window.TeleSaleKnowledge.attachFeedback(item, call.session_id, message.turn_no);
         detail.append(item);
       }
       if (!call.messages.length) detail.append(el("p", "", "Chưa có lời thoại."));

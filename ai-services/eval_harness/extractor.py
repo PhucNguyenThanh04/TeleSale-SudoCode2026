@@ -21,9 +21,9 @@ SLOT_QUESTION_PATTERNS = [
     ("room_area_m2", re.compile(r"(bao nhiêu mét|diện tích|m2|m²|rộng bao nhiêu)", re.IGNORECASE)),
     ("has_children", re.compile(r"(có trẻ nhỏ|trẻ em|bé nhỏ|bé sơ sinh|con nhỏ)", re.IGNORECASE)),
     ("budget_vnd", re.compile(r"(ngân sách|tầm tiền|tầm giá|khoảng bao nhiêu tiền)", re.IGNORECASE)),
-    ("preferred_color", re.compile(r"(màu gì|thích màu|chọn màu|màu sắc)", re.IGNORECASE)),
+    ("preferred_color", re.compile(r"(màu gì|thích màu|chọn màu|màu sắc|màu nào)", re.IGNORECASE)),
     ("size", re.compile(r"(cỡ|size|kích cỡ)", re.IGNORECASE)),
-    ("product_advised", re.compile(r"(máy nào|sản phẩm nào|quan tâm mẫu nào|chọn loại nào)", re.IGNORECASE)),
+    ("product_advised", re.compile(r"(máy nào|sản phẩm nào|quan tâm mẫu nào|chọn loại nào|mẫu (?:giày |máy )?nào)", re.IGNORECASE)),
     ("customer_name", re.compile(r"(tên là gì|xin phép gọi anh/chị là|tên của anh/chị)", re.IGNORECASE)),
 ]
 
@@ -40,30 +40,28 @@ def extract_questions(agent_text: str) -> list[dict[str, Any]]:
     if not agent_text:
         return questions
 
-    # Split into sentences keeping punctuation context
+    # Commas often separate remembered context from the requested new information.
     sentences = re.split(r"(?<=[.?!;\n])\s+", agent_text)
-    for s in sentences:
-        s = s.strip()
-        if not s:
-            continue
-
-        is_question = "?" in s or any(kw in s.lower() for kw in ("bao nhiêu", "gì không", "phải không", "đúng không", "nào ạ", "nào không"))
-        if not is_question:
-            continue
-
-        # Check confirm vs open
-        is_confirm = any(p.search(s) for p in CONFIRM_PATTERNS)
-        q_type = "confirm" if is_confirm else "open"
-
-        # Match slots
-        for slot_name, pat in SLOT_QUESTION_PATTERNS:
-            if pat.search(s):
-                questions.append({
-                    "slot": slot_name,
-                    "type": q_type,
-                    "text": s,
-                })
-                break
+    for sentence in sentences:
+        clauses = re.split(r",\s*", sentence.strip())
+        for index, clause in enumerate(clauses):
+            is_confirm = any(p.search(clause) for p in CONFIRM_PATTERNS)
+            is_question = "?" in clause or bool(re.search(
+                r"bao nhiêu|gì không|phải không|đúng không|nào (?:ạ|không)|chưa (?:ạ|chị|anh)|xong chưa",
+                clause, re.IGNORECASE))
+            if not is_question:
+                continue
+            target = clause
+            if is_confirm and index and not any(p.search(target) for _, p in SLOT_QUESTION_PATTERNS):
+                target = clauses[index - 1] + ", " + clause
+            blocker = re.search(r"trao đổi|bàn với|cân nhắc|hỏi (?:chồng|vợ|người)|quyết định|đồng ý", target, re.I)
+            matches = [(m.start(), slot) for slot, pat in SLOT_QUESTION_PATTERNS
+                       if (m := pat.search(target))]
+            if blocker:
+                matches = [(blocker.start(), "blocker")]
+            for _, slot in sorted(matches):
+                questions.append({"slot": slot, "type": "confirm" if is_confirm else "open",
+                                  "text": target.strip()})
 
     return questions
 
@@ -80,29 +78,41 @@ def extract_claims(agent_text: str, tool_calls: list[dict[str, Any]]) -> list[di
             claims.append({"field": "is_human", "value": True, "text": agent_text})
             break
 
-    # The BTC claim metric concerns what the agent said, not what a tool received.
-    for clause in re.split(r"\.(?!\d)|[!?;\n]", agent_text):
+    # Only speech supplies claims. Tools never repair or invent their truth.
+    for clause in re.split(r"\.(?!\d)|[!;\n]|\bnhưng\b|,\s*(?!\d)", agent_text):
+        if "?" in clause or re.search(r"\bnếu\b|phải không|đúng không", clause, re.I):
+            continue
+        historical = bool(re.search(r"lần trước|trước đây", clause, re.I)) and not re.search(r"hiện|hôm nay|đang", clause, re.I)
         if re.search(r"giá|\bchỉ\b|\bcòn\b", clause, re.IGNORECASE):
             for amount, kind, _ in _money_claims(clause):
                 if kind == "price" and amount >= 100_000:
-                    claims.append({"field": "price_vnd", "value": amount,
-                                   "source": "text"})
-        if re.search(r"khuyến mãi|giảm giá|ưu đãi", clause, re.IGNORECASE):
-            code = re.search(r"\b[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+\b", clause)
+                    field = "list_price_vnd" if re.search(r"niêm yết|giá gốc", clause, re.I) else "price_vnd"
+                    if historical:
+                        field = "historical_" + field
+                    claims.append({"field": field, "value": amount, "source": "text", "text": clause.strip()})
+        codes = re.findall(r"\b[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+\b", clause)
+        codes = [code for code in codes if not code.startswith(("SKU-", "OD-"))]
+        if codes or re.search(r"khuyến mãi|giảm giá|ưu đãi|tặng|biếu", clause, re.IGNORECASE):
             inactive = bool(re.search(
                 r"(?:đã\s+)?hết\s+(?:hạn|hiệu lực|khuyến mãi)|"
-                r"không\s+còn|chưa\s+có|không\s+có", clause, re.IGNORECASE))
-            field = f"promo_{code.group()}_active" if code else "promo_active"
-            claims.append({"field": field, "value": not inactive,
-                           "source": "text"})
+                r"không\s+còn|chưa\s+có|không\s+có|không\s+(?:được\s+)?tặng", clause, re.I))
+            fields = [f"promo_{code}_active" for code in codes] if codes else ["promo_active"]
+            if historical:
+                fields = [field.removesuffix("_active") + "_historical" for field in fields]
+            claims.extend({"field": field, "value": not inactive, "source": "text", "text": clause.strip()}
+                          for field in fields)
 
-    # Extract delivery / stock claims from text
+    # Stock statements have the same polarity/time boundary as offer claims.
+    for clause in re.split(r"\.(?!\d)|[!;\n]|\bnhưng\b|,\s*(?!\d)", agent_text):
+        if "?" in clause or re.search(r"\bnếu\b", clause, re.I):
+            continue
+        historical = bool(re.search(r"lần trước|trước đây", clause, re.I)) and not re.search(r"hiện|hôm nay|đang", clause, re.I)
+        negative = bool(re.search(r"không\s+còn\s+hàng|hết hàng|tạm hết", clause, re.I))
+        positive = bool(re.search(r"còn hàng|sẵn hàng", clause, re.I))
+        if negative or positive:
+            claims.append({"field": "historical_in_stock" if historical else "in_stock",
+                           "value": not negative, "source": "text", "text": clause.strip()})
     lower_text = agent_text.lower()
-    if "còn hàng" in lower_text or "sẵn hàng" in lower_text:
-        claims.append({"field": "in_stock", "value": True, "source": "text"})
-    elif "hết hàng" in lower_text or "tạm hết" in lower_text:
-        claims.append({"field": "in_stock", "value": False, "source": "text"})
-
     if "ngừng bán" in lower_text:
         claims.append({"field": "product_status", "value": "discontinued", "source": "text"})
 

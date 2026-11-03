@@ -19,7 +19,8 @@ from app.agent.guardrails.checks import (FALLBACK, check_answer, check_grounding
                                          customer_erasure_requested, mask_pii)
 from app.agent.guardrails.diagnostics import rejected_draft
 from app.agent.harness.session_nodes import (SessionNodes, safe_catalog_reply,
-                                             safe_promotion_reply)
+                                             safe_promotion_reply, safe_transaction_reply, safe_quote_reply,
+                                             transaction_selection_mismatch)
 from app.agent.harness.observability import log_event, trace_node
 from app.agent.harness.state import TurnState
 from app.agent.harness.policy import prepare_tool_call
@@ -242,40 +243,36 @@ class AgentNodes(SessionNodes):
     @trace_node("verify")
     async def verify_agent(self, state: TurnState) -> dict[str, Any]:
         draft = state.get("agent_draft", FALLBACK)
-        grounding_reason = check_grounding(draft, state.get("tool_calls", []))
-        log_event(state, "verify", "grounding_checked", accepted=grounding_reason is None,
-                  **({"reason": grounding_reason} if grounding_reason else {}))
-        if grounding_reason:
-            rejected = [rejected_draft(state, grounding_reason, draft)]
-            structured_search = any(
-                call.get("name") == "catalog.search"
-                and any(type(call.get("args", {}).get(key)) is int
-                        for key in ("min_room_area_m2", "max_price_vnd"))
-                for call in state.get("tool_calls", [])
-            )
-            if grounding_reason == "unsupported_product_spec" and structured_search:
-                safe = safe_promotion_reply(state) or safe_catalog_reply(state)
-                if safe and check_grounding(safe, state.get("tool_calls", [])) is None:
-                    checked, safe_reason = check_answer(
-                        safe, state.get("tool_calls", []), state["safe_text"])
-                    if safe_reason is None:
-                        return {"agent_text": checked, "verifier_events": rejected}
-                    rejected.append(rejected_draft(state, safe_reason, safe))
-            return {"agent_text": FALLBACK, "verifier_events": rejected}
+        calls = state.get("tool_calls", [])
+        reason = ("order_selection_mismatch" if transaction_selection_mismatch(state)
+                  else check_grounding(draft, calls))
+        log_event(state, "verify", "grounding_checked", accepted=reason is None,
+                  **({"reason": reason} if reason else {}))
+        answer = draft
+        if reason is None and self.guardrails_enabled:
+            answer, reason = check_answer(draft, calls, state["safe_text"])
+            log_event(state, "verify", "answer_checked", accepted=reason is None,
+                      **({"reason": reason} if reason else {}))
         if not self.guardrails_enabled:
             log_event(state, "verify", "answer_check_disabled",
                       reason="AGENT_GUARDRAILS_ENABLED=false; kiểm tra bằng chứng vẫn chạy")
-            return {"agent_text": mask_pii(draft.strip()) if draft.strip() else FALLBACK}
-        answer, reason = check_answer(draft, state.get("tool_calls", []), state["safe_text"])
-        log_event(state, "verify", "answer_checked", accepted=reason is None,
-                  **({"reason": reason} if reason else {}))
         if reason is None:
-            return {"agent_text": answer}
+            return {"agent_text": mask_pii(answer.strip()) if answer.strip() else FALLBACK}
         rejected = [rejected_draft(state, reason, draft)]
-        safe = safe_promotion_reply(state) or safe_catalog_reply(state)
-        if safe:
-            checked, safe_reason = check_answer(safe, state.get("tool_calls", []),
-                                                state["safe_text"])
+        recoveries = [safe_transaction_reply, safe_quote_reply, safe_promotion_reply]
+        structured_search = any(c.get("name") == "catalog.search" and any(
+            type(c.get("args", {}).get(k)) is int for k in ("min_room_area_m2", "max_price_vnd"))
+            for c in calls)
+        if reason != "unsupported_product_spec" or structured_search:
+            recoveries.append(safe_catalog_reply)
+        for recover in recoveries:
+            safe = recover(state)
+            if not safe:
+                continue
+            safe_reason = check_grounding(safe, calls)
+            checked = safe
+            if safe_reason is None:
+                checked, safe_reason = check_answer(safe, calls, state["safe_text"])
             if safe_reason is None:
                 return {"agent_text": checked, "verifier_events": rejected}
             rejected.append(rejected_draft(state, safe_reason, safe))
@@ -287,12 +284,28 @@ class AgentNodes(SessionNodes):
             return {"memory_writes": []}
         request = state["request"]
         tool_calls = state.get("tool_calls", [])
+        knowledge_kwargs = {}
+        from app.knowledge.config import enabled
+        if enabled() and getattr(self.memory, 'supports_knowledge_signals', False):
+            from app.knowledge.evidence import safe_tools
+            policy_calls = [c for c in tool_calls if c.get('name') == 'policy.search']
+            signal = ('guardrail_rejection' if state.get('verifier_events') else
+                      'fallback' if state.get('agent_text') == FALLBACK else None)
+            for call in policy_calls:
+                status = call.get('result', {}).get('retrieval_status')
+                if status in {'no_evidence', 'degraded_lexical'}:
+                    signal = status
+            knowledge_kwargs['knowledge_evidence'] = {
+                'signal': signal, 'tool_calls': safe_tools(tool_calls),
+                'retrieved_ids': [chunk['chunk_id'] for c in policy_calls
+                    for chunk in c.get('result', {}).get('chunks', []) if 'chunk_id' in chunk]}
         try:
             result = await self.memory.commit_turn(
                 str(request.session_id), state.get("customer_id"),
                 state["safe_text"], state["agent_text"], request.on.isoformat(),
                 request.channel, str(request.client_msg_id),
                 tool_observations=tool_calls,
+                **knowledge_kwargs,
                 outcome=outcome_from_tool_calls(tool_calls),
                 orders=[call["result"]["order_id"] for call in tool_calls
                         if call.get("name") == "order.create"

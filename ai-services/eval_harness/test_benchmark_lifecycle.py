@@ -33,6 +33,41 @@ class TraceReadinessTests(unittest.TestCase):
                 first, {**second, "memory_error": "job_failed"}]})
         assert_trace_ready(scenarios, {("CASE-1", "call_1"): [first, second]})
 
+    def test_memory_failure_identifies_turn_without_echoing_customer_data(self):
+        from eval_harness.benchmark_runner import assert_trace_ready
+        scenarios = {"LOCAL-CASE": {"calls": {"call_2": {"customer_turns": ["private text"]}}}}
+        row = {"scenario_id": "LOCAL-CASE", "call": "call_2", "turn": 1,
+               "memory_error": "job_failed", "customer_text": "private text",
+               "agent_text": "Dạ"}
+        with self.assertRaises(RuntimeError) as caught:
+            assert_trace_ready(scenarios, {("LOCAL-CASE", "call_2"): [row]})
+        message = str(caught.exception)
+        for value in ("LOCAL-CASE", "call_2", "turn=1", "job_failed"):
+            self.assertIn(value, message)
+        self.assertNotIn("private text", message)
+
+    def test_episode_narrative_keeps_evidence_for_each_field(self):
+        from datetime import date
+        from app.schemas.langmem import CustomerCallEpisodeCandidate
+        from app.mcp_servers.mcp_memory.services.langmem_admission import admit_episode_candidate
+        from app.mcp_servers.mcp_memory.services.episode_state import apply_episode_delta
+        source = str(uuid4())
+        customer = "Tôi muốn tìm nồi cơm cho gia đình"
+        advice = "Em tư vấn nồi cơm có hẹn giờ"
+        candidate = CustomerCallEpisodeCandidate(
+            customer_id="C-LOCAL", session_id="S-LOCAL", channel="hotline",
+            on=date(2026, 11, 2), source_turn_ids=[source], topics=[{
+                "scope_type": "global", "scope_id": "",
+                "customer_goal": {"text": customer, "evidence_quote": customer},
+                "advice_given": {"text": advice, "evidence_quote": advice}}])
+        delta = admit_episode_candidate("C-LOCAL", "S-LOCAL", candidate, [{
+            "customer_id": "C-LOCAL", "session_id": "S-LOCAL", "turn_id": source,
+            "customer_text": customer, "agent_text": advice}], [])
+        updated = apply_episode_delta({}, delta, source_turn_id=source,
+                                      customer_text=customer, agent_text=advice)
+        self.assertEqual(updated["topics"][0]["customer_goal"], customer)
+        self.assertEqual(updated["topics"][0]["advice_given"], advice)
+
 
 class RunnerFailureTests(unittest.IsolatedAsyncioTestCase):
     async def test_failed_turn_keeps_trace_but_does_not_publish_score(self):

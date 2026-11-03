@@ -73,7 +73,14 @@ def create_server(repo, token: str | None = None) -> FastMCP:
 
     @mcp.tool(name="policy.search")
     async def policy_search(query: str, on: str,
-                            order_date: str | None = None) -> dict:
+                            order_date: str | None = None,
+                            knowledge_release_id: str | None = None) -> dict:
         return await invoke(repo, "policy.search", locals())
+
+    @mcp.tool(name="eval.knowledge_release")
+    async def knowledge_release(release_id: str | None = None) -> dict:
+        if hasattr(repo, "knowledge_release"):
+            return await repo.knowledge_release(release_id)
+        return {"release_id": "btc-only", "manifest_hash": "btc-only"}
 
     return mcp

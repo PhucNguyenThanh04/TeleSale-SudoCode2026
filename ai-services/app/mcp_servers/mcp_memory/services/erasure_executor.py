@@ -22,6 +22,12 @@ async def execute_erasure(repo, request_key: str, projector=None) -> dict:
             return {"request_key": request_key, "status": "completed",
                     "store_results": request["store_results"]}
         memory_result = await repo.purge_customer_memory(conn, customer_id)
+        knowledge_result = None
+        if hasattr(repo, 'purge_knowledge_evidence'):
+            try:
+                knowledge_result = await repo.purge_knowledge_evidence(conn, customer_id)
+            except Exception:
+                knowledge_result = {'status': 'pending', 'error_code': 'knowledge_erasure_unavailable'}
         projection_result = None
         if projector is not None:
             try:
@@ -32,10 +38,13 @@ async def execute_erasure(repo, request_key: str, projector=None) -> dict:
         other_stores = [store for store in request["scope"] if store != "ai_memory"]
         results = {"ai_memory": memory_result,
                    **{store: {"status": "pending"} for store in other_stores}}
+        if knowledge_result is not None:
+            results['knowledge'] = knowledge_result
         if projection_result is not None:
             results["langmem_store"] = projection_result
         status = ("completed" if not other_stores
                   and memory_result["status"] == "completed"
+                  and (knowledge_result is None or knowledge_result["status"] in {"completed", "not_configured"})
                   and (projection_result is None or projection_result["status"] == "completed")
                   else "partial")
         await repo.finish_erasure_request(conn, request_key, status, results)

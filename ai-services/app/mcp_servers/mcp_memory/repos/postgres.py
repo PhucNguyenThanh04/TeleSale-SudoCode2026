@@ -1,4 +1,5 @@
 """PostgreSQL storage operations for turns and LangMem jobs."""
+from app.knowledge.config import enabled, configured_url, pinned_release
 
 import asyncio
 import json
@@ -259,3 +260,19 @@ class MemoryRepo:
     async def finish_operation(self, conn, key: str, result: dict) -> None:
         await conn.execute("""UPDATE runtime.write_operations SET result=$2::jsonb
             WHERE operation_key=$1""", key, json.dumps(result, ensure_ascii=False, default=str))
+
+    async def enqueue_knowledge_event(self, conn, data, session_id, customer_id):
+        import os
+        if enabled():
+            from app.knowledge.runtime_events import enqueue_turn
+            await enqueue_turn(conn, data, session_id, customer_id)
+
+    async def purge_knowledge_evidence(self, conn, customer_id):
+        import os
+        if not await conn.fetchval("SELECT to_regclass('knowledge.events')"):
+            return {"status": "not_configured"}
+        from app.knowledge.repo import AsyncpgUnitOfWork
+        from app.knowledge.erasure import erase_in_transaction
+        async with conn.transaction():
+            await conn.execute('SELECT pg_advisory_xact_lock(714221, 1)')
+            return await erase_in_transaction(AsyncpgUnitOfWork(conn), customer_id)

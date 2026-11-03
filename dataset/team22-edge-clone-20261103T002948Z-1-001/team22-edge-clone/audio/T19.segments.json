@@ -1,0 +1,75 @@
+{
+ "id": "T19",
+ "segments": [
+  {
+   "idx": 1,
+   "speaker": "A",
+   "start": 0.3,
+   "end": 2.757,
+   "voice_key": "nam_m"
+  },
+  {
+   "idx": 2,
+   "speaker": "C",
+   "start": 3.393,
+   "end": 8.218,
+   "voice_key": "bac_m"
+  },
+  {
+   "idx": 3,
+   "speaker": "A",
+   "start": 8.486,
+   "end": 16.238,
+   "voice_key": "nam_m"
+  },
+  {
+   "idx": 4,
+   "speaker": "C",
+   "start": 16.959,
+   "end": 18.446,
+   "voice_key": "bac_m"
+  },
+  {
+   "idx": 5,
+   "speaker": "A",
+   "start": 18.842,
+   "end": 25.025,
+   "voice_key": "nam_m"
+  },
+  {
+   "idx": 6,
+   "speaker": "C",
+   "start": 25.289,
+   "end": 27.683,
+   "voice_key": "bac_m"
+  },
+  {
+   "idx": 7,
+   "speaker": "A",
+   "start": 28.19,
+   "end": 34.147,
+   "voice_key": "nam_m"
+  },
+  {
+   "idx": 8,
+   "speaker": "C",
+   "start": 34.443,
+   "end": 37.885,
+   "voice_key": "bac_m"
+  },
+  {
+   "idx": 9,
+   "speaker": "A",
+   "start": 38.31,
+   "end": 43.603,
+   "voice_key": "nam_m"
+  },
+  {
+   "idx": 10,
+   "speaker": "C",
+   "start": 44.387,
+   "end": 47.212,
+   "voice_key": "bac_m"
+  }
+ ]
+}

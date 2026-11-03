@@ -1,0 +1,143 @@
+{
+ "engine": "edge",
+ "channel": "phone",
+ "snr_db_noisy": 10.0,
+ "seed": 7,
+ "pronounce": {
+  "size": "sai",
+  "ship": "síp",
+  "shipper": "síp pơ",
+  "shop": "sóp",
+  "freeship": "phri síp",
+  "voucher": "vâu chơ",
+  "order": "o đơ",
+  "check": "chéc",
+  "online": "on lai",
+  "ok": "ô kê",
+  "hi": "hai",
+  "smart": "sờ mát",
+  "navy": "nây vi",
+  "zalo": "da lô",
+  "sale": "sêu",
+  "combo": "com bô"
+ },
+ "source": {
+  "file": "C:\\Users\\Han\\PycharmProjects\\TeleSale-SudoCode2026\\speech\\dialogues\\team_clone.template.json",
+  "sha256": "155e3e6fdda00476be497f09bc314e01e31679096335078c47c962b60cad9351"
+ },
+ "noise": null,
+ "team_preview": true,
+ "dialogues": [
+  {
+   "id": "T02",
+   "duration_s": 48.16,
+   "noisy": true,
+   "noise_added": true,
+   "n_turns": 9
+  },
+  {
+   "id": "T13",
+   "duration_s": 46.17,
+   "noisy": false,
+   "noise_added": false,
+   "n_turns": 10
+  },
+  {
+   "id": "T14",
+   "duration_s": 60.07,
+   "noisy": false,
+   "noise_added": false,
+   "n_turns": 10
+  },
+  {
+   "id": "T15",
+   "duration_s": 52.11,
+   "noisy": true,
+   "noise_added": true,
+   "n_turns": 10
+  },
+  {
+   "id": "T16",
+   "duration_s": 47.94,
+   "noisy": false,
+   "noise_added": false,
+   "n_turns": 10
+  },
+  {
+   "id": "T17",
+   "duration_s": 52.56,
+   "noisy": false,
+   "noise_added": false,
+   "n_turns": 10
+  },
+  {
+   "id": "T18",
+   "duration_s": 47.92,
+   "noisy": true,
+   "noise_added": true,
+   "n_turns": 10
+  },
+  {
+   "id": "T19",
+   "duration_s": 47.63,
+   "noisy": false,
+   "noise_added": false,
+   "n_turns": 10
+  },
+  {
+   "id": "T20",
+   "duration_s": 50.24,
+   "noisy": false,
+   "noise_added": false,
+   "n_turns": 10
+  },
+  {
+   "id": "T21",
+   "duration_s": 50.57,
+   "noisy": false,
+   "noise_added": false,
+   "n_turns": 10
+  },
+  {
+   "id": "T22",
+   "duration_s": 49.16,
+   "noisy": false,
+   "noise_added": false,
+   "n_turns": 10
+  }
+ ],
+ "ground_truth_sha256": "72d20ec84d168859cf5046d407f2d7cf39dec4e0d9e2a3f4e42dab7c4fcff2d1",
+ "new_chars_synthesized": 0,
+ "voices": [
+  [
+   "A",
+   "bac_f",
+   "vi-VN-HoaiMyNeural"
+  ],
+  [
+   "A",
+   "bac_m",
+   "vi-VN-NamMinhNeural"
+  ],
+  [
+   "A",
+   "nam_m",
+   "vi-VN-NamMinhNeural"
+  ],
+  [
+   "C",
+   "C:bac_f",
+   "vi-VN-HoaiMyNeural"
+  ],
+  [
+   "C",
+   "bac_m",
+   "vi-VN-NamMinhNeural"
+  ],
+  [
+   "C",
+   "nam_m",
+   "vi-VN-NamMinhNeural"
+  ]
+ ]
+}
