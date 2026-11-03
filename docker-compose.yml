@@ -64,6 +64,7 @@ services:
       - mcp_catalog_password
       - mcp_order_password
       - mcp_memory_password
+      - mcp_knowledge_password
     volumes:
       - ./ai-services/scripts/provision_mcp_roles.sh:/provision_mcp_roles.sh:ro
     entrypoint: ["sh", "/provision_mcp_roles.sh"]
@@ -75,7 +76,6 @@ services:
       context: ./ai-services
       args:
         BASE_IMAGE: ${AI_BASE_IMAGE:-python:3.12-slim}
-        INSTALL_RAG: ${POLICY_RAG_ENABLED:-false}
     restart: unless-stopped
     command: ["python", "-m", "app.mcp_servers.mcp_catalog.server"]
     depends_on:
@@ -94,14 +94,55 @@ services:
       MCP_CATALOG_PORT: ${MCP_CATALOG_PORT:-8011}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
       DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-0}
-      POLICY_RAG_ENABLED: ${POLICY_RAG_ENABLED:-false}
-      QDRANT_URL: http://qdrant:6333
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-small}
     secrets:
       - mcp_catalog_password
       - mcp_internal_token
     ports:
       - "127.0.0.1:${MCP_CATALOG_PORT:-8011}:${MCP_CATALOG_PORT:-8011}"
+    networks:
+      - telesale_network
+
+  mcp-knowledge:
+    profiles: [knowledge]
+    build:
+      context: ./ai-services
+      dockerfile: Dockerfile.knowledge
+    restart: unless-stopped
+    command: [python, -m, app.mcp_servers.mcp_knowledge.server]
+    depends_on:
+      mcp-db-roles:
+        condition: service_completed_successfully
+      qdrant:
+        condition: service_started
+    environment:
+      LLM_API_KEY: unused-for-mcp
+      LLM_MODEL: unused-for-mcp
+      MCP_HOST: 0.0.0.0
+      MCP_DB_HOST: postgres
+      MCP_DB_NAME: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      MCP_DB_USER: mcp_knowledge
+      MCP_DB_PASSWORD_FILE: /run/secrets/mcp_knowledge_password
+      MCP_INTERNAL_TOKEN_FILE: /run/secrets/mcp_internal_token
+      MCP_KNOWLEDGE_PORT: ${MCP_KNOWLEDGE_PORT:-8014}
+      KNOWLEDGE_POLICY_CONFIG_FILE: /config/policy-runtime.json
+      QDRANT_URL: http://qdrant:6333
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    secrets:
+      - mcp_knowledge_password
+      - mcp_internal_token
+    volumes:
+      - ${KNOWLEDGE_POLICY_CONFIG_FILE:-./config/policy-runtime.json}:/config/policy-runtime.json:ro
+      - ${KNOWLEDGE_MODEL_CACHE:-./storage/knowledge-model-cache}:/root/.cache/huggingface:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    ports:
+      - "127.0.0.1:${MCP_KNOWLEDGE_PORT:-8014}:${MCP_KNOWLEDGE_PORT:-8014}"
     networks:
       - telesale_network
 
@@ -217,5 +258,7 @@ secrets:
     file: ./secrets/mcp_order_password
   mcp_memory_password:
     file: ./secrets/mcp_memory_password
+  mcp_knowledge_password:
+    file: ./secrets/mcp_knowledge_password
   mcp_internal_token:
     file: ./secrets/mcp_internal_token

@@ -1,8 +1,7 @@
 """ASGI entrypoint for the text AI service."""
-from app.knowledge.config import enabled, configured_url, pinned_release
+from app.knowledge.config import configured_url
 
 from contextlib import asynccontextmanager
-import os
 
 from fastapi import FastAPI
 
@@ -22,7 +21,7 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("AI_INTERNAL_TOKEN is required for the chat endpoint")
     app.state.harness = get_runtime()
     if configured_url("KNOWLEDGE_DATABASE_URL"):
-        from app.knowledge.repo import KnowledgeRepo
+        from app.knowledge.repos.postgres import KnowledgeRepo
         app.state.knowledge_repo = KnowledgeRepo(configured_url("KNOWLEDGE_DATABASE_URL"))
     try:
         yield

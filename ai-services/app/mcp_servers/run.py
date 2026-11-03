@@ -27,6 +27,7 @@ def run_all(*, secrets_dir: Path | None = None) -> None:
         ("catalog", settings.mcp_catalog_port),
         ("order", settings.mcp_order_port),
         ("memory", settings.mcp_memory_port),
+        ("knowledge", settings.mcp_knowledge_port),
     )
     if len({port for _, port in roles}) != len(roles):
         raise RuntimeError("MCP ports must be distinct")
@@ -34,6 +35,9 @@ def run_all(*, secrets_dir: Path | None = None) -> None:
     missing = [path.name for path in required if not path.is_file()]
     if missing:
         raise RuntimeError(f"Missing MCP secret files: {', '.join(missing)}")
+
+    if not settings.knowledge_policy_config_file or not settings.knowledge_policy_config_file.is_file():
+        raise RuntimeError("KNOWLEDGE_POLICY_CONFIG_FILE must name an existing reviewed config")
 
     base_env = os.environ.copy()
     base_env.update({
@@ -43,6 +47,7 @@ def run_all(*, secrets_dir: Path | None = None) -> None:
         "MCP_DB_NAME": database.database,
         "MCP_INTERNAL_TOKEN_FILE": str(token_file),
         "MCP_HOST": settings.mcp_host,
+        "KNOWLEDGE_POLICY_CONFIG_FILE": str(settings.knowledge_policy_config_file.resolve()),
         "LLM_API_KEY": "unused-for-mcp",
         "LLM_MODEL": "unused-for-mcp",
     })

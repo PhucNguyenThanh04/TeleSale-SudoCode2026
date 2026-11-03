@@ -1,0 +1,50 @@
+flowchart TB
+    graph["Graph persist<br/>Masked turn + observations"]
+    mem["mcp-memory commit_turn<br/>Kiểm owner / erasure / key"]
+    tx["Một transaction<br/>Turns + links + job"]
+    reply["Chat response<br/>Không đợi extraction"]
+    working["runtime.turns<br/>Working memory cùng session"]
+    queue["langmem_distillation_jobs<br/>Khách đã nhận diện"]
+    claim["Worker lease + retry<br/>Giữ thứ tự session"]
+    extract["LangMem extractor<br/>Candidates + episode delta"]
+    admit["Admission<br/>Evidence · source · scope"]
+    reject["Loại proposal thiếu chứng cứ<br/>Không coi lời agent là truth"]
+    store["AsyncPostgresStore<br/>Facts + episodes có revision"]
+    complete["Job completed<br/>Accepted writes / provenance"]
+    read["memory.read<br/>Chỉ revision được công nhận"]
+    ctx["retrieve_context<br/>History + facts + episodes"]
+    graph --> mem
+    mem -->|"atomic commit"| tx
+    tx -->|"OK"| reply
+    tx -->|"lưu text"| working
+    tx -->|"enqueue"| queue
+    queue -->|"poll"| claim
+    claim -->|"committed evidence"| extract
+    extract -->|"đề xuất"| admit
+    admit -->|"không đủ chứng cứ"| reject
+    admit -->|"accepted"| store
+    store -->|"finish job"| complete
+    complete -->|"completed revisions"| read
+    store --> read
+    working -->|"đọc đồng bộ"| ctx
+    read -->|"long-term context"| ctx
+    class graph core
+    class mem service
+    class tx data
+    class reply core
+    class working data
+    class queue data
+    class claim service
+    class extract core
+    class admit core
+    class reject pending
+    class store data
+    class complete data
+    class read service
+    class ctx core
+    classDef core fill:#e8f1ff,stroke:#3875bc,color:#182f46
+    classDef external fill:#f1f3f5,stroke:#64748b,color:#182f46
+    classDef service fill:#e1f5ef,stroke:#22836c,color:#182f46
+    classDef data fill:#f1eaff,stroke:#8260b0,color:#182f46
+    classDef optional fill:#fff5d6,stroke:#b18b25,color:#182f46
+    classDef pending fill:#fff0ed,stroke:#be6b5a,color:#182f46

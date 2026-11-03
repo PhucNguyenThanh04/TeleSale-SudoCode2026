@@ -73,12 +73,12 @@ def _source_evidence(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
                            "promo_codes": codes})
         elif call.get("name") == "policy.search":
             sources["policy.search"]["available"] = True
-            for chunk in result.get("chunks", []):
-                if isinstance(chunk, dict) and isinstance(chunk.get("body"), str):
+            for chunk in result.get("evidence", []):
+                if isinstance(chunk, dict) and isinstance(chunk.get("content"), str):
                     if isinstance(chunk.get("chunk_id"), str):
                         chunk_ids.append(checks.mask_pii(chunk["chunk_id"]))
                     policy_amounts.update(amount for amount, _, _
-                                          in checks._money_claims(chunk["body"]))
+                                          in checks._money_claims(chunk["content"]))
         elif call.get("name") == "catalog.search":
             sources["catalog.search"]["available"] = True
             items = [

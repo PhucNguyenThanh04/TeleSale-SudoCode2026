@@ -52,7 +52,6 @@ class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
                            lambda: datetime.now(timezone.utc))
         request = SimpleNamespace(session_id=uuid4(), client_msg_id=uuid4(),
                                   on=date(2026, 10, 15), channel="hotline")
-        from unittest.mock import patch
         result = await nodes.persist_agent({"request": request,
             "safe_text": "Tôi thích màu xanh", "agent_text": "Dạ",
             "customer_id": "C1", "tool_calls": []})

@@ -16,14 +16,17 @@ class MCPLauncherTest(unittest.TestCase):
         settings = SimpleNamespace(
             database_url=SecretStr("postgresql+asyncpg://admin:hidden@127.0.0.1:5432/telesale"),
             mcp_host="127.0.0.1", mcp_catalog_port=8011,
-            mcp_order_port=8012, mcp_memory_port=8013,
+            mcp_order_port=8012, mcp_memory_port=8013, mcp_knowledge_port=8014,
+            knowledge_policy_config_file=None,
         )
         with tempfile.TemporaryDirectory() as directory:
             secrets = Path(directory)
+            settings.knowledge_policy_config_file = secrets / "policy.json"
+            settings.knowledge_policy_config_file.write_text("{}")
             for name in ("mcp_internal_token", "mcp_catalog_password",
-                         "mcp_order_password", "mcp_memory_password"):
+                         "mcp_order_password", "mcp_memory_password", "mcp_knowledge_password"):
                 (secrets / name).write_text("test-only", encoding="utf-8")
-            children = [Mock() for _ in range(4)]
+            children = [Mock() for _ in range(5)]
             for child in children:
                 child.poll.return_value = 1
             with patch("app.mcp_servers.run.get_settings", return_value=settings), \
@@ -32,27 +35,30 @@ class MCPLauncherTest(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "mcp-catalog exited"):
                     run_all(secrets_dir=secrets)
 
-            self.assertEqual(popen.call_count, 4)
-            worker = popen.call_args_list[3]
+            self.assertEqual(popen.call_count, 5)
+            worker = popen.call_args_list[4]
             self.assertEqual(worker.args[0][-1],
                              "app.mcp_servers.mcp_memory.distiller_worker")
             self.assertEqual(worker.kwargs["env"]["MCP_DB_USER"], "mcp_memory")
             self.assertEqual(worker.kwargs["env"]["DATABASE_URL"], "")
             self.assertEqual(worker.kwargs["env"]["LLM_API_KEY"], "model-key")
-            children[3].wait.assert_called_once()
+            children[4].wait.assert_called_once()
 
-    def test_starts_three_roles_and_stops_all_on_child_failure(self):
+    def test_starts_four_roles_and_stops_all_on_child_failure(self):
         settings = SimpleNamespace(
             database_url=SecretStr("postgresql+asyncpg://admin:hidden@127.0.0.1:5432/telesale"),
             mcp_host="127.0.0.1", mcp_catalog_port=8011,
-            mcp_order_port=8012, mcp_memory_port=8013,
+            mcp_order_port=8012, mcp_memory_port=8013, mcp_knowledge_port=8014,
+            knowledge_policy_config_file=None,
         )
         with tempfile.TemporaryDirectory() as directory:
             secrets = Path(directory)
+            settings.knowledge_policy_config_file = secrets / "policy.json"
+            settings.knowledge_policy_config_file.write_text("{}")
             for name in ("mcp_internal_token", "mcp_catalog_password",
-                         "mcp_order_password", "mcp_memory_password"):
+                         "mcp_order_password", "mcp_memory_password", "mcp_knowledge_password"):
                 (secrets / name).write_text("test-only", encoding="utf-8")
-            children = [Mock() for _ in range(4)]
+            children = [Mock() for _ in range(5)]
             for child in children:
                 child.poll.return_value = 1
             with patch("app.mcp_servers.run.get_settings", return_value=settings), \
@@ -60,9 +66,9 @@ class MCPLauncherTest(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "mcp-catalog exited"):
                     run_all(secrets_dir=secrets)
 
-            self.assertEqual(popen.call_count, 4)
+            self.assertEqual(popen.call_count, 5)
             for (name, port), call in zip((("catalog", 8011), ("order", 8012),
-                                           ("memory", 8013)), popen.call_args_list):
+                                           ("memory", 8013), ("knowledge", 8014)), popen.call_args_list):
                 self.assertEqual(call.args[0][-1], f"app.mcp_servers.mcp_{name}.server")
                 env = call.kwargs["env"]
                 self.assertEqual(env["DATABASE_URL"], "")

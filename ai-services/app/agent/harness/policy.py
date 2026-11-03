@@ -24,7 +24,7 @@ _READ_TOOL_ARGS = {
                        "min_room_area_m2", "include_discontinued"},
     "inventory.check": {"sku", "on"},
     "pricing.get_quote": {"sku", "on", "qty", "customer_phone", "address", "basket_skus"},
-    "policy.search": {"query", "on", "order_id", "order_date"},
+    "policy.search": {"query", "on", "order_id", "order_date", "customer_reported_order_date", "top_k"},
 }
 def _single_catalog_sku(state: TurnState) -> str | None:
     searches = [call for call in state.get("tool_calls", [])

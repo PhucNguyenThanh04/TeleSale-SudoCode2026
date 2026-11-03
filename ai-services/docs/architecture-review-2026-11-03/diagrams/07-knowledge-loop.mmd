@@ -1,0 +1,43 @@
+flowchart TB
+    runtime["Runtime signals<br/>Fallback / rejection / evidence"]
+    feedback["Feedback / eval failure<br/>Từ run được kiểm chứng"]
+    events["knowledge.events + jobs<br/>Ingest có idempotency"]
+    worker["Analysis worker<br/>Phân loại · gợi ý nguồn"]
+    gap["Gap + draft revision<br/>Không tự phát hành"]
+    human["Reviewer<br/>Nguồn · nội dung · test"]
+    release["Build hybrid release<br/>Approved content + test"]
+    active["Activate / rollback<br/>Quyền riêng + audit"]
+    serving["mcp-knowledge serving<br/>Hybrid release đã activate<br/>Cần readiness môi trường"]
+    eval["Run mới sau thay đổi<br/>Live eval cần ủy quyền"]
+    compare["Compare verified runs<br/>Giữ cùng code / model / data"]
+    resolve["Reviewer quyết định<br/>Verify / resolve gap"]
+    runtime -->|"masked signals"| events
+    feedback -->|"offline import"| events
+    events -->|"job"| worker
+    worker -->|"analysis"| gap
+    gap -->|"review"| human
+    human -->|"approve"| release
+    release -->|"ready"| active
+    active -->|"pinned release"| serving
+    serving -->|"đánh giá release mới"| eval
+    eval -->|"verified artifacts"| compare
+    compare -->|"evidence"| resolve
+    resolve -->|"đóng / tiếp tục"| gap
+    class runtime core
+    class feedback external
+    class events data
+    class worker service
+    class gap core
+    class human external
+    class release core
+    class active core
+    class serving service
+    class eval service
+    class compare core
+    class resolve external
+    classDef core fill:#e8f1ff,stroke:#3875bc,color:#182f46
+    classDef external fill:#f1f3f5,stroke:#64748b,color:#182f46
+    classDef service fill:#e1f5ef,stroke:#22836c,color:#182f46
+    classDef data fill:#f1eaff,stroke:#8260b0,color:#182f46
+    classDef optional fill:#fff5d6,stroke:#b18b25,color:#182f46
+    classDef pending fill:#fff0ed,stroke:#be6b5a,color:#182f46

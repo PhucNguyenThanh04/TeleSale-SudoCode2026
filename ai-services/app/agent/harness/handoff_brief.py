@@ -82,11 +82,10 @@ def build_handoff_brief(state: TurnState, proposal: dict,
         if isinstance(advised, str) and not products:
             selected = advised
     price = current_quotes.get(selected)
-    if selected:
-        if price is None:
-            value = _fact_value(products.get(selected, {}), Slot.PRICE_QUOTED_VND)
-            if type(value) is int and value >= 0:
-                price = value
+    if selected and price is None:
+        value = _fact_value(products.get(selected, {}), Slot.PRICE_QUOTED_VND)
+        if type(value) is int and value >= 0:
+            price = value
     known_products = ", ".join(str(sku) for sku in candidates[:4])
     summary = f"Khách hỏi: {text[:430]}. Chuyển nhân viên để tiếp tục xử lý."
     if known_products:

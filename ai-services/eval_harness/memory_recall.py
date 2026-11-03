@@ -17,9 +17,9 @@ def _slot_value_matches(slot: str, expected: Any, actual: Any,
                         budget_tolerance_pct: float = 0.15) -> bool:
     if expected == actual:
         return True
-    if slot == "budget_vnd" and isinstance(expected, (int, float)) and isinstance(actual, (int, float)):
-        if expected > 0 and abs(actual - expected) / float(expected) <= budget_tolerance_pct:
-            return True
+    if (slot == "budget_vnd" and isinstance(expected, (int, float)) and isinstance(actual, (int, float))
+            and expected > 0 and abs(actual - expected) / float(expected) <= budget_tolerance_pct):
+        return True
     if isinstance(expected, str) and isinstance(actual, str):
         if expected.casefold().strip() == actual.casefold().strip():
             return True

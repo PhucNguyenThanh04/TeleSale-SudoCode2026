@@ -27,12 +27,10 @@ def database_url() -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Import BTC catalog, CRM and policy into PostgreSQL/Qdrant")
+    parser = argparse.ArgumentParser(description="Import BTC catalog, CRM and policy into PostgreSQL")
     parser.add_argument("--data-dir", type=Path, default=Path(os.getenv("BTC_DATA_DIR", DEFAULT_DATA)))
-    parser.add_argument("--qdrant-url", default=os.getenv("QDRANT_URL", "http://127.0.0.1:6333"))
-    parser.add_argument("--embedding-model", default=os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-small"))
     parser.add_argument("--dry-run", action="store_true", help="Validate and count data; do not connect to services")
-    parser.add_argument("--only-postgres", action="store_true", help="Import PostgreSQL only; skip Qdrant and embeddings")
+    parser.add_argument("--only-postgres", action="store_true", help="Compatibility option; imports now use PostgreSQL only")
     parser.add_argument("--verify-postgres", action="store_true", help="Show target database and actual table counts without importing")
     args = parser.parse_args()
 
@@ -64,13 +62,6 @@ def main() -> None:
     print("Importing to:", {"host": target.hostname, "port": target.port, "database": target.path.lstrip("/")})
     pg_counts = asyncio.run(import_release(database_url(), release))
     print("PostgreSQL imported:", pg_counts)
-    if args.only_postgres:
-        return
-
-    from .vector import import_vectors
-
-    qdrant_counts = import_vectors(args.qdrant_url, args.embedding_model, release)
-    print("Qdrant points inserted/updated:", qdrant_counts)
 
 
 if __name__ == "__main__":

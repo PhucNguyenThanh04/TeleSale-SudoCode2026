@@ -9,8 +9,8 @@ from sqlalchemy import text
                      'Requires KNOWLEDGE_TEST_DSN and an explicitly approved KNOWLEDGE_EXPECTED_TEST_DATABASE')
 class KnowledgePostgresTests(unittest.IsolatedAsyncioTestCase):
     async def test_event_transaction_and_role_boundaries(self):
-        from app.knowledge.repo import KnowledgeRepo
-        from app.knowledge.ingest import record_event
+        from app.knowledge.repos.postgres import KnowledgeRepo
+        from app.knowledge.events.ingest import record_event
         repo = KnowledgeRepo(os.environ['KNOWLEDGE_TEST_DSN'])
         try:
             async with repo.transaction() as tx:

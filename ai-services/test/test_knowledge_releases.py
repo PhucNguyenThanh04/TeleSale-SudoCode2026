@@ -4,7 +4,7 @@ from app.knowledge.schemas import Conflict, KnowledgeError
 
 
 async def approved(repo, question='Đổi khi nào?'):
-    from app.knowledge.revisions import create_revision, decide_revision
+    from app.knowledge.services.revisions import create_revision, decide_revision
     r = await create_revision(repo, 'reviewer', 'g', {'kind': 'faq', 'question': question,
         'answer': 'Cần còn nguyên tem.', 'source_ids': ['DT-01'], 'source_review_note': 'Đã rà nguồn'})
     await decide_revision(repo, 'reviewer', r['id'], r['content_hash'], 'approve', 'Đúng nguồn', True)
@@ -13,7 +13,7 @@ async def approved(repo, question='Đổi khi nào?'):
 
 class ReleaseTests(unittest.IsolatedAsyncioTestCase):
     async def test_publish_and_cas_keeps_immutable_release(self):
-        from app.knowledge.releases import prepare_release, activate_release
+        from app.knowledge.services.releases import prepare_release, activate_release
         repo = await fixture()
         r = await approved(repo)
         release = await prepare_release(repo, [r['id']], None, 'reviewer')
@@ -24,7 +24,7 @@ class ReleaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await repo.get('active', 'current'))['release_id'], release['id'])
 
     async def test_source_changes_after_preparation_prevent_activation(self):
-        from app.knowledge.releases import prepare_release, activate_release
+        from app.knowledge.services.releases import prepare_release, activate_release
         repo = await fixture()
         r = await approved(repo)
         release = await prepare_release(repo, [r['id']], None, 'reviewer')
@@ -34,7 +34,7 @@ class ReleaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await repo.get('active', 'current'))
 
     async def test_draft_not_publishable_and_stale_test_blocked(self):
-        from app.knowledge.releases import prepare_release
+        from app.knowledge.services.releases import prepare_release
         repo = await fixture()
         r = await approved(repo)
         case = await repo.get('regression_cases', r['id'])
@@ -44,8 +44,8 @@ class ReleaseTests(unittest.IsolatedAsyncioTestCase):
             await prepare_release(repo, [r['id']], None, 'reviewer')
 
     async def test_offline_retrieval_check_blocks_unreachable_variation(self):
-        from app.knowledge.releases import prepare_release
-        from app.knowledge.revisions import create_revision, decide_revision
+        from app.knowledge.services.releases import prepare_release
+        from app.knowledge.services.revisions import create_revision, decide_revision
         repo = await fixture()
         r = await create_revision(repo, 'reviewer', 'g', {'kind':'faq', 'question':'đổi hàng',
             'answer':'Còn nguyên tem', 'source_ids':['DT-01'], 'source_review_note':'review'})
@@ -57,7 +57,7 @@ class ReleaseTests(unittest.IsolatedAsyncioTestCase):
             await prepare_release(repo, [r['id']], None, 'reviewer')
 
     async def test_first_release_can_roll_back_to_btc_only(self):
-        from app.knowledge.releases import prepare_release, activate_release, rollback_release
+        from app.knowledge.services.releases import prepare_release, activate_release, rollback_release
         repo = await fixture()
         r = await approved(repo)
         release = await prepare_release(repo, [r['id']], None, 'reviewer')
@@ -67,8 +67,8 @@ class ReleaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(a['action']=='rollback_release' for a in await repo.rows('audit')))
 
     async def test_release_retries_are_idempotent_and_prepared_approval_is_locked(self):
-        from app.knowledge.releases import prepare_release, activate_release
-        from app.knowledge.revisions import decide_revision
+        from app.knowledge.services.releases import prepare_release, activate_release
+        from app.knowledge.services.revisions import decide_revision
         repo = await fixture()
         r = await approved(repo)
         a = await prepare_release(repo, [r['id']], None, 'reviewer')

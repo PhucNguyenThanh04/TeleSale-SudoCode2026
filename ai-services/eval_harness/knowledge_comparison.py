@@ -1,9 +1,8 @@
 """Compare fixed-suite rounds without changing BTC's authoritative metrics."""
-from app.knowledge.config import enabled, configured_url, pinned_release
+from app.knowledge.config import configured_url
 import argparse
 import asyncio
 import json
-import os
 from pathlib import Path
 from app.knowledge.schemas import digest, timestamp
 from eval_harness.dashboard_data import metric_rows
@@ -59,7 +58,7 @@ def main():
               'Regressed scenarios: '+', '.join(result['regressed_scenarios']), '', result['note']]
     (args.out/'report.md').write_text('\n'.join(lines)+'\n')
     if args.register:
-        from app.knowledge.repo import KnowledgeRepo
+        from app.knowledge.repos.postgres import KnowledgeRepo
         async def register():
             repo = KnowledgeRepo(configured_url('KNOWLEDGE_DATABASE_URL'))
             try:

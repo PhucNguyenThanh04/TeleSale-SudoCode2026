@@ -1,0 +1,3 @@
+# Install explicitly into the knowledge GPU image only; never during startup.
+# Resolve the CUDA-compatible torch build separately for deployment hardware.
+FlagEmbedding>=1.3.5,<2

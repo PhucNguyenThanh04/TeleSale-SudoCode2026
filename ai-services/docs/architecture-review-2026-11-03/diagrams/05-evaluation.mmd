@@ -1,0 +1,49 @@
+flowchart TB
+    sc["Scenario snapshot<br/>Official mặc định: 7 / 39<br/>File gộp: 19 / 116"]
+    official["run_official.run_pair<br/>Một agent cho mỗi cặp"]
+    pin["Pin source / seed / release<br/>Cùng RAG cho full + baseline"]
+    full["1 · Runner full<br/>Check 3 DB identities + reset"]
+    base["2 · Runner baseline<br/>Ẩn prior memory · RAG vẫn bật"]
+    runtime["runtime.run trực tiếp<br/>Bỏ qua HTTP API"]
+    wait["Đợi job của từng turn<br/>Đọc accepted writes"]
+    trace["Reference adapter<br/>Claims / questions / facts_used<br/>Trace JSONL đã che"]
+    diag["Scorer nội bộ<br/>Diagnostic riêng"]
+    audit["publish_pair<br/>Schema · exact coverage<br/>Source / seed / pair audit"]
+    btc["BTC reference_eval.py<br/>Qua eval/score_pair.py"]
+    hash["Hash inputs + manifests<br/>Đối chiếu cặp cấu hình"]
+    fail["Lượt thiếu / lỗi memory<br/>Giữ trace · không publish score"]
+    published["btc_score.json + inputs<br/>Manifests + run.json validated"]
+    sc -->|"input"| official
+    official --> pin
+    pin -->|"1. full"| full
+    pin -->|"2. baseline"| base
+    full --> runtime
+    base -->|"runtime mới"| runtime
+    runtime -->|"mỗi turn"| wait
+    wait -->|"attribution"| trace
+    trace -->|"diagnostic"| diag
+    trace -->|"cặp trace"| audit
+    audit -->|"audit đạt"| btc
+    btc -->|"score tạm"| hash
+    hash -->|"pair hợp lệ"| published
+    audit -->|"audit lỗi"| fail
+    class sc data
+    class official core
+    class pin core
+    class full service
+    class base service
+    class runtime core
+    class wait core
+    class trace data
+    class diag optional
+    class audit core
+    class btc external
+    class hash core
+    class fail pending
+    class published data
+    classDef core fill:#e8f1ff,stroke:#3875bc,color:#182f46
+    classDef external fill:#f1f3f5,stroke:#64748b,color:#182f46
+    classDef service fill:#e1f5ef,stroke:#22836c,color:#182f46
+    classDef data fill:#f1eaff,stroke:#8260b0,color:#182f46
+    classDef optional fill:#fff5d6,stroke:#b18b25,color:#182f46
+    classDef pending fill:#fff0ed,stroke:#be6b5a,color:#182f46

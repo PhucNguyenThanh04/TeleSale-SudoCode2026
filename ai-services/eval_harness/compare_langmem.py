@@ -18,7 +18,7 @@ def _value(section: dict, *path):
     return current
 
 
-def _rate(section: dict, numerator_key: str, denominator_key: str) -> float | None:
+def _rate(section: dict, denominator_key: str) -> float | None:
     denominator = section.get(denominator_key)
     return section.get("value") if isinstance(denominator, int) and denominator > 0 else None
 
@@ -50,11 +50,11 @@ def _variant(report: dict) -> dict:
     def p95(name):
         bucket = latency.get(name) or {}
         return bucket.get("p95_ms") if bucket.get("n", 0) > 0 else None
-    return {"rqr_pct": _rate(rqr, "redundant", "total_questions"),
-            "ccr_pct": _rate(ccr, "used", "required"),
-            "tsr_pct": _rate(tsr, "passed", "total"),
-            "hard_tsr_pct": _rate(hard, "passed", "total"),
-            "price_promo_hr_pct": _rate(hr, "wrong", "total"),
+    return {"rqr_pct": _rate(rqr, "total_questions"),
+            "ccr_pct": _rate(ccr, "required"),
+            "tsr_pct": _rate(tsr, "total"),
+            "hard_tsr_pct": _rate(hard, "total"),
+            "price_promo_hr_pct": _rate(hr, "total"),
             "guardrail_violations": guard.get("total"),
             "pii_violations": _value(guard, "by_type", "pii_in_memory_or_text"),
             "call_brief_p95_ms": p95("call_brief"),
@@ -87,9 +87,7 @@ def compare(reference_reports: dict[str, dict]) -> dict:
     for name, item in zip(names, meta):
         report = reference_reports.get(name, {})
         expected_ids = report.get("reference_scenario_ids")
-        if expected_ids is not None and sorted(item.get("scenario_ids", [])) != sorted(expected_ids):
-            reasons.append("scenario_coverage_mismatch")
-        elif (report.get("n_scenarios") is not None
+        if expected_ids is not None and sorted(item.get("scenario_ids", [])) != sorted(expected_ids) or (report.get("n_scenarios") is not None
               and item.get("total_scenarios_evaluated") is not None
               and report["n_scenarios"] != item["total_scenarios_evaluated"]):
             reasons.append("scenario_coverage_mismatch")

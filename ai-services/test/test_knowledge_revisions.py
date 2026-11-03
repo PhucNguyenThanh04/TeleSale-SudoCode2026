@@ -17,7 +17,7 @@ async def fixture():
 
 class RevisionTests(unittest.IsolatedAsyncioTestCase):
     async def test_source_validation_dates_hash_and_access(self):
-        from app.knowledge.sources import validate_sources
+        from app.knowledge.services.source_validation import validate_sources
         repo = await fixture()
         refs = [{'chunk_id': 'DT-01', 'source_hash': 'hash1'}]
         result = await validate_sources(repo, refs)
@@ -27,7 +27,7 @@ class RevisionTests(unittest.IsolatedAsyncioTestCase):
             await validate_sources(repo, refs)
 
     async def test_revision_approval_bound_to_hash_and_test(self):
-        from app.knowledge.revisions import create_revision, decide_revision, edit_revision
+        from app.knowledge.services.revisions import create_revision, decide_revision, edit_revision
         repo = await fixture()
         revision = await create_revision(repo, 'reviewer', 'g', {'kind': 'faq',
             'question': 'Đổi khi nào?', 'answer': 'Cần còn nguyên tem.',
@@ -46,7 +46,7 @@ class RevisionTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(case['approved'])
 
     async def test_restricted_dynamic_price_and_unknown_sources_rejected(self):
-        from app.knowledge.revisions import create_revision
+        from app.knowledge.services.revisions import create_revision
         repo = await fixture()
         for answer, sources in [('Giá 4.890.000đ', ['DT-01']), ('Không rõ', ['missing'])]:
             with self.assertRaises(KnowledgeError):
@@ -54,7 +54,7 @@ class RevisionTests(unittest.IsolatedAsyncioTestCase):
                     'answer': answer, 'source_ids': sources, 'source_review_note': 'review'})
 
     async def test_no_source_waits_and_does_not_publish(self):
-        from app.knowledge.revisions import create_revision
+        from app.knowledge.services.revisions import create_revision
         repo = await fixture()
         with self.assertRaises(KnowledgeError):
             await create_revision(repo, 'reviewer', 'g', {'kind': 'faq', 'question': 'Q',

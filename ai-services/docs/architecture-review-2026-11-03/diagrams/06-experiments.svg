@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1590" height="1087" viewBox="0 0 1590 1087" role="img" aria-label="Thiết kế thí nghiệm — implementation × memory xuyên phiên">
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8Z" fill="#64748b" /></marker></defs>
+<rect width="1590" height="1087" fill="#ffffff" />
+<g font-family="DejaVu Sans, Arial, sans-serif">
+<text x="55" y="43" font-size="25" font-weight="bold" fill="#162b43">Thiết kế thí nghiệm — implementation × memory xuyên phiên</text>
+<text x="55" y="76" font-size="16" fill="#526277">Cập nhật 03/11/2026 · Luồng memory/ablation giữ nguyên; policy RAG dùng chung cả full và baseline</text>
+<path d="M445,176 L385,176 L385,366 L365,366" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M755,176 L815,176 L815,366 L835,366" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M210,422 L210,500" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M365,366 L425,366 L425,556 L445,556" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M990,422 L990,500" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M1145,366 L1205,366 L1205,556 L1225,556" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M210,612 L210,690" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M445,556 L385,556 L385,746 L365,746" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M990,612 L990,690" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M1225,556 L1165,556 L1165,746 L1145,746" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M365,746 L425,746 L425,936 L445,936" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M835,746 L775,746 L775,936 L755,936" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M1380,612 L1380,880" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><rect x="445" y="120" width="310" height="112" rx="13" fill="#f1eaff" stroke="#8260b0" stroke-width="1.7" />
+<text x="600.0" y="152.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">Giữ tương đương</text>
+<text x="600.0" y="176.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Model · seed · data · release</text>
+<text x="600.0" y="200.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Ngày · guardrails · params</text>
+<rect x="55" y="310" width="310" height="112" rx="13" fill="#e8f1ff" stroke="#3875bc" stroke-width="1.7" />
+<text x="210.0" y="354.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">Agent Deep</text>
+<text x="210.0" y="378.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">create_deep_agent</text>
+<rect x="835" y="310" width="310" height="112" rx="13" fill="#e8f1ff" stroke="#3875bc" stroke-width="1.7" />
+<text x="990.0" y="354.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">Agent ReAct</text>
+<text x="990.0" y="378.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">create_agent</text>
+<rect x="55" y="500" width="310" height="112" rx="13" fill="#e1f5ef" stroke="#22836c" stroke-width="1.7" />
+<text x="210.0" y="544.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">Deep / full</text>
+<text x="210.0" y="568.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Có memory phiên trước</text>
+<rect x="445" y="500" width="310" height="112" rx="13" fill="#fff5d6" stroke="#b18b25" stroke-width="1.7" />
+<text x="600.0" y="544.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">Deep / baseline</text>
+<text x="600.0" y="568.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Ẩn memory phiên trước</text>
+<rect x="835" y="500" width="310" height="112" rx="13" fill="#e1f5ef" stroke="#22836c" stroke-width="1.7" />
+<text x="990.0" y="544.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">ReAct / full</text>
+<text x="990.0" y="568.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Có memory phiên trước</text>
+<rect x="1225" y="500" width="310" height="112" rx="13" fill="#fff5d6" stroke="#b18b25" stroke-width="1.7" />
+<text x="1380.0" y="544.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">ReAct / baseline</text>
+<text x="1380.0" y="568.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Ẩn memory phiên trước</text>
+<rect x="55" y="690" width="310" height="112" rx="13" fill="#f1eaff" stroke="#8260b0" stroke-width="1.7" />
+<text x="210.0" y="734.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">Official pair Deep</text>
+<text x="210.0" y="758.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Đo ảnh hưởng memory</text>
+<rect x="835" y="690" width="310" height="112" rx="13" fill="#f1eaff" stroke="#8260b0" stroke-width="1.7" />
+<text x="990.0" y="734.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">Official pair ReAct</text>
+<text x="990.0" y="758.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Đo ảnh hưởng memory</text>
+<rect x="445" y="880" width="310" height="112" rx="13" fill="#e8f1ff" stroke="#3875bc" stroke-width="1.7" />
+<text x="600.0" y="912.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">So Deep với ReAct</text>
+<text x="600.0" y="936.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Cùng cấu hình memory</text>
+<text x="600.0" y="960.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Không gọi một cặp là đủ 2×2</text>
+<rect x="1225" y="880" width="310" height="112" rx="13" fill="#fff5d6" stroke="#b18b25" stroke-width="1.7" />
+<text x="1380.0" y="912.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">Baseline vẫn có</text>
+<text x="1380.0" y="936.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">CRM · history trong call</text>
+<text x="1380.0" y="960.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Commit turn · worker</text>
+<text x="55" y="1057" font-size="14" fill="#64748b">06-experiments · Cạnh biểu diễn luồng chính / trách nhiệm. Xem nhãn chi tiết trong Mermaid và mốc RAG trong README.</text>
+</g></svg>

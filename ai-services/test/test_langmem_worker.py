@@ -2,7 +2,7 @@
 
 import unittest
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 from app.mcp_servers.mcp_memory.distiller_worker import process_one

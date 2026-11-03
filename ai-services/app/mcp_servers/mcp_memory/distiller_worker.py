@@ -267,9 +267,9 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
                     fragments.append(narrative)
                 for fact in accepted:
                     quote = fact.get("evidence_quote")
-                    if fact.get("source_kind") == "customer" and quote:
-                        if quote not in " | ".join(fragments):
-                            fragments.append(quote)
+                    if (fact.get("source_kind") == "customer" and quote
+                            and quote not in " | ".join(fragments)):
+                        fragments.append(quote)
                 summary = " | ".join(fragments)[:800]
                 if not summary:
                     summary = "Chưa có diễn biến riêng được xác minh."

@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     mcp_catalog_port: int = Field(default=8011, ge=1, le=65535)
     mcp_order_port: int = Field(default=8012, ge=1, le=65535)
     mcp_memory_port: int = Field(default=8013, ge=1, le=65535)
+    mcp_knowledge_port: int = Field(default=8014, ge=1, le=65535)
+    mcp_knowledge_url: str | None = None
+    knowledge_policy_config_file: Path | None = None
+    knowledge_policy_source_dir: Path | None = None
     mcp_catalog_url: str | None = None
     mcp_order_url: str | None = None
     mcp_memory_url: str | None = None

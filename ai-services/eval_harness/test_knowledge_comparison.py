@@ -1,4 +1,3 @@
-import copy
 import pytest
 
 
@@ -32,9 +31,7 @@ def test_compare_rejects_model_and_code_mutations():
 
 
 def test_pair_audit_rejects_release_mismatch():
-    from eval_harness import knowledge_feedback
     from eval.trace_audit import audit_pair
-    from unittest.mock import patch
     # audit_pair also checks all existing provenance; isolate the new violation.
     a = {'config': 'full', 'run_id': 'run', 'knowledge_release': {'release_id': 'one'}}
     b = {'config': 'baseline_no_memory', 'run_id': 'run', 'knowledge_release': {'release_id': 'two'}}

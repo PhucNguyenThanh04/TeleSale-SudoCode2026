@@ -60,24 +60,25 @@ Missing MCP URLs or token are a configuration error at runtime startup. Chat res
 services use PostgreSQL operation keys. A PostgreSQL LangGraph checkpointer is
 not connected yet.
 
-Policy questions use `policy.search` on mcp-catalog. PostgreSQL filters
-`btc_source.policy_chunks` for public access and the applicable call or verified
-order date before ranking. By default this uses the existing lexical baseline.
-With `POLICY_RAG_ENABLED=true`, the catalog MCP combines lexical ranking with
-Qdrant dense retrieval, validates candidate IDs and source hashes against the
-dated PostgreSQL rows, and falls back to lexical ranking on dense errors. The
-retrieval implementation lives in `app/rag/policy_retrieval.py`; catalog keeps
-the MCP tool, business service boundary and PostgreSQL repository. The
-tool returns `retrieval_status`; candidate IDs and scores are in local catalog
-logs, without query text or policy bodies. Build the policy index with
-`python -m dataloader_offline --data-dir <BTC directory>` using the same
-`EMBEDDING_MODEL` in the loader and catalog process. Install
-`requirements-rag.txt` in the catalog environment; Compose installs it when
-`POLICY_RAG_ENABLED=true` is set during build. Rebuild `mcp-catalog` after
-changing that flag. The first query loads the local model and may be slow.
-The answer
-guard checks that a policy lookup succeeded and rejects day counts absent from
-the returned chunks; it is not a general semantic proof of every policy claim.
+Policy questions use `policy.search` on the dedicated `mcp-knowledge` service.
+BGE-M3 produces dense+sparse vectors; Qdrant performs RRF and PostgreSQL supplies
+safe source snapshots from one pinned hybrid release. See the [module map](app/knowledge/README.md) for the domain/MCP directory boundaries. Catalog no longer registers
+policy tools or loads an embedding model. The agent, grounding checks, diagnostics
+and Knowledge Gap Loop use `evidence[].content` and applicability metadata.
+
+Configure `MCP_KNOWLEDGE_URL`, a separate reader role/secret and a reviewed
+`KNOWLEDGE_POLICY_CONFIG_FILE`. Missing/unverified relevance config, model cache,
+CUDA or release/index readiness fails closed; no lexical or CPU fallback occurs.
+No dependency installation, model download, database migration or running-service
+change is performed by startup. See the [knowledge runbook](docs/mcp-knowledge-runbook.md)
+for migration 0003, CLI prepare/activate/rollback/revoke and operational limits.
+
+The Knowledge Gap Loop keeps its existing approval/CAS/audit controls. With a
+hybrid config, its prepare operation delegates to the hybrid builder. Historical
+lexical review checks do not certify hybrid readiness. BTC imports remain
+PostgreSQL-only; this feature does not delete source data, old collections or caches.
+Functional tests use fake/scripted models and in-memory dependencies. Real GPU,
+quality and performance have not been evaluated.
 
 ### Langfuse Cloud tracing
 
@@ -163,7 +164,7 @@ rows and removes the empty legacy schemas and the empty `public` schema; it
 stops with an error if `public` contains other objects.
 
 After importing BTC data and applying the migrations, create four ignored
-secret files under `secrets/`: `mcp_catalog_password`, `mcp_order_password`,
+secret files under `secrets/`: `mcp_catalog_password`, `mcp_order_password`, `mcp_knowledge_password`,
 `mcp_memory_password` (hex strings) and `mcp_internal_token` (the same value as
 `MCP_INTERNAL_TOKEN` in `ai-services/.env`). The repository's existing
 `secrets/postgres_password` remains the PostgreSQL admin password. Then run:
@@ -175,12 +176,12 @@ docker compose --env-file .env --env-file ai-services/.env up -d --build mcp-cat
 python -m app
 ```
 
-For a local run without the three MCP Compose containers, start all three
+For a local run without the MCP Compose containers, start all four
 MCP processes and the LangMem worker in one terminal with `python -m app.mcp_servers.run` from
 `ai-services/`. The launcher uses `DATABASE_URL` to locate PostgreSQL, then
-connects each child with its own `mcp_catalog`, `mcp_order` or `mcp_memory`
+connects each child with its own `mcp_catalog`, `mcp_order`, `mcp_memory` or `mcp_knowledge`
 role and the corresponding files under `../secrets/`. Provision those roles
-first. Stop the launcher with Ctrl+C. You can then call
+first, apply migration 0003 and supply the reviewed policy config; see the knowledge runbook. Stop the launcher with Ctrl+C. You can then call
 `app.agent.chat.chat(ChatRequest)` from another Python process; the AI HTTP
 server is not required for that call.
 

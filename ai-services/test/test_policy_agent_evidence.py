@@ -1,0 +1,35 @@
+from app.agent.guardrails.checks import check_answer
+
+
+def call(status='applicable',missing=None):
+    return {'name':'policy.search','args':{'query':'đổi trả'},'result':{'retrieval_status':'ok',
+        'evidence':[{'chunk_id':'DT-01','content':'Đổi trả trong 7 ngày.', 'evidence_type':'business_rule',
+        'applicability':{'status':status,'required_context':['order_date'] if status=='conditional' else [],
+                         'missing_required_section_ids':missing or []}}]}}
+
+
+def test_new_evidence_schema_is_used_for_policy_grounding():
+    answer='Chính sách đổi trả trong 7 ngày.'
+    assert check_answer(answer,[call()])[1] is None
+    assert check_answer('Chính sách đổi trả trong 14 ngày.',[call()])[1] is not None
+
+
+def test_conditional_explanation_cannot_confirm_order_entitlement():
+    assert check_answer('Theo ngày anh khai, chính sách đổi trả là 7 ngày; em chưa xác minh quyền lợi của đơn.',[call('conditional')])[1] is None
+    assert check_answer('Đơn của anh đủ điều kiện đổi trả trong 7 ngày.',[call('conditional')])[1] is not None
+    assert check_answer('Em cam kết hoàn tiền cho đơn này.',[call('conflict')])[1] is not None
+
+
+def test_missing_exception_does_not_authorize_unqualified_policy():
+    assert check_answer('Chính sách đổi trả trong 7 ngày.',[call('conditional',['CL-01'])])[1] is not None
+
+
+def test_unverified_policy_rights_are_blocked_even_with_optional_checks_disabled():
+    import asyncio
+    from app.agent.harness.agent_nodes import AgentNodes
+    nodes=AgentNodes(None,None,None,5,3)
+    nodes.guardrails_enabled=False
+    answer='Đơn của anh đủ điều kiện đổi trả trong 7 ngày.'
+    result=asyncio.run(nodes.verify_agent({'agent_draft':answer,'safe_text':'đổi trả?',
+        'tool_calls':[call('conditional')]}))
+    assert result['agent_text']!=answer

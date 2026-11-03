@@ -1,5 +1,7 @@
 # Baseline truy hồi chính sách trước khi bật RAG
 
+> Cập nhật 03/11/2026: pipeline RAG lexical/dense cũ đã được gỡ. Phần RAG trong tài liệu này được giữ làm lịch sử, không phải hướng dẫn chạy hiện hành; thiết kế thay thế là [MCP Knowledge/RAG](../ai-services/docs/superpowers/specs/2026-11-03-mcp-knowledge-rag-design.md).
+
 Ngày đo: 2026-10-29. Nguồn: `BTC-Data-Vong1-TEAMS/rag/qa_labeled.json` (60 câu), policy cùng gói BTC trong workspace. Lệnh: `python eval/policy_retrieval_baseline.py`. Ngày gọi và ngày đơn giả định cho phép đo này: `2026-10-15`.
 
 | Loại câu | Số câu đủ điều kiện | Hit@3 | Hit@5 | Full@5 |

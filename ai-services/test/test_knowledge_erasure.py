@@ -1,13 +1,13 @@
 import unittest
 from test_knowledge_revisions import fixture
-from app.knowledge.ingest import record_event
-from app.knowledge.worker import process_one
+from app.knowledge.events.ingest import record_event
+from app.knowledge.events.worker import process_one
 from app.knowledge.schemas import digest
 
 
 class ErasureTests(unittest.IsolatedAsyncioTestCase):
     async def test_analysis_inflight_does_not_recreate_erased_evidence(self):
-        from app.knowledge.erasure import erase_customer
+        from app.knowledge.services.erasure import erase_customer
         repo = await fixture()
         await record_event(repo, {'source': 'runtime_signal', 'customer_id': 'c', 'question': 'đổi hàng'}, 'k')
         async def analyzer(*args):
@@ -17,9 +17,9 @@ class ErasureTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any(g.get('title') == 'must not resurrect' for g in await repo.rows('gaps')))
 
     async def test_erase_invalidates_active_derived_release_and_outbox(self):
-        from app.knowledge.erasure import erase_customer
-        from app.knowledge.revisions import create_revision, decide_revision
-        from app.knowledge.releases import prepare_release, activate_release
+        from app.knowledge.services.erasure import erase_customer
+        from app.knowledge.services.revisions import create_revision, decide_revision
+        from app.knowledge.services.releases import prepare_release, activate_release
         repo = await fixture()
         event = await record_event(repo, {'source': 'operator_feedback', 'customer_id': 'c',
                                          'question': 'đổi hàng'}, 'k')
@@ -37,8 +37,8 @@ class ErasureTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('đổi hàng', str(await repo.rows('revisions')))
 
     async def test_case_editor_receives_server_hash(self):
-        from app.knowledge.revisions import create_revision
-        from app.knowledge.service import query, command
+        from app.knowledge.services.revisions import create_revision
+        from app.knowledge.services.lifecycle import query
         repo = await fixture()
         revision = await create_revision(repo, 'reviewer', 'g', {'kind': 'faq', 'question': 'đổi hàng',
             'answer': 'Còn tem', 'source_ids': ['DT-01'], 'source_review_note': 'review'})

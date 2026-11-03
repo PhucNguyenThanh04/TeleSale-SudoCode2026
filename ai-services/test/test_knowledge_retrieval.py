@@ -5,8 +5,8 @@ from test_knowledge_releases import approved
 
 class RetrievalTests(unittest.IsolatedAsyncioTestCase):
     async def test_supplement_requires_valid_order_date_and_source(self):
-        from app.knowledge.releases import prepare_release, activate_release
-        from app.knowledge.retrieval import supplement_candidates
+        from app.knowledge.services.releases import prepare_release, activate_release
+        from app.knowledge.services.supplements import supplement_candidates
         repo = await fixture()
         r = await approved(repo)
         release = await prepare_release(repo, [r['id']], None, 'reviewer')
@@ -24,8 +24,8 @@ class RetrievalTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await supplement_candidates(tx, release['id'], '2026-10-15', '2026-10-01'), [])
 
     async def test_pin_does_not_follow_active_pointer(self):
-        from app.knowledge.releases import prepare_release, activate_release
-        from app.knowledge.run_context import release_context, selected_release
+        from app.knowledge.services.releases import prepare_release, activate_release
+        from app.knowledge.context import release_context, selected_release
         repo = await fixture()
         first = await prepare_release(repo, [(await approved(repo))['id']], None, 'reviewer')
         await activate_release(repo, first['id'], None, 'reviewer')
@@ -38,12 +38,13 @@ class RetrievalTests(unittest.IsolatedAsyncioTestCase):
     async def test_gateway_strips_model_release_and_injects_trusted_pin(self):
         from fastmcp import FastMCP
         from app.agent.mcp.gateway import MCPGateway
-        from app.knowledge.run_context import release_context
+        from app.knowledge.context import release_context
         server = FastMCP('knowledge-test')
         @server.tool(name='policy.search')
-        async def search(query: str, on: str, knowledge_release_id: str | None = None):
-            return {'release': knowledge_release_id}
-        gateway = MCPGateway(server, None, None)
+        async def search(query: str, on: str, top_k: int = 5, trusted_context: str | None = None):
+            import json
+            return {'release': json.loads(trusted_context)['payload']['context']['release_id']}
+        gateway = MCPGateway(None, None, None, knowledge=server, context_secret='test-only')
         with release_context('trusted'):
             result = await gateway.invoke('policy.search', {'query': 'đổi', 'on': '2026-10-15',
                                                            'knowledge_release_id': 'forged'})

@@ -146,7 +146,7 @@ def safe_transaction_reply(state: TurnState) -> str | None:
     if len(writes) != 1:
         return uncertain
     call = writes[0]
-    result, args = call.get("result", {}), call.get("args", {})
+    result = call.get("result", {})
     if result.get("status") != "created" or not isinstance(result.get("order_id"), str):
         if result.get("error") in {"out_of_stock", "price_mismatch", "variant_selection_required",
                                    "invalid_payment", "invalid_qty", "cod_limit_exceeded"}:

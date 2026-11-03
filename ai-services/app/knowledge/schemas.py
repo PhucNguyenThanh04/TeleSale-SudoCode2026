@@ -1,7 +1,9 @@
-"""Shared lifecycle values and safe error contracts."""
+"""Shared lifecycle values, source snapshots and evidence contracts."""
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from typing import Literal
+from pydantic import BaseModel, ConfigDict, Field
 from uuid import uuid4
 
 
@@ -35,6 +37,78 @@ def identifier():
 
 
 TABLES = frozenset({'events', 'gaps', 'revisions', 'decisions', 'regression_cases',
-    'releases', 'active', 'jobs', 'audit', 'permissions', 'verification_runs', 'erasures', 'backend_outbox'})
+    'releases', 'active', 'jobs', 'audit', 'permissions', 'verification_runs', 'erasures', 'backend_outbox', 'policy_sources', 'policy_revocations'})
 CATEGORIES = frozenset({'content', 'retrieval', 'source_conflict', 'generation',
                         'technical', 'correct_refusal', 'insufficient_evidence'})
+
+
+class Contract(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+
+class PolicyRule(Contract):
+    scope: str
+    date_basis: Literal['on', 'order_date'] = 'on'
+    effective_from: date | None = None
+    effective_until: date | None = None
+    required_context: list[str] = Field(default_factory=list)
+    source_ids: list[str] = Field(default_factory=list)
+    description: str = ''
+
+
+class SourceChunk(Contract):
+    model_config = ConfigDict(extra='forbid', frozen=True)
+    chunk_id: str
+    section_id: str
+    document_id: str
+    content: str = Field(min_length=1)
+    source: dict
+    source_hash: str = Field(min_length=1)
+    content_hash: str = Field(min_length=1)
+    access_level: Literal['public'] = 'public'
+    evidence_type: Literal['business_rule', 'knowledge_limit', 'disclosure_limit', 'handoff_guidance'] = 'business_rule'
+    date_basis: Literal['on', 'order_date'] = 'on'
+    effective_from: date | None = None
+    effective_until: date | None = None
+    required_context: list[str] = Field(default_factory=list)
+    required_links: list[str] = Field(default_factory=list)
+    rules: list[PolicyRule] = Field(default_factory=list)
+    conflict: bool = False
+    transformation: str = 'identity'
+    supplement: bool = False
+    source_references: list[dict] = Field(default_factory=list)
+    search_aliases: list[str] = Field(default_factory=list)
+
+
+class Applicability(Contract):
+    status: Literal['applicable', 'conditional', 'conflict'] = 'applicable'
+    date_basis: Literal['on', 'order_date'] = 'on'
+    date_used: date | None = None
+    date_source: str | None = None
+    effective_from: date | None = None
+    effective_until: date | None = None
+    required_context: list[str] = Field(default_factory=list)
+    missing_required_section_ids: list[str] = Field(default_factory=list)
+    rules: list[PolicyRule] = Field(default_factory=list)
+
+
+class Evidence(Contract):
+    chunk_id: str
+    section_id: str
+    document_id: str
+    content: str
+    source: dict
+    evidence_type: Literal['business_rule', 'knowledge_limit', 'disclosure_limit', 'handoff_guidance'] = 'business_rule'
+    applicability: Applicability = Field(default_factory=Applicability)
+    retrieved_via: Literal['vector', 'linked'] = 'vector'
+
+
+class EvidenceSet(Contract):
+    required_dependencies_complete: bool = True
+    missing_required_section_ids: list[str] = Field(default_factory=list)
+
+
+class HybridVector(Contract):
+    dense: list[float]
+    sparse_indices: list[int]
+    sparse_values: list[float]

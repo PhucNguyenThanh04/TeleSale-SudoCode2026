@@ -1,14 +1,13 @@
 """Import failures only from complete, provenance-checked BTC runs (offline)."""
-from app.knowledge.config import enabled, configured_url, pinned_release
+from app.knowledge.config import configured_url
 import argparse
 import asyncio
 import hashlib
 import json
-import os
 import sys
 from pathlib import Path
 from app.knowledge.schemas import digest
-from app.knowledge.ingest import record_event
+from app.knowledge.events.ingest import record_event
 from eval_harness.dashboard_data import load_run
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -87,7 +86,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--run', type=Path, required=True)
     args = ap.parse_args()
-    from app.knowledge.repo import KnowledgeRepo
+    from app.knowledge.repos.postgres import KnowledgeRepo
     dsn = configured_url('KNOWLEDGE_DATABASE_URL')
     if not dsn:
         ap.error('KNOWLEDGE_DATABASE_URL required')

@@ -1,12 +1,11 @@
 """Internal knowledge API; no endpoint is exposed as a model tool."""
 import hmac
-import os
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from app.configs import get_settings
 from app.knowledge.schemas import KnowledgeError
-from app.knowledge.ingest import record_event
-from app.knowledge.service import query, command
+from app.knowledge.events.ingest import record_event
+from app.knowledge.services.lifecycle import query, command
 
 
 async def authenticate(request: Request):

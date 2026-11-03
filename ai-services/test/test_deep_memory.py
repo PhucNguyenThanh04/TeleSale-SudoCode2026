@@ -8,9 +8,7 @@ from uuid import uuid4
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
-from pydantic import ValidationError
 
-from app.constants import PROFILE_SLOT_KEYS
 from app.agent.harness.runtime import DeepHarnessRuntime
 from app.agent.harness.context import _split_facts
 from app.agent.implementations.deep_agent import BusinessTools

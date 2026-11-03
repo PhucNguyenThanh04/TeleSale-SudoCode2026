@@ -5,9 +5,10 @@ export PGPASSWORD="$(cat /run/secrets/postgres_password)"
 catalog_password="$(cat /run/secrets/mcp_catalog_password)"
 order_password="$(cat /run/secrets/mcp_order_password)"
 memory_password="$(cat /run/secrets/mcp_memory_password)"
+knowledge_password="$(cat /run/secrets/mcp_knowledge_password)"
 
 # Passwords are generated as hex, which makes SQL interpolation unambiguous.
-for password in "$catalog_password" "$order_password" "$memory_password"; do
+for password in "$catalog_password" "$order_password" "$memory_password" "$knowledge_password"; do
     case "$password" in
         *[!0-9a-f]*|"") echo 'MCP database passwords must be nonempty hex strings' >&2; exit 1 ;;
     esac
@@ -20,11 +21,14 @@ SELECT 'CREATE ROLE mcp_order LOGIN' WHERE NOT EXISTS
     (SELECT 1 FROM pg_roles WHERE rolname='mcp_order') \gexec
 SELECT 'CREATE ROLE mcp_memory LOGIN' WHERE NOT EXISTS
     (SELECT 1 FROM pg_roles WHERE rolname='mcp_memory') \gexec
+SELECT 'CREATE ROLE mcp_knowledge LOGIN' WHERE NOT EXISTS
+    (SELECT 1 FROM pg_roles WHERE rolname='mcp_knowledge') \gexec
+ALTER ROLE mcp_knowledge LOGIN PASSWORD '$knowledge_password';
 ALTER ROLE mcp_catalog PASSWORD '$catalog_password';
 ALTER ROLE mcp_order PASSWORD '$order_password';
 ALTER ROLE mcp_memory PASSWORD '$memory_password';
 
-GRANT CONNECT ON DATABASE "$PGDATABASE" TO mcp_catalog, mcp_order, mcp_memory;
+GRANT CONNECT ON DATABASE "$PGDATABASE" TO mcp_catalog, mcp_order, mcp_memory, mcp_knowledge;
 GRANT USAGE ON SCHEMA btc_source TO mcp_catalog, mcp_order, mcp_memory;
 GRANT USAGE ON SCHEMA runtime TO mcp_catalog, mcp_order, mcp_memory;
 GRANT SELECT ON btc_source.products, btc_source.variants, btc_source.promotions,
@@ -50,7 +54,12 @@ DO \$\$ BEGIN
     END IF;
     IF to_regnamespace('knowledge') IS NOT NULL THEN
         GRANT USAGE ON SCHEMA knowledge TO mcp_catalog, mcp_memory;
-        GRANT SELECT ON knowledge.active, knowledge.releases TO mcp_catalog;
+        IF to_regclass('knowledge.policy_sources') IS NOT NULL THEN
+            GRANT USAGE ON SCHEMA knowledge TO mcp_knowledge;
+            GRANT SELECT ON knowledge.policy_sources,knowledge.policy_revocations,
+                knowledge.active,knowledge.releases TO mcp_knowledge;
+            GRANT SELECT,INSERT,UPDATE ON knowledge.policy_sources,knowledge.policy_revocations TO mcp_memory;
+        END IF;
         GRANT SELECT,INSERT,UPDATE ON knowledge.events,knowledge.jobs,knowledge.erasures,
             knowledge.gaps,knowledge.revisions,knowledge.regression_cases,knowledge.decisions,
             knowledge.releases,knowledge.active,knowledge.backend_outbox TO mcp_memory;

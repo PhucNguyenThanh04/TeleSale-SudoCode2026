@@ -1,11 +1,11 @@
 import unittest
 from test_knowledge_repo import MemoryRepo
-from app.knowledge.ingest import record_event
+from app.knowledge.events.ingest import record_event
 
 
 class WorkerTests(unittest.IsolatedAsyncioTestCase):
     async def test_process_and_retry_without_duplicate_gaps(self):
-        from app.knowledge.worker import process_one
+        from app.knowledge.events.worker import process_one
         repo = MemoryRepo()
         await record_event(repo, {'source': 'runtime_signal', 'question': 'đổi hàng',
             'signal': 'no_evidence'}, 'one')
@@ -16,7 +16,7 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(await process_one(repo, 'worker'))
 
     async def test_failed_analysis_retries_and_exhausts(self):
-        from app.knowledge.worker import process_one
+        from app.knowledge.events.worker import process_one
         repo = MemoryRepo()
         out = await record_event(repo, {'source': 'runtime_signal', 'question': 'đổi hàng'}, 'fail')
         async def broken(*args):
@@ -28,8 +28,8 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('sensitive', str(job))
 
     async def test_merge_and_split_keep_provenance(self):
-        from app.knowledge.worker import process_one
-        from app.knowledge.gaps import update_gap
+        from app.knowledge.events.worker import process_one
+        from app.knowledge.services.gaps import update_gap
         repo = MemoryRepo()
         await repo.put('permissions', 'reviewer', {'permissions': ['knowledge_review']})
         for k in ('one', 'two'):
@@ -43,7 +43,7 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(await repo.rows('events')), 2)
 
     async def test_claim_lease_and_erasure_race(self):
-        from app.knowledge.worker import claim_job, process_one
+        from app.knowledge.events.worker import claim_job, process_one
         repo = MemoryRepo()
         event = await record_event(repo, {'source': 'runtime_signal', 'question': 'đổi', 'customer_id': 'c'}, 'k')
         self.assertIsNotNone(await claim_job(repo, 'w1', 0))
@@ -54,7 +54,7 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await repo.get('jobs', event['id']))['status'], 'erased')
 
     async def test_positive_feedback_is_evidence_not_an_automatic_gap(self):
-        from app.knowledge.worker import process_one
+        from app.knowledge.events.worker import process_one
         repo = MemoryRepo()
         await record_event(repo, {'source':'operator_feedback', 'question':'đổi hàng',
                                  'answer':'Còn nguyên tem', 'rating': True}, 'positive')
@@ -63,7 +63,7 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(await repo.rows('events')), 1)
 
     async def test_triage_reason_is_masked_before_storage(self):
-        from app.knowledge.gaps import update_gap
+        from app.knowledge.services.gaps import update_gap
         repo = MemoryRepo()
         await repo.put('permissions', 'reviewer', {'permissions': ['knowledge_review']})
         await repo.put('gaps', 'g', {'id':'g', 'version':1, 'status':'new', 'event_ids':[]})
