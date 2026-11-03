@@ -74,12 +74,8 @@ services:
   mcp-catalog:
     build:
       context: ./ai-services
-<<<<<<< HEAD
       args:
         BASE_IMAGE: ${AI_BASE_IMAGE:-python:3.12-slim}
-        INSTALL_RAG: ${POLICY_RAG_ENABLED:-false}
-=======
->>>>>>> d7c5b79 (refactor(ai-services): remove unused code and simplify shared logic)
     restart: unless-stopped
     command: ["python", "-m", "app.mcp_servers.mcp_catalog.server"]
     depends_on:
