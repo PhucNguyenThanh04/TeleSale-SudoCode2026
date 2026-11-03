@@ -1,5 +1,4 @@
 import unittest
-from unittest.mock import patch
 import httpx
 from app.main import app
 from app.configs import get_settings

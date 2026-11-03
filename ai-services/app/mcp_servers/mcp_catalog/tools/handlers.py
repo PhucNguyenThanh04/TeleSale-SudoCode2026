@@ -5,7 +5,7 @@ from fastmcp.server.auth import StaticTokenVerifier
 from pydantic import ValidationError
 
 from app.mcp_servers.mcp_catalog.schemas import (
-    CRMInput, InventoryInput, PolicySearchInput, QuoteInput, SearchInput,
+    CRMInput, InventoryInput, QuoteInput, SearchInput,
 )
 from app.mcp_servers.mcp_catalog.services import catalog as service
 from app.mcp_servers.mcp_shared.observability import (
@@ -19,11 +19,9 @@ async def invoke(repo, name: str, args: dict) -> dict:
 
 async def _invoke(repo, name: str, args: dict) -> dict:
     models = {"crm.get_customer": CRMInput, "catalog.search": SearchInput,
-              "inventory.check": InventoryInput, "pricing.get_quote": QuoteInput,
-              "policy.search": PolicySearchInput}
+              "inventory.check": InventoryInput, "pricing.get_quote": QuoteInput}
     functions = {"crm.get_customer": service.get_customer, "catalog.search": service.search,
-                 "inventory.check": service.inventory, "pricing.get_quote": service.get_quote,
-                 "policy.search": service.search_policy}
+                 "inventory.check": service.inventory, "pricing.get_quote": service.get_quote}
     if name not in models:
         return {"error": "unknown_tool"}
     try:
@@ -70,17 +68,5 @@ def create_server(repo, token: str | None = None) -> FastMCP:
                                 source_channel: str | None = None,
                                 source_identity: str | None = None) -> dict:
         return await invoke(repo, "pricing.get_quote", locals())
-
-    @mcp.tool(name="policy.search")
-    async def policy_search(query: str, on: str,
-                            order_date: str | None = None,
-                            knowledge_release_id: str | None = None) -> dict:
-        return await invoke(repo, "policy.search", locals())
-
-    @mcp.tool(name="eval.knowledge_release")
-    async def knowledge_release(release_id: str | None = None) -> dict:
-        if hasattr(repo, "knowledge_release"):
-            return await repo.knowledge_release(release_id)
-        return {"release_id": "btc-only", "manifest_hash": "btc-only"}
 
     return mcp

@@ -1,11 +1,9 @@
 import unittest
 from test_knowledge_revisions import fixture
-from app.knowledge.ingest import record_event
-from app.knowledge.worker import process_one
-from app.knowledge.service import command, query
-from app.knowledge.retrieval import supplement_candidates
-from app.rag.policy_retrieval import retrieve
-from app.knowledge.schemas import Conflict
+from app.knowledge.events.ingest import record_event
+from app.knowledge.events.worker import process_one
+from app.knowledge.services.lifecycle import command, query
+from app.knowledge.services.supplements import supplement_candidates
 
 
 class LifecycleTests(unittest.IsolatedAsyncioTestCase):
@@ -27,8 +25,8 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
         await command(repo, 'reviewer', 'activate_release', {'id':release['id'], 'expected_active_id':None})
         async with repo.transaction() as tx:
             candidates = await supplement_candidates(tx, release['id'], '2026-10-15', '2026-10-15')
-        result = await retrieve('đổi hàng còn tem', candidates, dense_enabled=False)
-        self.assertEqual(result['chunks'][0]['body'], 'Cần còn nguyên tem.')
+        self.assertEqual(candidates[0]['body'], 'Cần còn nguyên tem.')
+        self.assertEqual(candidates[0]['source_chunk_ids'], ['DT-01'])
         current = (await query(repo, 'reviewer', 'gaps', item_id=first['id']))['items'][0]
         self.assertEqual(current['status'], 'awaiting_verification')
         await repo.put('verification_runs', 'verified', {'id':'verified', 'complete':True,

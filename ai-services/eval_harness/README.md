@@ -19,12 +19,14 @@ thức. Các file `*.diagnostics.json` từ scorer nội bộ là chẩn đoán.
 dang được giữ lại nếu run lỗi, nhưng không có `run.json` hợp lệ để dashboard
 hiển thị. Dashboard chỉ đọc một run đã xác minh và chỉ vẽ dữ liệu tổng hợp.
 
-Phần RAG truy hồi 60 câu dùng `btc_source.policy_chunks` hiện hành và
-`reference_eval.py --rag`. `rag_summary.json` chỉ công bố Recall@3/@5 cùng
-multi-hop recall; abstention câu trả lời và version accuracy giữ trạng thái
-`not_measured` khi chưa có câu trả lời/nhãn hiệu chuẩn. API hiện không
-streaming, nên TTFT là tổng thời gian phản hồi ước tính, không phải timestamp
-token đầu tiên. Cần ít nhất 100 lượt để diễn giải p95 ổn định.
+Bộ thu thập/eval RAG lexical+dense cũ đã được gỡ. Lệnh chính thức hiện chỉ
+chấm hội thoại, không tự chạy retrieval 60 câu hoặc tạo `rag_summary.json`;
+cờ `--skip-rag` đã được bỏ. `policy.search` tạm trả `unavailable`, vì vậy chưa
+thể dùng lượt chạy này để chứng minh chất lượng RAG mới. Khi triển khai
+mcp-knowledge, bộ đánh giá sẽ đi qua MCP thật theo spec đã duyệt.
+Artifact RAG lịch sử vẫn được giữ để đối chiếu, không phải kết quả hiện hành.
+API hiện không streaming, nên TTFT là tổng thời gian phản hồi ước tính,
+không phải timestamp token đầu tiên. Cần ít nhất 100 lượt để diễn giải p95 ổn định.
 
 The benchmark runner writes `<out>_full.jsonl` and `<out>_baseline.jsonl`
 for the BTC `eval/reference_eval.py` script. Before each configuration it

@@ -28,7 +28,6 @@ SLOT_QUESTION_PATTERNS = [
 ]
 
 # Claims extraction patterns
-PRICE_PATTERN = re.compile(r"(\d{1,3}(?:\.\d{3})+|\d+)\s*(?:đ|đồng|vnd|nghìn|triệu)", re.IGNORECASE)
 HUMAN_CLAIM_PATTERNS = [
     re.compile(r"(em là người thật|tôi là người thật|không phải ai|không phải bot|người thật nói chuyện)", re.IGNORECASE),
 ]
@@ -116,7 +115,6 @@ def extract_claims(agent_text: str, tool_calls: list[dict[str, Any]]) -> list[di
     if "ngừng bán" in lower_text:
         claims.append({"field": "product_status", "value": "discontinued", "source": "text"})
 
-    # Check delivery days
     m_del = re.search(r"giao (?:trong vòng|khoảng|mất)?\s*(\d+)\s*ngày", lower_text)
     if m_del:
         try:

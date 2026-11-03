@@ -16,7 +16,7 @@ def test_seed_fingerprint_must_match_across_configurations():
         require_same_seed("digest-a", "digest-b")
 
 
-def test_conversation_run_can_skip_rag(tmp_path):
+def test_conversation_run_does_not_execute_retired_rag(tmp_path):
     scenarios = tmp_path / "scenarios"
     scenarios.mkdir()
     (scenarios / "case.json").write_text(json.dumps({
@@ -42,12 +42,11 @@ def test_conversation_run_can_skip_rag(tmp_path):
          patch("eval_harness.run_official._run_one", side_effect=fake_run), \
          patch("eval_harness.run_official.publish_pair", return_value={
              "manifests": {"full": {}, "baseline_no_memory": {}}}), \
-         patch("eval_harness.run_official.score_current_rag", new_callable=AsyncMock) as rag:
+         patch("asyncpg.connect", side_effect=AssertionError("Retired RAG must not query source DB")):
         out = asyncio.run(run_pair(scenarios=scenarios, btc_root=tmp_path,
-                                   agent="deep", seed=7, out_root=tmp_path / "results",
-                                   include_rag=False))
+                                   agent="deep", seed=7, out_root=tmp_path / "results"))
 
-    rag.assert_not_awaited()
     run = json.loads((out / "run.json").read_text(encoding="utf-8"))
     assert run["status"] == "validated"
     assert "rag_summary" not in run
+    assert not (out / "rag_retrieval.json").exists()

@@ -1,0 +1,48 @@
+flowchart TB
+    a["Agent gọi policy.search<br/>Query + order ID nếu có"]
+    b["Harness / gateway<br/>Ngày từ order.status<br/>Pin release + ký HMAC"]
+    c["MCP handler<br/>Input + principal + chữ ký<br/>Kiểm request hash"]
+    d["PolicySearchService<br/>Ready + manifest + deadline"]
+    en["BGE-M3 / CUDA<br/>Dense + sparse<br/>Queue hữu hạn"]
+    qd["Qdrant query<br/>2 prefetch + RRF<br/>Filter release / public / model"]
+    pg["PostgreSQL snapshot<br/>Nội dung có thẩm quyền<br/>Hash + tombstone"]
+    ru["Policy rules<br/>Hiệu lực · ngày đơn<br/>Applicable / conditional / conflict"]
+    li["Chọn nhóm evidence<br/>Required links tới hard limit<br/>Báo missing dependencies"]
+    rv["Kiểm revocation lại<br/>Pinned release vẫn bị thu hồi"]
+    ev["PolicySearchResult<br/>evidence.content + source<br/>Applicability + evidence_set"]
+    an["Agent viết draft<br/>Guardrail xét eligibility<br/>Không tự cam kết quyền lợi"]
+    er["Lỗi kỹ thuật<br/>Unavailable / timeout / overload<br/>Evidence rỗng · không fallback"]
+    kg["Persist runtime evidence<br/>Knowledge Gap events<br/>Technical khác content gap"]
+    a -->|"tool preconditions"| b
+    b -->|"HTTP token + signed context"| c
+    c -->|"validate OK"| d
+    d -->|"encode query"| en
+    en -->|"2 vector views"| qd
+    qd -->|"candidate ID / hashes"| pg
+    pg -->|"verified snapshot"| ru
+    ru -->|"đủ điều kiện theo ngày"| li
+    li -->|"recheck source"| rv
+    rv -->|"serialize trong deadline"| ev
+    ev -->|"evidence"| an
+    d -->|"dependency / readiness lỗi"| er
+    an -.->|"signal khi loop bật"| kg
+    class a core
+    class b core
+    class c service
+    class d service
+    class en service
+    class qd data
+    class pg data
+    class ru core
+    class li core
+    class rv core
+    class ev data
+    class an core
+    class er pending
+    class kg optional
+    classDef core fill:#e8f1ff,stroke:#3875bc,color:#182f46
+    classDef external fill:#f1f3f5,stroke:#64748b,color:#182f46
+    classDef service fill:#e1f5ef,stroke:#22836c,color:#182f46
+    classDef data fill:#f1eaff,stroke:#8260b0,color:#182f46
+    classDef optional fill:#fff5d6,stroke:#b18b25,color:#182f46
+    classDef pending fill:#fff0ed,stroke:#be6b5a,color:#182f46

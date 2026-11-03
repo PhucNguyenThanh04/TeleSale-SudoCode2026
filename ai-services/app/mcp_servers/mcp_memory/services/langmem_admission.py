@@ -72,7 +72,7 @@ def admit_profile_candidates(
     return accepted, rejected
 
 
-def _known_skus(turns: list[dict], tool_calls: list[dict]) -> set[str]:
+def _known_skus(tool_calls: list[dict]) -> set[str]:
     skus: set[str] = set()
     for call in tool_calls:
         if not isinstance(call, dict):
@@ -140,7 +140,7 @@ def admit_episode_candidate(
         return None
     customer_source = "\n".join(turn.get("customer_text", "") for turn in turns)
     agent_source = "\n".join(turn.get("agent_text", "") for turn in turns)
-    known_skus = _known_skus(turns, tool_calls)
+    known_skus = _known_skus(tool_calls)
     prior_map = prior_open_items or {}
     updates_by_scope: dict[tuple[str, str], dict] = {}
 

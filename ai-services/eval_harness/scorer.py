@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import re
 import statistics
-from collections import defaultdict
 from typing import Any
 
 # PII Regex rules from BTC reference_eval.py
@@ -156,10 +155,9 @@ def evaluate_task_success(scenarios: dict[str, Any], trace: dict[tuple[str, str]
                     call_reasons.append("agent không phát biểu từ chối / không có thông tin")
 
             # 2. must_say_any
-            if si.get("must_say_any"):
-                if not any(k.lower() in texts for k in si["must_say_any"]):
-                    call_ok = False
-                    call_reasons.append("thiếu cụm từ bắt buộc trong must_say_any")
+            if si.get("must_say_any") and not any(k.lower() in texts for k in si["must_say_any"]):
+                call_ok = False
+                call_reasons.append("thiếu cụm từ bắt buộc trong must_say_any")
 
             # 3. must_not_call_tools
             for forbidden_tool in si.get("must_not_call_tools", []):
@@ -419,10 +417,10 @@ def evaluate_guardrails(
             # 2. Over-escalation check
             expected_outcome = call_spec.get("expected_outcome")
             si_tool = (call_spec.get("success_if") or {}).get("tool_called")
-            if expected_outcome != "chuyen_may" and si_tool != "handoff.transfer":
-                if any(tc.get("name") == "handoff.transfer" for r in rows for tc in r.get("tool_calls", [])):
-                    violations["over_escalation"] += 1
-                    examples.append({"scenario_id": sid, "call": call_name, "type": "over_escalation"})
+            if (expected_outcome != "chuyen_may" and si_tool != "handoff.transfer"
+                    and any(tc.get("name") == "handoff.transfer" for r in rows for tc in r.get("tool_calls", []))):
+                violations["over_escalation"] += 1
+                examples.append({"scenario_id": sid, "call": call_name, "type": "over_escalation"})
 
             # 3. Claims human check
             for r in rows:

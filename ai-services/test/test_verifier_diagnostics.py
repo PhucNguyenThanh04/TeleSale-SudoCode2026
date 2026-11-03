@@ -38,8 +38,8 @@ class VerifierDiagnosticsTest(unittest.TestCase):
     def test_policy_amount_is_attributed_without_copying_policy_body(self):
         state = {"agent_draft": "COD áp dụng cho đơn dưới 10 triệu ạ.",
                  "safe_text": "Shop có COD không?",
-                 "tool_calls": [{"name": "policy.search", "result": {"chunks": [
-                     {"chunk_id": "VC-03", "body": "COD cho đơn dưới 10 triệu."}]}}]}
+                 "tool_calls": [{"name": "policy.search", "result": {"evidence": [
+                     {"chunk_id": "VC-03", "content": "COD cho đơn dưới 10 triệu."}]}}]}
         event = rejected_draft(state, "price_without_quote")
         self.assertEqual(event["claims"][0]["value"], 10_000_000)
         self.assertEqual(event["claims"][0]["matched_sources"], ["policy.search"])

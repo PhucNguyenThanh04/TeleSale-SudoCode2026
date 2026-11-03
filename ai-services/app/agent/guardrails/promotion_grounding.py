@@ -1,13 +1,13 @@
 """Verify each spoken offer against its product quote, never another benefit."""
 import re
-import unicodedata
 from datetime import date
 from typing import Any
 
+from app.mcp_servers.mcp_shared.commerce_rules import _search_text
+
 
 def _fold(text: str) -> str:
-    return "".join(c for c in unicodedata.normalize("NFD", text.casefold().replace("đ", "d"))
-                   if unicodedata.category(c) != "Mn")
+    return _search_text(text)
 
 
 def _named(text: str, name: str) -> bool:

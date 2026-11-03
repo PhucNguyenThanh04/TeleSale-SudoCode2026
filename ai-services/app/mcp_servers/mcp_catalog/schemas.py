@@ -30,10 +30,3 @@ class QuoteInput(InventoryInput):
     basket_skus: list[str] | None = None
     source_channel: str | None = None
     source_identity: str | None = None
-
-
-class PolicySearchInput(BaseModel):
-    query: str = Field(min_length=2, max_length=300)
-    on: date
-    order_date: date | None = None
-    knowledge_release_id: str | None = None

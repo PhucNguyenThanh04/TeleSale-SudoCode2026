@@ -2,7 +2,7 @@
 
 import unittest
 from datetime import date
-from eval_harness.extractor import extract_questions, extract_claims, build_trace_row
+from eval_harness.extractor import extract_questions, extract_claims
 from app.schemas.trace import AgentTraceLine
 from eval_harness.scorer import (
     pct,
@@ -10,9 +10,7 @@ from eval_harness.scorer import (
     args_match,
     evaluate_task_success,
     evaluate_memory_metrics,
-    evaluate_hallucination,
     evaluate_guardrails,
-    evaluate_diagnostics_and_latency,
 )
 
 

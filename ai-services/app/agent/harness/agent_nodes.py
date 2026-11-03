@@ -287,18 +287,20 @@ class AgentNodes(SessionNodes):
         knowledge_kwargs = {}
         from app.knowledge.config import enabled
         if enabled() and getattr(self.memory, 'supports_knowledge_signals', False):
-            from app.knowledge.evidence import safe_tools
+            from app.knowledge.events.evidence import safe_tools
             policy_calls = [c for c in tool_calls if c.get('name') == 'policy.search']
             signal = ('guardrail_rejection' if state.get('verifier_events') else
                       'fallback' if state.get('agent_text') == FALLBACK else None)
             for call in policy_calls:
                 status = call.get('result', {}).get('retrieval_status')
-                if status in {'no_evidence', 'degraded_lexical'}:
+                if status == 'no_evidence':
                     signal = status
+                elif status in {'unavailable', 'timeout', 'overloaded'}:
+                    signal = 'mcp_unavailable'
             knowledge_kwargs['knowledge_evidence'] = {
                 'signal': signal, 'tool_calls': safe_tools(tool_calls),
                 'retrieved_ids': [chunk['chunk_id'] for c in policy_calls
-                    for chunk in c.get('result', {}).get('chunks', []) if 'chunk_id' in chunk]}
+                    for chunk in c.get('result', {}).get('evidence', []) if 'chunk_id' in chunk]}
         try:
             result = await self.memory.commit_turn(
                 str(request.session_id), state.get("customer_id"),

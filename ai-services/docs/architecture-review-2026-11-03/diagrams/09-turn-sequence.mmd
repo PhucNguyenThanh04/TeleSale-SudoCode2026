@@ -1,0 +1,101 @@
+sequenceDiagram
+    autonumber
+    participant B as Backend tin cậy
+    participant A as FastAPI / chat()
+    participant R as AgentHarnessRuntime
+    participant C as MCP catalog
+    participant G as Outer graph
+    participant M as MCP memory
+    participant L as Deep hoặc ReAct + LLM
+    participant T as Business tools / MCP
+    participant K as MCP knowledge
+    participant E as BGE-M3 encoder
+    participant Q as Qdrant hybrid index
+    participant D as PostgreSQL
+    participant W as LangMem worker
+    B->>A: POST /v1/chat/turns + internal token
+    A->>A: Validate request, đảm bảo session ID
+    A->>R: run(turn)
+    opt Chưa có release context
+        R->>K: eval.knowledge_release
+        K->>D: Validate release / snapshot
+        D-->>K: Release ref
+        K-->>R: Release ID + manifest hash
+        R->>R: Ghim release cho lượt
+    end
+    Note over R: Lock session, kiểm identity fingerprint
+    alt Response cache hit
+        R-->>A: Response đã cache
+    else Lượt chưa cache
+        opt Cần resolve / nâng cấp identity
+            R->>C: crm.get_customer
+            C-->>R: known / unknown / ambiguous
+        end
+        R->>G: ainvoke(state, thread_id)
+        G->>G: accept: mask PII, khởi tạo lượt
+        G->>M: retrieve_context: memory.read
+        M->>D: History + facts + episodes / completed revisions
+        D-->>M: Context
+        M-->>G: Context
+        opt Cần freshness / brief
+            G->>C: inventory.check + pricing.get_quote
+            C-->>G: Tool evidence hiện tại
+        end
+        alt Memory lỗi / yêu cầu handoff / erasure
+            G->>G: Nhánh sớm: safe draft hoặc handoff
+            opt Handoff đủ điều kiện
+                G->>T: handoff.transfer
+                T-->>G: Kết quả ticket
+            end
+        else Luồng agent thông thường
+            G->>L: Prompt + role history + facts
+            loop Trong business tool budget / recursion limit
+                L->>T: Tool đề xuất qua middleware + policy
+                alt policy.search
+                    T->>T: Ngày đơn từ order.status, ký trusted context
+                    T->>K: policy.search + signed request context
+                    K->>K: Validate principal, signature, ready, deadline
+                    K->>D: Resolve pinned hybrid release
+                    D-->>K: Manifest
+                    K->>E: Encode query trong queue hữu hạn
+                    E-->>K: Dense + sparse vectors
+                    K->>Q: Hai prefetch + RRF, filter release/public/model
+                    Q-->>K: Candidate IDs + hashes
+                    K->>D: Read snapshot, hashes, revocation
+                    D-->>K: Source content + metadata
+                    K->>K: Date/applicability rules + required links
+                    K->>D: Recheck snapshot / revocation
+                    D-->>K: Nguồn còn hợp lệ
+                    K-->>T: Evidence content + applicability + evidence_set
+                else Công cụ catalog / order
+                    T->>D: Business rules + transaction
+                    D-->>T: Kết quả
+                end
+                T-->>L: Observation đã lọc / che
+            end
+            L-->>G: Agent draft
+        end
+        G->>G: verify: grounding/applicability + optional answer checks
+        opt Draft bị reject
+            G->>G: Safe recovery hoặc fallback
+        end
+        alt Erasure memory barrier
+            G->>G: Bỏ persist theo memory_blocked
+        else Persist lượt
+            G->>M: memory.write(commit_turn, operation_key)
+            M->>D: Transaction: turn + links + job nếu identified
+            D-->>M: Commit OK; có thể kèm gap event khi bật loop
+            M-->>G: turn_no, memory_writes=[]
+            Note over G,M: Commit lỗi làm request thất bại; không trả success
+        end
+        G-->>R: Final graph state
+        R->>R: Cache response + state trong process
+        R-->>A: Text / brief / handoff / IDs
+    end
+    A-->>B: ChatResponse
+    opt Có job distillation
+        W->>D: Lease job, đọc committed evidence
+        W->>W: LangMem extraction + evidence admission
+        W->>D: Ghi accepted revisions + hoàn thành job
+        Note over W,D: Ngoài đường đồng bộ trả lời; eval đợi riêng sau runtime.run
+    end

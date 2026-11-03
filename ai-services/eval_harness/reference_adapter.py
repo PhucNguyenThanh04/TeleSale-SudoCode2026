@@ -2,10 +2,10 @@
 
 import json
 import re
-import unicodedata
 from pathlib import Path
 from typing import Any
 
+from app.mcp_servers.mcp_shared.commerce_rules import _search_text
 from app.mcp_servers.mcp_shared.pii import mask_pii
 from eval_harness.extractor import build_trace_row
 from app.agent.guardrails.checks import _money_claims
@@ -69,8 +69,7 @@ def _source_session_id(source: Any) -> str | None:
 
 
 def _fold(value: str) -> str:
-    return "".join(c for c in unicodedata.normalize("NFD", value.casefold().replace("đ", "d"))
-                   if unicodedata.category(c) != "Mn")
+    return _search_text(value)
 
 
 def _spoken_fact(key: str, value: Any, text: str) -> bool:

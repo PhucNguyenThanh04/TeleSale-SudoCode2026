@@ -4,7 +4,7 @@ import argparse
 import asyncio
 import json
 import os
-from app.knowledge.run_context import capture_release, release_context, selected_release
+from app.knowledge.context import capture_release, release_context, selected_release
 import platform
 import subprocess
 import sys
@@ -15,7 +15,6 @@ from uuid import uuid4
 from app.configs import Settings
 from app.mcp_servers.mcp_shared.config import database_url
 from eval_harness.seed_fingerprint import fingerprint_btc_source
-from eval_harness.run_rag import score_current_rag
 
 PROJECT = Path(__file__).resolve().parents[2]
 SERVICE = PROJECT / "ai-services"
@@ -48,7 +47,7 @@ def _run_one(config: str, scenarios: Path, agent: str, seed: int,
 
 
 async def run_pair(*, scenarios: Path, btc_root: Path, agent: str,
-                   seed: int, out_root: Path, include_rag: bool = True) -> Path:
+                   seed: int, out_root: Path) -> Path:
     settings = Settings()
     if settings.app_env == "production":
         raise ValueError("Evaluation cannot run in production")
@@ -91,10 +90,6 @@ async def run_pair(*, scenarios: Path, btc_root: Path, agent: str,
                     app_env=settings.app_env, knowledge_release=knowledge_release)
     result = publish_pair(scenarios, full, baseline, out / "btc_score.json",
                           metadata, btc_root=btc_root)
-    if include_rag:
-        await score_current_rag(dsn=dsn, btc_root=btc_root, scenarios=scenarios,
-                                full_trace=full, baseline_trace=baseline,
-                                conversation_score=out / "btc_score.json", out=out)
     scenario_groups = {item["scenario_id"]: item.get("level") or "Khác"
                        for item in (json.loads(path.read_text(encoding="utf-8"))
                                     for path in sorted(scenarios.glob("*.json"))
@@ -105,8 +100,6 @@ async def run_pair(*, scenarios: Path, btc_root: Path, agent: str,
         "traces": {"full": full.name, "baseline_no_memory": baseline.name},
         "scenario_groups": scenario_groups,
         "scenarios": str(scenarios.resolve()), "btc_root": str(btc_root.resolve())}
-    if include_rag:
-        run_summary["rag_summary"] = "rag_summary.json"
     (out / "run.json").write_text(json.dumps(
         run_summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return out
@@ -119,15 +112,12 @@ def main() -> None:
     parser.add_argument("--agent", choices=("deep", "react"), default="deep")
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--out-root", type=Path, default=SERVICE / "eval_harness/results")
-    parser.add_argument("--skip-rag", action="store_true",
-                        help="Score conversations only; skip the separate RAG benchmark")
     args = parser.parse_args()
     if not args.scenarios.is_dir():
         parser.error("--scenarios must be a directory of BTC JSON scenarios")
     output = asyncio.run(run_pair(scenarios=args.scenarios.resolve(),
                                   btc_root=args.btc_root.resolve(), agent=args.agent,
-                                  seed=args.seed, out_root=args.out_root.resolve(),
-                                  include_rag=not args.skip_rag))
+                                  seed=args.seed, out_root=args.out_root.resolve()))
     print(f"Validated BTC score: {output / 'btc_score.json'}")
 
 

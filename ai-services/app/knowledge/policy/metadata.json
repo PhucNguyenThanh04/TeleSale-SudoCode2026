@@ -1,0 +1,245 @@
+{
+  "provenance": "BTC policy Markdown headings, introductions and changelog; no QA labels used. Null effective dates mean the source does not state a universal effective interval.",
+  "documents": {
+    "changelog.md": {
+      "date_basis": "on",
+      "effective_from": null,
+      "effective_until": null,
+      "version": "not_stated",
+      "access": "public"
+    },
+    "chinh-sach-bao-hanh.md": {
+      "date_basis": "on",
+      "effective_from": null,
+      "effective_until": null,
+      "version": "not_stated",
+      "access": "public"
+    },
+    "chinh-sach-doi-tra-v2026-06-HET-HIEU-LUC.md": {
+      "date_basis": "order_date",
+      "effective_from": null,
+      "effective_until": "2026-09-30",
+      "version": "2026-06",
+      "access": "public"
+    },
+    "chinh-sach-doi-tra.md": {
+      "date_basis": "order_date",
+      "effective_from": "2026-10-01",
+      "effective_until": null,
+      "version": "2026-10",
+      "access": "public"
+    },
+    "chinh-sach-van-chuyen-thanh-toan.md": {
+      "date_basis": "on",
+      "effective_from": null,
+      "effective_until": null,
+      "version": "not_stated",
+      "access": "public"
+    },
+    "dieu-khoan-khuyen-mai.md": {
+      "date_basis": "on",
+      "effective_from": "2026-10-01",
+      "effective_until": null,
+      "version": "2026-10",
+      "access": "public"
+    },
+    "faq.md": {
+      "date_basis": "on",
+      "effective_from": null,
+      "effective_until": null,
+      "version": "not_stated",
+      "access": "public"
+    },
+    "ghi-chu-nhap-hang-NOI-BO.md": {
+      "date_basis": "on",
+      "effective_from": null,
+      "effective_until": null,
+      "version": "not_stated",
+      "access": "restricted"
+    },
+    "noi-quy-nhan-vien.md": {
+      "date_basis": "on",
+      "effective_from": null,
+      "effective_until": null,
+      "version": "not_stated",
+      "access": "excluded"
+    },
+    "playbook-telesale.md": {
+      "date_basis": "on",
+      "effective_from": null,
+      "effective_until": null,
+      "version": "not_stated",
+      "access": "public"
+    },
+    "quy-trinh-cod-hoan-hang.md": {
+      "date_basis": "on",
+      "effective_from": null,
+      "effective_until": null,
+      "version": "not_stated",
+      "access": "public"
+    },
+    "spec-gia-dung.md": {
+      "date_basis": "on",
+      "effective_from": null,
+      "effective_until": null,
+      "version": "not_stated",
+      "access": "public"
+    },
+    "spec-thoi-trang-me-be.md": {
+      "date_basis": "on",
+      "effective_from": null,
+      "effective_until": null,
+      "version": "not_stated",
+      "access": "public"
+    },
+    "thong-bao-lich-nghi.md": {
+      "date_basis": "on",
+      "effective_from": null,
+      "effective_until": null,
+      "version": "not_stated",
+      "access": "public"
+    }
+  },
+  "sections": {
+    "NB-01": {
+      "transformation": "disclosure_limit",
+      "evidence_type": "disclosure_limit",
+      "public_title": "Giới hạn công bố giá nhập và lợi nhuận"
+    },
+    "NB-02": {
+      "transformation": "restock_dates",
+      "public_title": "Ngày hàng về dự kiến"
+    },
+    "NB-03": {
+      "transformation": "disclosure_limit",
+      "evidence_type": "disclosure_limit",
+      "public_title": "Giới hạn công bố nhà cung cấp"
+    },
+    "NB-04": {
+      "access": "excluded"
+    },
+    "KM-06": {
+      "transformation": "discount_authority",
+      "evidence_type": "disclosure_limit"
+    },
+    "KM-02": {
+      "evidence_type": "disclosure_limit"
+    },
+    "PB-06": {
+      "evidence_type": "handoff_guidance"
+    },
+    "PB-05": {
+      "evidence_type": "knowledge_limit"
+    },
+    "FAQ-03": {
+      "evidence_type": "knowledge_limit"
+    },
+    "FAQ-02": {
+      "evidence_type": "knowledge_limit"
+    },
+    "BH-01": {
+      "required_links": [
+        "CL-04"
+      ],
+      "rules": [
+        {
+          "scope": "Karofi/Kangaroo: thân máy",
+          "date_basis": "order_date",
+          "required_context": [
+            "order_date",
+            "product"
+          ],
+          "source_ids": [
+            "CL-04"
+          ],
+          "description": "Đơn Karofi/Kangaroo trước 01/08/2026 giữ 24 tháng bảo hành thân máy; cần xác minh sản phẩm và điều kiện nghiệp vụ.",
+          "effective_until": "2026-07-31"
+        },
+        {
+          "scope": "Karofi/Kangaroo: thân máy",
+          "date_basis": "order_date",
+          "effective_from": "2026-08-01",
+          "required_context": [
+            "order_date",
+            "product"
+          ],
+          "source_ids": [
+            "CL-04"
+          ],
+          "description": "Đơn trước 01/08/2026 giữ 24 tháng; từ 01/08/2026 là 36 tháng. Catalog ưu tiên thông số SKU, không tự thay quyền lợi đơn cũ."
+        }
+      ],
+      "required_context": [
+        "product"
+      ]
+    },
+    "VC-03": {
+      "required_links": [
+        "CL-03"
+      ]
+    },
+    "CL-01": {
+      "required_links": []
+    },
+    "DT-01": {
+      "required_links": [
+        "CL-01"
+      ]
+    },
+    "DT-02": {
+      "required_links": [
+        "CL-01"
+      ]
+    },
+    "DT-03": {
+      "required_links": [
+        "CL-01"
+      ]
+    },
+    "DT-04": {
+      "required_links": [
+        "CL-01"
+      ]
+    },
+    "DT-05": {
+      "required_links": [
+        "CL-01"
+      ]
+    },
+    "DT-06": {
+      "required_links": [
+        "CL-01"
+      ]
+    },
+    "DT-07": {
+      "required_links": [
+        "CL-01"
+      ]
+    },
+    "DT-OLD-01": {
+      "required_links": [
+        "CL-01"
+      ]
+    },
+    "DT-OLD-02": {
+      "required_links": [
+        "CL-01"
+      ]
+    },
+    "DT-OLD-03": {
+      "required_links": [
+        "CL-01"
+      ]
+    },
+    "DT-OLD-04": {
+      "required_links": [
+        "CL-01"
+      ]
+    },
+    "DT-OLD-05": {
+      "required_links": [
+        "CL-01"
+      ]
+    }
+  }
+}

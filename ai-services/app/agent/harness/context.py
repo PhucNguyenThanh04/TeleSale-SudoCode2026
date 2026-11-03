@@ -216,6 +216,17 @@ def rank_episodes(episodes: list[dict], customer_text: str, limit: int) -> list[
     return sorted(episodes, key=score, reverse=True)[:limit]
 
 
+def _quoted_product_fields(facts: dict[str, Any]) -> dict[str, Any]:
+    fields = {}
+    old_price = facts.get(Slot.PRICE_QUOTED_VND, {}).get("value")
+    if type(old_price) is int:
+        fields[Slot.PRICE_QUOTED_VND] = old_price
+    quoted_on = facts.get(Slot.PRICE_QUOTED_VND, {}).get("on")
+    if isinstance(quoted_on, str) and quoted_on:
+        fields["quoted_on"] = quoted_on
+    return fields
+
+
 async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway,
                        clock: Callable[[], datetime]) -> dict[str, Any]:
     customer_id = state.get("customer_id")
@@ -426,21 +437,11 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
                 "promo_still_active": (old_promo in {promo.get("promo_code")
                     for promo in quote.get("applied_promos", []) if isinstance(promo, dict)}
                     if old_promo and quote else None)}
-            old_price = facts.get(Slot.PRICE_QUOTED_VND, {}).get("value")
-            if type(old_price) is int:
-                product[Slot.PRICE_QUOTED_VND] = old_price
-            quoted_on = facts.get(Slot.PRICE_QUOTED_VND, {}).get("on")
-            if isinstance(quoted_on, str) and quoted_on:
-                product["quoted_on"] = quoted_on
+            product.update(_quoted_product_fields(facts))
             advised_products.append(product)
         if advised and advised not in scoped_products:
             product = {"sku": advised, "promo_code": safe_sales.get(Slot.PROMO_CODE, {}).get("value")}
-            old_price = safe_sales.get(Slot.PRICE_QUOTED_VND, {}).get("value")
-            if type(old_price) is int:
-                product[Slot.PRICE_QUOTED_VND] = old_price
-            quoted_on = safe_sales.get(Slot.PRICE_QUOTED_VND, {}).get("on")
-            if isinstance(quoted_on, str) and quoted_on:
-                product["quoted_on"] = quoted_on
+            product.update(_quoted_product_fields(safe_sales))
             advised_products.append(product)
         known_slots = set(safe_customer) | set(safe_sales)
         for groups in scoped_facts.values():

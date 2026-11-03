@@ -71,9 +71,9 @@ class TopicProposal(SafeProposal):
     def validate_scope(self):
         if self.scope_type == "global" and self.scope_id:
             raise ValueError("global topic must not have scope_id")
-        if self.scope_type in {"product", "room"}:
-            if not self.scope_id or len(self.scope_id) > 80 or mask_pii(self.scope_id) != self.scope_id:
-                raise ValueError("product/room topic requires a safe non-empty scope_id")
+        if self.scope_type in {"product", "room"} and (
+                not self.scope_id or len(self.scope_id) > 80 or mask_pii(self.scope_id) != self.scope_id):
+            raise ValueError("product/room topic requires a safe non-empty scope_id")
         return self
 
 

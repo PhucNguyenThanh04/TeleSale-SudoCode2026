@@ -36,7 +36,7 @@ class MemoryRepo:
 
 class KnowledgeRepoTests(unittest.IsolatedAsyncioTestCase):
     async def test_duplicate_event_and_conflicting_payload(self):
-        from app.knowledge.ingest import record_event
+        from app.knowledge.events.ingest import record_event
         from app.knowledge.schemas import Conflict
         repo = MemoryRepo()
         event = {'source': 'operator_feedback', 'question': 'đổi hàng?', 'answer': 'chưa rõ', 'actor_id': 'staff'}
@@ -47,7 +47,7 @@ class KnowledgeRepoTests(unittest.IsolatedAsyncioTestCase):
             await record_event(repo, event | {'question': 'khác'}, 'same')
 
     async def test_permissions_are_server_side_and_visitor_is_denied(self):
-        from app.knowledge.permissions import require_permission
+        from app.knowledge.services.permissions import require_permission
         from app.knowledge.schemas import Forbidden
         repo = MemoryRepo()
         await repo.put('permissions', 'staff', {'id': 'staff', 'permissions': ['knowledge_review']})
@@ -58,7 +58,7 @@ class KnowledgeRepoTests(unittest.IsolatedAsyncioTestCase):
             await require_permission(repo, 'other', 'knowledge_review')
 
     async def test_mask_before_storage_preserves_tool_name(self):
-        from app.knowledge.ingest import record_event
+        from app.knowledge.events.ingest import record_event
         repo = MemoryRepo()
         out = await record_event(repo, {'source': 'runtime_signal', 'question': 'số 0123456789',
             'answer': 'CCCD 123456789012', 'tool_calls': [{'name': 'order.create',

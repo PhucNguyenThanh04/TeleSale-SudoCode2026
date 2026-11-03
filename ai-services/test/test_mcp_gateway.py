@@ -4,7 +4,6 @@ import asyncio
 import unittest
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
-from types import SimpleNamespace
 
 from fastmcp import FastMCP
 from app.agent.mcp.gateway import MCPGateway
@@ -138,15 +137,11 @@ class GatewayTest(unittest.IsolatedAsyncioTestCase):
                              {"found": False})
             self.assertEqual(crm.await_args.args[2]["fb_id"], "fb.hạnh.274")
 
-    async def test_policy_search_routes_to_catalog_without_order_identity(self):
+    async def test_policy_search_without_knowledge_transport_is_unavailable(self):
         gateway = MCPGateway(catalog_server(FakeRepo()), None, None)
-        with patch("app.mcp_servers.mcp_catalog.tools.handlers.service.search_policy",
-                   new_callable=AsyncMock) as policy:
-            policy.return_value = {"chunks": []}
-            result = await gateway.invoke("policy.search", {
-                "query": "đổi trả", "on": "2026-10-15"})
-            self.assertEqual(result, {"chunks": []})
-            self.assertEqual(policy.await_args.args[2]["on"], "2026-10-15")
+        result = await gateway.invoke('policy.search', {'query':'đổi trả','on':'2026-10-15'})
+        self.assertEqual(result['retrieval_status'], 'unavailable')
+        self.assertEqual(result['evidence'], [])
 
 
 if __name__ == "__main__":

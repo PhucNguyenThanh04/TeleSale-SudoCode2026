@@ -5,7 +5,7 @@ import unicodedata
 
 from app.agent.guardrails.checks import mask_pii
 from app.agent.memory.decision_makers import (
-    BlockerResolutionReason, PERSON_PATTERN, person_mentions, roles_mentioned,
+    BlockerResolutionReason, person_mentions, roles_mentioned,
 )
 from app.mcp_servers.mcp_shared.episode_evidence import evidence_supports
 

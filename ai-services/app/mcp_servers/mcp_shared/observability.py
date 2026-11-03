@@ -47,8 +47,7 @@ def redact_text(value: str, customer_name: str | None = None) -> str:
     if customer_name and len(customer_name.strip()) > 1:
         value = re.sub(re.escape(customer_name.strip()), "[TÊN ĐÃ ẨN]", value,
                        flags=re.IGNORECASE)
-    value = _TITLED_NAME.sub(r"\1 [TÊN ĐÃ ẨN]", value)
-    return value
+    return _TITLED_NAME.sub(r"\1 [TÊN ĐÃ ẨN]", value)
 
 
 def _safe_value(value: Any, allowed: set[str], *, product_name: bool = False) -> Any:
@@ -106,7 +105,7 @@ def safe_tool_input(name: str, args: dict[str, Any]) -> dict[str, Any]:
 
 def safe_tool_output(name: str, result: dict[str, Any]) -> dict[str, Any]:
     if name == "policy.search":
-        return {"chunks_count": _count(result.get("chunks")),
+        return {"evidence_count": _count(result.get("evidence")),
                 "retrieval_status": result.get("retrieval_status", "unknown"),
                 **({"error": _safe_error(result["error"])} if "error" in result else {})}
     if name == "crm.get_customer":

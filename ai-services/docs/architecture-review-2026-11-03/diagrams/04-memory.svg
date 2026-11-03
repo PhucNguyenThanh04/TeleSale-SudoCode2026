@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1590" height="1087" viewBox="0 0 1590 1087" role="img" aria-label="Memory — commit đồng bộ, distillation bất đồng bộ">
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8Z" fill="#64748b" /></marker></defs>
+<rect width="1590" height="1087" fill="#ffffff" />
+<g font-family="DejaVu Sans, Arial, sans-serif">
+<text x="55" y="43" font-size="25" font-weight="bold" fill="#162b43">Memory — commit đồng bộ, distillation bất đồng bộ</text>
+<text x="55" y="76" font-size="16" fill="#526277">Cập nhật 03/11/2026 · Luồng memory/ablation giữ nguyên; policy RAG dùng chung cả full và baseline</text>
+<path d="M365,176 L445,176" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M755,176 L835,176" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M1145,176 L1225,176" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M835,176 L775,176 L775,366 L365,366" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M990,232 L990,310" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M990,422 L990,500" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M835,556 L755,556" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M445,556 L365,556" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M210,612 L210,690" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M365,556 L425,556 L425,746 L445,746" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M755,746 L835,746" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M835,746 L775,746 L775,936 L755,936" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M600,802 L600,880" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M55,366 L35,366 L35,936 L55,936" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><path d="M445,936 L365,936" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)" stroke-linejoin="round" /><rect x="55" y="120" width="310" height="112" rx="13" fill="#e8f1ff" stroke="#3875bc" stroke-width="1.7" />
+<text x="210.0" y="164.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">Graph persist</text>
+<text x="210.0" y="188.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Masked turn + observations</text>
+<rect x="445" y="120" width="310" height="112" rx="13" fill="#e1f5ef" stroke="#22836c" stroke-width="1.7" />
+<text x="600.0" y="164.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">mcp-memory commit_turn</text>
+<text x="600.0" y="188.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Kiểm owner / erasure / key</text>
+<rect x="835" y="120" width="310" height="112" rx="13" fill="#f1eaff" stroke="#8260b0" stroke-width="1.7" />
+<text x="990.0" y="164.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">Một transaction</text>
+<text x="990.0" y="188.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Turns + links + job</text>
+<rect x="1225" y="120" width="310" height="112" rx="13" fill="#e8f1ff" stroke="#3875bc" stroke-width="1.7" />
+<text x="1380.0" y="164.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">Chat response</text>
+<text x="1380.0" y="188.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Không đợi extraction</text>
+<rect x="55" y="310" width="310" height="112" rx="13" fill="#f1eaff" stroke="#8260b0" stroke-width="1.7" />
+<text x="210.0" y="354.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">runtime.turns</text>
+<text x="210.0" y="378.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Working memory cùng session</text>
+<rect x="835" y="310" width="310" height="112" rx="13" fill="#f1eaff" stroke="#8260b0" stroke-width="1.7" />
+<text x="990.0" y="354.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">langmem_distillation_jobs</text>
+<text x="990.0" y="378.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Khách đã nhận diện</text>
+<rect x="835" y="500" width="310" height="112" rx="13" fill="#e1f5ef" stroke="#22836c" stroke-width="1.7" />
+<text x="990.0" y="544.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">Worker lease + retry</text>
+<text x="990.0" y="568.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Giữ thứ tự session</text>
+<rect x="445" y="500" width="310" height="112" rx="13" fill="#e8f1ff" stroke="#3875bc" stroke-width="1.7" />
+<text x="600.0" y="544.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">LangMem extractor</text>
+<text x="600.0" y="568.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Candidates + episode delta</text>
+<rect x="55" y="500" width="310" height="112" rx="13" fill="#e8f1ff" stroke="#3875bc" stroke-width="1.7" />
+<text x="210.0" y="544.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">Admission</text>
+<text x="210.0" y="568.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Evidence · source · scope</text>
+<rect x="55" y="690" width="310" height="112" rx="13" fill="#fff0ed" stroke="#be6b5a" stroke-width="1.7" />
+<text x="210.0" y="734.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">Loại proposal thiếu chứng cứ</text>
+<text x="210.0" y="758.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Không coi lời agent là truth</text>
+<rect x="445" y="690" width="310" height="112" rx="13" fill="#f1eaff" stroke="#8260b0" stroke-width="1.7" />
+<text x="600.0" y="734.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">AsyncPostgresStore</text>
+<text x="600.0" y="758.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Facts + episodes có revision</text>
+<rect x="835" y="690" width="310" height="112" rx="13" fill="#f1eaff" stroke="#8260b0" stroke-width="1.7" />
+<text x="990.0" y="734.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">Job completed</text>
+<text x="990.0" y="758.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Accepted writes / provenance</text>
+<rect x="445" y="880" width="310" height="112" rx="13" fill="#e1f5ef" stroke="#22836c" stroke-width="1.7" />
+<text x="600.0" y="924.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">memory.read</text>
+<text x="600.0" y="948.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">Chỉ revision được công nhận</text>
+<rect x="55" y="880" width="310" height="112" rx="13" fill="#e8f1ff" stroke="#3875bc" stroke-width="1.7" />
+<text x="210.0" y="924.0" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="bold" fill="#182f46">retrieve_context</text>
+<text x="210.0" y="948.0" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#182f46">History + facts + episodes</text>
+<text x="55" y="1057" font-size="14" fill="#64748b">04-memory · Cạnh biểu diễn luồng chính / trách nhiệm. Xem nhãn chi tiết trong Mermaid và mốc RAG trong README.</text>
+</g></svg>

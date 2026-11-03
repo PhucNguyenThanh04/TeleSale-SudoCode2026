@@ -33,12 +33,6 @@ class PolicyChunk:
     date_basis: str
     content_hash: str
 
-    @property
-    def index_text(self) -> str:
-        # Internal text is never embedded, persisted in Qdrant, or sent to a model.
-        if self.access_level != "public":
-            return f"Tài liệu nội bộ, không cung cấp cho khách: {self.title}."
-        return f"{self.title}\n{self.body}"
 
 
 def policy_metadata(filename: str) -> tuple[str, str | None, str | None, str]:
@@ -106,17 +100,6 @@ def read_policy(directory: Path) -> list[PolicyChunk]:
     if len(set(ids)) != len(ids):
         raise ValueError("Duplicate BTC policy chunk ID")
     return chunks
-
-
-def product_index_text(product: dict[str, Any]) -> str:
-    """Public search text; prices, stock and internal attributes stay in SQL."""
-    allowed = (
-        "room_area_m2", "features", "warranty_months", "child_safe_lock",
-        "stages", "material", "max_weight_kg", "volume_ml", "return_days",
-    )
-    parts = [product["name"], product["brand"], product["category"]]
-    parts.extend(f"{key}: {product['attributes'][key]}" for key in allowed if key in product["attributes"])
-    return "\n".join(parts)
 
 
 def read_release(root: Path) -> dict[str, Any]:

@@ -143,10 +143,10 @@ vào so sánh knowledge-only.
 ```bash
 # Chạy ở ai-services; các lệnh run_official gọi model và reset runtime.
 KNOWLEDGE_RELEASE_ID=btc-only .venv/bin/python -m eval_harness.run_official \
-  --btc-root '<BTC-root>' --scenarios '<frozen-scenarios>' --agent deep --seed 7 --skip-rag
+  --btc-root '<BTC-root>' --scenarios '<frozen-scenarios>' --agent deep --seed 7
 # Thu/import feedback, xử lý/duyệt và phát hành R1 qua chức năng thật.
 KNOWLEDGE_RELEASE_ID='<release-R1>' .venv/bin/python -m eval_harness.run_official \
-  --btc-root '<BTC-root>' --scenarios '<same-frozen-scenarios>' --agent deep --seed 7 --skip-rag
+  --btc-root '<BTC-root>' --scenarios '<same-frozen-scenarios>' --agent deep --seed 7
 # Không gọi model: kiểm hai artifact, xuất bảng delta và đăng ký bằng chứng.
 .venv/bin/python -m eval_harness.knowledge_comparison \
   --round0 '<validated-run-0>' --round1 '<validated-run-1>' \
@@ -195,3 +195,13 @@ Trước bàn giao thực nghiệm: kiểm migration/grants trên DB test, resta
 process có cấu hình mới, kiểm nhiều hội thoại và cả hai loại nội dung trên
 stack thật, sau đó chạy hai vòng được phép. Phân biệt rõ ba trạng thái:
 code kiểm offline, stack tích hợp đã xác minh, và C.5 đã có số liệu cải tiến.
+
+
+## Hybrid policy releases
+
+Khi cấu hình `KNOWLEDGE_POLICY_CONFIG_FILE` và `KNOWLEDGE_POLICY_SOURCE_DIR`, thao tác
+prepare hiện có dùng hybrid builder; không coi lexical generation lịch sử là index
+hybrid sẵn sàng. Dùng cùng quyền duyệt, test approval, CAS và audit. Xem
+[mcp-knowledge runbook](mcp-knowledge-runbook.md) cho CLI chuẩn bị/kích hoạt/rollback/
+thu hồi, quyền reader riêng và kiểm tra readiness. Việc triển khai hiện tại chỉ
+kiểm thử chức năng, không chạy eval hoặc benchmark.

@@ -8,6 +8,7 @@ from datetime import date
 from enum import StrEnum
 from typing import Any
 
+from app.mcp_servers.mcp_shared.commerce_rules import _search_text
 from app.mcp_servers.mcp_shared.pii import mask_pii
 from app.mcp_servers.mcp_shared.episode_evidence import evidence_supports
 from app.constants import PROFILE_SLOT_KEYS, SLOT_SPEC_BY_KEY, TOOL_ONLY_SLOT_KEYS, Slot
@@ -56,10 +57,6 @@ _PRICE_REFERENCE = re.compile(r"(?i)\bgiá\b[^.!?]{0,40}\b(?:như hôm trước|
 _STOCK_QTY = re.compile(r"(?i)\bcòn\s+(\d+)\s+(?:cái|chiếc|sản phẩm)\b")
 _ORDER_ID = re.compile(r"\bOD[A-Z0-9-]+\b")
 _AREA_UNIT = r"(?:m²|m2|m\s+vuông|mét\s+vuông|met\s+vuong)"
-_NUMBER_WORDS = {
-    "không": 0, "một": 1, "hai": 2, "ba": 3, "bốn": 4, "tư": 4,
-    "năm": 5, "lăm": 5, "sáu": 6, "bảy": 7, "tám": 8, "chín": 9,
-}
 _AREA_NUMBER_WORD = r"(?:không|một|hai|ba|bốn|tư|năm|lăm|sáu|bảy|tám|chín|mười|mươi|trăm|linh|lẻ|chục|"
 _AREA_NUMBER_WORD += r"khong|mot|bon|nam|lam|sau|bay|tam|chin|muoi|tram|le|chuc)"
 _SPOKEN_AREA = re.compile(
@@ -100,9 +97,7 @@ def _spoken_integer(words: str) -> int | None:
 
 
 def _fold_text(value: str) -> str:
-    value = value.casefold().replace("đ", "d")
-    return "".join(char for char in unicodedata.normalize("NFD", value)
-                   if unicodedata.category(char) != "Mn")
+    return _search_text(value)
 
 
 _ERASURE_ACTION = re.compile(r"\b(?:xoa|go|huy|loai bo)\b|\b(?:dung|khong)\s+(?:tiep tuc\s+)?(?:giu|luu)\b")
@@ -459,6 +454,16 @@ def check_grounding(candidate: str, tool_calls: list[dict[str, Any]]) -> str | N
         return "handoff_not_queued"
     if _unsupported_feature(candidate, successful):
         return "unsupported_product_spec"
+    # Policy applicability is grounding, not an optional style/answer check.
+    from app.agent.guardrails.policy_grounding import policy_evidence_for_answer, policy_clarification_or_refusal
+    policy_calls = [c for c in successful if c.get('name') == 'policy.search']
+    if _POLICY.search(candidate) and not policy_clarification_or_refusal(candidate):
+        evidence = policy_evidence_for_answer(candidate, policy_calls)
+        if not evidence:
+            return 'unsupported_policy_or_internal_claim'
+        source_text = ' '.join(row['content'] for row in evidence).casefold()
+        if any(value not in source_text for value in re.findall(r'\b\d+\s+ngày\b', candidate.casefold())):
+            return 'unsupported_policy_or_internal_claim'
     return None
 
 
@@ -580,9 +585,7 @@ def _catalog_budget_repetition_evidenced(candidate: str, customer_text: str,
     clause_start = max(folded.rfind(mark, 0, matches[0].start()) for mark in ".!?;,") + 1
     clause_end = min((pos for mark in ".!?;," if (pos := folded.find(mark, matches[0].end())) >= 0),
                      default=len(folded))
-    if _PRICE_CONTEXT.search(folded[clause_start:clause_end]):
-        return False
-    return True
+    return not _PRICE_CONTEXT.search(folded[clause_start:clause_end])
 
 
 def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
@@ -602,13 +605,14 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     # A follow-up may answer a policy question with just its fee, omitting the
     # policy topic that appeared in the customer's utterance.
     policy_claim = bool(_POLICY.search(candidate) or _POLICY.search(customer_text))
-    policy_chunks = [chunk for call in successful if call.get("name") == "policy.search"
-                     for chunk in call.get("result", {}).get("chunks", [])
-                     if isinstance(chunk, dict) and isinstance(chunk.get("body"), str)]
+    from app.agent.guardrails.policy_grounding import policy_evidence_for_answer, policy_clarification_or_refusal
+    policy_chunks = policy_evidence_for_answer(candidate, successful)
+    if policy_clarification_or_refusal(candidate):
+        policy_claim = False
     if policy_claim:
         if not policy_chunks:
             return FALLBACK, "unsupported_policy_or_internal_claim"
-        source_text = " ".join(chunk["body"] for chunk in policy_chunks)
+        source_text = " ".join(chunk["content"] for chunk in policy_chunks)
         policy_days = re.findall(r"\b\d+\s+ngày\b", candidate.casefold())
         if any(day not in source_text.casefold() for day in policy_days):
             return FALLBACK, "unsupported_policy_or_internal_claim"
@@ -620,7 +624,7 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     if _unsupported_feature(candidate, successful):
         return FALLBACK, "unsupported_product_spec"
     money_claims = _money_claims(candidate)
-    policy_amounts = (_money_claims(" ".join(chunk["body"] for chunk in policy_chunks))
+    policy_amounts = (_money_claims(" ".join(chunk["content"] for chunk in policy_chunks))
                       if policy_claim else [])
     policy_values = {amount for amount, _, _ in policy_amounts}
     if money_claims and not (_money_evidenced(candidate, successful) or
@@ -788,11 +792,11 @@ def _normalize_slot_value(key: str, value: Any, customer_text: str,
     if isinstance(value, str) and (not value.strip() or mask_pii(value) != value):
         return value, None, (FactRejectReason.EMPTY_VALUE if not value.strip()
                              else FactRejectReason.PII_VALUE)
-    if evidence_quote is not None:
-        if (not isinstance(evidence_quote, str) or not evidence_quote.strip()
-                or len(evidence_quote) > 200 or mask_pii(evidence_quote) != evidence_quote
-                or not _quote_present(evidence_quote, customer_text)):
-            return value, None, FactRejectReason.QUOTE_NOT_FOUND
+    if evidence_quote is not None and (
+            not isinstance(evidence_quote, str) or not evidence_quote.strip()
+            or len(evidence_quote) > 200 or mask_pii(evidence_quote) != evidence_quote
+            or not _quote_present(evidence_quote, customer_text)):
+        return value, None, FactRejectReason.QUOTE_NOT_FOUND
     if key == Slot.OBJECTION:
         if not isinstance(value, str):
             return value, None, FactRejectReason.TYPE_INVALID
@@ -959,8 +963,7 @@ def _fact_evidence_source(
     return None
 
 
-def _fact_reject_reason(key: str, value: Any, op: str, customer_text: str,
-                        tool_calls: list[dict[str, Any]]) -> FactRejectReason:
+def _fact_reject_reason(key: str, value: Any, op: str, customer_text: str) -> FactRejectReason:
     """Classify an existing rejection; this function cannot admit a candidate."""
     if key not in PROFILE_SLOT_KEYS:
         return FactRejectReason.UNKNOWN_KEY
@@ -1135,14 +1138,13 @@ def _context_rejection(key: str, value: Any, op: str, customer_text: str,
                 and re.search(r"\bphong\s+(?:cua\s+)?(?:anh|chi|toi|minh|nha)\b", folded))
         ):
             reasons.append(FactRejectReason.QUESTION_CONTEXT)
-        elif spec.context_negation == "polar" and key == Slot.HAS_CHILDREN \
-                and value is True and _POLAR_CHILD_NEGATION.search(folded):
-            reasons.append(FactRejectReason.NEGATED_CONTEXT)
-        elif spec.context_negation == "selection" and _SELECTION_NEGATION.search(folded):
-            reasons.append(FactRejectReason.NEGATED_CONTEXT)
-        elif spec.context_negation == "objection" and _OBJECTION_NEGATION.search(folded):
-            reasons.append(FactRejectReason.NEGATED_CONTEXT)
-        elif spec.context_negation == "obstacle" and _OBSTACLE_NEGATION.search(folded):
+        elif (
+            (spec.context_negation == "polar" and key == Slot.HAS_CHILDREN
+             and value is True and _POLAR_CHILD_NEGATION.search(folded))
+            or (spec.context_negation == "selection" and _SELECTION_NEGATION.search(folded))
+            or (spec.context_negation == "objection" and _OBJECTION_NEGATION.search(folded))
+            or (spec.context_negation == "obstacle" and _OBSTACLE_NEGATION.search(folded))
+        ):
             reasons.append(FactRejectReason.NEGATED_CONTEXT)
         else:
             return None
@@ -1190,6 +1192,6 @@ def fact_evidence(
     source = _fact_evidence_source(key, value, op, customer_text, tool_calls,
                                    evidence_quote)
     return FactEvidence(source=source, reason=None if source is not None else
-                        _fact_reject_reason(key, value, op, customer_text, tool_calls),
+                        _fact_reject_reason(key, value, op, customer_text),
                         normalized_value=value if source else None,
                         evidence_quote=evidence_quote if source else None)

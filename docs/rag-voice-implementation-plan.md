@@ -1,5 +1,7 @@
 # Kế hoạch RAG và pipeline audio có thể debug
 
+> Cập nhật 03/11/2026: pipeline RAG lexical/dense cũ đã được gỡ. Phần RAG trong tài liệu này được giữ làm lịch sử, không phải hướng dẫn chạy hiện hành; thiết kế thay thế là [MCP Knowledge/RAG](../ai-services/docs/superpowers/specs/2026-11-03-mcp-knowledge-rag-design.md).
+
 Ngày: 2026-10-29. Trạng thái: đang triển khai. Lát cắt RAG đầu tiên đã được nối vào `policy.search` dưới cờ `POLICY_RAG_ENABLED`; D0, R2–R5 đầy đủ và pipeline audio chưa hoàn tất. Baseline: [rag-baseline-20261029.md](rag-baseline-20261029.md).
 
 ## 1. Kết quả cần bàn giao

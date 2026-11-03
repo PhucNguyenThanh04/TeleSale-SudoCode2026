@@ -6,7 +6,6 @@ from datetime import datetime
 from typing import Any, Callable, Literal
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
-from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import StructuredTool
 from pydantic import Field, create_model
@@ -41,7 +40,8 @@ _TOOL_FIELDS: dict[str, dict[str, tuple[Any, Any]]] = {
     "order.status": {"order_id": (str | None, None)},
     "schedule.callback": {"callback_at": (str, ...), "note": (str | None, None)},
     "handoff.transfer": {"brief": (dict[str, Any], ...)},
-    "policy.search": {"query": (str, ...), "order_id": (str | None, None)},
+    "policy.search": {"query": (str, ...), "order_id": (str | None, None),
+                      "customer_reported_order_date": (str | None, None)},
 
 }
 
@@ -137,10 +137,10 @@ class BusinessTools:
             if selection.status != "resolved":
                 return {"error": selection.status, "missing_fields": list(selection.missing_fields),
                         "next_tool": "catalog.search" if selection.status == "catalog_required" else None}
-        if name in {"inventory.check", "pricing.get_quote"} and any(
-                raw.get(key) is not None for key in ("size", "color")):
-            if resolve_product_selection(self.state, raw).status == "catalog_required":
-                return {"error": "catalog_required", "next_tool": "catalog.search"}
+        if (name in {"inventory.check", "pricing.get_quote"}
+                and any(raw.get(key) is not None for key in ("size", "color"))
+                and resolve_product_selection(self.state, raw).status == "catalog_required"):
+            return {"error": "catalog_required", "next_tool": "catalog.search"}
         if name in {"inventory.check", "pricing.get_quote", "order.create"} and raw.get("sku"):
             items = [item for call in self.state.get("tool_calls", [])
                      if call.get("name") == "catalog.search"
@@ -170,7 +170,7 @@ class BusinessTools:
                         "next_action": "Verify stock and quote for this exact SKU and quantity before create."}
             return {"error": "precondition_or_arguments"}
         _, args = prepared
-        if name in {"catalog.search", "inventory.check", "pricing.get_quote", "policy.search"}:
+        if name in {"catalog.search", "inventory.check", "pricing.get_quote"}:
             for cached in reversed(self.state.get("tool_calls", [])):
                 if cached.get("name") in {"order.create", "order.update"}:
                     break
@@ -187,9 +187,16 @@ class BusinessTools:
                          f"{self.state['tool_count']}")
         try:
             if hasattr(self.gateway, "invoke_trusted"):
+                policy_kwargs = {}
+                if name == 'policy.search':
+                    from app.mcp_servers.mcp_knowledge.schemas import TrustedPolicyContext
+                    policy_kwargs['policy_context'] = TrustedPolicyContext(
+                        request_id=str(request.client_msg_id), principal='harness', on=request.on,
+                        verified_order_date=args.get('order_date'),
+                        date_source='order.status' if args.get('order_date') else None)
                 result = await self.gateway.invoke_trusted(
                     name, args, self.state.get("customer_id"), request.channel,
-                    request.channel_identity, operation_key)
+                    request.channel_identity, operation_key, **policy_kwargs)
             else:
                 result = await self.gateway.invoke(name, args)
         except Exception as exc:
@@ -247,6 +254,11 @@ _SYSTEM_PROMPT = (
     "blocker còn mở, không hỏi lại blocker đã giải quyết. Yêu cầu mua hiện tại "
     "ưu tiên hơn suggested_opening. "
     "Khi khách hỏi chính sách, gọi policy.search trước khi trả lời. "
+    "Đọc evidence.content, applicability và các ngoại lệ bắt buộc. Chỉ trả lời phần có căn cứ độc lập; "
+    "nói rõ phần chưa xác nhận. Thiếu sản phẩm, phiên bản, khu vực hoặc ngày cần thiết thì hỏi một câu làm rõ. "
+    "Ngày khách khai chỉ dùng giải thích có điều kiện và phải nói chưa xác minh quyền lợi; "
+    "không hứa đổi trả/hoàn tiền. Nguồn chỉ gần chủ đề hoặc conflict chưa phân xử thì không suy đoán. "
+    "Không chủ động hẹn gọi lại chỉ vì thiếu thông tin; chuyển nhân viên theo nghiệp vụ BTC hiện có. "
     "Khi khách đồng ý mua, chốt đơn hoặc nói 'lên đơn', phải lập tức kiểm tra tồn kho "
     "(inventory.check) và lấy báo giá (pricing.get_quote) nếu trong phiên hiện tại chưa gọi, "
     "sau đó gọi ngay order.create trong cùng lượt (mặc định qty=1, payment='COD' nếu khách "
