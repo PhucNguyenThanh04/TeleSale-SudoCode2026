@@ -36,16 +36,16 @@
         <p class="section-intro" id="identity-help">Mỗi cuộc gọi bắt đầu bằng kênh và danh tính do tư vấn viên xác nhận từ nguồn tiếp nhận.</p>
 
         <form id="setup-form" class="setup-form">
-          <label class="operator-only" for="channel">Kênh tiếp nhận</label>
-          <select class="operator-only" id="channel" name="channel">
+          <label for="channel">Kênh tiếp nhận</label>
+          <select id="channel" name="channel">
+            <option value="hotline">Hotline</option>
             <option value="chat_fanpage">Fanpage</option>
             <option value="zalo_oa">Zalo</option>
-            <option value="hotline">Hotline</option>
           </select>
 
-          <label class="operator-only" for="identity">Định danh từ kênh</label>
-          <input class="operator-only" id="identity" name="identity" type="text" autocomplete="off" placeholder="ID hội thoại hoặc số gọi đến" required>
-          <p class="field-note operator-only">Không lấy định danh từ nội dung khách tự nhắn.</p>
+          <label id="identity-label" for="identity">Số điện thoại gọi đến</label>
+          <input id="identity" name="identity" type="text" autocomplete="off" placeholder="Ví dụ: 0984726714" required>
+          <p class="field-note" id="identity-note">Số phải gồm 10 chữ số và bắt đầu bằng 0.</p>
 
           <label for="call-date">Ngày cuộc gọi</label>
           <input id="call-date" name="callDate" type="date" value="2026-10-15" required>
@@ -67,7 +67,7 @@
         </div>
 
         <section class="voice-station" aria-label="Gọi bằng giọng">
-          <div class="voice-station-copy"><strong>Gọi bằng giọng</strong><span>Nhấn ghi âm, nói rồi nhấn dừng. Bản chép lời sẽ tự gửi sang AI; câu trả lời được đọc ngay khi VieNeu trả khung âm thanh đầu tiên.</span></div>
+          <div class="voice-station-copy"><strong>Gọi bằng giọng</strong><span>Nhấn ghi âm, nói rồi nhấn dừng. VieNeu xác nhận ngay trong lúc AI tra cứu; câu trả lời đã kiểm chứng được đọc khi khung âm thanh đầu tiên sẵn sàng.</span></div>
           <div class="voice-controls">
             <button id="record-button" type="button">● Bắt đầu ghi âm</button>
             <button id="stop-voice" type="button" hidden>Dừng phát giọng</button>

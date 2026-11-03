@@ -69,8 +69,15 @@ class OperatorSessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["returning_browser"])
         self.assertNotIn("set-cookie", again.headers)
 
-    async def test_public_session_rejects_remote_direct_requests(self):
+    async def test_public_session_accepts_container_proxy_address(self):
+        result = await visitor_session(
+            _request(host="telesale.ktoxz.id.vn", client="172.18.0.1"),
+            Response(), _Redis(),
+        )
+        self.assertEqual(result, {"status": "ready", "returning_browser": False})
+
+    async def test_public_session_rejects_wrong_hostname(self):
         with self.assertRaises(HTTPException) as remote:
-            await visitor_session(_request(host="telesale.ktoxz.id.vn", client="10.0.0.8"),
+            await visitor_session(_request(host="example.com", client="172.18.0.1"),
                                   Response(), _Redis())
         self.assertEqual(remote.exception.status_code, 403)

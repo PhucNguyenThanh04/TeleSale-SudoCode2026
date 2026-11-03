@@ -5,7 +5,6 @@
   const speech = window.TeleSaleSpeech;
   const workspace = window.TeleSaleWorkspace;
   const visitorMode = location.hostname === "telesale.ktoxz.id.vn";
-  if (visitorMode) document.body.classList.add("public-visitor");
   let returningBrowser = false;
   const ui = {
     channel: $("channel"), identity: $("identity"), callDate: $("call-date"),
@@ -49,16 +48,12 @@
     accessReady = true;
     const access = await response.json();
     returningBrowser = Boolean(access.returning_browser);
-    ui.authLabel.textContent = visitorMode ? (returningBrowser ? "Trình duyệt quay lại" : "Khách mới trên trình duyệt") : "Đã kết nối";
+    ui.authLabel.textContent = visitorMode ? "Phiên mô phỏng đã kết nối" : "Đã kết nối";
     ui.authIndicator.classList.add("active");
     if (visitorMode) {
-      ui.channel.value = "chat_fanpage";
-      ui.identity.value = "browser-session";
-      ui.channel.disabled = true;
-      ui.identity.disabled = true;
-      $("identity-help").textContent = "Web nhận diện khách mới hoặc quay lại bằng cookie riêng của trình duyệt. Danh tính CRM cần được xác minh qua kênh tin cậy.";
-      $("access-help").textContent = "Phiên trình duyệt được lưu 30 ngày. Không dùng Bearer JWT.";
-      ui.identityStatus.textContent = returningBrowser ? "Trình duyệt quay lại · CRM chưa xác minh" : "Khách mới · CRM chưa xác minh";
+      $("identity-help").textContent = "Mô phỏng định danh do Hotline, Fanpage hoặc Zalo chuyển vào để hệ thống tra CRM.";
+      $("access-help").textContent = "Phiên mô phỏng dùng HttpOnly cookie, không dùng Bearer JWT.";
+      ui.identityStatus.textContent = "Chờ định danh từ kênh";
       if (returningBrowser) workspace.renderPreviousSummary();
     }
   }
@@ -85,7 +80,21 @@
 
   function setSetupLocked(locked) {
     for (const field of ui.setup.elements) field.disabled = locked;
-    if (visitorMode) { ui.channel.disabled = true; ui.identity.disabled = true; }
+  }
+
+  function updateIdentityField() {
+    const hotline = ui.channel.value === "hotline";
+    const zalo = ui.channel.value === "zalo_oa";
+    $("identity-label").textContent = hotline ? "Số điện thoại gọi đến"
+      : zalo ? "Zalo ID từ kênh" : "Facebook ID từ kênh";
+    ui.identity.placeholder = hotline ? "Ví dụ: 0984726714"
+      : zalo ? "Ví dụ: zalo_hoa73" : "Ví dụ: fb.hoa.479";
+    ui.identity.inputMode = hotline ? "numeric" : "text";
+    if (hotline) ui.identity.setAttribute("pattern", "0[0-9]{9}");
+    else ui.identity.removeAttribute("pattern");
+    $("identity-note").textContent = hotline
+      ? "Số phải gồm 10 chữ số và bắt đầu bằng 0."
+      : "Định danh này mô phỏng metadata do nền tảng chuyển vào, không lấy từ nội dung khách nhắn.";
   }
 
   function renderBrief(brief) {
@@ -120,9 +129,7 @@
     sessionId = data.session_id;
     ui.session.textContent = sessionId;
     const identity = { known: "Đã xác định", unknown: "Chưa xác định", ambiguous: "Cần xác minh" };
-    ui.identityStatus.textContent = visitorMode
-      ? (returningBrowser ? "Trình duyệt quay lại · CRM chưa xác minh" : "Khách mới · CRM chưa xác minh")
-      : (identity[data.identity_status] || "Chưa xác định");
+    ui.identityStatus.textContent = identity[data.identity_status] || "Chưa xác định";
     ui.handoff.textContent = data.needs_handoff
       ? (data.handoff_ticket_id ? `Cần chuyển · ${data.handoff_ticket_id}` : "Cần chuyển")
       : "Chưa yêu cầu";
@@ -145,6 +152,9 @@
     setBusy(true);
     const agentStarted = performance.now();
     speech.setStage("agent", "đang xử lý lượt hội thoại…");
+    // Fill the otherwise silent model/tool wait with a short, non-business
+    // acknowledgement. The verified answer replaces it as soon as it is ready.
+    speech.acknowledge();
     turn.view.caption.textContent = "Đang xử lý…";
     turn.retry?.remove();
     turn.retry = null;
@@ -206,7 +216,7 @@
       showError("Đang kết nối phiên nội bộ. Vui lòng thử lại sau giây lát.");
       return;
     }
-    if (!sessionId && ((!visitorMode && !ui.identity.value.trim()) || !ui.callDate.value)) {
+    if (!sessionId && (!ui.identity.value.trim() || !ui.callDate.value)) {
       showError("Hãy điền định danh từ kênh và ngày cuộc gọi.");
       ui.identity.focus();
       return;
@@ -217,8 +227,8 @@
     };
     if (sessionId) payload.session_id = sessionId;
     else {
-      payload.channel = visitorMode ? "web_chat" : ui.channel.value;
-      payload.channel_identity = visitorMode ? "browser-session" : ui.identity.value.trim();
+      payload.channel = ui.channel.value;
+      payload.channel_identity = ui.identity.value.trim();
       payload.call_date = ui.callDate.value;
     }
     const turn = { payload, view: makeMessage("customer", text, "Đang gửi…"), retry: null };
@@ -228,7 +238,7 @@
   speech.setCanRecord(() => {
     if (busy || pendingTurn) { showError("Hãy hoàn tất lượt hội thoại hiện tại trước khi ghi âm."); return false; }
     if (!accessReady) { showError("Phiên truy cập chưa sẵn sàng."); return false; }
-    if (!sessionId && ((!visitorMode && !ui.identity.value.trim()) || !ui.callDate.value)) {
+    if (!sessionId && (!ui.identity.value.trim() || !ui.callDate.value)) {
       showError("Hãy điền định danh từ kênh và ngày cuộc gọi trước khi ghi âm.");
       return false;
     }
@@ -258,9 +268,7 @@
     setSetupLocked(false);
     ui.messages.replaceChildren();
     ui.session.textContent = "Chưa bắt đầu";
-    ui.identityStatus.textContent = visitorMode
-      ? (returningBrowser ? "Trình duyệt quay lại · CRM chưa xác minh" : "Khách mới · CRM chưa xác minh")
-      : "Chưa xác định";
+    ui.identityStatus.textContent = "Chờ định danh từ kênh";
     ui.handoff.textContent = "Chưa yêu cầu";
     ui.turnCount.textContent = "00";
     ui.brief.textContent = "Chưa có thông tin từ phiên trước.";
@@ -272,8 +280,10 @@
     ui.messages.append(prompt);
     ui.empty = prompt;
     if (visitorMode) workspace.renderPreviousSummary();
-    if (!visitorMode) ui.identity.focus();
+    ui.identity.focus();
   });
+  ui.channel.addEventListener("change", updateIdentityField);
+  updateIdentityField();
   Promise.allSettled([fetch("/health").then((response) => response.ok), speech.checkHealth()])
     .then(([backend, audio]) => {
       const backendReady = backend.status === "fulfilled" && backend.value;
