@@ -171,7 +171,8 @@
         throw new Error("Phản hồi từ hệ thống chưa đầy đủ. Vui lòng kiểm tra trước khi gửi tiếp.");
       }
       updateFolio(data);
-      makeMessage("agent", data.agent_text, "Đã trả lời");
+      const reply = makeMessage("agent", data.agent_text, "Đã trả lời");
+      window.TeleSaleKnowledge.attachFeedback(reply.article, data.session_id, turnCount);
       if (workspace.currentView() === "calls") workspace.loadCalls();
       const timing = response.headers.get("Server-Timing");
       speech.setStage("agent", `xong sau ${Math.round(performance.now() - agentStarted)} ms${timing ? ` · ${timing}` : ""}`);

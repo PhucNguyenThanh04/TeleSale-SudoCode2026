@@ -1,4 +1,5 @@
 """Read-only PostgreSQL queries for customer, products, stock and promotions."""
+from app.knowledge.config import enabled, configured_url, pinned_release
 
 import json
 from datetime import date
@@ -47,3 +48,25 @@ class CatalogRepo(Database):
     async def used_promos(self, session) -> set[tuple[str, str]]:
         result = await session.execute(text("SELECT customer_phone,promo_code FROM runtime.promo_uses"))
         return {(row[0], row[1]) for row in result}
+
+    async def knowledge_release(self, release_id=None):
+        import os
+        from app.knowledge.repo import UnitOfWork
+        from app.knowledge.schemas import digest
+        from app.knowledge.run_context import BASE_ONLY
+        if release_id == BASE_ONLY or not enabled():
+            return {"release_id": BASE_ONLY, "manifest_hash": BASE_ONLY}
+        async with self.transaction() as session:
+            tx = UnitOfWork(session)
+            rid = release_id or (await tx.get('active', 'current') or {}).get('release_id')
+            if not rid or rid == BASE_ONLY:
+                return {"release_id": BASE_ONLY, "manifest_hash": BASE_ONLY}
+            release = await tx.get('releases', rid)
+            if not release or release.get('status') != 'ready' or digest(release['manifest']) != release['manifest_hash']:
+                return {"error": "invalid_knowledge_release"}
+            return {"release_id": rid, "manifest_hash": release['manifest_hash']}
+
+    async def knowledge_candidates(self, session, release_id, on, order_date=None):
+        from app.knowledge.repo import UnitOfWork
+        from app.knowledge.retrieval import supplement_candidates
+        return await supplement_candidates(UnitOfWork(session), release_id, on, order_date)

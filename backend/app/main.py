@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.chat import router as chat_router
+from app.api.knowledge import router as knowledge_router
 from app.api.calls import router as calls_router
 from app.api.health import router as health_router
 from app.api.operator_session import router as operator_session_router
@@ -70,6 +71,7 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(chat_router)
+app.include_router(knowledge_router)
 app.include_router(operator_session_router)
 app.include_router(calls_router)
 app.include_router(reference_router)

@@ -3,7 +3,12 @@
 import json
 import shutil
 import tempfile
+import sys
 from pathlib import Path
+
+PROJECT = Path(__file__).resolve().parents[2]
+if str(PROJECT) not in sys.path:
+    sys.path.insert(0, str(PROJECT))
 
 from eval.score_pair import score_pair
 from eval.trace_audit import audit_pair, audit_trace, build_manifest

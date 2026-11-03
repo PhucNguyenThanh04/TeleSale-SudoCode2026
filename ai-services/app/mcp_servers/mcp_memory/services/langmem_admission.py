@@ -20,6 +20,7 @@ def admit_profile_candidates(
     accepted = []
     rejected = []
     seen = {}
+    conflicted = set()
     for candidate in candidates:
         turn = _turn_for(committed_turns, customer_id, session_id,
                          candidate.source_turn_id)
@@ -55,13 +56,16 @@ def admit_profile_candidates(
         elif candidate.valid_until and candidate.source_kind == "tool":
             fact["valid_until"] = candidate.valid_until.isoformat()
         identity = (candidate.scope_type, scope_id, candidate.key)
-        if identity in seen and seen[identity] != value:
+        if not _valid_fact(fact):
+            rejected.append({"key": candidate.key, "reason": "invalid_fact"})
+            continue
+        if identity in conflicted or identity in seen and seen[identity] != value:
+            conflicted.add(identity)
             rejected.append({"key": candidate.key, "reason": "conflicting_values"})
             accepted = [item for item in accepted if
                         (item["scope_type"], item["scope_id"], item["key"]) != identity]
             continue
-        if not _valid_fact(fact):
-            rejected.append({"key": candidate.key, "reason": "invalid_fact"})
+        if identity in seen:
             continue
         seen[identity] = value
         accepted.append(fact)

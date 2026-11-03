@@ -377,3 +377,12 @@ Run regression tests with `python -m unittest discover -s test -v`. HTTP memory 
 are opt-in: set `MEMORY_TEST_URL` and `MEMORY_TEST_TOKEN` to a dedicated eval MCP memory
 instance, then run `python -m unittest discover -s test -p test_memory_http.py -v`.
 They write synthetic namespaced data and must not target a production database.
+
+### Knowledge Gap Loop
+
+Feedback nhân viên, tín hiệu runtime và lỗi từ eval được xử lý thành gap,
+revision có nguồn, test được duyệt và release FAQ/aliases cho `policy.search`.
+Chức năng mặc định tắt; cần migration `0002_knowledge_gap_loop.sql`, provision
+roles và cấu hình riêng cho API/worker. Xem [runbook](docs/knowledge-gap-loop-runbook.md)
+để cấp reviewer, chạy workers, thao tác UI, rollback và xuất bằng chứng BTC.
+Không tự chạy eval live hoặc reset DB khi bật giao diện.

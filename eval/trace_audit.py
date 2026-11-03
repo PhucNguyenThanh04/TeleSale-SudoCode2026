@@ -155,7 +155,7 @@ def build_manifest(*, trace_path: Path, scenarios_dir: Path, config: str,
                    started_at_utc: str, scorer_report_path: Path,
                    btc_root: Path | None = None,
                    expected_database: str | None = None,
-                   app_env: str = "test") -> dict:
+                   app_env: str = "test", knowledge_release: dict | None = None) -> dict:
     audit = audit_trace(scenarios_dir, trace_path, config, btc_root=btc_root)
     if audit["errors"]:
         raise ValueError(f"Trace audit failed: {audit['errors']}")
@@ -181,6 +181,13 @@ def build_manifest(*, trace_path: Path, scenarios_dir: Path, config: str,
             runner_report.get("run_id") != audit["run_id"] or
             runner_report.get("config") != config):
         raise ValueError("database_identity/run provenance differs from runner report")
+    if knowledge_release is not None:
+        _reject_secret_keys(knowledge_release)
+        if not knowledge_release.get('release_id') or not knowledge_release.get('manifest_hash'):
+            raise ValueError('Incomplete knowledge release metadata')
+        if runner_report.get('knowledge_release_id', 'btc-only') != knowledge_release['release_id']:
+            raise ValueError('Runner knowledge release mismatch')
+        metadata['knowledge_release'] = knowledge_release
     score_inputs_path = scorer_report_path.with_suffix(".inputs.json")
     if not score_inputs_path.is_file():
         raise ValueError("score provenance sidecar is unavailable")
@@ -217,6 +224,9 @@ def audit_pair(full_manifest: dict, baseline_manifest: dict) -> list[str]:
             errors.append(f"missing {name}")
         elif full_manifest[name] != baseline_manifest[name]:
             errors.append(f"{name} differs")
+    if 'knowledge_release' in full_manifest or 'knowledge_release' in baseline_manifest:
+        if not full_manifest.get('knowledge_release') or full_manifest.get('knowledge_release') != baseline_manifest.get('knowledge_release'):
+            errors.append('knowledge_release differs or missing')
     if not full_manifest.get("run_id") or not baseline_manifest.get("run_id"):
         errors.append("run_id missing")
     return errors

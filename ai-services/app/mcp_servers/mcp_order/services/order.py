@@ -5,7 +5,7 @@ import json
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from app.mcp_servers.mcp_shared.commerce_rules import HOLIDAYS, _delivery, _inventory, quote
+from app.mcp_servers.mcp_shared.commerce_rules import HOLIDAYS, _delivery, _inventory, _parent, quote
 
 
 async def _identity(repo, session, args: dict) -> tuple[str | None, str | None]:
@@ -46,7 +46,11 @@ async def create(repo, session, args: dict, customer_id: str, phone: str) -> dic
         return {"error": "invalid_payment"}
     if not isinstance(args.get("qty"), int) or args["qty"] < 1:
         return {"error": "invalid_qty"}
-    inv = _inventory(await repo.rows(session, "products"), await repo.rows(session, "inventory_events"),
+    products = await repo.rows(session, "products")
+    product, variant = _parent(products, args["sku"])
+    if product is not None and product.get("variants") and variant is None:
+        return {"error": "variant_selection_required"}
+    inv = _inventory(products, await repo.rows(session, "inventory_events"),
                      args["sku"], args["on"])
     if not inv.get("in_stock") or inv["qty"] < args["qty"]:
         return {"error": "out_of_stock", **inv}

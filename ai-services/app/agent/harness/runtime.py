@@ -1,4 +1,5 @@
 """Run one graph turn with process-local idempotency and session locking."""
+from app.knowledge.config import enabled, configured_url, pinned_release
 
 import asyncio
 import logging
@@ -54,6 +55,15 @@ class AgentHarnessRuntime:
         return self._states.get((str(turn.session_id), str(turn.client_msg_id)))
 
     async def run(self, turn: TextTurnRequest) -> TextTurnResponse:
+        from app.knowledge.run_context import selected_release, release_context
+        import os
+        if selected_release() or not enabled():
+            return await self._run(turn)
+        release = await self.tools.knowledge_release()
+        with release_context(release['release_id']):
+            return await self._run(turn)
+
+    async def _run(self, turn: TextTurnRequest) -> TextTurnResponse:
         started = time.perf_counter()
         log_event(turn, "chat", "started", channel=turn.channel,
                   input_mode=turn.input_mode, on=turn.on.isoformat())

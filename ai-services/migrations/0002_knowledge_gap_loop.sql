@@ -1,0 +1,33 @@
+-- Knowledge lifecycle is independent of runtime eval resets. Apply as administrator.
+CREATE SCHEMA IF NOT EXISTS knowledge;
+CREATE TABLE IF NOT EXISTS knowledge.events (id text PRIMARY KEY, data jsonb NOT NULL CHECK (jsonb_typeof(data)='object'));
+CREATE TABLE IF NOT EXISTS knowledge.gaps (id text PRIMARY KEY, data jsonb NOT NULL CHECK (jsonb_typeof(data)='object'));
+CREATE TABLE IF NOT EXISTS knowledge.revisions (id text PRIMARY KEY, data jsonb NOT NULL CHECK (jsonb_typeof(data)='object'));
+CREATE TABLE IF NOT EXISTS knowledge.decisions (id text PRIMARY KEY, data jsonb NOT NULL CHECK (jsonb_typeof(data)='object'));
+CREATE TABLE IF NOT EXISTS knowledge.regression_cases (id text PRIMARY KEY, data jsonb NOT NULL CHECK (jsonb_typeof(data)='object'));
+CREATE TABLE IF NOT EXISTS knowledge.releases (id text PRIMARY KEY, data jsonb NOT NULL CHECK (jsonb_typeof(data)='object'));
+CREATE TABLE IF NOT EXISTS knowledge.active (id text PRIMARY KEY, data jsonb NOT NULL CHECK (jsonb_typeof(data)='object'));
+CREATE TABLE IF NOT EXISTS knowledge.jobs (id text PRIMARY KEY, data jsonb NOT NULL CHECK (jsonb_typeof(data)='object'));
+CREATE TABLE IF NOT EXISTS knowledge.audit (id text PRIMARY KEY, data jsonb NOT NULL CHECK (jsonb_typeof(data)='object'));
+CREATE TABLE IF NOT EXISTS knowledge.permissions (id text PRIMARY KEY, data jsonb NOT NULL CHECK (jsonb_typeof(data)='object'));
+CREATE TABLE IF NOT EXISTS knowledge.verification_runs (id text PRIMARY KEY, data jsonb NOT NULL CHECK (jsonb_typeof(data)='object'));
+CREATE TABLE IF NOT EXISTS knowledge.erasures (id text PRIMARY KEY, data jsonb NOT NULL CHECK (jsonb_typeof(data)='object'));
+CREATE INDEX IF NOT EXISTS knowledge_jobs_status ON knowledge.jobs ((data->>'status'));
+CREATE INDEX IF NOT EXISTS knowledge_events_customer ON knowledge.events ((data->>'customer_id'));
+CREATE TABLE IF NOT EXISTS knowledge.backend_outbox (id text PRIMARY KEY, data jsonb NOT NULL);
+DO $$ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='knowledge_worker') THEN CREATE ROLE knowledge_worker NOLOGIN; END IF;
+ IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='knowledge_reviewer') THEN CREATE ROLE knowledge_reviewer NOLOGIN; END IF;
+ IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='knowledge_ingest') THEN CREATE ROLE knowledge_ingest NOLOGIN; END IF;
+ IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='knowledge_backend') THEN CREATE ROLE knowledge_backend NOLOGIN; END IF;
+ GRANT USAGE ON SCHEMA knowledge TO knowledge_worker, knowledge_reviewer, knowledge_ingest, knowledge_backend;
+ GRANT SELECT,INSERT,UPDATE ON knowledge.backend_outbox TO knowledge_backend;
+ GRANT SELECT ON knowledge.erasures TO knowledge_backend;
+ GRANT SELECT ON ALL TABLES IN SCHEMA knowledge TO knowledge_worker, knowledge_reviewer;
+ GRANT SELECT,INSERT,UPDATE ON knowledge.events,knowledge.jobs TO knowledge_ingest;
+ GRANT SELECT ON knowledge.erasures TO knowledge_ingest;
+ GRANT INSERT,UPDATE ON knowledge.events,knowledge.jobs,knowledge.gaps,knowledge.revisions,knowledge.regression_cases,knowledge.audit TO knowledge_worker;
+ GRANT INSERT,UPDATE ON ALL TABLES IN SCHEMA knowledge TO knowledge_reviewer;
+ GRANT USAGE ON SCHEMA btc_source TO knowledge_worker, knowledge_reviewer;
+ GRANT SELECT ON btc_source.policy_chunks TO knowledge_worker, knowledge_reviewer;
+END $$;

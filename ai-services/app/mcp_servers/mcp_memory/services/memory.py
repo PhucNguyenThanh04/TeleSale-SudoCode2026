@@ -213,6 +213,9 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
             await repo.insert_turn(conn, session_id, number, customer_id,
                                    channel, on, customer_text, agent_text,
                                    str(source_turn_id))
+            from app.knowledge.config import enabled
+            if enabled() and hasattr(repo, "enqueue_knowledge_event"):
+                await repo.enqueue_knowledge_event(conn, data, session_id, customer_id)
             for order_id in orders:
                 await repo.link_order(conn, customer_id, order_id)
             result = {"turn_no": number, "memory_writes": []}

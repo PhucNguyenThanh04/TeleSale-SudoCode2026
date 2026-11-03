@@ -6,6 +6,7 @@ against live PostgreSQL database, 3 MCP servers, and real LLM (gemma4:31b).
 
 from __future__ import annotations
 
+from copy import deepcopy
 import argparse
 import asyncio
 import hashlib
@@ -95,6 +96,7 @@ async def run_scenario_call(
     input_mode = call_spec.get("input_mode", "clean")
     trace_rows = rows_out if rows_out is not None else []
     source_ids: list[str] = []
+    prior_snapshot = None
 
     for turn_idx, user_text in enumerate(customer_turns, start=1):
         turn_req = TextTurnRequest(
@@ -117,10 +119,11 @@ async def run_scenario_call(
             agent_text = resp.agent_text or ""
             tool_calls = state.get("tool_calls", [])
             memory_writes = state.get("memory_writes", [])
-            prior_facts = state.get("profile", {})
+            if prior_snapshot is None:
+                prior_snapshot = deepcopy((state.get("profile", {}), state.get("scoped_facts", {})))
             facts_used_this_turn = facts_used(
-                agent_text, tool_calls, prior_facts, state.get("scoped_facts", {}),
-                current_session_id=str(session_id))
+                agent_text, tool_calls, *prior_snapshot,
+                current_session_id=str(session_id), customer_text=user_text)
             call_brief_latency = (resp.call_brief or {}).get("latency_ms")
 
         except Exception as exc:
@@ -291,7 +294,13 @@ def assert_trace_ready(scenarios: dict[str, Any],
     for rows in trace.values():
         for row in rows:
             if row.get("memory_error"):
-                raise RuntimeError("memory job failed during evaluation")
+                reason = row["memory_error"] if row["memory_error"] in {
+                    "timeout", "job_failed", "capture_failed"} else "unknown"
+                raise RuntimeError(
+                    "memory job failed during evaluation "
+                    f"(scenario={row.get('scenario_id')}, call={row.get('call')}, "
+                    f"turn={row.get('turn')}, reason={reason}); "
+                    "inspect the saved trace and LangMem worker job error; no score was published")
             if str(row.get("agent_text", "")).startswith("[ERROR:"):
                 raise RuntimeError("turn failed during evaluation")
 
@@ -416,6 +425,9 @@ async def main() -> None:
 
     # Initialize settings and runtime
     settings = Settings()
+    from app.knowledge.run_context import capture_release
+    release = await capture_release(database_url(settings))
+    os.environ['KNOWLEDGE_RELEASE_ID'] = release['release_id']
     settings.agent_kind = args.agent
     settings.llm_seed = args.seed
     print(f"\nInitializing Runtime for Agent: '{args.agent.upper()}' (Model: {settings.llm_model})...")
@@ -427,7 +439,8 @@ async def main() -> None:
 
     def write_runner_report(path: str, config: str, run_id: str) -> None:
         report = {"run_id": run_id, "config": config,
-                  "database_identity": database_identity}
+                  "database_identity": database_identity,
+                  "knowledge_release_id": os.environ.get("KNOWLEDGE_RELEASE_ID", "btc-only")}
         with open(path.removesuffix(".jsonl") + ".report.json", "w", encoding="utf-8") as stream:
             json.dump(report, stream, ensure_ascii=False)
 

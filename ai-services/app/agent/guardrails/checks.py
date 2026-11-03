@@ -12,10 +12,11 @@ from app.mcp_servers.mcp_shared.pii import mask_pii
 from app.mcp_servers.mcp_shared.episode_evidence import evidence_supports
 from app.constants import PROFILE_SLOT_KEYS, SLOT_SPEC_BY_KEY, TOOL_ONLY_SLOT_KEYS, Slot
 from app.agent.guardrails.skus import known_skus, mentioned_skus
+from app.agent.guardrails.promotion_grounding import check_promotion_grounding
 from app.agent.memory.decision_makers import PERSON_PATTERN
 
 
-FALLBACK = "Dạ, hiện em chưa kiểm tra được thông tin này. Em sẽ nhờ nhân viên hỗ trợ mình ạ."
+FALLBACK = "Dạ, hiện em chưa kiểm tra được thông tin này. Anh/chị vui lòng liên hệ tổng đài để được hỗ trợ ạ."
 
 _STOCK = re.compile(r"(?i)\b(?:còn hàng|có hàng|sẵn hàng|hết hàng)\b")
 _ORDER = re.compile(r"(?i)\bđã\s+(?:lên|tạo|đặt|chốt)\s+đơn\b")
@@ -654,29 +655,9 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         for call in successful
     ):
         return FALLBACK, "order_creation_unverified"
-    mentioned_codes = {
-        code for code in _PROMO_CODE.findall(candidate)
-        if code not in claimed_skus and not code.startswith(("SKU-", "OD-"))
-    }
-    if _PROMOTION.search(candidate) or mentioned_codes:
-        quote_calls = [call for call in successful if call["name"] == "pricing.get_quote"]
-        signatures = {(call["args"].get("sku"), call["args"].get("on"),
-                       str(call["result"].get("applied_promos")), call["result"].get("freeship"))
-                      for call in quote_calls}
-        if len(signatures) != 1:
-            return FALLBACK, "promotion_quote_missing"
-        quotes = [quote_calls[-1]["result"]]
-        shipping_only = bool(re.search(r"(?i)\b(?:freeship|miễn phí (?:ship|vận chuyển))\b", candidate))
-        verified_negative_discount = any(kind == "discount" and negative
-                                         for _, kind, negative in money_claims)
-        if (not quotes[0].get("applied_promos") and not verified_negative_discount
-                and not (shipping_only and quotes[0].get("freeship"))):
-            return FALLBACK, "promotion_unverified"
-        applied_codes = {p.get("promo_code") for p in quotes[0]["applied_promos"]}
-        if mentioned_codes and not mentioned_codes <= applied_codes:
-            return FALLBACK, "promotion_code_mismatch"
-        if "%" in candidate or ("freeship" in candidate.lower() and not quotes[0].get("freeship")):
-            return FALLBACK, "promotion_detail_unverified"
+    promotion_reason = check_promotion_grounding(candidate, tool_calls)
+    if promotion_reason:
+        return FALLBACK, promotion_reason
     if _DELIVERY.search(candidate):
         orders = [call["result"] for call in successful if call["name"] == "order.create"
                   and call["result"].get("status") == "created"]

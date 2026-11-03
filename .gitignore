@@ -3,6 +3,7 @@
 # Credentials and local configuration
 .env
 .env.*
+.envrc
 /secrets/
 !.env.example
 !.env.sample
@@ -15,10 +16,7 @@ credentials.json
 service-account*.json
 
 # Python environments, caches, packaging and test output
-.venv/
-.venv-dataloader/
-.venv-speech/
-.venv-vieneu/
+.venv*/
 venv/
 env/
 __pycache__/
@@ -27,8 +25,15 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.tox/
+.nox/
+.hypothesis/
+.ipynb_checkpoints/
+.cache/
+.uv-cache/
 .coverage
 .coverage.*
+coverage.xml
 htmlcov/
 build/
 dist/
@@ -38,12 +43,18 @@ dist/
 node_modules/
 .next/
 .nuxt/
+.vite/
+.turbo/
+*.tsbuildinfo
 coverage/
 
 # Local runtime output
 /postgres_data/
 /.archify/
 /BTC-Data-Vong1-TEAMS/
+/storage/
+/traces/
+/trace-*.json
 /frontend/preview.png
 *.log
 logs/
@@ -61,6 +72,12 @@ temp/
 ai-services/eval_harness/results/
 outputs/
 artifacts/
+
+# Local dataset bundles (audio, archives, manifests and ground truth).
+# Keep the directory guide; source dialogues and test fixtures stay versioned.
+/dataset/*
+!/dataset/README.md
+
 # Speech dataset/runs (audio, TTS cache, hypotheses) and local voice config
 speech/data/
 speech/voices.json
@@ -72,9 +89,9 @@ speech/serving/models/
 *.ckpt
 *.safetensors
 *.onnx
+*.gguf
 minio-data/
 qdrant_storage/
-/storage/qdrant/
 
 # Editor and operating system files
 .vscode/
@@ -86,3 +103,4 @@ Thumbs.db
 *.swo
 .graphifyignore
 graphify-out/
+.superpowers/

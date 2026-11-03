@@ -13,7 +13,7 @@ def build_suggested_opening(
     open_blockers: list[str] | None = None,
     fallback_blocker: str | None = None,
 ) -> str:
-    """Greet by honorific/name, confirm at most 2 items (product + blocker), never quote old price."""
+    """State known context; ask only for new progress on an open blocker."""
     greeting = "Dạ"
     if isinstance(honorific, str) and honorific.strip():
         h = honorific.strip()
@@ -45,11 +45,10 @@ def build_suggested_opening(
         target = product_item or "đơn hàng lần trước"
         return f"{greeting}, lần trước mình đã đặt {target}. Hôm nay mình cần em hỗ trợ thêm thông tin gì về đơn hàng ạ?"
 
-    if product_item and blocker_item:
-        return (f"{greeting}, lần trước mình đang cân nhắc {product_item} ({blocker_item}). "
-                f"Mình muốn tiếp tục phần đó không ạ?")
     if product_item:
-        return f"{greeting}, lần trước mình đã trao đổi về {product_item}. Mình muốn tiếp tục phần đó ạ?"
+        context = f"{greeting}, lần trước mình đã trao đổi về {product_item}."
+    else:
+        context = f"{greeting}, em tiếp tục hỗ trợ phần mình đang trao đổi."
     if blocker_item:
-        return f"{greeting}, lần trước mình đang tạm dừng ở phần {blocker_item}. Mình muốn tiếp tục trao đổi không ạ?"
-    return f"{greeting}, lần trước mình đã trao đổi về nội dung lần trước. Mình muốn tiếp tục phần đó ạ?"
+        return f"{context} Về phần {blocker_item}, mình đã có quyết định mới chưa ạ?"
+    return f"{context} Em tiếp tục theo nhu cầu đã ghi nhận của mình ạ."

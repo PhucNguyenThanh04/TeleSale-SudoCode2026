@@ -172,3 +172,88 @@ Tập dữ liệu này cung cấp đầu vào chuẩn mực để chạy Harness
 - **CCR (Carryover Correctness Rate):** Tỷ lệ mang đúng dữ kiện (diện tích, màu sắc, ngân sách, lý do cản trở) xuyên phiên.
 - **TSR riêng Ca Khó (Hard Cases TSR):** Đo khả năng phản xạ của Deep Agent và ReAct Agent trước các bẫy nghiệp vụ (lệch giá, loại trừ size, ngày nghỉ, dò giá nhập).
 - **Guardrail Violations:** Số lần để lộ thông tin nội bộ hoặc rò rỉ dữ liệu giữa 2 khách dùng chung SĐT.
+
+## Knowledge feedback và hai vòng cải tiến
+
+Run mới ghi `knowledge_release` vào manifest và kiểm cùng release cho cặp
+full/baseline. `KNOWLEDGE_RELEASE_ID=btc-only` chọn nguồn BTC thuần; release
+khác phải đã prepare/activate theo [runbook](../docs/knowledge-gap-loop-runbook.md).
+`python -m eval_harness.knowledge_feedback --run RUN_DIR` nhập lỗi từ run đã
+kiểm chứng, không gọi model. `python -m eval_harness.knowledge_comparison
+--round0 RUN0 --round1 RUN1 --out NEW_DIR --register` so sánh hai run cùng
+code/test/config và đăng ký bằng chứng, không sửa scorer BTC. Hai lần chạy
+model/reset để tạo run vẫn cần ủy quyền riêng. Bộ regression sinh từ gap giữ
+riêng với bộ test frozen dùng tính delta.
+
+## Offline re-extraction và giới hạn diễn giải
+
+`python -m eval_harness.reextract_trace --input TRACE.jsonl --output NEW.jsonl`
+chỉ tạo lại `questions` và `claims` từ lời agent đã nói. Công cụ không gọi
+model/MCP/DB, không tạo official run, không ghi đè output có sẵn. Thêm đồng
+thời `--scenarios DIR --btc-root BTC_DIR --config full` (hoặc
+`baseline_no_memory`) để audit schema và exact coverage bằng utility hiện có.
+Không có ba tùy chọn này thì chỉ kiểm cấu trúc/thứ tự các lượt đầu vào.
+
+Câu hỏi được gán slot theo mệnh đề thực sự hỏi; câu nhắc trẻ em rồi hỏi tiến
+độ quyết định được gán `blocker`. Một câu có thể hỏi nhiều slot. Claim lấy
+truth từ phát ngôn, không lấy từ kết quả tool: giá niêm yết dùng
+`list_price_vnd`, giá bán dùng `price_vnd`; promo có mã được nói rõ dùng
+`promo_<code>_active`, quà/ưu đãi generic vẫn dùng `promo_active`. Claim lịch
+sử được giữ với field historical và text gốc, không biến thành trạng thái
+hiện tại. Field scorer không chấm không được hiểu là claim đã đúng.
+
+SC02 trong run `20261101T174223Z-c43720a3` có quà tặng được quote chứng minh
+nhưng ground truth generic `promo_active=false`. Giữ discrepancy và score
+BTC gốc; không gán mã từ tool vào câu generic để né lỗi chấm. Baseline RQR
+bằng 0 vẫn giữ relative reduction `null` và verdict gốc: chưa chứng minh
+được giảm 40%, không tự chuyển thành pass.
+
+`facts_used`/CCR không thể tái dựng đầy đủ từ trace public cũ vì thiếu hồ sơ
+và provenance trước call. Replay giữ nguyên field này. Các run mới giữ
+snapshot fact đầu call và chỉ tính sử dụng có nguồn từ session trước, đúng
+scope và nghĩa của tham số/phát ngôn. Việc khách nhắc lại giá trị không tự
+chứng minh agent nhớ. Memory recall/precision là diagnostic khớp expected
+slot/value theo call; danh sách expected không đầy đủ và `written` không
+phải số record vật lý hay số fact rác. ID đơn động khác nhãn cố định vẫn là
+discrepancy khi chưa có ánh xạ được xác minh.
+
+## Khi eval dừng vì memory job thất bại
+
+Runner từ chối publish score nếu một lượt có `memory_error`. Thông báo chỉ
+rõ scenario/call/turn và loại lỗi; tra worker/job tương ứng để tìm nguyên
+nhân. Không bỏ qua readiness check hoặc dùng trace lỗi để báo điểm.
+
+Các MCP service và `langmem-worker` trong compose chạy code đã COPY vào
+image, không mount checkout. Sửa Python trên host chưa cập nhật các process
+này. Từ thư mục gốc repository, rebuild/recreate những service bị ảnh hưởng:
+
+```bash
+docker compose up -d --build --no-deps mcp-catalog mcp-order mcp-memory langmem-worker
+```
+
+Nếu tài khoản cần quyền Docker, chạy lệnh trên bằng `sudo`. Không restart
+PostgreSQL, không xóa volume. Đây là thao tác triển khai service; agent phải
+có ủy quyền trước khi tự thực hiện.
+
+Một dấu hiệu worker cũ là delta narrative dùng một
+`narrative_evidence_quote` chung cho nhiều trường, gây lỗi
+`episode narrative lacks supporting evidence`. Admission hiện tại giữ
+`narrative_evidence_quotes` theo từng trường và loại nội dung không được
+quote chứng minh. Restart không tự sửa accepted proposal đã lưu hoặc làm
+run thất bại trở thành hợp lệ. Giữ artifact run lỗi; chỉ chạy lại eval khi
+được cho phép, bằng run mới theo quy trình hiện có, không sửa status/job
+hay validator để hợp thức hóa run cũ.
+
+Nếu harness chờ ngay sau lượt chat đầu và job vẫn `pending, attempts=0`,
+worker chưa nhận job. Kiểm tra `docker compose ps -a langmem-worker` và log
+worker trước khi chạy thêm eval. Compose mặc định có thể truyền
+`LANGFUSE_BASE_URL=""`; Settings chuẩn hóa giá trị tùy chọn trống thành None
+khi Langfuse tắt, nhưng vẫn từ chối thiếu URL/credentials khi bật Langfuse.
+Sau khi cập nhật bản sửa này, rebuild riêng worker từ thư mục gốc:
+
+```bash
+docker compose up -d --build --no-deps langmem-worker
+docker compose ps -a langmem-worker
+```
+
+Không dùng việc API trả lời được để kết luận worker memory đã sẵn sàng.

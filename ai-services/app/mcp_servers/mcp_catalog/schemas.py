@@ -36,3 +36,4 @@ class PolicySearchInput(BaseModel):
     query: str = Field(min_length=2, max_length=300)
     on: date
     order_date: date | None = None
+    knowledge_release_id: str | None = None

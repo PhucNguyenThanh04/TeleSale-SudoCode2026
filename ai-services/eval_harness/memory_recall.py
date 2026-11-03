@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from collections import defaultdict
 from typing import Any
 
@@ -22,10 +24,22 @@ def _slot_value_matches(slot: str, expected: Any, actual: Any,
         if expected.casefold().strip() == actual.casefold().strip():
             return True
         if slot in _FREE_TEXT_SLOTS:
-            return (evidence_supports(expected, actual)
-                    or evidence_supports(actual, expected)
-                    or expected.casefold() in actual.casefold()
-                    or actual.casefold() in expected.casefold())
+            def normalize(text):
+                text = "".join(c for c in unicodedata.normalize("NFD", text.casefold().replace("đ", "d"))
+                               if unicodedata.category(c) != "Mn")
+                text = re.sub(r"\b(?:ong xa|anh nha)\b", "chong", text)
+                return re.sub(r"\b(?:ba xa)\b", "vo", text)
+            left, right = normalize(expected), normalize(actual)
+            for signal in (r"\bkhong\b", r"\bda\s+(?:hoi|quyet|dong y)"):
+                if bool(re.search(signal, left)) != bool(re.search(signal, right)):
+                    return False
+            actors = [{w for w in ("vo", "chong") if re.search(r"\b" + w + r"\b", text)}
+                      for text in (left, right)]
+            if actors[0] != actors[1]:
+                return False
+            return (left == right or evidence_supports(left, right)
+                    or evidence_supports(right, left)
+                    or left in right or right in left)
     return False
 
 
@@ -121,6 +135,8 @@ def evaluate_memory_recall(
         "by_slot": slot_breakdown,
         "by_scenario": per_scenario,
         "notes": [
+            "Diagnostic matches expected slots per call; written is not a physical record count or a count of garbage facts.",
+            "Expected facts are not exhaustive; valid extra writes and unmatched dynamic order IDs remain discrepancies.",
             "budget_vnd uses ±15% tolerance (e.g. SAMPLE-01 ground truth 5700000 vs spoken 'tầm 5 triệu').",
             "phone_provided is excluded per PB-08 (handled via identity linking, never stored raw).",
         ],

@@ -330,7 +330,7 @@ class DeepMemoryTest(unittest.IsolatedAsyncioTestCase):
         gateway = FakeGateway()
         runtime = DeepHarnessRuntime(model, gateway, FakeMemory())
         await runtime.run(turn("Em lên đơn giúp anh nhé"))
-        self.assertEqual([name for name, _ in gateway.calls], ["crm.get_customer"])
+        self.assertEqual([name for name, _ in gateway.calls], ["crm.get_customer", "catalog.search"])
 
 
 

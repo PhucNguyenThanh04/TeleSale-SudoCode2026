@@ -91,7 +91,8 @@ class TestEvalHarness(unittest.TestCase):
     def test_spoken_price_is_reported_as_claim(self):
         claims = extract_claims("Giá là 4.890.000 đồng ạ.", [])
         self.assertIn({"field": "price_vnd", "value": 4890000,
-                       "source": "text"}, claims)
+                       "source": "text"}, [{k: v for k, v in claim.items() if k != "text"} for claim in claims])
+        self.assertTrue(claims[0]["text"])
 
     def test_baseline_runtime_disables_prior_memory_without_changing_identity(self):
         from eval_harness.benchmark_runner import make_baseline_runtime

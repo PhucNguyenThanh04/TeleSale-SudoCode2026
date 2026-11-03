@@ -158,7 +158,14 @@ def _supplement_customer_facts(last_turn: dict,
     except ValueError:
         return []
     safe_text = mask_pii(customer_text)
-    present_keys = {f.key for f in existing_facts}
+    from app.mcp_servers.mcp_memory.services.memory import _valid_fact
+    present_keys = {
+        f.key for f in existing_facts
+        if f.source_turn_id == turn_id and f.source_kind == "customer"
+        and f.op in {"set", "supersede"}
+        and _valid_fact(f.model_dump(mode="json"))
+        and fact_evidence(f.key, f.value, "set", safe_text, [], f.evidence_quote).source == "customer"
+    }
     candidates: list[tuple[str, Any, str]] = []
     comp_match = re.search(
         r"(?i)\b(?:bên kia|bên khác|shop khác|đối thủ)\b[^.!?]{0,80}?\b"

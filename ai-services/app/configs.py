@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     langfuse_public_key: str | None = None
     langfuse_secret_key: SecretStr | None = None
     langfuse_base_url: AnyHttpUrl | None = None
+    knowledge_enabled: bool = False
+    knowledge_database_url: SecretStr | None = None
+    knowledge_worker_database_url: SecretStr | None = None
+    knowledge_admin_database_url: SecretStr | None = None
+    knowledge_release_id: str | None = None
     memory_max_episodes: int = Field(default=5, ge=0, le=20)
     ai_internal_token: SecretStr | None = None
     mcp_internal_token: SecretStr | None = None
@@ -71,6 +76,12 @@ class Settings(BaseSettings):
     db_max_overflow: int = Field(default=0, ge=0, le=50)
     memory_db_pool_min_size: int = Field(default=1, ge=1, le=50)
     memory_db_pool_max_size: int = Field(default=5, ge=1, le=50)
+
+    @field_validator("langfuse_base_url", mode="before")
+    @classmethod
+    def normalize_optional_langfuse_url(cls, value):
+        """Compose supplies empty strings for unset optional environment values."""
+        return None if isinstance(value, str) and not value.strip() else value
 
     @field_validator("timezone")
     @classmethod
