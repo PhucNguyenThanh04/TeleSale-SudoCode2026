@@ -70,3 +70,14 @@ def test_operational_failure_never_publishes_score(tmp_path, field):
         publish_pair(scenarios, paths["full"], paths["baseline_no_memory"],
                      tmp_path / "score.json", metadata, btc_root=BTC)
     assert not (tmp_path / "score.json").exists()
+
+
+def test_redaction_invalid_never_publishes_official_score(tmp_path):
+    scenarios, paths, metadata = _case(tmp_path)
+    issue = dict(code='redaction_affects_scoring',type='pii_violation',path='agent_text',
+                 scenario_id='X',call='call_1',turn=1)
+    result = publish_pair(scenarios, paths['full'], paths['baseline_no_memory'],
+        tmp_path/'btc_score.json', metadata, btc_root=BTC, safety_issues=[issue])
+    assert result['status']=='invalid'
+    assert not (tmp_path/'btc_score.json').exists()
+    assert json.loads((tmp_path/'full.manifest.json').read_text())['safety_issues']==[issue]

@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 from eval.catalog_search_benchmark import catalog_search_metrics
 from eval.run_eval import _claims, _facts_used, _require_eval_database, _trace_args, run
@@ -27,7 +27,10 @@ class _Runtime:
         self.requests = []
 
     async def database_identity(self, service):
-        return {"database": self.database, "host": "eval-postgres", "port": 5432}
+        return {"database": self.database, "host": "eval-postgres", "port": 5432, "server_started_at":"start"}
+
+    async def knowledge_release(self):
+        return {"release_id":"btc-only","manifest_hash":"btc-only"}
 
     async def run(self, request):
         self.requests.append(request)
@@ -50,21 +53,38 @@ class _BlockedRuntime(_Runtime):
 
 
 class EvalRunnerTest(unittest.TestCase):
+    def setUp(self):
+        for target, kwargs in (
+            ("eval.run_eval.capture_release", dict(new_callable=AsyncMock,return_value={"release_id":"btc-only","manifest_hash":"btc-only"})),
+            ("eval_harness.benchmark_runner.warm_up_configuration",dict(new_callable=AsyncMock)),
+            ("eval_harness.benchmark_runner.build_runtime",dict(return_value=_Runtime())),
+            ("eval_harness.benchmark_runner.probe_runner_database",dict(new_callable=AsyncMock,return_value={"database":"telesale_eval","host":"eval-postgres","port":5432,"server_started_at":"start"})),
+            ("eval_harness.benchmark_runner.reset_runtime_database",dict(new_callable=AsyncMock)),
+            ("eval_harness.benchmark_runner.wait_for_distillation",dict(new_callable=AsyncMock)),
+            ("eval_harness.benchmark_runner.read_distillation_writes",dict(new_callable=AsyncMock,return_value={})),
+        ):
+            patcher=patch(target,**kwargs)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        env=patch.dict("os.environ",{"EVAL_EXPECTED_DATABASE":"telesale_eval"})
+        env.start()
+        self.addCleanup(env.stop)
+
     def test_prior_scoped_fact_used_is_counted_without_customer_identifier(self):
         state = {"request": SimpleNamespace(session_id="current-session"),
                  "profile": {}, "tool_calls": [], "scoped_facts": {"product": {
                      "SKU-ALPHA": {"preferred_color": {"value": "xanh",
                          "source": "old-session:turn-1"}}}}}
-        self.assertEqual(_facts_used("Mẫu màu xanh vẫn phù hợp", state),
+        self.assertEqual(_facts_used("SKU-ALPHA màu xanh vẫn phù hợp", state),
                          ["preferred_color"])
 
     def test_price_claim_keeps_thousands_separators(self):
-        claims = _claims("Giá hôm nay là 4.890.000đ. Em kiểm tra tiếp ạ.", [])
+        claims = [{k:v for k,v in c.items() if k != "source"} for c in _claims("Giá hôm nay là 4.890.000đ. Em kiểm tra tiếp ạ.", [])]
         self.assertIn({"field": "price_vnd", "value": 4890000,
                        "text": "Giá hôm nay là 4.890.000đ"}, claims)
         self.assertIn({"field": "promo_active", "value": False,
                        "text": "Đã hết chương trình giảm giá"},
-                      _claims("Đã hết chương trình giảm giá", []))
+                      [{k:v for k,v in c.items() if k != "source"} for c in _claims("Đã hết chương trình giảm giá", [])])
         claims = _claims("Giá 5.490.000đ, miễn phí ship đến Quận 7", [])
         self.assertEqual([item["value"] for item in claims if item["field"] == "price_vnd"],
                          [5490000])
@@ -76,7 +96,7 @@ class EvalRunnerTest(unittest.TestCase):
             output = Path(folder) / "trace.jsonl"
             runtime = _Runtime()
             count = asyncio.run(run(SimpleNamespace(
-                scenarios=scenario_dir, config="baseline_no_memory",
+                btc_root=scenario_dir.parents[1], scenarios=scenario_dir, config="baseline_no_memory",
                 out=output, isolated_db=True), runtime))
             rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
             report = json.loads(output.with_suffix(".report.json").read_text(
@@ -85,7 +105,7 @@ class EvalRunnerTest(unittest.TestCase):
         self.assertEqual(report["catalog_search"]["turns"], count)
         self.assertEqual(report["catalog_search"]["total_calls"], 0)
         self.assertEqual(report["database_identity"], {
-            "database": "telesale_eval", "host": "eval-postgres", "port": 5432})
+            "database": "telesale_eval", "host": "eval-postgres", "port": 5432, "server_started_at":"start"})
         self.assertFalse(runtime.memory.include_prior)
         self.assertTrue(all(row["agent_text"] == "Dạ, em kiểm tra ạ." for row in rows))
         self.assertTrue(all("facts_established" not in request.model_dump()
@@ -103,7 +123,7 @@ class EvalRunnerTest(unittest.TestCase):
             "test_set" / "public_sample"
         with tempfile.TemporaryDirectory() as folder:
             output = Path(folder) / "trace.jsonl"
-            asyncio.run(run(SimpleNamespace(scenarios=scenario_dir, config="full",
+            asyncio.run(run(SimpleNamespace(btc_root=scenario_dir.parents[1], scenarios=scenario_dir, config="full",
                                           out=output, isolated_db=True), _Runtime()))
             stages = json.loads(output.with_suffix(".stages.json").read_text(
                 encoding="utf-8"))
@@ -141,6 +161,21 @@ class EvalRunnerTest(unittest.TestCase):
                                                    "args": traced}]}])
         self.assertTrue(passed, reasons)
 
+    def test_sidecar_write_failure_marks_single_run_failed(self):
+        from eval_harness.official_pipeline import atomic_json as real_atomic
+        btc=Path(__file__).resolve().parents[2]/"BTC-Data-Vong1-TEAMS"
+        with tempfile.TemporaryDirectory() as folder:
+            output=Path(folder)/"trace.jsonl"
+            def write(path,value):
+                if str(path).endswith(".events.json"):
+                    raise OSError("synthetic disk error")
+                real_atomic(path,value)
+            with patch("eval.run_eval.atomic_json",side_effect=write):
+                with self.assertRaises(OSError):
+                    asyncio.run(run(SimpleNamespace(scenarios=btc/"test_set/public_sample",btc_root=btc,
+                        config="full",out=output,isolated_db=True),_Runtime()))
+            self.assertEqual(json.loads(output.with_suffix(".report.json").read_text())["status"],"failed")
+
     def test_catalog_search_metric_counts_each_turn(self):
         rows = [{"tool_calls": [{"name": "catalog.search"}]},
                 {"tool_calls": [{"name": "catalog.search"},
@@ -157,7 +192,7 @@ class EvalRunnerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             output = Path(folder) / "trace.jsonl"
             asyncio.run(run(SimpleNamespace(
-                scenarios=scenario_dir, config="full", out=output,
+                btc_root=scenario_dir.parents[1], scenarios=scenario_dir, config="full", out=output,
                 isolated_db=True), _BlockedRuntime()))
             events_path = output.with_suffix(".events.json")
             raw = events_path.read_text(encoding="utf-8")
@@ -174,24 +209,24 @@ class EvalRunnerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             output = Path(folder) / "trace.jsonl"
             runtime = _Runtime(database="telesale")
-            with self.assertRaisesRegex(RuntimeError, "not in the eval allowlist"):
+            with self.assertRaisesRegex(RuntimeError, "configuration_failed"):
                 asyncio.run(run(SimpleNamespace(
-                    scenarios=scenario_dir, config="full", out=output,
+                    btc_root=scenario_dir.parents[1], scenarios=scenario_dir, config="full", out=output,
                     isolated_db=True), runtime))
             self.assertEqual(runtime.requests, [])
             self.assertFalse(output.exists())
 
-    def test_allowlist_rejects_similar_and_unrelated_names(self):
+    def test_explicit_target_replaces_name_suffix_allowlist(self):
         for name in ("telesale_evaluation", "medieval", "telesale"):
-            with self.subTest(database=name):
-                runtime = _Runtime(database=name)
-                with self.assertRaisesRegex(RuntimeError, "not in the eval allowlist"):
-                    asyncio.run(_require_eval_database(runtime, True))
-                self.assertEqual(runtime.requests, [])
-        asyncio.run(_require_eval_database(_Runtime(database="telesale_eval"), True))
-        with patch.dict("os.environ", {"EVAL_DB_ALLOWLIST": "telesale_evaluation"}):
-            with self.assertRaisesRegex(ValueError, "EVAL_DB_ALLOWLIST"):
-                asyncio.run(_require_eval_database(_Runtime(), True))
+            with self.assertRaisesRegex(RuntimeError, "Cannot verify catalog"):
+                asyncio.run(_require_eval_database(_Runtime(database=name),True))
+        with patch("eval_harness.benchmark_runner.probe_runner_database",new_callable=AsyncMock,return_value={"database":"telesale","host":"eval-postgres","port":5432,"server_started_at":"start"}):
+            result=asyncio.run(_require_eval_database(_Runtime(database="telesale"),True,
+            expected_database="telesale",release={"release_id":"btc-only","manifest_hash":"btc-only"}))
+        self.assertEqual(result["database"],"telesale")
+        with patch.dict("os.environ",{"EVAL_EXPECTED_DATABASE":""}):
+            with self.assertRaisesRegex(ValueError,"expected-database"):
+                asyncio.run(_require_eval_database(_Runtime(),True))
 
     def test_unavailable_database_probe_fails_closed(self):
         runtime = _Runtime()
@@ -211,7 +246,7 @@ class EvalRunnerTest(unittest.TestCase):
             runtime = _Runtime(database="telesale_eval")
             with self.assertRaisesRegex(ValueError, "--isolated-db"):
                 asyncio.run(run(SimpleNamespace(
-                    scenarios=scenario_dir, config="full",
+                    btc_root=scenario_dir.parents[1], scenarios=scenario_dir, config="full",
                     out=Path(folder) / "trace.jsonl", isolated_db=False), runtime))
             self.assertEqual(runtime.requests, [])
 

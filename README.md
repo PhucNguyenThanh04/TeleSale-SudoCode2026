@@ -35,15 +35,17 @@ root, with an **isolated evaluation database/backend** so mutable orders and
 one-time promotions do not affect demo data, run:
 
 ```bash
-python run_eval.py --scenarios ../BTC-Data-Vong1-TEAMS/test_set/public_sample --config full --out eval/runs/full.jsonl --isolated-db
-python run_eval.py --scenarios ../BTC-Data-Vong1-TEAMS/test_set/public_sample --config baseline_no_memory --out eval/runs/baseline.jsonl --isolated-db
+ai-services/.venv/bin/python run_eval.py --btc-root ../BTC-Data-Vong1-TEAMS --expected-database telesale --scenarios ../BTC-Data-Vong1-TEAMS/test_set/public_sample --config full --out eval/runs/full.jsonl --isolated-db
+ai-services/.venv/bin/python run_eval.py --btc-root ../BTC-Data-Vong1-TEAMS --expected-database telesale --scenarios ../BTC-Data-Vong1-TEAMS/test_set/public_sample --config baseline_no_memory --out eval/runs/baseline.jsonl --isolated-db
 python ../BTC-Data-Vong1-TEAMS/eval/reference_eval.py --scenarios ../BTC-Data-Vong1-TEAMS/test_set/public_sample --trace eval/runs/full.jsonl --baseline eval/runs/baseline.jsonl
 ```
 
-The runner emits real harness turns. Restore the same seed and clear mutable
-runtime state before baseline. `--isolated-db` is an operator assertion; it
-does not reset or isolate PostgreSQL itself. The model is configured in
-`ai-services/.env`. See [memory policy](docs/memory-policy.md).
+The runner emits real harness turns through the shared BTC runner. After explicit
+live authorization it validates four MCP identities and resets mutable runtime
+state before each configuration, including baseline. `--isolated-db` remains an
+operator assertion; `--expected-database` identifies the approved reset target. The model is configured in
+`ai-services/.env`. See the [eval runbook](ai-services/eval_harness/README.md) for
+offline checks, paired runs, safe artifacts and failed/invalid status. See [memory policy](docs/memory-policy.md).
 
 For a new comparison, write both traces into a new directory under
 `eval/runs/` and audit each with `ai-services/.venv/bin/python -m

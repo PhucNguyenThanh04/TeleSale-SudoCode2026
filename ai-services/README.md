@@ -391,3 +391,13 @@ Chức năng mặc định tắt; cần migration `0002_knowledge_gap_loop.sql`,
 roles và cấu hình riêng cho API/worker. Xem [runbook](docs/knowledge-gap-loop-runbook.md)
 để cấp reviewer, chạy workers, thao tác UI, rollback và xuất bằng chứng BTC.
 Không tự chạy eval live hoặc reset DB khi bật giao diện.
+
+## BTC text eval sau sửa harness
+
+Xem [runbook eval](eval_harness/README.md) cho kiểm file offline, test chặn mạng,
+CLI một cấu hình/cặp và chấm lại bằng scorer BTC nguyên bản. Hai CLI dùng chung
+runner, bốn MCP và accepted memory writes. Cần khai báo `--btc-root` và DB đích
+`--expected-database` (hoặc `EVAL_EXPECTED_DATABASE`); không suy quyền reset từ
+DB đang kết nối. Chỉ chạy live/reset sau ủy quyền riêng. Trạng thái `invalid`
+cho bằng chứng chấm bị mất sau redaction; `validated` không bảo đảm đạt chất
+lượng/latency BTC.

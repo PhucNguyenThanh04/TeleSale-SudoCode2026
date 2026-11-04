@@ -1,0 +1,125 @@
+"""Offline BTC input validation; answer labels never become runtime requests."""
+import json
+import re
+from datetime import date, timedelta
+from pathlib import Path
+
+CRITERIA = {'tool_called', 'args_match', 'also_ordered', 'total_match_vnd',
+            'brief_must_contain', 'must_say_any', 'agent_must_say', 'must_not_call_tools',
+            'forbidden_claims', 'trace_must_not_match', 'max_agent_questions'}
+MODES = {'clean', 'asr_transcript', 'chat_teencode'}
+CHANNELS = {'hotline', 'chat_fanpage', 'zalo_oa'}
+
+
+def input_turns(call):
+    return call['customer_turns_asr'] if 'customer_turns_asr' in call else call['customer_turns']
+
+
+def validate_success(success, tools):
+    if not isinstance(success, dict) or set(success) - CRITERIA:
+        raise ValueError('success_criteria_unsupported')
+    if success.get('tool_called') and success['tool_called'] not in tools:
+        raise ValueError('expected_tool_unsupported')
+    if 'args_match' in success and not isinstance(success['args_match'],dict):
+        raise ValueError('args_match_invalid')
+    for key in ('max_agent_questions','total_match_vnd'):
+        if key in success and (type(success[key]) is not int or success[key]<0):
+            raise ValueError('success_number_invalid')
+    for key in ('also_ordered','brief_must_contain','must_say_any','must_not_call_tools','trace_must_not_match'):
+        if key in success and (not isinstance(success[key],list) or any(not isinstance(x,str) for x in success[key])):
+            raise ValueError('success_list_invalid')
+    for rx in success.get('trace_must_not_match',[]):
+        try:
+            re.compile(rx)
+        except re.error:
+            raise ValueError('success_regex_invalid') from None
+    if 'forbidden_claims' in success:
+        values=success['forbidden_claims']
+        if not isinstance(values,list) or any(not isinstance(x,str) and
+                not (isinstance(x,dict) and isinstance(x.get('field'),str) and 'value' in x) for x in values):
+            raise ValueError('forbidden_claims_invalid')
+
+
+def load_scenarios(path: Path, *, btc_root: Path) -> dict[str, dict]:
+    path, btc_root = Path(path), Path(btc_root)
+    for name in ('trace_log.schema.json', 'handoff_brief.schema.json', 'tools.schema.json', 'scenario_format.md'):
+        if not (btc_root / 'schemas' / name).is_file():
+            raise ValueError('btc_contract_missing:' + name)
+    if not (btc_root / 'eval/reference_eval.py').is_file():
+        raise ValueError('btc_scorer_missing')
+    try:
+        if path.is_dir():
+            values = [json.loads(p.read_text()) for p in sorted(path.glob('*.json')) if not p.name.startswith('_')]
+        else:
+            values = json.loads(path.read_text())
+            if isinstance(values, dict):
+                values = values.get('scenarios', [values])
+        if not isinstance(values, list) or not values:
+            raise ValueError('dataset_empty')
+        tools = {x['name'] for x in json.loads((btc_root / 'schemas/tools.schema.json').read_text())['tools']}
+        from eval_harness.preflight import _outcomes
+        outcomes = _outcomes(btc_root)
+        result = {}
+        for index, sc in enumerate(values):
+            if not isinstance(sc, dict) or not isinstance(sc.get('scenario_id'), str) or not sc['scenario_id']:
+                raise ValueError(f'scenario_invalid:index={index}')
+            sid = sc['scenario_id']
+            if sid in result:
+                raise ValueError('scenario_duplicate')
+            calls = sc.get('calls')
+            if not isinstance(calls, dict) or not calls or set(calls) != {f'call_{n}' for n in range(1, len(calls) + 1)} or len(calls) > 3:
+                raise ValueError('calls_invalid')
+            previous = date(2026, 10, 15)
+            ordered = {}
+            seeded = {}
+            for name in sorted(calls):
+                call = calls[name]
+                if not isinstance(call, dict):
+                    raise ValueError('call_invalid')
+                turns = call.get('customer_turns')
+                if not isinstance(turns, list) or not turns or any(not isinstance(x, str) or not x.strip() or len(x)>8000 for x in turns):
+                    raise ValueError('turns_invalid')
+                if 'customer_turns_asr' in call:
+                    asr = call['customer_turns_asr']
+                    if not isinstance(asr, list) or len(asr) != len(turns) or any(not isinstance(x, str) or not x.strip() or len(x)>8000 for x in asr):
+                        raise ValueError('asr_turns_invalid')
+                if call.get('channel', 'hotline') not in CHANNELS or call.get('input_mode', 'clean') not in MODES:
+                    raise ValueError('input_mode_or_channel_invalid')
+                if type(call.get('days_later', 0)) is not int or call.get('days_later', 0) < 0:
+                    raise ValueError('days_later_invalid')
+                try:
+                    on = date.fromisoformat(call['call_date']) if 'call_date' in call else previous + timedelta(days=call.get('days_later', 0))
+                except (ValueError, TypeError):
+                    raise ValueError('call_date_invalid') from None
+                if ordered and on < previous:
+                    raise ValueError('call_date_out_of_order')
+                previous = on
+                success = call.get('success_if') or {}
+                validate_success(success, tools)
+                if call.get('expected_outcome') is not None and call['expected_outcome'] not in outcomes:
+                    raise ValueError('outcome_unsupported')
+                if 'seed_history' in call:
+                    from eval_harness.seed_history import parse_seed_history
+                    for item in parse_seed_history(call['seed_history'], call_date=on):
+                        if item['session_id'] in seeded and seeded[item['session_id']] != item:
+                            raise ValueError('seed_history_conflict')
+                        seeded[item['session_id']]=item
+                ordered[name] = call
+            result[sid] = {**sc, 'calls': ordered}
+        return result
+    except (OSError, json.JSONDecodeError, TypeError, KeyError, OverflowError) as exc:
+        raise ValueError('dataset_invalid:' + type(exc).__name__) from None
+
+
+def dataset_coverage(scenarios: dict[str, dict]) -> dict:
+    return {'scenarios': len(scenarios), 'calls': sum(len(s['calls']) for s in scenarios.values()),
+            'turns': sum(len(input_turns(c)) for s in scenarios.values() for c in s['calls'].values()),
+            'hard_cases': sum(bool(s.get('hard_case')) for s in scenarios.values())}
+
+
+def snapshot_scenarios(scenarios: dict[str, dict], out: Path) -> Path:
+    """Materialize exactly the selected inputs for the directory-only BTC scorer."""
+    out.mkdir(parents=True, exist_ok=False)
+    for index, sc in enumerate(scenarios.values()):
+        (out / f'{index:04d}.json').write_text(json.dumps(sc, ensure_ascii=False, indent=2) + '\n')
+    return out

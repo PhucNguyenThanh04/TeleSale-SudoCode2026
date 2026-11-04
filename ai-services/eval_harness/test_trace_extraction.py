@@ -75,7 +75,7 @@ def test_trace_preserves_valid_tool_names_and_exact_business_args():
     # Verify PII is masked or dropped
     assert order_call["args"]["customer_phone"] == "[SỐ ĐÃ ẨN]"
     assert order_call["args"]["customer_name"] == "[TÊN ĐÃ ẨN]"
-    assert "address" not in order_call["args"]
+    assert order_call["args"]["address"] == "[PII ĐÃ ẨN]"
 
 
 def test_trace_preserves_every_tool_name_call_id_and_unrelated_fields():

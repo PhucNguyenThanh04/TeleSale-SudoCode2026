@@ -22,11 +22,13 @@ class Database:
 
     async def database_identity(self) -> dict:
         """Report the database reached by this pool, without exposing credentials."""
-        async with self.transaction() as session:
+        # Subclasses may expose a domain UnitOfWork from transaction().
+        # This infrastructure probe needs a raw SQLAlchemy session, without locks.
+        async with self.sessions() as session:
             row = (await session.execute(text(
-                "SELECT current_database() AS database, "
+                "SELECT current_database() AS database, inet_server_addr()::text AS host, inet_server_port() AS port, "
                 "pg_postmaster_start_time() AS server_started_at"
             ))).one()
-        return {"database": row.database, "host": self.engine.url.host,
-                "port": self.engine.url.port or 5432,
+        return {"database": row.database, "host": row.host,
+                "port": row.port,
                 "server_started_at": row.server_started_at.isoformat()}

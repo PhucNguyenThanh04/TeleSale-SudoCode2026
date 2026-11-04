@@ -106,7 +106,7 @@ class TestEvalHarness(unittest.TestCase):
         result = make_baseline_runtime(runtime)
         self.assertIs(result, runtime)
         self.assertFalse(runtime.memory.include_prior)
-        self.assertEqual(runtime.memory.namespace, "baseline")
+        self.assertEqual(runtime.memory.namespace, "")
 
     def test_trace_writer_outputs_one_json_object_per_line(self):
         import json

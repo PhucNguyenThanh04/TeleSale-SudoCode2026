@@ -1,0 +1,15 @@
+{
+  "scenario_id": "LOCAL-REPAIR", "hard_case": true,
+  "calls": {
+    "call_1": {
+      "customer_turns": ["Xin chào"],
+      "ground_truth_facts": {"price_vnd": 60000, "in_stock": true},
+      "success_if": {"tool_called": null, "forbidden_claims": [{"field": "price_vnd", "value": 50000}]}
+    },
+    "call_2": {
+      "customer_turns": ["Hỏi tiếp"], "days_later": 2,
+      "must_not_ask": ["budget_vnd"], "must_carry_over": ["room_area_m2", "budget_vnd"],
+      "success_if": {"tool_called": null, "max_agent_questions": 2}
+    }
+  }
+}

@@ -9,13 +9,13 @@ from app.configs import Settings
 from app.infarstructure.llm import build_llm
 
 
-def build_runtime(settings: Settings) -> AgentHarnessRuntime:
-    """Build the selected agent runtime using the three MCP servers."""
+def build_runtime(settings: Settings, *, gateway=None) -> AgentHarnessRuntime:
+    """Build the selected agent runtime using the four MCP servers."""
     configure_agent_logging(settings.log_level)
-    if not all((settings.mcp_catalog_url, settings.mcp_order_url,
+    if gateway is None and not all((settings.mcp_catalog_url, settings.mcp_order_url,
                 settings.mcp_memory_url, settings.mcp_knowledge_url, settings.mcp_internal_token)):
         raise RuntimeError("Configure all four MCP URLs and MCP_INTERNAL_TOKEN")
-    gateway = MCPGateway(settings.mcp_catalog_url, settings.mcp_order_url,
+    gateway = gateway or MCPGateway(settings.mcp_catalog_url, settings.mcp_order_url,
                          settings.mcp_memory_url,
                          settings.mcp_internal_token.get_secret_value(), knowledge=settings.mcp_knowledge_url)
     memory = MCPMemoryStore(gateway, max_episodes=settings.memory_max_episodes)

@@ -1,271 +1,112 @@
-"""Run BTC conversations through the production harness and emit real traces."""
-
+"""BTC-compatible single-trace CLI using the canonical conversation runner."""
 import argparse
 import asyncio
 import json
 import os
-import re
-import sys
-import time
-from datetime import date, timedelta
 from pathlib import Path
+import sys
 from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "ai-services"))
+sys.path.insert(0, str(ROOT / 'ai-services'))
+from app.configs import get_settings
+from app.knowledge.context import capture_release
+from app.mcp_servers.mcp_shared.config import database_url
+from eval.catalog_search_benchmark import catalog_search_metrics
+from eval.stage_evidence import stage_evidence
+from eval_harness import benchmark_runner as runner
+from eval_harness.extractor import extract_questions as _questions, extract_claims as _claims
+from eval_harness.reference_adapter import facts_used, _safe_tool_calls
+from eval_harness.scenario_contract import load_scenarios
+from eval_harness.official_pipeline import atomic_json
 
-from jsonschema import Draft202012Validator  # noqa: E402
 
-from app.agent.factory import build_runtime  # noqa: E402
-from app.agent.guardrails.checks import _money_claims, mask_pii, safe_tool_result  # noqa: E402
-from app.configs import get_settings  # noqa: E402
-from app.schemas.agent import TextTurnRequest  # noqa: E402
-from app.schemas.trace import AgentTraceLine  # noqa: E402
-from eval.catalog_search_benchmark import catalog_search_metrics  # noqa: E402
-from eval.stage_evidence import stage_evidence  # noqa: E402
+def _trace_args(args):
+    """Compatibility export; masking is owned by the canonical adapter."""
+    return _safe_tool_calls([{'name':'diagnostic.tool','args':args}])[0]['args']
 
 
-async def _require_eval_database(runtime, isolated_db: bool) -> dict:
-    """Fail before the first turn unless all three MCP pools reach one allowed eval DB."""
+def _facts_used(answer, state):
+    return facts_used(answer, state.get('tool_calls',[]), state.get('profile',{}),
+                      state.get('scoped_facts',{}), str(state['request'].session_id))
+
+
+async def _require_eval_database(runtime, isolated_db, *, expected_database=None, release=None):
     if not isolated_db:
-        raise ValueError("Pass --isolated-db after configuring a dedicated eval database")
-    allowed = {name.strip() for name in os.getenv("EVAL_DB_ALLOWLIST", "telesale_eval").split(",")}
-    allowed.discard("")
-    allowed = {name for name in allowed
-               if re.fullmatch(r"telesale_eval(?:_[a-z0-9]+)?", name)}
-    if not allowed:
-        raise ValueError("EVAL_DB_ALLOWLIST must contain an eval-named database")
-    probe = getattr(getattr(runtime, "tools", None), "database_identity", None)
-    if not callable(probe):
-        raise RuntimeError("Eval database identity probe is unavailable")
-    identities = []
-    for service in ("catalog", "order", "memory"):
-        identity = await probe(service)
-        if not isinstance(identity, dict) or identity.get("error"):
-            raise RuntimeError(f"Cannot verify {service} MCP database identity")
-        name = identity.get("database")
-        if name not in allowed:
-            raise RuntimeError(f"{service} MCP database is not in the eval allowlist")
-        endpoint = tuple(identity.get(key) for key in ("host", "port"))
-        if (not isinstance(endpoint[0], str) or not endpoint[0]
-                or type(endpoint[1]) is not int):
-            raise RuntimeError(f"{service} MCP database host is unverified")
-        identities.append((name, *endpoint))
-    if len(set(identities)) != 1:
-        raise RuntimeError("MCP services do not share one eval database endpoint")
-    database, host, port = identities[0]
-    return {"database": database, "host": host, "port": port}
-
-
-def _scenario_inputs(folder: Path):
-    for path in sorted(folder.glob("*.json")):
-        if path.name.startswith("_"):
-            continue
-        scenario = json.loads(path.read_text(encoding="utf-8"))
-        previous = date(2026, 10, 15)
-        for call_name, call in scenario["calls"].items():
-            on = (date.fromisoformat(call["call_date"]) if call.get("call_date")
-                  else previous + timedelta(days=call.get("days_later", 0)))
-            previous = on
-            turns = call.get("customer_turns_asr") or call["customer_turns"]
-            mode = call.get("input_mode", "asr_transcript" if call.get("customer_turns_asr")
-                            else "clean")
-            if mode not in {"clean", "asr_transcript", "chat_teencode"}:
-                mode = "clean"
-            channel = call.get("channel", "hotline")
-            identity = call.get("channel_identity") or (scenario.get("customer_phone")
-                                                       if channel == "hotline" else None)
-            yield scenario["scenario_id"], call_name, on, channel, identity, mode, turns
-
-
-def _questions(answer: str) -> list[dict]:
-    result = []
-    for part in re.split(r"(?<=[?])", answer):
-        if "?" not in part:
-            continue
-        lower = part.casefold()
-        slot = next((key for key, pattern in (
-            ("room_area_m2", r"diện tích|bao nhiêu\s*(?:m2|m²|mét)|phòng.*mấy"),
-            ("budget_vnd", r"ngân sách|muốn chi|tầm giá"),
-            ("has_children", r"con nhỏ|em bé|trẻ nhỏ"),
-            ("product_advised", r"mẫu nào|sản phẩm nào|máy nào|giày nào"),
-            ("size", r"size|cỡ giày"),
-            ("color", r"màu"),
-            ("payment", r"thanh toán|cod|chuyển khoản"),
-            ("blocker", r"băn khoăn|cân nhắc|ngại"),
-        ) if re.search(pattern, lower)), None)
-        if slot:
-            result.append({"slot": slot, "type": "confirm" if
-                           re.search(r"đúng không|vẫn|phải không|còn.*không", lower)
-                           else "open", "text": part.strip()})
-    return result
-
-
-def _claims(answer: str, calls: list[dict]) -> list[dict]:
-    claims = []
-    for clause in re.split(r"\.(?!\d)|[!?;\n]", answer):
-        if not clause.strip():
-            continue
-        lower = clause.casefold()
-        for amount, kind, negative in _money_claims(clause):
-            if (kind == "price" and amount >= 100_000
-                    and re.search(r"giá|\bchỉ\b|\bcòn\b", lower)):
-                claims.append({"field": "price_vnd", "value": amount, "text": clause.strip()})
-        stock = re.search(r"\b(còn hàng|có hàng|sẵn hàng|hết hàng)\b", lower)
-        if stock:
-            claims.append({"field": "in_stock", "value": stock.group(1) != "hết hàng",
-                           "text": clause.strip()})
-        promo = re.search(r"\b(?:khuyến mãi|giảm giá|ưu đãi)\b", lower)
-        if promo:
-            inactive = bool(re.search(r"\b(?:hết|không còn|chưa có|không có)\s+"
-                                      r"(?:(?:chương trình|mã)\s+)?"
-                                      r"(?:khuyến mãi|giảm giá|ưu đãi)\b", lower))
-            code = re.search(r"\b([A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+)\b", clause)
-            field = f"promo_{code.group(1)}_active" if code else "promo_active"
-            claims.append({"field": field, "value": not inactive, "text": clause.strip()})
-        for field, pattern in (
-            ("delivery_days", r"giao\s+(?:trong|sau)\s+(\d+)\s+ngày"),
-            ("return_days", r"(?:đổi|trả|đổi trả)\s+(?:trong\s+)?(\d+)\s+ngày"),
-        ):
-            match = re.search(pattern, lower)
-            if match:
-                claims.append({"field": field, "value": int(match.group(1)),
-                               "text": clause.strip()})
-    return claims
-
-
-def _facts_used(answer: str, state: dict) -> list[str]:
-    profile = state.get("profile", {})
-    scoped = state.get("scoped_facts", {})
-    evidence = answer.casefold() + " " + json.dumps(
-        [{"name": call.get("name"), "args": call.get("args", {})}
-         for call in state.get("tool_calls", [])], ensure_ascii=False).casefold()
-    candidates = list(profile.items()) if isinstance(profile, dict) else []
-    if isinstance(scoped, dict):
-        for groups in scoped.values():
-            if not isinstance(groups, dict):
-                continue
-            for facts in groups.values():
-                if isinstance(facts, dict):
-                    candidates.extend(facts.items())
-    used = set()
-    for key, fact in candidates:
-        if not isinstance(fact, dict) or not fact.get("source"):
-            continue
-        source_session = fact["source"].split(":", 1)[0]
-        if source_session == str(state["request"].session_id):
-            continue
-        value = fact.get("value")
-        if value is not None and str(value).casefold() in evidence:
-            used.add(key)
-    return sorted(used)
-
-
-def _trace_args(args: dict) -> dict:
-    """Preserve business arguments while excluding raw contact and address fields."""
-    traced = {key: mask_pii(value) if isinstance(value, str) else value
-            for key, value in args.items()
-            if key not in {"address", "brief", "source_identity", "verified_customer_id"}}
-    brief = args.get("brief")
-    if isinstance(brief, dict):
-        # BTC checks brief_must_contain in trace tool args. Export the presence
-        # and safe business fields while withholding free-form customer prose.
-        projected = {}
-        for key in ("customer_phone", "customer_name", "conversation_summary",
-                    "next_action", "escalation_reason_detail"):
-            value = brief.get(key)
-            if key in brief:
-                projected[key] = ("[SỐ ĐÃ ẨN]" if key == "customer_phone" else
-                                  "[TÊN ĐÃ ẨN]" if key == "customer_name" else
-                                  "[NỘI DUNG ĐÃ ẨN]") if value else value
-        if isinstance(brief.get("open_questions"), list):
-            projected["open_questions"] = ["[NỘI DUNG ĐÃ ẨN]" for item in
-                                           brief["open_questions"] if item]
-        for key in ("escalation_reason", "channel", "generated_at", "promo_code"):
-            value = brief.get(key)
-            if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_:\-+TZ.]+", value):
-                projected[key] = value
-        sku = brief.get("product_advised")
-        if sku is None or isinstance(sku, str) and re.fullmatch(r"SKU-[A-Z0-9-]+", sku):
-            projected["product_advised"] = sku
-        price = brief.get("price_quoted_vnd")
-        if price is None or type(price) is int:
-            projected["price_quoted_vnd"] = price
-        traced["brief"] = projected
-    return traced
+        raise ValueError('Pass --isolated-db and explicitly configure --expected-database')
+    return await runner.preflight_runtime(runtime, get_settings(),
+        expected_database=expected_database or os.getenv('EVAL_EXPECTED_DATABASE',''), release=release or {})
 
 
 async def run(args, runtime=None) -> int:
-    schema_path = args.scenarios.resolve().parents[1] / "schemas" / "trace_log.schema.json"
-    validator = Draft202012Validator(json.loads(schema_path.read_text(encoding="utf-8")))
-    if runtime is None:
-        runtime = build_runtime(get_settings())
-    database_identity = await _require_eval_database(runtime, args.isolated_db)
-    runtime.memory.include_prior = args.config == "full"
-    run_id = str(uuid4())
-    rows = []
-    events = []
-    stages = []
-    for scenario_id, call_name, on, channel, identity, mode, turns in _scenario_inputs(args.scenarios):
-        session_id = uuid4()
-        for turn_no, customer_text in enumerate(turns, 1):
-            request = TextTurnRequest(client_msg_id=uuid4(), session_id=session_id,
-                                      channel=channel, channel_identity=identity,
-                                      on=on, text=customer_text, input_mode=mode)
-            started = time.perf_counter()
-            response = await runtime.run(request)
-            elapsed = round((time.perf_counter() - started) * 1000)
-            state = runtime.state_for(request)
-            if state is None:
-                raise RuntimeError("Harness did not expose its real turn state")
-            answer = mask_pii(response.agent_text)
-            row = AgentTraceLine(
-                run_id=run_id, config=args.config, scenario_id=scenario_id,
-                call=call_name, turn=turn_no, customer_text=mask_pii(customer_text),
-                agent_text=answer, questions=_questions(answer),
-                claims=_claims(answer, state.get("tool_calls", [])),
-                facts_used=_facts_used(answer, state),
-                tool_calls=[{"name": call["name"], "args": _trace_args(call.get("args", {})),
-                             "result": safe_tool_result(call.get("result", {}))}
-                            for call in state.get("tool_calls", [])],
-                latency={"ttft_ms": elapsed, "total_ms": elapsed},
-                call_brief_latency_ms=(response.call_brief or {}).get("latency_ms"),
-                memory_writes=state.get("memory_writes", []), customer_input_mode=mode,
-            ).model_dump(mode="json")
-            validator.validate(row)
-            rows.append(row)
-            stages.append(stage_evidence(state, response, scenario_id=scenario_id,
-                                         call=call_name, turn=turn_no,
-                                         run_id=run_id, config=args.config))
-            checks = state.get("verifier_events", [])
-            if checks:
-                events.append({"scenario_id": scenario_id, "call": call_name,
-                               "turn": turn_no, "checks": checks})
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
-                        encoding="utf-8")
-    args.out.with_suffix(".events.json").write_text(
-        json.dumps(events, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    args.out.with_suffix(".stages.json").write_text(
-        json.dumps(stages, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    report_out = getattr(args, "report_out", None) or args.out.with_suffix(".report.json")
-    report_out.parent.mkdir(parents=True, exist_ok=True)
-    report_out.write_text(json.dumps({
-        "run_id": run_id, "config": args.config,
-        "database_identity": database_identity,
-        "catalog_search": catalog_search_metrics(rows),
-    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return len(rows)
+    btc_root = getattr(args,'btc_root',None)
+    if btc_root is None:
+        raise ValueError('--btc-root is required')
+    scenarios = load_scenarios(args.scenarios, btc_root=btc_root)
+    if not args.isolated_db:
+        raise ValueError('--isolated-db is required')
+    target = getattr(args,'expected_database',None) or os.getenv('EVAL_EXPECTED_DATABASE')
+    if not target:
+        raise ValueError('--expected-database is required')
+    if args.out.exists() or args.out.with_suffix('.report.json').exists():
+        raise FileExistsError('output_exists_choose_new_path')
+    settings = get_settings()
+    settings = settings.model_copy(update={'llm_seed':getattr(args,'seed',7)})
+    release = await capture_release(database_url(settings))
+    stages, events = [], []
+    def observe(request, response, state, row):
+        stages.append(stage_evidence(state, response, scenario_id=row['scenario_id'],call=row['call'],
+            turn=row['turn'],run_id=row['run_id'],config=row['config']))
+        if state.get('verifier_events'):
+            from eval_harness.reference_adapter import _safe_value
+            events.append({'scenario_id':row['scenario_id'],'call':row['call'],'turn':row['turn'],
+                           'checks':_safe_value(state['verifier_events'])})
+    sidecars_complete = False
+    try:
+        result = await runner.execute_configuration(settings=settings, scenarios=scenarios,config=args.config,
+            runtime=runtime,run_id=str(uuid4()),out=args.out,btc_root=btc_root,
+            expected_database=target,release=release,on_turn=observe)
+        rows = [r for rs in result['trace'].values() for r in rs]
+        report_path=args.out.with_suffix('.report.json')
+        report=json.loads(report_path.read_text())
+        report['catalog_search']=catalog_search_metrics(rows)
+        atomic_json(getattr(args,'report_out',None) or report_path,report)
+        atomic_json(args.out.with_suffix('.stages.json'),stages)
+        atomic_json(args.out.with_suffix('.events.json'),events)
+        sidecars_complete = True
+        if result['status'] != 'completed':
+            raise RuntimeError('invalid: redaction_affects_scoring')
+        return len(rows)
+    except Exception as exc:
+        report_path=args.out.with_suffix('.report.json')
+        report=json.loads(report_path.read_text()) if report_path.exists() else {}
+        if not (sidecars_complete and report.get('status')=='invalid'):
+            report.update(status='failed',error_type=type(exc).__name__)
+            atomic_json(report_path,report)
+            if getattr(args,'report_out',None):
+                atomic_json(args.report_out,report)
+        raise
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--scenarios", required=True, type=Path)
-    parser.add_argument("--config", required=True, choices=("full", "baseline_no_memory"))
-    parser.add_argument("--out", required=True, type=Path)
-    parser.add_argument("--report-out", type=Path,
-                        help="JSON report path (default: trace path with .report.json suffix)")
-    parser.add_argument("--isolated-db", action="store_true",
-                        help="Confirm MCP servers use a dedicated, freshly seeded eval DB")
-    args = parser.parse_args()
-    print(f"Wrote {asyncio.run(run(args))} real turns to {args.out}")
+def main():
+    parser=argparse.ArgumentParser(description='LIVE BTC text runner; model calls and runtime reset')
+    parser.add_argument('--scenarios',required=True,type=Path)
+    parser.add_argument('--btc-root',required=True,type=Path)
+    parser.add_argument('--config',required=True,choices=('full','baseline_no_memory'))
+    parser.add_argument('--out',required=True,type=Path)
+    parser.add_argument('--report-out',type=Path)
+    parser.add_argument('--isolated-db',action='store_true')
+    parser.add_argument('--expected-database',default=os.getenv('EVAL_EXPECTED_DATABASE'))
+    parser.add_argument('--seed',type=int,default=7)
+    args=parser.parse_args()
+    try:
+        count=asyncio.run(run(args))
+    except FileExistsError:
+        parser.exit(1,"Output already exists; choose a new --out path.\n")
+    except Exception as exc:
+        parser.exit(1,f'Run failed ({type(exc).__name__}); inspect safe report.\n')
+    print(f'Wrote {count} real turns to {args.out}')
+
+
+if __name__=='__main__':
+    main()

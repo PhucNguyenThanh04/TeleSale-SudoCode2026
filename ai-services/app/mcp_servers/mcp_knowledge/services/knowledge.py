@@ -56,9 +56,12 @@ class PolicySearchService:
 
     async def release_ref(self, release_id=None):
         """Return an authenticated, revalidated reference for harness pinning."""
+        if not self.ready:
+            raise RuntimeError("Knowledge service is not ready")
         release = await self.repo.resolve_release(release_id)
         self._validate_release(release)
-        await self.repo.snapshot(release)
+        chunks = await self.repo.snapshot(release)
+        await self.index.verify(release, self.config, chunks=chunks)
         return {'release_id': release['id'], 'manifest_hash': release['manifest_hash']}
 
     async def search(self,request,context):

@@ -6,8 +6,10 @@ from pathlib import Path
 from typing import Any
 
 from app.mcp_servers.mcp_shared.commerce_rules import _search_text
-from app.mcp_servers.mcp_shared.pii import mask_pii
-from eval_harness.extractor import build_trace_row
+from app.mcp_servers.mcp_shared.pii import mask_pii as _base_mask_pii
+from eval_harness.trace_evidence import SENSITIVE_NUMBER
+from eval_harness.extractor import build_trace_row, extract_questions, extract_claims
+from copy import deepcopy
 from app.agent.guardrails.checks import _money_claims
 
 
@@ -16,13 +18,29 @@ _SCORER_ARG_FIELDS = frozenset({
 })
 
 
+def mask_pii(value: str) -> str:
+    # Keep grouped account/identity numbers out of public text as well.
+    return _base_mask_pii(SENSITIVE_NUMBER.sub(r"\1[SỐ ĐÃ ẨN]", value))
+
+
 def _safe_value(value: Any, path: tuple[str, ...] = ()) -> Any:
+    if type(value) is int and path == ("memory_writes", "value") and 10 <= len(str(abs(value))) <= 14:
+        return "[SỐ ĐÃ ẨN]"
     if isinstance(value, str):
         if path in {("args", "customer_name"), ("result", "customer_name")}:
             return "[TÊN ĐÃ ẨN]"
         if path in {("args", "customer_phone"), ("args", "phone"),
                     ("result", "customer_phone"), ("result", "phone")}:
             return "[SỐ ĐÃ ẨN]"
+        if path in {("args", "address"), ("result", "address"), ("args", "source_identity"), ("result", "source_identity"),
+                    ("args", "brief", "customer_name"), ("args", "brief", "customer_phone"),
+                    ("args", "brief", "address"),
+                    ("args", "brief", "facts_confirmed", "address"),
+                    ("args", "brief", "facts_confirmed", "shipping_address"),
+                    ("args", "brief", "facts_confirmed", "customer_phone"),
+                    ("args", "brief", "facts_confirmed", "customer_name"), ("result", "name"),
+                    ("result", "customer", "name")}:
+            return "[PII ĐÃ ẨN]"
         if path == ("result", "order_id"):
             return value
         if len(path) == 2 and path[0] == "args" and path[1] in _SCORER_ARG_FIELDS:
@@ -32,9 +50,21 @@ def _safe_value(value: Any, path: tuple[str, ...] = ()) -> Any:
         return [_safe_value(item, path) for item in value]
     if isinstance(value, dict):
         return {child_key: _safe_value(item, (*path, child_key))
-                for child_key, item in value.items()
-                if not (path and path[0] in {"args", "result"} and
-                        child_key in {"address", "source_identity", "verified_customer_id"})}
+                for child_key, item in value.items()}
+    return value
+
+
+def _mask_names(value, names):
+    if isinstance(value, str):
+        for name in names:
+            if name and len(name) > 1:
+                value = re.sub(r"(?<!\w)" + re.escape(name) + r"(?!\w)", "[TÊN ĐÃ ẨN]", value, flags=re.I)
+        return value
+    if isinstance(value, list):
+        return [_mask_names(v,names) for v in value]
+    if isinstance(value, dict):
+        return {k: (v if k in {"name","id","call_id"} and ("args" in value or "result" in value)
+                    else _mask_names(v,names)) for k,v in value.items()}
     return value
 
 
@@ -43,10 +73,6 @@ def _safe_tool_calls(tool_calls: list[dict]) -> list[dict]:
     for call in tool_calls:
         tool_name = call.get("name")
         args = _safe_value(call.get("args") or {}, ("args",))
-        if isinstance(args, dict) and isinstance(args.get("brief"), dict):
-            brief = args["brief"]
-            args["brief"] = {key: ("[NỘI DUNG ĐÃ ẨN]" if value else value)
-                             for key, value in brief.items()}
         safe_call = {
             "name": tool_name,
             "args": args,
@@ -56,7 +82,14 @@ def _safe_tool_calls(tool_calls: list[dict]) -> list[dict]:
             if identifier in call:
                 safe_call[identifier] = call[identifier]
         result.append(safe_call)
-    return result
+    names = set()
+    for call in tool_calls:
+        args = call.get("args") or {}
+        for obj in (args, args.get("brief") or {}, call.get("result") or {}):
+            for key in ("customer_name", "name"):
+                if isinstance(obj.get(key),str):
+                    names.add(obj[key])
+    return _mask_names(result,names)
 
 
 def _source_session_id(source: Any) -> str | None:
@@ -133,26 +166,41 @@ def facts_used(agent_text: str, tool_calls: list[dict], prior_facts: dict,
     return sorted(used)
 
 
-def public_memory_writes(call: str, turn: int, memory_writes: list[dict]) -> list[dict]:
-    """Use BTC's call/turn provenance without leaking internal UUIDs into traces."""
-    return [{**{key: ("[TÊN ĐÃ ẨN]" if key == "value" and
-                        item.get("key") in {"customer_name", "name"} else
-                        _safe_value(value, ("memory_writes", key))) for key, value in item.items()
-                        if key in {"key", "value", "op", "customer_id",
-                                   "evidence_quote", "scope_type", "scope_id"}},
-                      "source": f"{call}#turn{turn}"}
-                     for item in memory_writes if isinstance(item, dict)]
+def public_memory_writes(call: str, turn: int, memory_writes: list[dict], *, customer_name: str | None = None) -> list[dict]:
+    """Mask known memory value paths, preserving accepted op and original attribution."""
+    sensitive = {"name", "customer_name", "phone", "customer_phone", "address", "shipping_address",
+                 "bank_account", "account_number", "cccd", "national_id"}
+    fields = {"key","value","op","customer_id","evidence_quote","scope_type","scope_id"}
+    names = {customer_name} if customer_name else set()
+    result = []
+    for item in memory_writes:
+        if not isinstance(item,dict):
+            continue
+        value = {key:_safe_value(v,("memory_writes",key)) for key,v in item.items() if key in fields}
+        if item.get("key") in sensitive:
+            if isinstance(item.get("value"),str):
+                names.add(item["value"])
+            value["value"] = "[TÊN ĐÃ ẨN]" if item["key"] in {"name","customer_name"} else "[PII ĐÃ ẨN]"
+        value["source"] = f"{call}#turn{turn}"
+        result.append(value)
+    return _mask_names(result,names)
 
 
 def trace_line(run_id: str, config: str, scenario_id: str, call: str, turn: int,
                customer_text: str, agent_text: str, tool_calls: list[dict],
                memory_writes: list[dict], used_facts: list[str],
                total_ms: float, call_brief_latency_ms: float | None,
-               input_mode: str, customer_name: str | None = None) -> dict[str, Any]:
+               input_mode: str, customer_name: str | None = None, *,
+               safety_issues: list | None = None, call_spec: dict | None = None) -> dict[str, Any]:
+    raw_row = build_trace_row(scenario_id, call, turn, customer_text, agent_text,
+                              deepcopy(tool_calls), deepcopy(memory_writes), used_facts, total_ms,
+                              call_brief_latency_ms)
     names = {customer_name} if customer_name else set()
     names.update(value for tool in tool_calls
                  for key, value in (tool.get("args") or {}).items()
                  if key == "customer_name" and isinstance(value, str))
+    names.update(t.get("result",{}).get("name") for t in tool_calls
+                 if isinstance(t.get("result"),dict) and isinstance(t["result"].get("name"),str))
     names.update(item.get("value") for item in memory_writes
                  if isinstance(item, dict) and item.get("key") in {"customer_name", "name"}
                  and isinstance(item.get("value"), str))
@@ -165,13 +213,19 @@ def trace_line(run_id: str, config: str, scenario_id: str, call: str, turn: int,
                 "[TÊN ĐÃ ẨN]", item["evidence_quote"])}
                 if isinstance(item, dict) and isinstance(item.get("evidence_quote"), str)
                 else item for item in memory_writes]
-    public_writes = public_memory_writes(call, turn, memory_writes)
+    public_writes = public_memory_writes(call, turn, memory_writes, customer_name=customer_name)
     safe_calls = _safe_tool_calls(tool_calls)
     customer_text = mask_pii(customer_text)
     agent_text = mask_pii(agent_text)
     row = build_trace_row(scenario_id, call, turn, customer_text, agent_text,
                           safe_calls, public_writes, used_facts, total_ms,
                           call_brief_latency_ms)
+    row["claims"] = _safe_value(raw_row["claims"], ("claims",))
+    row["questions"] = _safe_value(raw_row["questions"], ("questions",))
+    row = _mask_names(row,names)
+    if safety_issues is not None:
+        from eval_harness.trace_evidence import inspect_redaction
+        safety_issues.extend(inspect_redaction(raw_row, row, call_spec=call_spec or {}))
     row["run_id"] = run_id
     row["config"] = config
     row["customer_text"] = customer_text
@@ -185,7 +239,12 @@ def trace_line(run_id: str, config: str, scenario_id: str, call: str, turn: int,
 def write_jsonl(trace: dict[tuple[str, str], list[dict]], path: str | Path) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    with target.open("w", encoding="utf-8") as stream:
+    import tempfile
+    import os
+    fd, temporary = tempfile.mkstemp(prefix=".trace-", dir=target.parent)
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
         for rows in trace.values():
             for row in rows:
                 stream.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+
+    Path(temporary).replace(target)

@@ -1,90 +1,121 @@
 # Benchmark Dataset & Eval Harness — AI TeleSale SudoCode 2026
 
-## Chạy đánh giá text chính thức
+## Chạy text-to-text theo contract BTC
 
-Từ `ai-services/`, khi PostgreSQL, ba MCP service, LangMem worker và model đã
-sẵn sàng, chạy:
+Chạy lệnh dưới từ `ai-services/`. Các lệnh live gọi model và reset runtime;
+chỉ thực hiện sau khi người vận hành cho phép riêng. Spec/plan được duyệt
+không tự cấp phép chạy live. Cần PostgreSQL, **bốn MCP** catalog/order/memory/
+knowledge, LangMem worker và knowledge release/index thực sự sẵn sàng.
 
-```bash
-python -m eval_harness.run_official --btc-root /path/to/BTC-Data-Vong1-TEAMS \
-  --scenarios eval_harness/scenarios --agent deep --seed 7
-streamlit run eval_harness/visualize_benmark.py
-```
-
-Lệnh đầu tạo một thư mục `results/<run-id>/`, reset schema `runtime` trước
-`full` và trước `baseline`, kiểm tra fingerprint dữ liệu `btc_source`, kiểm tra
-đủ lượt thoại/job LangMem và dùng nguyên `eval/reference_eval.py` của BTC để
-chấm cặp trace. Chỉ `btc_score.json` cùng hai manifest là điểm hội thoại chính
-thức. Các file `*.diagnostics.json` từ scorer nội bộ là chẩn đoán. Trace dở
-dang được giữ lại nếu run lỗi, nhưng không có `run.json` hợp lệ để dashboard
-hiển thị. Dashboard chỉ đọc một run đã xác minh và chỉ vẽ dữ liệu tổng hợp.
-
-Bộ thu thập/eval RAG lexical+dense cũ đã được gỡ. Lệnh chính thức hiện chỉ
-chấm hội thoại, không tự chạy retrieval 60 câu hoặc tạo `rag_summary.json`;
-cờ `--skip-rag` đã được bỏ. `policy.search` tạm trả `unavailable`, vì vậy chưa
-thể dùng lượt chạy này để chứng minh chất lượng RAG mới. Khi triển khai
-mcp-knowledge, bộ đánh giá sẽ đi qua MCP thật theo spec đã duyệt.
-Artifact RAG lịch sử vẫn được giữ để đối chiếu, không phải kết quả hiện hành.
-API hiện không streaming, nên TTFT là tổng thời gian phản hồi ước tính,
-không phải timestamp token đầu tiên. Cần ít nhất 100 lượt để diễn giải p95 ổn định.
-
-The benchmark runner writes `<out>_full.jsonl` and `<out>_baseline.jsonl`
-for the BTC `eval/reference_eval.py` script. Before each configuration it
-verifies that all three MCP servers use one database, then clears mutable
-tables in its `runtime` schema through `DATABASE_URL`. It preserves the
-schema and `runtime.store_migrations`, resets runtime sequences, and leaves
-`btc_source` untouched. The configured `DATABASE_URL` must have permission to
-truncate runtime tables and must point to the MCP database. The reset is
-disabled when `APP_ENV=production`. Use this runner only with test data in
-`runtime`. The no-memory run keeps the same CRM identity and hides prior
-memory instead of changing the customer's phone. Since the current chat API is not streaming,
-`ttft_ms` is conservatively reported as total response time; do not present
-it as a measured first-token time.
-
-## LangMem evaluation runbook
-
-Run `enabled` with the same BTC catalog, CRM, model, temperature, max tokens,
-`--seed`, dates, and business tools for both configurations. A single test
-database is sufficient because the runner resets `runtime` before each one.
-Start `mcp-memory` and the LangMem worker together. The runner waits
-until each evaluated turn's LangMem job finishes before the next turn.
-Keep traces in ignored `results/`.
-
-For both the seven BTC public samples and 19 local
-scenarios, run `python -m eval_harness.benchmark_runner --agent deep --config
-full --variant enabled --seed 7 --scenarios DATASET --out results/enabled_DATASET.json`.
-The runner defaults to `--config full`, `--variant enabled`, and the local
-19-scenario dataset when those flags are omitted. Run from `ai-services/`.
-Run `--config baseline --variant enabled` after a full run, or use `--config both`
-to run both configurations in one invocation. The runner resets `runtime`
-before baseline in either case. Give separate invocations different `--out`
-paths so they do not overwrite reports. This keeps the agent prompt and
-memory implementation identical while hiding prior memory. The runner emits
-`*_full.jsonl` or `*_baseline.jsonl`.
-Score each pair with
-the unmodified BTC script:
+Kiểm file thuần offline (không đọc Settings, không gọi DB/MCP/model):
 
 ```bash
-python /home/thanh-phuc/PyProject/sudocode/BTC-Data-Vong1-TEAMS/eval/reference_eval.py \
-  --scenarios /home/thanh-phuc/PyProject/sudocode/BTC-Data-Vong1-TEAMS/test_set/public_sample \
-  --trace results/enabled_public_full.jsonl \
-  --baseline results/enabled_public_no_memory_baseline.jsonl \
-  --out results/enabled_public_reference.json
+.venv/bin/python -m eval_harness.preflight --offline-check \
+  --btc-root ../../BTC-Data-Vong1-TEAMS --scenarios eval_harness/scenarios
 ```
 
-For the local set, use `eval_harness/scenarios` as `--scenarios`. Historical
-comparison reports from earlier `current` and `shadow` runs can still be
-analyzed with
-`python -m eval_harness.compare_langmem --scenarios DATASET_DIR --current REPORT --current-manifest
-RUNNER_JSON --shadow REPORT --shadow-manifest RUNNER_JSON --enabled REPORT
---enabled-manifest RUNNER_JSON --out AGGREGATE_JSON`. The output contains
-categorized TSR misses and a release gate. Missing denominators, Call Brief
-samples, or comparable run metadata fail the gate. `cost_per_call_usd` stays
-`null` until a billing source is attached; `ttft_ms` remains a proxy.
+Test chức năng offline, chặn mạng và `.env` cả trong Python subprocess:
 
-Bộ dữ liệu kiểm chuẩn (Benchmark Dataset) và công cụ thẩm định tự động (Validator) phục vụ đo lường, so sánh hiệu năng giữa **Deep Agent** (`deepagents.create_deep_agent`) và **ReAct Agent** (`langchain.agents.create_agent`) trên toàn diện kiến trúc `ai-services`.
+```bash
+.venv/bin/python eval_harness/offline_tests.py eval_harness/test_offline_end_to_end.py -q
+```
 
----
+Một cặp live, với DB đích khai báo rõ (ví dụ DB thử nghiệm `telesale` đã được duyệt):
+
+```bash
+.venv/bin/python -m eval_harness.run_official --btc-root ../../BTC-Data-Vong1-TEAMS \
+  --scenarios eval_harness/scenarios --expected-database telesale --agent deep --seed 7
+```
+
+Xuất riêng một cấu hình từ root repo, cũng gọi model và reset runtime:
+
+```bash
+ai-services/.venv/bin/python run_eval.py --btc-root ../BTC-Data-Vong1-TEAMS \
+  --scenarios ai-services/eval_harness/scenarios --config full \
+  --out eval/runs/NEW-full.jsonl --isolated-db --expected-database telesale
+```
+
+Đổi `full` thành `baseline_no_memory` và dùng output mới cho baseline.
+`--isolated-db` giữ vai trò xác nhận của người chạy; cả hai CLI dùng cùng
+preflight bốn MCP và reset trước từng cấu hình. Chỉ reset dữ liệu runtime/
+sequence, giữ `btc_source`, knowledge và migration metadata; chặn production.
+Không có yêu cầu tên DB phải kết thúc bằng `_eval`. Có thể khai báo đích qua
+`EVAL_EXPECTED_DATABASE`; flag `--expected-database` ưu tiên hơn env.
+
+Cấu hình runtime dùng `LLM_API_KEY`, `LLM_MODEL`, `OLLAMA_BASE_URL`,
+`DATABASE_URL` hoặc cấu hình MCP DB hiện có, `MCP_CATALOG_URL`, `MCP_ORDER_URL`,
+`MCP_MEMORY_URL`, `MCP_KNOWLEDGE_URL`, `MCP_INTERNAL_TOKEN`; worker phải dùng
+cùng DB. Không đưa credentials vào manifest/log. `KNOWLEDGE_RELEASE_ID` nếu
+đặt phải trỏ release sẵn sàng; coordinator ghim cùng ID/hash cho cặp.
+Không bật raw content capture trong quá trình chạy harness.
+
+Terminal in tiến độ ngay: bắt đầu full/baseline, preflight, từng warm-up, reset,
+scenario/turn, chờ memory và chấm BTC. Chỉ forward stdout tiến độ; stderr của
+provider/worker vẫn được giữ riêng để tránh lộ raw request/PII.
+
+Mỗi cặp tạo thư mục unique dưới `eval_harness/results/`. Đọc `run.json` trước:
+`running` là chưa hoàn tất; `failed` là lỗi thực thi/contract; `invalid` là mất
+bằng chứng do redaction; chỉ `validated` có report BTC đầy đủ. Report của một cấu hình riêng chỉ có
+trạng thái `completed`, chưa phải cặp đã được chấm chính thức. CLI thoát khác
+0 cho failed/invalid. `validated` không bảo đảm agent đạt ngưỡng chất lượng.
+Hai JSONL, `.report.json`, manifest và `.inputs.json` ghi coverage/provenance;
+trace lỗi được giữ an toàn. Output riêng có sẵn bị từ chối để tránh lẫn run cũ.
+Report invalid không được quảng bá thành điểm sạch sau khi che PII.
+
+Chấm lại nguyên bản BTC từ root (thay đường dẫn trace đúng theo `run.json`):
+
+```bash
+ai-services/.venv/bin/python ../BTC-Data-Vong1-TEAMS/eval/reference_eval.py \
+  --scenarios ai-services/eval_harness/results/RUN/scenarios \
+  --trace ai-services/eval_harness/results/RUN/full.diagnostics_full.jsonl \
+  --baseline ai-services/eval_harness/results/RUN/baseline.diagnostics_baseline.jsonl \
+  --out /tmp/NEW-btc-rescore.json
+```
+
+`scenarios/` của run là snapshot đầu vào chấm, giữ nguyên nội dung và nhãn;
+đây là dữ liệu đầu vào, không phải trace đã mask. Giữ quyền truy cập như nguồn
+ban đầu, không publish thư mục run chứa dữ liệu riêng tư. Chỉ sử dụng public/
+synthetic dataset nếu cần chia sẻ snapshot. Không dùng nhãn để tạo câu trả lời.
+CLI nhận directory hoặc bundle `{scenarios: [...]}`/list/single scenario.
+`--limit-scenarios N` của paired runner là **smoke live** trên snapshot subset,
+không phải offline check. `benchmark_runner --dry-run N` đã bị loại bằng lỗi
+hướng dẫn, không âm thầm chạy thật.
+
+Directory `eval_harness/scenarios` hiện có **7 sample** (13 call/39 turn),
+`benchmark_dataset.json` có 19 scenario; luôn lấy số đếm từ dataset chọn thực
+sự. Không coi bảy sample là toàn bộ test BTC hoặc đạt quy mô M1.
+Baseline giữ CRM identity/context trong phiên và ghi memory; chỉ chặn đọc
+memory phiên trước. Hai nhánh đều chờ đúng job và thu accepted writes, kể cả
+backfill khi nhận diện khách muộn; JSONL cuối ghi lại attribution đầy đủ.
+
+`seed_history` hỗ trợ list session CRM `{session_id, date, channel, summary,
+outcome?}`; ngày ISO phải trước call. Ví dụ synthetic:
+
+```json
+[{"session_id":"OLD-1","date":"2026-02-01","channel":"hotline","summary":"Đã tư vấn mẫu gia dụng.","outcome":"khac"}]
+```
+
+History được bổ sung vào CRM sessions sau resolve đúng identity, không sửa
+`btc_source`, không tạo scored turns/writes giả, và bị chặn đọc ở baseline.
+ID trùng cùng nội dung được deduplicate; nội dung xung đột/format chưa hỗ trợ
+bị chặn preflight. Không chuyển `facts_established` thành history.
+
+Extractor theo quy tắc, cùng một implementation cho CLI và replay. Questions
+bao gồm yêu cầu dữ kiện không dấu hỏi; câu chưa xác định slot giữ `other` và
+vẫn được tính trong RQR/`max_agent_questions`. Claims lấy giá trị từ lời agent,
+không sửa theo tool; có field policy BTC và `is_human` với kiểm phủ định/câu
+hỏi/trích dẫn. Số viết bằng chữ được hỗ trợ trong các dạng fixture; diễn đạt
+mới, phạm vi nhiều sản phẩm/phủ định phức tạp vẫn cần BTC đối chiếu tay.
+Các claim không có field ground truth tương ứng không được scorer kiểm chứng;
+không diễn giải chúng thành đúng. Evidence/memory chỉ xuất sau mask; mất bằng
+chứng chấm → invalid, không sửa điểm hoặc tạo claim bù.
+
+Latency dùng monotonic, nonstream TTFT=Total. Ba warm-up riêng mỗi cấu hình
+không được ghi vào scored trace; gateway warm-up chặn ghi memory/đơn/ticket,
+runtime scored được reset sau warm-up. Không tính extractor/file/scoring hoặc
+chờ worker sau response vào response latency. Brief chỉ ghi phép đo thực ở
+turn 1 call_2/call_3, có freshness. Dưới 100 lượt phải ghi thiếu quy mô latency
+BTC; không bỏ ba lượt scenario để tạo warm-up.
 
 ## 1. Tổng quan Bộ Dữ Liệu (19 Scenarios, 116 Turns)
 
@@ -147,7 +178,7 @@ eval_harness/
 
 ## 4. Kiểm chứng Dữ liệu (Validation)
 
-Để kiểm tra tính hợp lệ toàn diện của tất cả 19 scenarios đối chiếu với schema và catalog BTC:
+Để kiểm tra các scenario có mặt trong directory đối chiếu với schema và catalog BTC:
 
 ```bash
 # Kiểm tra toàn bộ scenarios
@@ -230,7 +261,7 @@ image, không mount checkout. Sửa Python trên host chưa cập nhật các pr
 này. Từ thư mục gốc repository, rebuild/recreate những service bị ảnh hưởng:
 
 ```bash
-docker compose up -d --build --no-deps mcp-catalog mcp-order mcp-memory langmem-worker
+docker compose up -d --build --no-deps mcp-catalog mcp-order mcp-memory mcp-knowledge langmem-worker
 ```
 
 Nếu tài khoản cần quyền Docker, chạy lệnh trên bằng `sudo`. Không restart
