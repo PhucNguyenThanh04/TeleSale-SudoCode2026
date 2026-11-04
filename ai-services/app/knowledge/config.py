@@ -18,3 +18,7 @@ def configured_url(name):
 
 def pinned_release():
     return os.getenv('KNOWLEDGE_RELEASE_ID') or get_settings().knowledge_release_id
+
+
+def qdrant_url():
+    return os.getenv('QDRANT_URL') or get_settings().qdrant_url

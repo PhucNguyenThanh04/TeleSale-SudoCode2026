@@ -1,5 +1,6 @@
 """MCP request, trusted context, response and serving configuration contracts."""
 from datetime import date
+from pathlib import Path
 from typing import Literal
 from pydantic import Field, field_validator, model_validator
 from app.knowledge.schemas import Contract, Evidence, EvidenceSet
@@ -47,21 +48,25 @@ class PolicySearchResult(Contract):
 
 
 class PolicyRuntimeConfig(Contract):
-    model_name: str = 'BAAI/bge-m3'
-    model_revision: str = Field(min_length=1)
+    provider: Literal['cloudflare'] = 'cloudflare'
+    model_name: Literal['@cf/baai/bge-m3'] = '@cf/baai/bge-m3'
+    adapter_version: Literal['cloudflare-embeddings-v1'] = 'cloudflare-embeddings-v1'
     tokenizer_revision: str = Field(min_length=1)
+    tokenizer_sha256: str = Field(min_length=64, max_length=64)
+    tokenizer_path: Path = Field(default=Path(__file__).parent / 'assets' / 'bge-m3-tokenizer.json', exclude=True)
+    bm25_tokenizer: Literal['unicode-nfc-v1'] = 'unicode-nfc-v1'
+    bm25_k1: float = Field(default=1.2, gt=0)
+    bm25_b: float = Field(default=.75, ge=0, le=1)
+    http_concurrency: int = Field(default=1, ge=1, le=8)
     max_tokens: int = Field(gt=0)
     batch_size: int = Field(default=1, gt=0)
     dimension: int = Field(default=1024, gt=0)
-    device: str = 'cuda:0'
-    dtype: Literal['float16'] = 'float16'
     normalization: Literal['l2'] = 'l2'
     prefix: str = ''
     dense_candidates: int = Field(gt=10)
     sparse_candidates: int = Field(gt=10)
     hard_limit: int = Field(ge=10)
     dense_threshold: float = Field(ge=-1, le=1)
-    sparse_threshold: float = Field(gt=0)
     relevance_verified: bool = False
     queue_capacity: int = Field(gt=0)
     deadline_seconds: float = Field(gt=0)
@@ -78,5 +83,5 @@ class PolicyRuntimeConfig(Contract):
     def fingerprint(self):
         from app.knowledge.schemas import digest
         return digest({key: getattr(self, key) for key in (
-            'model_name', 'model_revision', 'tokenizer_revision', 'max_tokens',
-            'dimension', 'dtype', 'normalization', 'prefix')})
+            'provider', 'model_name', 'adapter_version', 'tokenizer_revision', 'tokenizer_sha256',
+            'max_tokens', 'dimension', 'normalization', 'prefix', 'bm25_tokenizer', 'bm25_k1', 'bm25_b')})

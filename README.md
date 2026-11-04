@@ -1,12 +1,31 @@
 # TeleSale SudoCode 2026
 
-The first text harness runs through `backend` → `ai-services` → three MCP
+The text harness runs through `backend` → `ai-services` → four MCP
 servers. Import BTC data with `dataloader_offline` and apply the SQL migrations
 listed in [ai-services/README.md](ai-services/README.md). Configure the private
-backend/MCP tokens and URLs in ignored `.env` files. Start the three MCP
+backend/MCP tokens and URLs in ignored `.env` files. Start the four MCP
 containers with Compose after importing data and applying migrations; run the
 backend and AI API on the host. The backend chat contract is documented in
 [backend/CHAT_API_CONTRACT.md](backend/CHAT_API_CONTRACT.md).
+
+The four MCP services are catalog, order, memory and knowledge. Knowledge uses
+Cloudflare Workers AI BGE-M3 dense embeddings, CPU BM25 and Qdrant RRF; no NVIDIA
+GPU, CUDA or model weights are required. Set `CLOUDFLARE_ACCOUNT_ID` and
+`CLOUDFLARE_API_TOKEN` in `ai-services/.env`, prepare and activate a new policy
+release with `config/policy-runtime.json`, then start all four services from root:
+
+```bash
+docker compose --env-file .env --env-file ai-services/.env up --build -d
+```
+
+The first env file supplies root database/Compose settings; the second supplies
+AI settings and overrides duplicate keys. Keep shared DB/port values consistent.
+Ingestion and serving require Internet access. A successful build does not create
+or activate an index. `relevance_verified=false` records unmeasured quality and
+does not block an otherwise verified index. Follow the
+[knowledge runbook](ai-services/docs/mcp-knowledge-runbook.md) for setup and migration
+from local embeddings. The clean-machine deployment/API connection still needs
+separate verification; offline functional tests do not prove BTC scores or latency.
 
 The AI service exposes `app.agent.chat.chat(ChatRequest)` for one Python chat turn;
 `session_id` may be `null` and is returned for later turns. The HTTP route uses

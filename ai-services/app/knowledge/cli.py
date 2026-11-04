@@ -1,9 +1,9 @@
 """Administrative knowledge lifecycle; policy-prepare explicitly encodes with a cached local model."""
+from app.knowledge.config import qdrant_url
 from app.knowledge.config import configured_url
 import argparse
 import asyncio
 import json
-import os
 from pathlib import Path
 from app.knowledge.repos.postgres import KnowledgeRepo
 from app.knowledge.schemas import TABLES, KnowledgeError, timestamp
@@ -37,7 +37,7 @@ async def execute(args):
                 if args.runtime_config:
                     settings = settings.model_copy(update={'knowledge_policy_config_file': args.runtime_config})
                 config = load_policy_config(settings)
-                client = AsyncQdrantClient(url=os.getenv('QDRANT_URL', 'http://127.0.0.1:6333'), timeout=config.dependency_timeout_seconds)
+                client = AsyncQdrantClient(url=qdrant_url(), timeout=config.dependency_timeout_seconds)
                 try:
                     await HybridPolicyIndex(client).verify(release, config)
                 finally:

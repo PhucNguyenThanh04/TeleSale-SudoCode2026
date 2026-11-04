@@ -77,7 +77,7 @@ def test_revoked_approval_during_encode_blocks_ready_state():
                 current=await repo.get('revisions',revision['id'])
                 current['status']='erased'
                 await repo.put('revisions',revision['id'],current)
-            async def verify(self,*args):
+            async def verify(self,*args,**kwargs):
                 pass
         encoder=PolicyEncoder(runtime_config(max_tokens=8000),Backend())
         await encoder.start()
@@ -86,6 +86,92 @@ def test_revoked_approval_during_encode_blocks_ready_state():
                 metadata=default_metadata(),revision_ids=[revision['id']],expected_active_id=None,actor_id='reviewer')
         assert all(row['status']!='ready' for row in await repo.rows('releases'))
         await encoder.close()
+    asyncio.run(run())
+
+
+def test_source_changes_during_build_never_mark_release_ready(tmp_path):
+    from app.knowledge.services.publish import build_policy_release
+    from app.mcp_servers.mcp_knowledge.services.embedding import PolicyEncoder
+    from app.knowledge.schemas import Conflict
+    path=tmp_path/'source.md';path.write_text('## [XX-01] Rule\nOriginal')
+    metadata={'documents':{'source.md':dict(version='v1',date_basis='on',effective_from=None,effective_until=None,access='public')}}
+    class ChangingIndex:
+        async def upsert(self,*args,**kwargs):
+            path.write_text('## [XX-01] Rule\nChanged')
+        async def verify(self,*args,**kwargs):pass
+    async def run():
+        repo=MemoryRepo();await repo.put('permissions','reviewer',{'permissions':['knowledge_review']})
+        encoder=PolicyEncoder(runtime_config(),Backend())
+        try:
+            with pytest.raises(Conflict,match='source changed'):
+                await build_policy_release(repo,encoder,ChangingIndex(),source_dir=tmp_path,metadata=metadata,
+                    revision_ids=[],expected_active_id=None,actor_id='reviewer')
+            assert all(r['status']!='ready' for r in await repo.rows('releases'))
+            assert await repo.get('active','current') is None
+        finally:await encoder.close()
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('fault',['encode','verify'])
+def test_dependency_failures_never_mark_ready_or_change_active(tmp_path,fault):
+    from app.knowledge.services.publish import build_policy_release
+    from app.mcp_servers.mcp_knowledge.services.embedding import PolicyEncoder
+    path=tmp_path/'source.md';path.write_text('## [XX-01] Rule\nSafe content')
+    metadata={'documents':{'source.md':dict(version='v1',date_basis='on',effective_from=None,effective_until=None,access='public')}}
+    class BrokenBackend(Backend):
+        async def encode(self,text,*,deadline):
+            if fault=='encode':
+                raise RuntimeError('synthetic')
+            return await super().encode(text,deadline=deadline)
+    class Index:
+        async def upsert(self,*args,**kwargs):pass
+        async def verify(self,*args,**kwargs):
+            if fault=='verify':raise ValueError('synthetic')
+    async def run():
+        repo=MemoryRepo();await repo.put('permissions','reviewer',{'permissions':['knowledge_review']})
+        encoder=PolicyEncoder(runtime_config(),BrokenBackend())
+        try:
+            with pytest.raises((ValueError,RuntimeError)):
+                await build_policy_release(repo,encoder,Index(),source_dir=tmp_path,metadata=metadata,
+                    revision_ids=[],expected_active_id=None,actor_id='reviewer')
+            assert all(r['status']!='ready' for r in await repo.rows('releases'))
+            assert await repo.get('active','current') is None
+        finally:await encoder.close()
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('fault',['payload','revocation','source'])
+def test_reusing_ready_release_rechecks_index_and_revocations_without_encoding(tmp_path,fault):
+    from app.knowledge.services.publish import build_policy_release
+    from app.mcp_servers.mcp_knowledge.services.embedding import PolicyEncoder
+    from app.mcp_servers.mcp_knowledge.repos.qdrant import HybridPolicyIndex,point_id
+    path=tmp_path/'source.md';path.write_text('## [XX-01] Rule\nSafe content')
+    meta={'documents':{'source.md':dict(version='v1',date_basis='on',effective_from=None,effective_until=None,access='public')}}
+    async def run():
+        repo=MemoryRepo();await repo.put('permissions','reviewer',{'permissions':['knowledge_review']})
+        backend=Backend();encoder=PolicyEncoder(runtime_config(),backend)
+        client=AsyncQdrantClient(':memory:');index=HybridPolicyIndex(client)
+        original=index.verify
+        verifications=0
+        async def verify(*args,**kwargs):
+            nonlocal verifications
+            verifications+=1
+            assert not repo.lock.locked(), 'Qdrant verification must be outside SQL transaction'
+            result=await original(*args,**kwargs)
+            if fault=='source' and verifications==2:path.write_text('## [XX-01] Rule\nChanged')
+            return result
+        index.verify=verify
+        args=dict(source_dir=tmp_path,metadata=meta,revision_ids=[],expected_active_id=None,actor_id='reviewer')
+        try:
+            release=await build_policy_release(repo,encoder,index,**args)
+            calls=len(backend.calls)
+            if fault=='payload':
+                await client.delete_payload(release['manifest']['collection'],['effective_until'],[point_id(release['id'],'XX-01')])
+            elif fault=='revocation':
+                await repo.put('policy_revocations','XX-01',{'id':'XX-01'})
+            with pytest.raises(ValueError):await build_policy_release(repo,encoder,index,**args)
+            assert len(backend.calls)==calls
+        finally:await encoder.close();await client.close()
     asyncio.run(run())
 
 
@@ -111,4 +197,57 @@ def test_snapshot_metadata_tampering_is_detected_even_when_body_hash_matches():
         await repo.put('policy_sources','r:DT-01',stored)
         with pytest.raises(ValueError,match='snapshot'):
             await repo.snapshot(release)
+    asyncio.run(run())
+
+
+def test_integrity_ready_does_not_claim_relevance_verified(tmp_path):
+    from app.knowledge.services.publish import build_policy_release
+    from app.knowledge.services.releases import activate_release
+    from app.mcp_servers.mcp_knowledge.services.embedding import PolicyEncoder
+    from app.mcp_servers.mcp_knowledge.repos.qdrant import HybridPolicyIndex
+    path=tmp_path/'source.md';path.write_text('## [XX-01] Rule\nSafe content')
+    meta={'documents':{'source.md':dict(version='v1',date_basis='on',effective_from=None,effective_until=None,access='public')}}
+    async def run():
+        repo=MemoryRepo();await repo.put('permissions','reviewer',{'permissions':['knowledge_review']})
+        backend=Backend();encoder=PolicyEncoder(runtime_config(relevance_verified=False),backend)
+        client=AsyncQdrantClient(':memory:');index=HybridPolicyIndex(client)
+        args=dict(source_dir=tmp_path,metadata=meta,revision_ids=[],expected_active_id=None,actor_id='reviewer')
+        try:
+            release=await build_policy_release(repo,encoder,index,**args)
+            assert release['status']=='ready'
+            assert release['manifest']['checks']['relevance_verified'] is False
+            count=len(backend.calls)
+            assert (await build_policy_release(repo,encoder,index,**args))['id']==release['id']
+            assert len(backend.calls)==count
+            await activate_release(repo,release['id'],None,'reviewer')
+            assert (await repo.get('active','current'))['release_id']==release['id']
+        finally:await encoder.close();await client.close()
+    asyncio.run(run())
+
+
+def test_quota_during_build_preserves_active_release(tmp_path):
+    from app.knowledge.services.publish import build_policy_release
+    from app.mcp_servers.mcp_knowledge.services.embedding import PolicyEncoder
+    from app.mcp_servers.mcp_knowledge.services.cloudflare import PolicyProviderError
+    from app.mcp_servers.mcp_knowledge.repos.qdrant import HybridPolicyIndex
+    (tmp_path/'source.md').write_text('## [XX-01] Rule\nSafe content\n## [XX-02] Rule\nOther content')
+    meta={'documents':{'source.md':dict(version='v1',date_basis='on',effective_from=None,effective_until=None,access='public')}}
+    class Limited(Backend):
+        async def encode(self,text,*,deadline):
+            if self.calls: raise PolicyProviderError('quota_exhausted',status=429,provider_code='3036')
+            return await super().encode(text,deadline=deadline)
+    async def run():
+        repo=MemoryRepo();await repo.put('permissions','reviewer',{'permissions':['knowledge_review']})
+        await repo.put('active','current',{'release_id':'previous'})
+        encoder=PolicyEncoder(runtime_config(relevance_verified=False),Limited())
+        client=AsyncQdrantClient(':memory:')
+        try:
+            with pytest.raises(PolicyProviderError,match='quota_exhausted'):
+                await build_policy_release(repo,encoder,HybridPolicyIndex(client),source_dir=tmp_path,metadata=meta,
+                    revision_ids=[],expected_active_id='previous',actor_id='reviewer')
+            assert (await repo.get('active','current'))['release_id']=='previous'
+            releases=await repo.rows('releases')
+            assert len(releases)==1 and releases[0]['status']=='building'
+            assert (await client.count(releases[0]['manifest']['collection'],exact=True)).count==1
+        finally: await encoder.close();await client.close()
     asyncio.run(run())

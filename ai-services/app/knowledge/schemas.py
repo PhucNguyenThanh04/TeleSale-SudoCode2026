@@ -3,7 +3,7 @@ import hashlib
 import json
 from datetime import date, datetime, timezone
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from uuid import uuid4
 
 
@@ -55,6 +55,12 @@ class PolicyRule(Contract):
     source_ids: list[str] = Field(default_factory=list)
     description: str = ''
 
+    @model_validator(mode='after')
+    def valid_interval(self):
+        if self.effective_from and self.effective_until and self.effective_from > self.effective_until:
+            raise ValueError('Invalid policy date interval')
+        return self
+
 
 class SourceChunk(Contract):
     model_config = ConfigDict(extra='forbid', frozen=True)
@@ -78,6 +84,12 @@ class SourceChunk(Contract):
     supplement: bool = False
     source_references: list[dict] = Field(default_factory=list)
     search_aliases: list[str] = Field(default_factory=list)
+
+    @model_validator(mode='after')
+    def valid_interval(self):
+        if self.effective_from and self.effective_until and self.effective_from > self.effective_until:
+            raise ValueError('Invalid policy date interval')
+        return self
 
 
 class Applicability(Contract):

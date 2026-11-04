@@ -1,0 +1,13 @@
+# Both AI Dockerfiles need only dependency declarations and runtime application files.
+# Exclude the host virtualenv/model caches, credentials, tests and generated artifacts.
+**
+!Dockerfile
+!Dockerfile.knowledge
+!requirements.txt
+!requirements-knowledge.txt
+!app/
+!app/**
+**/__pycache__/
+**/*.py[cod]
+**/.env
+**/.env.*

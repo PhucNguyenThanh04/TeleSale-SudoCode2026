@@ -6,7 +6,10 @@ from app.knowledge.schemas import digest
 from app.mcp_servers.mcp_knowledge.services.embedding import PolicyOverloaded, PolicyInputError
 from app.knowledge.policy.rules import apply_policy_rules
 from app.mcp_servers.mcp_knowledge.services.dependencies import PolicyDependencies
-from app.knowledge.schemas import EvidenceSet
+from app.knowledge.schemas import EvidenceSet, HybridVector
+from app.mcp_servers.mcp_knowledge.services.bm25 import BM25Encoder
+from app.mcp_servers.mcp_knowledge.services.cloudflare import PolicyProviderError
+from app.mcp_servers.mcp_shared.pii import mask_pii
 from app.mcp_servers.mcp_knowledge.schemas import PolicySearchResult
 
 LOGGER=logging.getLogger('app.mcp.knowledge')
@@ -26,18 +29,18 @@ class PolicySearchService:
                 or manifest.get('model_fingerprint')!=self.config.fingerprint()
                 or manifest.get('config_hash')!=digest(self.config.model_dump(mode='json'))
                 or not manifest.get('checks',{}).get('index_complete')
-                or not manifest.get('checks',{}).get('relevance_verified')):
+                or manifest.get('schema_version') != 3
+                or manifest.get('pipeline') != 'cloudflare_dense_bm25'):
             raise ValueError('Release incompatible or incomplete')
+        BM25Encoder(manifest['bm25'])
 
     async def start(self):
-        if not self.config.relevance_verified:
-            raise ValueError('Relevance configuration not verified')
         try:
             await self.encoder.start()
             release=await self.repo.resolve_release()
             self._validate_release(release)
-            await self.repo.snapshot(release)
-            await self.index.verify(release,self.config)
+            chunks=await self.repo.snapshot(release)
+            await self.index.verify(release,self.config,chunks=chunks)
         except BaseException:
             await self.encoder.close()
             raise
@@ -77,7 +80,10 @@ class PolicySearchService:
                 output_context['knowledge_release_id']=release['id']
                 self._validate_release(release)
                 phase='encode'
-                vector=await self.encoder.encode(request.query,deadline=deadline)
+                dense=await self.encoder.encode(request.query,deadline=deadline)
+                lexical=BM25Encoder(release['manifest']['bm25'])
+                indices,weights=lexical.encode_query(mask_pii(request.query))
+                vector=HybridVector(dense=dense,sparse_indices=indices,sparse_values=weights)
                 phase='qdrant'
                 hits=await call('qdrant',lambda:self.index.query(vector,release=release,access_filter='public',
                     config=self.config,include_supplements=context.include_supplements),deadline=deadline)
@@ -121,6 +127,10 @@ class PolicySearchService:
                 if self.clock()>=deadline:
                     raise TimeoutError('Serialization deadline')
                 return result
+        except PolicyProviderError as exc:
+            LOGGER.warning('knowledge failure component=cloudflare provider=cloudflare model=%s reason=%s http_status=%s provider_code=%s request_id=%s release_id=%s',
+                self.config.model_name,exc.reason,exc.status,exc.provider_code,context.request_id,output_context.get('knowledge_release_id'))
+            return PolicySearchResult(retrieval_status='unavailable',context=output_context,error='knowledge_unavailable')
         except PolicyInputError:
             raise
         except PolicyOverloaded:

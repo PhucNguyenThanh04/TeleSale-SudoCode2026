@@ -1,9 +1,11 @@
 # Spec: MCP Knowledge và RAG chính sách BTC
 
-Ngày: 03/11/2026.
+Ngày: 03/11/2026. Cập nhật kiến trúc: 04/11/2026.
 
-Trạng thái: cập nhật các quyết định đã thống nhất sau rà soát thiết kế;
-các thông số kỹ thuật còn mở ở mục 15.
+Trạng thái: người dùng đã duyệt thiết kế Cloudflare BGE-M3 dense + BM25 CPU +
+Qdrant RRF và plan triển khai ngày 04/11/2026. Nội dung dưới đây là thiết kế được
+duyệt; kết quả code/test và các bước vận hành chưa kiểm được ghi trong báo cáo triển khai. Xử lý khi Cloudflare lỗi hoặc hết
+quota đã chốt tại mục 10; các thông số còn mở ở mục 15.
 Spec không phải báo cáo kết quả triển khai hoặc benchmark.
 
 ## 1. Mục tiêu và căn cứ
@@ -54,8 +56,9 @@ fallback trong phạm vi bản đầu.
 Agent
   -> MCP Gateway: ngữ cảnh tin cậy
   -> mcp-knowledge / policy.search
-       -> FlagEmbedding / BGE-M3: dense + sparse
-       -> Qdrant: hai prefetch + RRF trong một request
+       -> Cloudflare Workers AI / BGE-M3: dense
+       -> BM25 CPU: biểu diễn từ khóa theo cấu hình của release
+       -> Qdrant: prefetch dense + prefetch BM25 sparse, RRF trong một request
        -> PostgreSQL: xác minh và đọc nguồn theo release
        -> Quy tắc hệ thống: quyền, thời gian, liên kết, thứ hạng
        -> Bằng chứng có cấu trúc
@@ -80,30 +83,109 @@ giới rõ ràng, giữ nguyên ID, nội dung, điều kiện, thứ tự và t
 chứng; không duy trì hai cách diễn giải độc lập. Kiểm thử xuyên luồng MCP -> agent
 -> guardrail -> Knowledge Gap Loop trước khi chuyển routing phục vụ.
 
-## 4. Embedding và readiness
+## 4. Embedding, BM25 và readiness
 
-Phương án thiết kế: FlagEmbedding chạy trong tiến trình MCP, BGE-M3 chạy local
-trên RTX 3050 4 GB; ASR nằm trên máy khác. Không tạo thêm embedding HTTP server.
-Khả năng đáp ứng VRAM và latency phải được đo trước nghiệm thu.
+### 4.1. Dense qua Cloudflare Workers AI
 
-- Một tiến trình giữ một bản model; không nhân bản theo số web worker.
-- Một worker encode, hàng đợi hữu hạn; không chặn event loop MCP.
-- FP16, bật dense và sparse, tắt ColBERT.
-- Model revision và tokenizer được cố định; Qdrant chạy CPU.
-- Độ dài đầu vào được kiểm tra theo tokenizer. Không âm thầm cắt query hoặc bảng.
-- Tách nạp tài liệu khỏi lượt phục vụ hội thoại; tài liệu được encode trước.
+- Dùng model `@cf/baai/bge-m3` qua HTTPS từ backend. Ingestion và search dùng
+  cùng model, hợp đồng API, tiền xử lý, chiều vector và normalization.
+- Dùng HTTP client bất đồng bộ với giới hạn concurrency và hàng đợi hữu hạn;
+  không chặn event loop MCP. Không tạo thêm embedding HTTP server trong Compose.
+- `CLOUDFLARE_ACCOUNT_ID` và `CLOUDFLARE_API_TOKEN` lấy từ môi trường. Không lưu
+  token trong runtime JSON, manifest, payload, log, lỗi trả agent hoặc Git.
+  Token chỉ cần quyền Workers AI trên đúng tài khoản; không yêu cầu Global API Key.
+- Hợp đồng đề xuất là REST synchronous embeddings. Cố định route và schema trong
+  adapter sau khi đối chiếu API hiện hành; kiểm tra số vector, thứ tự ánh xạ đầu
+  vào, chiều, giá trị hữu hạn và vector khác zero. Không chấp nhận output dở dang.
+- Chiều dự kiến 1024, chuẩn hóa L2 nhất quán ở phía ứng dụng. Chiều thực tế phải
+  được xác nhận trong kiểm tra kết nối được cho phép trước khi phát hành index.
+- Không dùng learned sparse hoặc ColBERT từ Cloudflare. Không giả định API cung
+  cấp đầy đủ các đầu ra của thư viện FlagEmbedding local.
+- Bỏ model weights, FlagEmbedding, Torch, torchvision và CUDA khỏi dependency của
+  đường knowledge; không ảnh hưởng dependency mà thành phần khác thực sự cần.
+- Chỉ giữ tokenizer nhỏ chạy CPU để kiểm tra độ dài, có revision cố định, đóng gói
+  sẵn trong image. Không tải weights hoặc tokenizer khi BTC khởi động hệ thống.
+- Không âm thầm cắt query, bảng hoặc tài liệu. Giới hạn ứng dụng không vượt giới
+  hạn API đã xác nhận; nếu API hỗ trợ tắt truncation thì phải tắt. Tài liệu quá dài
+  phải được xử lý theo mục 5 trước phát hành; query quá dài bị từ chối rõ ràng.
+- Tài liệu được embedding khi nạp, không embedding lại corpus mỗi request hoặc
+  mỗi lần khởi động. Chỉ gửi nội dung an toàn đã xử lý quyền theo mục 5.
+- Query gửi ra ngoài chỉ gồm thông tin cần tra chính sách; dùng cơ chế xử lý PII
+  hiện có để loại thông tin định danh không cần thiết trước khi gọi provider.
+  Không gửi toàn bộ hội thoại, hồ sơ CRM hoặc dữ liệu đơn hàng cho embedding API.
 
-Khởi động tuần tự:
+Cloudflare quản lý model phục vụ; tên model không chứng minh weights/revision
+bất biến như snapshot Hugging Face local. Manifest ghi provider, model ID, phiên
+bản adapter, tokenizer revision, giới hạn đầu vào và normalization; không tự điền
+model commit hoặc dtype phía provider khi không có thông tin đó. Fingerprint phát
+hiện thay đổi cấu hình do dự án quản lý, không bảo đảm phát hiện mọi thay đổi weights
+của provider. Khi provider thông báo thay đổi có ảnh hưởng, phải kiểm tra tương
+thích và dựng release mới nếu cần; không tái dùng vector local chỉ vì cùng tên BGE-M3.
 
-1. Kiểm tra cấu hình, nạp model lên đúng thiết bị.
-2. Chạy thành công đúng 3 lượt warmup encode liên tiếp, bật dense và sparse như runtime.
-3. Kiểm tra đầu ra hợp lệ.
-4. Kiểm tra PostgreSQL, Qdrant, collection và manifest của release phục vụ.
-5. Chuyển sang `ready`, nhận yêu cầu tra cứu.
+Theo tài liệu Cloudflare được đối chiếu ngày 04/11/2026, Free có 10.000 Neurons/ngày;
+BGE-M3 được niêm yết 1.075 Neurons/một triệu input token. Hạn mức dùng chung cho
+Workers AI trong tài khoản, không phải quota riêng từng token hoặc từng container.
+Không mã hóa các con số giá/quota thành cam kết vận hành vĩnh viễn. Hết quota phải
+được phân loại, không retry liên tục hoặc tự chuyển gói trả phí. Không thêm dịch vụ
+Cloudflare Vectorize/AI Search; dữ liệu index vẫn nằm trong Qdrant của hệ thống.
 
-Warmup dùng văn bản cố định, không có PII. Nếu một lượt thất bại, khởi động thất bại,
-không chuyển CPU hoặc phương pháp retrieval ngầm. Không embedding corpus khi khởi động.
-Ba lượt warmup này không thay thế quy trình warmup của phép đo latency BTC.
+### 4.2. BM25 chạy CPU, lưu sparse vector trong Qdrant
+
+Đề xuất kỹ thuật để duyệt: tự tính BM25 trên CPU, không thêm model embedding hoặc
+server lexical riêng. Cùng nội dung an toàn dùng cho dense cũng là đầu vào BM25,
+gồm lời dẫn và tiêu đề chunk theo mục 5; aliases đã duyệt tuân cơ chế hiện có.
+
+- Chuẩn hóa Unicode NFC, casefold, giữ dấu tiếng Việt; tách token chữ/số Unicode,
+  giữ mã ghép bằng dấu nối như `DT-OLD-03`. Quy tắc dấu phân cách phải được cố
+  định, kiểm thử trên mã chính sách, SKU, đơn vị và số liệu; không xóa dấu tùy tiện.
+- Bản đầu không thêm word segmentation model, stemming tiếng Anh hoặc stopword
+  tiếng Anh. Đây là BM25 theo token chữ/số, không tuyên bố đã tách từ tiếng Việt
+  hoàn chỉnh hoặc đã đạt chất lượng trên bộ BTC.
+- Vocabulary của mỗi release được dựng ổn định từ corpus an toàn của release đó,
+  lưu ánh xạ term -> index và hash; query dùng đúng vocabulary đã ghim. Token
+  ngoài vocabulary bị bỏ khỏi nhánh lexical, không tạo hoặc sửa vocabulary lúc search.
+- Dùng độ dài tài liệu và trung bình độ dài của đúng corpus trong release; đề xuất
+  `k1=1.2`, `b=0.75`. Lưu tham số, thống kê corpus, tokenizer version và hash trong
+  manifest; thay đổi bất kỳ thành phần nào phải dựng lại index.
+- Trọng số document: `tf * (k1 + 1) / (tf + k1 * (1 - b + b * dl / avgdl))`.
+  Query dùng mỗi token phân biệt một lần với trọng số 1. IDF do sparse index Qdrant
+  tính bằng modifier `idf`; không nhân IDF lần nữa ở encoder CPU.
+- Cố định và kiểm tra Qdrant version hỗ trợ modifier này, cấu hình sparse index và
+  công thức scoring trước triển khai. Dense và BM25 cùng thuộc collection/release.
+  Đề xuất collection một shard cho corpus nhỏ này để IDF tính trên toàn release;
+  không giả định payload filter tự tính lại IDF. Cấu hình shard thuộc manifest.
+- Query không có term trong vocabulary thì không chạy prefetch BM25 rỗng; nhánh
+  dense vẫn hoạt động. Đây là trường hợp không khớp lexical, khác lỗi Cloudflare.
+  Lỗi tải/hash vocabulary hoặc lỗi tính BM25 là lỗi pipeline, không giả làm zero match.
+- Corpus vocabulary/thống kê chỉ gồm nội dung được phép index, không gồm tài liệu
+  restricted thô. Thu hồi tri thức và quyền vẫn tuân mục 12.
+
+### 4.3. Khởi động và readiness
+
+1. Kiểm tra cấu hình provider, sự hiện diện của credentials và giới hạn vận hành.
+2. Nạp tokenizer CPU và artifact BM25 của release; đối chiếu phiên bản/hash.
+3. Kiểm tra PostgreSQL, Qdrant, schema dense/BM25, manifest và trạng thái release.
+4. Chuyển sang ready khi các kiểm tra cấu hình và index đạt; trạng thái này không
+   chứng nhận provider đang phản hồi nếu chưa có lần gọi thật.
+
+Tách readiness chức năng khỏi trạng thái đã đo chất lượng. Nếu runtime cũ bắt buộc
+`relevance_verified`, phải sửa hợp đồng kiểm tra khi triển khai để cho phép phục vụ
+với chất lượng chưa được đánh giá, đồng thời giữ trạng thái đó trung thực; không
+đổi cờ thành true hoặc buộc chạy eval ngoài phạm vi chỉ để khởi động.
+
+Bỏ yêu cầu nạp GPU và ba lượt warmup encode bắt buộc. Healthcheck định kỳ không
+được gọi embedding API hoặc tiêu quota. Lỗi provider được xử lý trong request và
+circuit breaker theo mục 10; không biến lỗi quota thành vòng restart container.
+Kiểm tra kết nối thật dùng văn bản cố định không có PII là thao tác riêng, chỉ chạy
+khi được cho phép; không gộp vào test offline hoặc chạy eval ngầm. Không embedding
+corpus khi khởi động. Các kiểm tra này không thay phép đo latency BTC khi được yêu cầu.
+
+Nguồn kỹ thuật:
+
+- [Cloudflare BGE-M3](https://developers.cloudflare.com/workers-ai/models/bge-m3/).
+- [Giá và quota Workers AI](https://developers.cloudflare.com/workers-ai/platform/pricing/).
+- [Giới hạn Workers AI](https://developers.cloudflare.com/workers-ai/platform/limits/).
+- [Qdrant sparse vectors và IDF](https://qdrant.tech/documentation/manage-data/indexing/#idf-modifier).
 
 ## 5. Chunking và nguồn an toàn
 
@@ -204,8 +286,10 @@ nguồn dữ kiện. Lời gọi độc lập cũng phải tuân cùng quy tắc
 ## 8. Search, liên kết và thời gian
 
 1. Ghim release nhất quán với lượt agent, hoặc tại đầu request nếu gọi độc lập.
-2. Encode query một lần, xuất dense và sparse.
-3. Gửi một request Qdrant gồm hai prefetch và RRF.
+2. Gọi Cloudflare một lần cho dense query, tạo BM25 query trên CPU với vocabulary
+   của release đã ghim; các lần retry có giới hạn tuân mục 10.
+3. Gửi một request Qdrant gồm prefetch dense và BM25 sparse, hợp nhất bằng RRF;
+   bỏ riêng prefetch lexical khi không có term trong vocabulary theo mục 4.2.
 4. Đối chiếu ứng viên với snapshot nguồn PostgreSQL, release và hash.
 5. Kiểm tra quyền và điều kiện thời gian bằng quy tắc hệ thống.
 6. Bổ sung mục liên quan được đánh dấu cần thiết, tối đa một cấp.
@@ -248,6 +332,9 @@ Phân biệt ngày tra cứu và ngày quyết định chính sách:
 
 Không thêm LLM reranker hoặc model reranker. RRF score không phải xác suất đúng;
 không đặt ngưỡng tùy ý để tự khẳng định có/không đủ bằng chứng.
+Ngưỡng learned sparse BGE-M3 cũ không có ý nghĩa tương đương với BM25; không sao
+chép sang cấu hình mới. Tiêu chí bằng chứng yếu phải có test chức năng riêng; chưa
+có kết quả eval thì không khai báo retrieval đã được xác nhận chất lượng.
 
 ### 8.1. Mức căn cứ và hành vi của agent
 
@@ -354,13 +441,21 @@ Ví dụ minh họa cấu trúc, không phải kết quả chạy thực tế:
 Lỗi vận hành trả trạng thái phân loại và `evidence: []`, không trả dữ liệu dở dang
 như một kết quả thành công. Log ghi thành phần lỗi, mã nguyên nhân và request/release ID.
 
-- Một worker encode, hàng đợi hữu hạn; fail fast khi đầy.
+- Số HTTP request embedding đồng thời có giới hạn, hàng đợi hữu hạn; fail fast khi đầy.
 - Có deadline tổng, gồm cả thời gian chờ hàng đợi và retry.
 - Retry tối đa một lần với lỗi tạm thời đã phân loại, chỉ khi còn đủ ngân sách.
-- Không retry GPU OOM, cấu hình sai, manifest/hash không hợp lệ hoặc dữ liệu sai quyền.
+- Không retry token sai/hết hạn/thiếu quyền, account hoặc model sai, quota ngày đã
+  hết, đầu vào quá dài, manifest/hash không hợp lệ hoặc dữ liệu sai quyền.
+- Phân biệt rate limit tạm thời với quota ngày khi provider trả mã đủ rõ. Rate limit
+  chỉ retry trong deadline, tôn trọng Retry-After; nếu mã không rõ thì xử lý có giới
+  hạn như lỗi provider, không kết luận là kho tri thức thiếu dữ liệu.
+- Không đưa token, authorization header hoặc raw response có thông tin nhạy cảm
+  vào lỗi trả agent. Ghi mã nguyên nhân an toàn: auth/config/quota/rate_limit/network/
+  invalid_response, kèm request/release ID.
 - Circuit breaker theo phụ thuộc, có ngưỡng lỗi, cooldown và probe phục hồi hữu hạn.
-- Timeout ở bên chờ không được làm GPU chạy nhiều tác vụ chồng lên nhau: giữ quyền
-  worker cho đến khi tác vụ thực sự hoàn tất; loại tác vụ hết hạn còn trong hàng đợi.
+- Timeout hủy request HTTP đang chờ và loại tác vụ hết hạn trong hàng đợi; quản lý
+  semaphore theo vòng đời tác vụ thực tế, không rò slot. Provider có thể vẫn tính
+  usage cho request đã nhận dù client hủy; không giả định timeout là miễn phí.
 - Khi unavailable/timeout/overloaded, agent không dùng kiến thức LLM để thay tài liệu;
   thông báo chưa tra được và chuyển tiếp theo luồng nghiệp vụ.
 
@@ -376,8 +471,25 @@ không để đến cuối nghiệm thu mới quyết định. MCP chịu trách
 quyền, thời gian và phụ thuộc; agent chịu trách nhiệm đối chiếu từng ý cần trả lời
 theo mục 8.1. Không đồng nhất `no_evidence` với mọi trường hợp agent chưa thể kết luận.
 
-Bản đầu không fallback. Nếu bổ sung sau này, coi là chế độ riêng với cờ cấu hình,
-nhãn pipeline và đánh giá riêng, không chuyển ngầm.
+**Đã thống nhất:** không chuyển sang BM25-only khi Cloudflare lỗi hoặc hết quota.
+Trả `unavailable`/`timeout` theo nguyên nhân, `evidence: []`. Giao diện/agent báo
+“Tạm thời chưa tra cứu được thông tin, vui lòng thử lại sau.”; không đưa chi tiết
+quota, credentials hoặc hạ tầng vào thông báo cho khách. Không tự hẹn gọi lại
+hoặc chuyển nhân viên ngoài nghiệp vụ BTC hiện có. BM25 là nhánh hỗ trợ bình
+thường của hybrid, không phải chế độ dự phòng khi provider lỗi.
+
+Log vận hành phải phân biệt nguyên nhân thực tế với thông báo chung ở giao diện:
+
+- Khi phản hồi Cloudflare xác nhận hết quota, ghi `reason=quota_exhausted`,
+  `provider=cloudflare`, model ID, HTTP status, provider error code nếu có,
+  request ID và release ID; MCP trả `retrieval_status=unavailable`.
+- Phân biệt `rate_limited` với `quota_exhausted`; không suy ra hết quota chỉ từ
+  HTTP 429. Khi thông tin provider chưa đủ phân loại, ghi `provider_error` và
+  mã phản hồi an toàn đã nhận, không ghi một nguyên nhân chưa xác nhận.
+- Không log API token, Authorization header, toàn bộ raw response hoặc query
+  có PII. Không biến lỗi quota thành `no_evidence` hoặc tín hiệu thiếu tri thức.
+- Test mock phải xác nhận cùng lỗi hết quota tạo thông báo giao diện chung nhưng
+  log vẫn giữ đúng `quota_exhausted`, không retry và không chạy BM25-only.
 
 ## 11. Nạp, upsert và tính đồng nhất release
 
@@ -387,7 +499,7 @@ Không quét định kỳ. Người phụ trách chủ động chạy lệnh:
 Nguồn + cấu hình đã duyệt
   -> Parse/chunk/nội dung an toàn
   -> Kiểm tra metadata và liên kết
-  -> Encode dense + sparse
+  -> Cloudflare encode dense + tạo BM25 document sparse trên CPU
   -> Upsert release đang chuẩn bị
   -> Kiểm tra đầy đủ
   -> Chủ động kích hoạt
@@ -398,8 +510,10 @@ Nguồn + cấu hình đã duyệt
 - Thay đổi nguồn/cấu hình/model tạo release mới; active release bất biến.
 - Mỗi bản ghi nguồn phục vụ, payload Qdrant và snapshot tri thức bổ sung thuộc
   cùng release. Nguồn BTC gốc có thể giữ riêng bất biến, không sửa để thêm release.
-- Manifest ghi source/config hashes, collection cụ thể, snapshot bổ sung, model
-  revision, tokenizer, max length, normalization, prefix, dtype và kết quả kiểm tra.
+- Manifest ghi source/config hashes, collection cụ thể, snapshot bổ sung, provider,
+  model ID, adapter version, tokenizer revision, max length, normalization, prefix,
+  dimension, BM25 tokenizer/vocabulary hash/thống kê corpus/k1/b/IDF configuration
+  và kết quả kiểm tra. Không ghi credentials hoặc tự gán revision/dtype của provider.
 - Dựng collection và snapshot nguồn mới song song với bản đang phục vụ.
 - PostgreSQL giữ con trỏ active có thẩm quyền, kích hoạt bằng transaction/CAS sau
   khi release hoàn tất và được kiểm tra.
@@ -408,9 +522,22 @@ Nguồn + cấu hình đã duyệt
 - Giữ bản cũ phục vụ request đang chạy và rollback. Không xóa collection đang được ghim.
 - Release không đầy đủ hoặc model fingerprint không tương thích phải bị từ chối.
 
-Đổi model phải dựng index mới. Bản đầu chuyển model có kiểm soát, nạp model đúng
-và warmup trước phục vụ; không giả định hỗ trợ đổi model nóng hoặc giữ hai model
-trong 4 GB VRAM. Rollback khác model cũng phải kiểm tra tương thích runtime.
+Chuyển local BGE-M3 dense/learned sparse sang Cloudflare dense/BM25 phải dựng
+release và collection mới; không upsert đè vector mới vào release cũ. Không xóa
+collection cũ chỉ để chuyển đổi. Preflight kiểm tra cấu hình, quyền nạp và nội dung
+an toàn trước khi gọi API; nạp theo batch hữu hạn, dừng rõ ràng khi quota/auth lỗi.
+Release đang nạp dở không được kích hoạt. Có thể tái sử dụng artifact đã hoàn tất
+khi chạy lại chỉ nếu hash nội dung và toàn bộ fingerprint tương thích; không gọi lại
+API chỉ để kiểm tra payload/vector đã có.
+
+BM25 cần vocabulary và thống kê corpus ổn định trước khi tạo vector. Dựng chúng
+trước encode/upsert; không thay avgdl hoặc IDF configuration giữa các batch. Kiểm
+tra số lượng điểm, nội dung/metadata/hash, dense vector và BM25 vector với artifact
+trước khi kích hoạt. Giữ đủ dữ liệu ngày hết hạn, gồm chính sách cũ cho đơn lịch sử.
+
+Rollback phải kiểm tra runtime hỗ trợ provider/lexical encoder của release đích.
+Runtime mới không có Torch/CUDA không mặc nhiên phục vụ được release local cũ;
+muốn quay về release đó phải dùng runtime cũ tương thích, không chỉ đổi con trỏ DB.
 
 ## 12. Tích hợp Knowledge Gap Loop
 
@@ -431,9 +558,20 @@ trong 4 GB VRAM. Rollback khác model cũng phải kiểm tra tương thích run
 Ưu tiên hoàn thành các mục BTC yêu cầu. Các kiểm tra bổ sung dưới đây nhằm xác
 minh đúng thiết kế và tránh hồi quy, không đặt thêm ngưỡng điểm/latency riêng.
 
+Mục này mô tả phép đánh giá BTC có thể thực hiện khi được yêu cầu, không phải
+ủy quyền chạy eval. Trong đợt chuyển kiến trúc này chỉ chạy test chức năng offline,
+mock Cloudflare; không gọi model, benchmark hoặc judge thật. Không dùng kết quả
+mong đợi hoặc relevant IDs làm dữ liệu ingestion, vocabulary, aliases hay logic search.
+
+Test chức năng cần bao phủ: mapping batch/chiều vector/normalization, auth/quota/429/
+5xx/timeout, retry và deadline, không lộ token, tokenizer tiếng Việt/mã/số liệu,
+BM25 reference calculation và IDF không bị nhân đôi, OOV, RRF, release fingerprint,
+ngày hết hạn, quyền, ingestion chạy lại và từ chối kích hoạt release thiếu dữ liệu.
+Các tham số BM25 và ngưỡng mới chưa được coi là tối ưu chỉ vì test chức năng đạt.
+
 Tách bốn nhóm nghiệm thu:
 
-1. Hệ thống: chunk/metadata, bảng, quyền, ngày, liên kết, lỗi, warmup, release và rollback.
+1. Hệ thống: chunk/metadata, bảng, quyền, ngày, liên kết, lỗi API, readiness, BM25, release và rollback.
 2. Retrieval: đủ 60 câu BTC; Recall@3/@5, multi-hop full recall.
 3. Câu trả lời: abstention/false abstention, trả lời thiếu căn cứ, đúng phiên bản,
    số liệu, không tiết lộ dữ liệu nội bộ.
@@ -478,12 +616,13 @@ relevant IDs để sinh kết quả, thêm ID hay gán abstained giả.
 
 ## 14. Performance và truy vết
 
-Đo thời gian chờ hàng đợi, encode, Qdrant/RRF, PostgreSQL, xử lý liên kết/serialization,
+Khi được yêu cầu đo, tách thời gian chờ hàng đợi, Cloudflare HTTP, BM25 CPU,
+Qdrant/RRF, PostgreSQL, xử lý liên kết/serialization,
 tổng MCP và LLM/tổng lượt ở cấp agent. Ghi số token bằng chứng, phiên bản pipeline,
 release, cấu hình và số lần retry.
 
-Tách cold start khỏi warm state. Báo concurrency 1/3/5, VRAM đỉnh, lỗi/OOM,
-timeout/overload và p50/p95. Không chỉ báo request thành công rồi bỏ qua lỗi tải.
+Tách cold start khỏi warm state. Báo concurrency 1/3/5, RAM/CPU, lỗi provider/quota,
+timeout/overload và p50/p95; không dùng VRAM làm điều kiện chạy knowledge. Không chỉ báo request thành công rồi bỏ qua lỗi tải.
 Không cộng p95 các chặng để suy ra p95 toàn luồng.
 
 Giữ nguyên bảng trước, đo tổng ảnh hưởng đến LLM rồi mới thay đổi thiết kế nội dung.
@@ -496,27 +635,50 @@ hiện có; không xây dashboard mới trong phạm vi này.
 
 ## 15. Thông số còn mở và ranh giới thực hiện
 
-Các quyết định hành vi tại mục 8.1 đã chốt. Những chi tiết kỹ thuật sau còn mở;
-cần chốt ở giai đoạn tương ứng, không suy ra đã đạt từ nội dung spec:
+Các quyết định nghiệp vụ tại mục 8.1 và hướng Cloudflare dense + BM25 CPU + RRF
+đã chốt. Các lựa chọn BM25/readiness/migration nêu trên là đề xuất kỹ thuật của
+lần cập nhật này để người dùng duyệt, không phải kết quả đã triển khai.
 
-- Model revision cụ thể, giới hạn token và batch nạp phù hợp bảng dài nhất.
-- Số ứng viên dense/sparse, RRF configuration, quy tắc thứ hạng nhóm liên kết và
-  giới hạn cứng số bằng chứng; chốt trước khi hoàn thiện lựa chọn kết quả.
-- Tiêu chí bằng chứng yếu/no_evidence; chốt và kiểm chứng trước khi hoàn thiện
-  luồng search, bao gồm câu ngoài phạm vi và bằng chứng giới hạn kiến thức.
-- Deadline, dung lượng hàng đợi và timeout phụ thuộc để đáp ứng yêu cầu BTC.
-- Tham số circuit breaker và điều kiện cho phép retry trong deadline.
-- Khả năng GPU 4 GB đáp ứng VRAM/p95 tại concurrency yêu cầu.
-- Ngữ cảnh ngày eval và xử lý các điểm chưa thống nhất trong nguồn BTC.
+Hành vi lỗi provider đã chốt: không fallback BM25-only; giao diện báo tạm thời
+chưa tra cứu được, log phân loại rõ hết quota khi có căn cứ từ provider theo mục 10.
 
-Khả năng GPU cần được kiểm chứng sớm với độ dài query/tài liệu dự kiến, gồm bảng
-dài nhất và tải đồng thời yêu cầu, trước khi hoàn thiện pipeline phụ thuộc vào
-phương án này. Ba lượt warmup khởi động không thay thế phép kiểm chứng đó.
+Chi tiết kỹ thuật cần xác định khi viết plan/triển khai, không yêu cầu chạy eval:
 
-Thông số vận hành do dự án chọn phải phân biệt với ngưỡng BTC. Chưa bổ sung mục
-tiêu chất lượng/latency riêng ngoài BTC trong lần cập nhật này.
-Không có số đo nào trong spec chứng minh local đã nhanh hơn API.
+- Schema API thực tế, dimension, batch limit, tokenizer revision và giới hạn đầu
+  vào an toàn; tài liệu model hiện có ví dụ và phần parameter không hoàn toàn đồng
+  nhất, cần kiểm tra adapter bằng contract fixture và smoke test riêng khi được phép.
+- Qdrant version và sparse modifier idf; artifact vocabulary và công thức BM25 phải
+  đồng nhất giữa ingestion và query, không phụ thuộc một model tải lúc startup.
+- Số ứng viên dense/BM25, RRF configuration, quy tắc nhóm liên kết và giới hạn cứng
+  số bằng chứng; không giữ ngưỡng learned sparse cũ như ngưỡng BM25.
+- Tiêu chí bằng chứng yếu/no_evidence và các test chức năng chứng minh hành vi;
+  test đạt không thay thế đánh giá chất lượng khi người dùng yêu cầu sau này.
+- Deadline, timeout HTTP, hàng đợi, concurrency, batch nạp, retry và circuit breaker.
+  Không khẳng định latency API tốt hơn local khi chưa đo.
+- Ngữ cảnh ngày eval và điểm chưa thống nhất trong nguồn BTC chỉ được giải quyết
+  khi chuẩn bị lượt eval đã được yêu cầu; không trì hoãn test chức năng vì chưa có eval.
 
-Viết spec không cho phép tự tải model, cài dependency, chạy benchmark, live model
-evaluation, reset DB hoặc đổi dịch vụ đang chạy. Các hành động cần phê duyệt theo
-AGENTS.md phải được xin phép riêng. Không git add/commit khi chưa được yêu cầu.
+### 15.1. Docker, cấu hình và tài liệu chạy
+
+- Cả bốn MCP server tiếp tục chạy trong Docker Compose. Knowledge dùng image
+  Python CPU với HTTP client, tokenizer nhỏ và BM25; không NVIDIA base image,
+  GPU reservation, CUDA hoặc mount cache model weights cho service này.
+- Compose truyền credentials từ `ai-services/.env` tới đúng service cần dùng;
+  lưu ý đường dẫn env_file khác cơ chế nội suy `${...}` của Compose. Không giả
+  định file có biến là container đã nhận được biến. Không bake secrets vào image.
+- CLI dataloader chạy trên host cũng phải dùng cùng cấu hình provider/BM25 với
+  runtime; không để dataloader dùng local model còn MCP dùng Cloudflare.
+- Cập nhật `.env.example`, runtime config mẫu, dependency và README: cách lấy
+  credentials, chuẩn bị/nạp/kích hoạt release, khởi chạy Compose, test offline,
+  yêu cầu Internet và cách nhận biết quota/auth lỗi. Ví dụ không chứa token thật.
+- Không tự chuyển gói trả phí, push image Docker Hub, dọn Docker data hoặc thay
+  cấu hình phân vùng. Không cam kết toàn hệ thống chạy offline vì embedding dùng API.
+
+### 15.2. Ranh giới ủy quyền
+
+Viết spec không cho phép tự cài dependency, gọi Cloudflare thật, chạy benchmark,
+live model evaluation, reset DB, xóa collection hoặc đổi dịch vụ đang chạy.
+Các thao tác cần phê duyệt theo AGENTS.md phải được xin phép riêng. Chỉ test chức
+năng offline nằm trong phạm vi triển khai đã thảo luận; không thêm eval gate bắt
+buộc hay tự đặt `relevance_verified=true` để vượt kiểm tra chưa thực hiện.
+Sau khi duyệt spec mới viết plan triển khai. Không git add/commit khi chưa được yêu cầu.

@@ -1,9 +1,12 @@
-"""One bounded encoder worker; cancellation never releases a running GPU job."""
+"""Bounded asynchronous dense encoder. Startup never calls the provider."""
 import asyncio
+import hashlib
 import math
 import time
 
-from app.knowledge.schemas import HybridVector
+from app.mcp_servers.mcp_shared.pii import mask_pii
+from app.mcp_servers.mcp_knowledge.services.cloudflare import CloudflareEmbeddingClient
+from app.mcp_servers.mcp_knowledge.services.dependencies import PolicyDependencies
 
 
 class PolicyInputError(ValueError):
@@ -14,76 +17,60 @@ class PolicyOverloaded(RuntimeError):
     pass
 
 
-class FlagBackend:
+def load_tokenizer(config):
+    from tokenizers import Tokenizer
+    data = config.tokenizer_path.read_bytes()
+    if hashlib.sha256(data).hexdigest() != config.tokenizer_sha256:
+        raise ValueError('Tokenizer asset hash mismatch')
+    tokenizer = Tokenizer.from_str(data.decode('utf-8'))
+    tokenizer.no_truncation()
+    tokenizer.no_padding()
+    return tokenizer
+
+
+class CloudflareBackend:
     def __init__(self, config):
-        # Only an already cached immutable snapshot is loaded. No implicit downloads.
-        import re
-        if not re.fullmatch(r'[0-9a-f]{40}', config.model_revision):
-            raise ValueError('Immutable model commit revision required')
-        from huggingface_hub import snapshot_download
-        from FlagEmbedding import BGEM3FlagModel
-        import torch
-        if not config.device.startswith('cuda') or not torch.cuda.is_available():
-            raise RuntimeError('Configured CUDA device unavailable')
-        if config.model_revision != config.tokenizer_revision:
-            raise ValueError('Tokenizer and model revisions must match')
-        path = snapshot_download(config.model_name, revision=config.model_revision, local_files_only=True)
-        self.config = config
-        self.model = BGEM3FlagModel(path, devices=[config.device], use_fp16=True,
-            normalize_embeddings=True, batch_size=config.batch_size,
-            query_max_length=config.max_tokens, passage_max_length=config.max_tokens,
-            return_dense=True, return_sparse=True, return_colbert_vecs=False)
+        from app.configs import get_settings
+        settings = get_settings()
+        self.tokenizer = load_tokenizer(config)
+        self.client = CloudflareEmbeddingClient(config, account_id=settings.cloudflare_account_id,
+            token=settings.cloudflare_api_token.get_secret_value() if settings.cloudflare_api_token else None)
 
     def token_count(self, text):
-        return len(self.model.tokenizer(text, truncation=False)['input_ids'])
+        return len(self.tokenizer.encode(text).ids)
 
-    def encode(self, text):
-        output = self.model.encode([text], batch_size=self.config.batch_size,
-            max_length=self.config.max_tokens, return_dense=True, return_sparse=True,
-            return_colbert_vecs=False)
-        sparse = output['lexical_weights'][0]
-        pairs = sorted((int(key), float(value)) for key, value in sparse.items() if value > 0)
-        return HybridVector(dense=output['dense_vecs'][0].tolist(),
-            sparse_indices=[key for key, _ in pairs], sparse_values=[value for _, value in pairs])
+    async def encode(self, text, *, deadline):
+        return (await self.client.embed([text], deadline=deadline))[0]
+
+    async def close(self):
+        await self.client.close()
 
 
 class PolicyEncoder:
     def __init__(self, config, backend=None, *, clock=time.monotonic):
-        self.config = config
-        self.backend = backend
-        self.clock = clock
+        self.config, self.backend, self.clock = config, backend, clock
         self.ready = False
+        self.dependencies = PolicyDependencies(config, clock=clock)
         self._queue = asyncio.Queue(maxsize=config.queue_capacity)
-        self._worker = None
+        self._workers = []
         self._starting = asyncio.Lock()
 
     def _validate(self, value):
-        value = HybridVector.model_validate(value)
-        if len(value.dense) != self.config.dimension or not all(math.isfinite(v) for v in value.dense):
+        if (not isinstance(value, list) or len(value) != self.config.dimension
+                or any(type(v) not in (float, int) or not math.isfinite(v) for v in value)):
             raise ValueError('Invalid dense vector')
-        if (len(value.sparse_indices) != len(value.sparse_values)
-                or len(set(value.sparse_indices)) != len(value.sparse_indices)
-                or any(i < 0 for i in value.sparse_indices)
-                or any(not math.isfinite(v) or v <= 0 for v in value.sparse_values)):
-            raise ValueError('Invalid sparse vector')
-        norm = math.sqrt(sum(v*v for v in value.dense))
-        if norm == 0:
-            raise ValueError('Zero dense vector')
-        return value.model_copy(update={'dense': [v/norm for v in value.dense]})
+        norm = math.sqrt(sum(v*v for v in value))
+        if not math.isfinite(norm) or norm == 0:
+            raise ValueError('Invalid dense norm')
+        return [v/norm for v in value]
 
     async def start(self):
         async with self._starting:
             if self.ready:
                 return
             if self.backend is None:
-                self.backend = await asyncio.to_thread(FlagBackend, self.config)
-            for _ in range(3):
-                text = 'Kiểm tra tra cứu chính sách.'
-                count = await asyncio.to_thread(self.backend.token_count, self.config.prefix+text)
-                if count > self.config.max_tokens:
-                    raise ValueError('Warmup exceeds token limit')
-                self._validate(await asyncio.to_thread(self.backend.encode, self.config.prefix+text))
-            self._worker = asyncio.create_task(self._run())
+                self.backend = CloudflareBackend(self.config)
+            self._workers = [asyncio.create_task(self._run()) for _ in range(self.config.http_concurrency)]
             self.ready = True
 
     async def encode(self, text, *, deadline):
@@ -91,50 +78,66 @@ class PolicyEncoder:
             raise RuntimeError('Encoder not ready')
         if self.clock() >= deadline:
             raise TimeoutError('Encode deadline')
+        text = self.config.prefix + mask_pii(text)
+        if self.backend.token_count(text) > self.config.max_tokens:
+            raise PolicyInputError('Input exceeds token limit')
         future = asyncio.get_running_loop().create_future()
-        # Consume late exceptions even when the waiter has timed out.
-        future.add_done_callback(lambda f: f.exception() if not f.cancelled() else None)
         try:
-            self._queue.put_nowait((self.config.prefix+text, deadline, future))
+            self._queue.put_nowait((text, deadline, future))
         except asyncio.QueueFull:
             raise PolicyOverloaded('Encode queue full') from None
         try:
-            return await asyncio.wait_for(asyncio.shield(future), max(0, deadline-self.clock()))
-        except (TimeoutError, asyncio.CancelledError):
-            future.cancel()
-            raise
+            return await asyncio.wait_for(future, max(0, deadline-self.clock()))
+        finally:
+            if not future.done():
+                future.cancel()
+
+    async def _execute(self, text, deadline):
+        dense = await self.dependencies.call_dependency('cloudflare',
+            lambda: self.backend.encode(text, deadline=deadline), deadline=deadline)
+        return self._validate(dense)
 
     async def _run(self):
         while True:
-            item = await self._queue.get()
+            text, deadline, future = await self._queue.get()
+            job = None
             try:
-                if item is None:
-                    return
-                text, deadline, future = item
                 if future.cancelled():
                     continue
+                if self.clock() >= deadline:
+                    raise TimeoutError('Queued encode expired')
+                job = asyncio.create_task(self._execute(text, deadline))
+                def cancel_job(done, task=job):
+                    if done.cancelled():
+                        task.cancel()
+                future.add_done_callback(cancel_job)
                 try:
-                    if self.clock() >= deadline:
-                        raise TimeoutError('Queued encode expired')
-                    count = await asyncio.to_thread(self.backend.token_count, text)
-                    if count > self.config.max_tokens:
-                        raise PolicyInputError('Input exceeds token limit')
-                    if future.cancelled():
-                        continue
-                    if self.clock() >= deadline:
-                        raise TimeoutError('Encode expired before inference')
-                    value = self._validate(await asyncio.to_thread(self.backend.encode, text))
-                    if not future.done():
-                        future.set_result(value)
-                except Exception as exc:
-                    if not future.done():
-                        future.set_exception(exc)
+                    result = await job
+                except asyncio.CancelledError:
+                    if asyncio.current_task().cancelling():
+                        raise
+                    continue
+                if not future.done():
+                    future.set_result(result)
+            except Exception as exc:
+                if not future.done():
+                    future.set_exception(exc)
             finally:
+                if job and not job.done():
+                    job.cancel()
+                if not future.done():
+                    future.cancel()
                 self._queue.task_done()
 
     async def close(self):
         self.ready = False
-        if self._worker:
-            await self._queue.put(None)
-            await self._worker
-            self._worker = None
+        for worker in self._workers:
+            worker.cancel()
+        await asyncio.gather(*self._workers, return_exceptions=True)
+        self._workers = []
+        while not self._queue.empty():
+            _, _, future = self._queue.get_nowait()
+            future.cancel()
+            self._queue.task_done()
+        if self.backend:
+            await self.backend.close()

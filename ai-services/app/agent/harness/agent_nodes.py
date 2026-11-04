@@ -29,6 +29,9 @@ from app.agent.harness.state import Decision
 from app.schemas.brief import HandoffBrief
 
 
+POLICY_UNAVAILABLE = "Tạm thời chưa tra cứu được thông tin, vui lòng thử lại sau."
+
+
 MEMORY_UNAVAILABLE = (
     "Dạ, hệ thống đang gián đoạn nên em chưa thể xử lý yêu cầu lúc này. "
     "Anh/chị vui lòng thử lại sau ạ."
@@ -244,6 +247,19 @@ class AgentNodes(SessionNodes):
     async def verify_agent(self, state: TurnState) -> dict[str, Any]:
         draft = state.get("agent_draft", FALLBACK)
         calls = state.get("tool_calls", [])
+        policy_calls = [c for c in calls if c.get('name') == 'policy.search']
+        policy_failed = bool(policy_calls and policy_calls[-1].get('result', {}).get('retrieval_status')
+                             in {'unavailable', 'timeout', 'overloaded'})
+        other_success = any(c.get('name') != 'policy.search' and 'error' not in c.get('result', {})
+                            for c in calls)
+        if policy_failed and not other_success:
+            return {'agent_text': POLICY_UNAVAILABLE}
+
+        def customer_reply(text):
+            if policy_failed and POLICY_UNAVAILABLE not in text:
+                return text + ' ' + POLICY_UNAVAILABLE
+            return text
+
         reason = ("order_selection_mismatch" if transaction_selection_mismatch(state)
                   else check_grounding(draft, calls))
         log_event(state, "verify", "grounding_checked", accepted=reason is None,
@@ -257,7 +273,7 @@ class AgentNodes(SessionNodes):
             log_event(state, "verify", "answer_check_disabled",
                       reason="AGENT_GUARDRAILS_ENABLED=false; kiểm tra bằng chứng vẫn chạy")
         if reason is None:
-            return {"agent_text": mask_pii(answer.strip()) if answer.strip() else FALLBACK}
+            return {"agent_text": customer_reply(mask_pii(answer.strip()) if answer.strip() else FALLBACK)}
         rejected = [rejected_draft(state, reason, draft)]
         recoveries = [safe_transaction_reply, safe_quote_reply, safe_promotion_reply]
         structured_search = any(c.get("name") == "catalog.search" and any(
@@ -274,9 +290,9 @@ class AgentNodes(SessionNodes):
             if safe_reason is None:
                 checked, safe_reason = check_answer(safe, calls, state["safe_text"])
             if safe_reason is None:
-                return {"agent_text": checked, "verifier_events": rejected}
+                return {"agent_text": customer_reply(checked), "verifier_events": rejected}
             rejected.append(rejected_draft(state, safe_reason, safe))
-        return {"agent_text": FALLBACK, "verifier_events": rejected}
+        return {"agent_text": POLICY_UNAVAILABLE if policy_failed else FALLBACK, "verifier_events": rejected}
 
     @trace_node("persist")
     async def persist_agent(self, state: TurnState) -> dict[str, Any]:

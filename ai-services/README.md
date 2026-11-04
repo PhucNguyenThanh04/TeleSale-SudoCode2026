@@ -61,24 +61,28 @@ services use PostgreSQL operation keys. A PostgreSQL LangGraph checkpointer is
 not connected yet.
 
 Policy questions use `policy.search` on the dedicated `mcp-knowledge` service.
-BGE-M3 produces dense+sparse vectors; Qdrant performs RRF and PostgreSQL supplies
+Cloudflare BGE-M3 produces dense vectors and CPU BM25 produces sparse term weights; Qdrant applies IDF once and performs RRF and PostgreSQL supplies
 safe source snapshots from one pinned hybrid release. See the [module map](app/knowledge/README.md) for the domain/MCP directory boundaries. Catalog no longer registers
 policy tools or loads an embedding model. The agent, grounding checks, diagnostics
 and Knowledge Gap Loop use `evidence[].content` and applicability metadata.
 
 Configure `MCP_KNOWLEDGE_URL`, a separate reader role/secret and a reviewed
-`KNOWLEDGE_POLICY_CONFIG_FILE`. Missing/unverified relevance config, model cache,
-CUDA or release/index readiness fails closed; no lexical or CPU fallback occurs.
+`KNOWLEDGE_POLICY_CONFIG_FILE`, `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`.
+The CPU tokenizer is bundled and hash checked. No model weights/GPU are needed.
+Missing credentials or invalid release/index/artifact fails closed; Cloudflare
+errors do not trigger BM25-only fallback. Quality remains explicitly unmeasured
+with `relevance_verified=false`; integrity/readiness is checked separately.
 No dependency installation, model download, database migration or running-service
 change is performed by startup. See the [knowledge runbook](docs/mcp-knowledge-runbook.md)
 for migration 0003, CLI prepare/activate/rollback/revoke and operational limits.
 
 The Knowledge Gap Loop keeps its existing approval/CAS/audit controls. With a
 hybrid config, its prepare operation delegates to the hybrid builder. Historical
-lexical review checks do not certify hybrid readiness. BTC imports remain
-PostgreSQL-only; this feature does not delete source data, old collections or caches.
-Functional tests use fake/scripted models and in-memory dependencies. Real GPU,
-quality and performance have not been evaluated.
+lexical review checks do not certify hybrid readiness. BTC source imports target
+PostgreSQL; the loader's explicit `--prepare-policy` option also prepares a
+Knowledge snapshot and Qdrant index. See the [loader guide](../dataloader_offline/README.md).
+Functional tests use mocked HTTP, scripted models and in-memory dependencies.
+Live Cloudflare, clean Docker deployment, quality and performance require separate verification.
 
 ### Langfuse Cloud tracing
 
@@ -125,9 +129,9 @@ the turn, `implementations/` contains
 the selectable Deep and ReAct agents plus shared business tools, `harness/` contains runtime, nodes and tool policy,
 `memory/` contains fact proposals and the MCP memory adapter, `guardrails/`
 contains answer and evidence checks, and `mcp/gateway.py` routes business
-tools to the three servers in `app/mcp_servers/`. DeepSeek is a possible model
+tools to the four servers in `app/mcp_servers/`. DeepSeek is a possible model
 choice through `LLM_MODEL` if supported by the configured endpoint, not a
-separate agent architecture. No fourth MCP server is needed for policy RAG.
+separate agent architecture. Policy RAG runs in the dedicated knowledge MCP server.
 
 ```text
 app/agent/
@@ -138,8 +142,8 @@ app/agent/
   harness/                # runtime, graph nodes, state, tool policy
   memory/                 # candidate validation and MCP memory adapter
   guardrails/             # answer and fact evidence checks
-  mcp/                    # client gateway for the three MCP servers
-app/mcp_servers/          # catalog, order, memory, shared infrastructure
+  mcp/                    # client gateway for the four MCP servers
+app/mcp_servers/          # catalog, order, memory, knowledge, shared infrastructure
 ```
 
 ## Structured MCP tools
@@ -171,7 +175,7 @@ secret files under `secrets/`: `mcp_catalog_password`, `mcp_order_password`, `mc
 
 ```bash
 # From the repository root:
-docker compose --env-file .env --env-file ai-services/.env up -d --build mcp-catalog mcp-order mcp-memory
+docker compose --env-file .env --env-file ai-services/.env up -d --build mcp-catalog mcp-order mcp-memory mcp-knowledge
 # In another terminal, from ai-services/:
 python -m app
 ```
@@ -295,7 +299,7 @@ Ví dụ: `Gọi công cụ: kết quả công cụ | công cụ: inventory.chec
 Với `LOG_LEVEL=INFO`, log có tham số đã gửi cho tool và kết quả nghiệp vụ đã
 lọc PII. Ba MCP process cũng ghi từng tên tool, tham số nhận vào,
 kết quả trả ra và thời gian thực thi. Chạy qua `python -m app.mcp_servers.run` thì
-xem cùng terminal; với Compose, dùng `docker compose logs -f mcp-catalog mcp-order mcp-memory`.
+xem cùng terminal; với Compose, dùng `docker compose logs -f mcp-catalog mcp-order mcp-memory mcp-knowledge`.
 Log chỉ hiện các trường được phép; thông tin định danh, số điện thoại,
 địa chỉ và trường tự do nhạy cảm được lược bỏ hoặc che. Mỗi payload tối đa 3.000
 ký tự. Kết quả CRM chỉ hiện `found`, `ambiguous` và số đơn/phiên; không hiện hồ sơ.
