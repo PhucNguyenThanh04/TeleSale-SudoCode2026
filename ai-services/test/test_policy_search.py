@@ -12,7 +12,9 @@ class SearchRepo:
         self.rows=rows
         self.revoked=False
         config=runtime_config()
-        manifest={'index_kind':'hybrid','collection':'test','model_fingerprint':config.fingerprint(),
+        from app.mcp_servers.mcp_knowledge.services.bm25 import build_bm25_artifact,document_text
+        manifest={'schema_version':3,'pipeline':'cloudflare_dense_bm25',
+            'bm25':build_bm25_artifact([document_text(r) for r in rows],config),'index_kind':'hybrid','collection':'test','model_fingerprint':config.fingerprint(),
             'config_hash':digest(config.model_dump(mode='json')),'checks':{'index_complete':True,'relevance_verified':True},
             'source_hashes':{r.chunk_id:r.source_hash for r in rows},'content_hashes':{r.chunk_id:r.content_hash for r in rows}}
         self.release={'id':'r1','manifest':manifest,'manifest_hash':digest(manifest),'status':'ready'}
@@ -30,7 +32,7 @@ class Index:
     def __init__(self, rows):
         self.rows=rows
         self.calls=0
-    async def verify(self,*args):
+    async def verify(self,*args,**kwargs):
         pass
     async def query(self,*args,**kwargs):
         self.calls+=1
@@ -124,4 +126,48 @@ def test_hard_limit_reports_all_missing_exceptions_and_preserves_conflict():
         assert result.evidence[0].applicability.status=='conflict'
         assert result.evidence_set.missing_required_section_ids==links[9:]
         await service.close()
+    asyncio.run(run())
+
+
+def test_quota_logs_reason_but_returns_generic_unavailable(caplog):
+    import logging
+    from app.mcp_servers.mcp_knowledge.services.cloudflare import PolicyProviderError
+    async def run():
+        service,repo,index=await search_fixture([chunk()],relevance_verified=False)
+        async def exhausted(*args,**kwargs):
+            raise PolicyProviderError('quota_exhausted',status=429,provider_code='1234')
+        service.encoder.backend.encode=exhausted
+        try:
+            result=await service.search(*request_context())
+            assert result.retrieval_status=='unavailable' and result.evidence==[]
+            assert result.error=='knowledge_unavailable'
+            assert index.calls==0
+            assert 'quota_exhausted' not in result.model_dump_json()
+        finally:await service.close()
+    with caplog.at_level(logging.WARNING): asyncio.run(run())
+    assert 'reason=quota_exhausted' in caplog.text and 'request_id=req' in caplog.text
+    assert 'release_id=r1' in caplog.text and 'provider_code=1234' in caplog.text
+
+
+def test_each_search_uses_its_pinned_release_vocabulary():
+    from app.mcp_servers.mcp_knowledge.services.bm25 import build_bm25_artifact,document_text
+    async def run():
+        first=chunk(content='đổi trả')
+        service,repo,index=await search_fixture([first])
+        seen=[]
+        query=index.query
+        async def capture(vector,**kwargs):
+            seen.append((kwargs['release']['id'],vector.sparse_indices))
+            return await query(vector,**kwargs)
+        index.query=capture
+        try:
+            await service.search(*request_context())
+            second=chunk(content='bảo hành')
+            repo.rows=[second];index.rows=[second]
+            manifest=repo.release['manifest']|{'bm25':build_bm25_artifact([document_text(second)],service.config)}
+            repo.release=repo.release|{'id':'r2','manifest':manifest,'manifest_hash':digest(manifest)}
+            await service.search(*request_context())
+            assert seen[0][0]=='r1' and seen[0][1]
+            assert seen[1]==('r2',[])
+        finally: await service.close()
     asyncio.run(run())

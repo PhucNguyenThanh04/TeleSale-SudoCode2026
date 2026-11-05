@@ -33,7 +33,7 @@ async def main() -> None:
         channel="zalo_oa",
         channel_identity="zalo_dung99",
         on="2026-10-15",
-        text="Thôi được, chị lấy cái đó, giao trong tuần này nhé.",
+        text="Mua giày về chật, đổi size có mất phí không?",
         input_mode="clean",
     )
     runtime = get_runtime()

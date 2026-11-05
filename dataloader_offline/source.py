@@ -21,6 +21,14 @@ def json_digest(value: Any) -> str:
     return digest(json.dumps(value, ensure_ascii=False, sort_keys=True))
 
 
+def source_fingerprint(root: Path, metadata_path: Path | None = None) -> str:
+    paths = [root/'catalog'/name for name in
+             ['products.json','promotions.json','inventory_timeline.json','crm_seed.json']]
+    paths += sorted((root/'policy').glob('*.md'))
+    registry = metadata_path or Path(__file__).resolve().parents[1]/'ai-services/app/knowledge/policy/metadata.json'
+    return json_digest([hashlib.sha256(p.read_bytes()).hexdigest() for p in paths+[registry]])
+
+
 @dataclass(frozen=True)
 class PolicyChunk:
     chunk_id: str
@@ -35,66 +43,34 @@ class PolicyChunk:
 
 
 
-def policy_metadata(filename: str) -> tuple[str, str | None, str | None, str]:
-    if filename == "chinh-sach-doi-tra-v2026-06-HET-HIEU-LUC.md":
-        return "public", None, "2026-09-30", "order_date"
-    if filename == "chinh-sach-doi-tra.md":
-        return "public", "2026-10-01", None, "order_date"
-    if filename == "chinh-sach-bao-hanh.md":
-        return "public", "2026-08-01", None, "order_date"
-    if filename == "dieu-khoan-khuyen-mai.md":
-        return "public", "2026-10-01", None, "call_date"
-    if filename == "chinh-sach-van-chuyen-thanh-toan.md":
-        return "public", "2026-09-15", None, "call_date"
-    if filename in {"ghi-chu-nhap-hang-NOI-BO.md", "noi-quy-nhan-vien.md", "playbook-telesale.md"}:
-        return "restricted", None, None, "call_date"
-    public_documents = {
-        "changelog.md", "faq.md", "quy-trinh-cod-hoan-hang.md",
-        "spec-gia-dung.md", "spec-thoi-trang-me-be.md", "thong-bao-lich-nghi.md",
-    }
-    return ("public" if filename in public_documents else "restricted"), None, None, "call_date"
+def read_policy(directory: Path, metadata_path: Path | None = None) -> list[PolicyChunk]:
+    from .knowledge import policy_sources
 
-
-def read_policy(directory: Path) -> list[PolicyChunk]:
+    serving = {chunk.chunk_id: chunk for chunk in policy_sources(directory, metadata_path)}
     chunks: list[PolicyChunk] = []
     for path in sorted(directory.glob("*.md")):
         text = path.read_text(encoding="utf-8")
         headings = list(CHUNK_HEADING.finditer(text))
         if not headings:
             raise ValueError(f"Policy file has no BTC chunk IDs: {path.name}")
-        access, valid_from, valid_until, date_basis = policy_metadata(path.name)
         for index, heading in enumerate(headings):
             body = text[heading.end():headings[index + 1].start() if index + 1 < len(headings) else len(text)].strip()
             chunk_id, title = heading.groups()
             if not body:
                 raise ValueError(f"Empty policy chunk: {chunk_id}")
-            # Do not store raw restricted material in either database.
-            stored_body = body if access == "public" else "[Nội dung nội bộ đã loại khỏi chỉ mục]"
-            if chunk_id == "KM-06":
-                # The published paragraph includes numeric internal price floors.
-                title = "Thẩm quyền giảm giá"
-                stored_body = (
-                    "Nhân viên/agent không được tự giảm giá ngoài chương trình đã công bố. "
-                    "Yêu cầu giảm thêm cho đơn số lượng lớn cần chuyển quản lý duyệt; "
-                    "agent không hứa mức giảm."
-                )
-            elif chunk_id == "KM-04":
-                stored_body = (
-                    "Nếu nhiều chương trình không cộng dồn cùng đủ điều kiện, "
-                    "chọn chương trình cho giá cuối có lợi nhất. "
-                    "Giá hiện hành phải lấy từ pricing.get_quote theo ngày tạo đơn."
-                )
-            elif chunk_id == "FAQ-04":
-                stored_body = (
-                    "AirPure Y có thêm than hoạt tính, điều khiển qua ứng dụng "
-                    "và khóa trẻ em. Cả AirPure X và Y cùng dùng màng lọc "
-                    "SKU-AP-FLT-X. So sánh giá hiện hành qua pricing.get_quote."
-                )
+            safe = serving.get(chunk_id)
+            # Keep all original IDs for source accounting, but never excluded raw text.
+            stored_body = safe.content if safe else "[Nội dung nội bộ đã loại khỏi chỉ mục]"
+            if safe and safe.transformation != 'identity':
+                title = safe.content.splitlines()[0]
             chunks.append(PolicyChunk(
                 chunk_id=chunk_id, document_id=path.name, title=title.strip(),
-                body=stored_body, access_level=access,
-                effective_from=valid_from, effective_until=valid_until,
-                date_basis=date_basis, content_hash=digest(body),
+                body=stored_body, access_level="public" if safe else "restricted",
+                effective_from=safe.effective_from.isoformat() if safe and safe.effective_from else None,
+                effective_until=safe.effective_until.isoformat() if safe and safe.effective_until else None,
+                # Legacy reference/reviewer tables call the business date call_date.
+                date_basis="order_date" if safe and safe.date_basis == "order_date" else "call_date",
+                content_hash=digest(body),
             ))
     ids = [chunk.chunk_id for chunk in chunks]
     if len(set(ids)) != len(ids):
@@ -102,9 +78,10 @@ def read_policy(directory: Path) -> list[PolicyChunk]:
     return chunks
 
 
-def read_release(root: Path) -> dict[str, Any]:
+def read_release(root: Path, metadata_path: Path | None = None) -> dict[str, Any]:
     if not root.is_dir():
         raise FileNotFoundError(f"BTC data directory does not exist: {root}")
+    fingerprint = source_fingerprint(root, metadata_path)
     names = {
         "products": "catalog/products.json",
         "promotions": "catalog/promotions.json",
@@ -115,7 +92,7 @@ def read_release(root: Path) -> dict[str, Any]:
     for key in ("products", "promotions", "inventory"):
         if release[key].get("reference_date") != REFERENCE_DATE:
             raise ValueError(f"Unexpected reference_date in {names[key]}")
-    release["chunks"] = read_policy(root / "policy")
+    release["chunks"] = read_policy(root / "policy", metadata_path)
     if not release["chunks"]:
         raise ValueError("No BTC policy chunks found")
     for key, member in (("products", "products"), ("promotions", "promotions"), ("inventory", "events"), ("crm", "customers")):
@@ -138,5 +115,31 @@ def read_release(root: Path) -> dict[str, Any]:
     ids = [customer["customer_id"] for customer in customers]
     if len(set(ids)) != len(ids):
         raise ValueError("Duplicate customer_id")
+    for group,key in [('orders','order_id'),('sessions','session_id')]:
+        nested=[item[key] for customer in customers for item in customer.get(group,[])]
+        if len(set(nested))!=len(nested):
+            raise ValueError('Duplicate CRM '+key)
     # Phone numbers are deliberately not unique: BTC includes a shared phone.
+    if fingerprint != source_fingerprint(root, metadata_path):
+        raise ValueError('BTC source changed during parsing')
+    release['source_fingerprint'] = fingerprint
     return release
+
+
+def release_counts(release: dict[str, Any]) -> dict[str, int]:
+    products = release["products"]["products"]
+    customers = release["crm"]["customers"]
+    chunks = release["chunks"]
+    return {
+        "products": len(products),
+        "variants": sum(len(p.get("variants", [])) for p in products),
+        "promotions": len(release["promotions"]["promotions"]),
+        "inventory_events": len(release["inventory"]["events"]),
+        "customers": len(customers),
+        "crm_orders": sum(len(c.get("orders", [])) for c in customers),
+        "crm_sessions": sum(len(c.get("sessions", [])) for c in customers),
+        "policy_documents": len({c.document_id for c in chunks}),
+        "policy_chunks": len(chunks),
+        "public_chunks": sum(c.access_level == "public" for c in chunks),
+        "restricted_chunks": sum(c.access_level != "public" for c in chunks),
+    }

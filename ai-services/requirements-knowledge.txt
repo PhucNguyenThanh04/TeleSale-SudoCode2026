@@ -1,3 +1,3 @@
-# Install explicitly into the knowledge GPU image only; never during startup.
-# Resolve the CUDA-compatible torch build separately for deployment hardware.
-FlagEmbedding>=1.3.5,<2
+# CPU token counting only. Dense embeddings use the Cloudflare API via existing httpx.
+# Install at build/setup time, never at runtime startup.
+tokenizers==0.23.3

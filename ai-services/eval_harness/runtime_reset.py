@@ -5,7 +5,8 @@ import asyncpg
 
 async def reset_runtime_database(
     dsn: str, *, expected_database: str | None = None,
-    expected_server_started_at: str | None = None, app_env: str
+    expected_server_started_at: str | None = None,
+    expected_server_host: str | None = None, expected_server_port: int | None = None, app_env: str
 ) -> None:
     if app_env == "production":
         raise ValueError("Runtime reset is unavailable in production")
@@ -18,6 +19,11 @@ async def reset_runtime_database(
             database = await connection.fetchval("SELECT current_database()")
             if database != expected_database:
                 raise ValueError("Runtime reset database identity does not match the MCP database")
+            if expected_server_host is not None:
+                endpoint = await connection.fetchrow(
+                    "SELECT inet_server_addr()::text AS host, inet_server_port() AS port")
+                if endpoint["host"] != expected_server_host or endpoint["port"] != expected_server_port:
+                    raise ValueError("Runtime reset endpoint does not match MCP services")
             if expected_server_started_at is not None:
                 actual_started_at = await connection.fetchval(
                     "SELECT pg_postmaster_start_time()")
@@ -37,5 +43,18 @@ async def reset_runtime_database(
             await connection.execute("TRUNCATE TABLE " + ", ".join(qualified) + " RESTART IDENTITY")
             if await connection.fetchval("SELECT to_regclass('runtime.tool_order_seq')"):
                 await connection.execute("ALTER SEQUENCE runtime.tool_order_seq RESTART WITH 600001")
+    finally:
+        await connection.close()
+
+
+async def probe_runner_database(dsn: str) -> dict:
+    """Read the actual reset connection identity before warm-up/model calls."""
+    connection = await asyncpg.connect(dsn.replace("postgresql+asyncpg://", "postgresql://", 1))
+    try:
+        row = await connection.fetchrow("SELECT current_database() AS database, "
+            "inet_server_addr()::text AS host, inet_server_port() AS port, "
+            "pg_postmaster_start_time() AS server_started_at")
+        return {"database":row["database"],"host":row["host"],"port":row["port"],
+                "server_started_at":row["server_started_at"].isoformat()}
     finally:
         await connection.close()

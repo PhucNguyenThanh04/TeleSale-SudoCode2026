@@ -1,7 +1,7 @@
 """Benchmark Runner CLI for AI TeleSale SudoCode 2026.
 
 Executes controlled 2x2 experiments (Deep/ReAct x Full/Baseline)
-against live PostgreSQL database, 3 MCP servers, and real LLM (gemma4:31b).
+against the configured PostgreSQL database, four MCP servers and model.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import os
 import sys
 import time
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 import asyncpg
@@ -31,7 +32,7 @@ from app.schemas.agent import TextTurnRequest
 from eval_harness.memory_recall import evaluate_memory_recall
 from eval_harness.reference_adapter import (facts_used, public_memory_writes,
                                             trace_line, write_jsonl)
-from eval_harness.runtime_reset import reset_runtime_database
+from eval_harness.runtime_reset import reset_runtime_database, probe_runner_database
 from eval_harness.scorer import (
     evaluate_diagnostics_and_latency,
     evaluate_guardrails,
@@ -42,29 +43,6 @@ from eval_harness.scorer import (
 
 logger = logging.getLogger("eval_runner")
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s [%(levelname)s] %(message)s")
-
-
-def load_scenarios(path: str) -> dict[str, Any]:
-    """Load scenarios from benchmark_dataset.json or a directory of JSON files."""
-    if os.path.isfile(path):
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, dict) and "scenarios" in data:
-                return {s["scenario_id"]: s for s in data["scenarios"]}
-            elif isinstance(data, list):
-                return {s["scenario_id"]: s for s in data}
-            elif isinstance(data, dict) and "scenario_id" in data:
-                return {data["scenario_id"]: data}
-    elif os.path.isdir(path):
-        scenarios = {}
-        for fname in sorted(os.listdir(path)):
-            if fname.endswith(".json") and not fname.startswith("_"):
-                fpath = os.path.join(path, fname)
-                with open(fpath, "r", encoding="utf-8") as f:
-                    sc = json.load(f)
-                    scenarios[sc["scenario_id"]] = sc
-        return scenarios
-    raise ValueError(f"Invalid scenarios path: {path}")
 
 
 async def run_scenario_call(
@@ -84,6 +62,8 @@ async def run_scenario_call(
     on_row=None,
     rows_out: list[dict[str, Any]] | None = None,
     customer_name: str | None = None,
+    safety_issues: list | None = None,
+    on_turn=None,
 ) -> list[dict[str, Any]]:
     """Execute all turns of a single call in a scenario."""
     session_id = uuid4()
@@ -92,8 +72,8 @@ async def run_scenario_call(
     channel = call_spec.get("channel", channel)
     channel_identity = call_spec.get("channel_identity", customer_phone)
 
-    customer_turns = call_spec.get("customer_turns_asr") or call_spec.get("customer_turns", [])
-    input_mode = call_spec.get("input_mode", "clean")
+    customer_turns = call_spec["customer_turns_asr"] if "customer_turns_asr" in call_spec else call_spec.get("customer_turns", [])
+    input_mode = call_spec.get("input_mode", "asr_transcript" if "customer_turns_asr" in call_spec else "clean")
     trace_rows = rows_out if rows_out is not None else []
     source_ids: list[str] = []
     prior_snapshot = None
@@ -109,13 +89,17 @@ async def run_scenario_call(
             input_mode=input_mode,
         )
 
+        print(f"[eval] {config} {call_name} turn {turn_idx}: model", flush=True)
         t_start = time.perf_counter()
         call_brief_latency = None
 
         try:
             resp = await runtime.run(turn_req)
             latency_ms = (time.perf_counter() - t_start) * 1000.0
-            state = runtime.state_for(turn_req) or {}
+            state = runtime.state_for(turn_req)
+            if state is None:
+                raise RuntimeError("missing_turn_state")
+            customer_name = customer_name or state.get("customer_name")
             agent_text = resp.agent_text or ""
             tool_calls = state.get("tool_calls", [])
             memory_writes = state.get("memory_writes", [])
@@ -124,7 +108,8 @@ async def run_scenario_call(
             facts_used_this_turn = facts_used(
                 agent_text, tool_calls, *prior_snapshot,
                 current_session_id=str(session_id), customer_text=user_text)
-            call_brief_latency = (resp.call_brief or {}).get("latency_ms")
+            if turn_idx == 1 and call_name in {"call_2", "call_3"}:
+                call_brief_latency = (resp.call_brief or {}).get("latency_ms")
 
         except Exception as exc:
             latency_ms = (time.perf_counter() - t_start) * 1000.0
@@ -136,10 +121,14 @@ async def run_scenario_call(
         row = trace_line(run_id, config, scenario_id, call_name, turn_idx,
                          user_text, agent_text, tool_calls, memory_writes,
                          facts_used_this_turn, latency_ms, call_brief_latency,
-                         input_mode, customer_name=customer_name)
+                         input_mode, customer_name=customer_name,
+                         safety_issues=safety_issues, call_spec=call_spec)
+        if on_turn is not None and not agent_text.startswith("[ERROR:"):
+            on_turn(turn_req, resp, state, row)
         source_id = str(turn_req.client_msg_id)
         source_ids.append(source_id)
         if wait_for_jobs is not None:
+            print(f"[eval] {config} {call_name} turn {turn_idx}: waiting memory", flush=True)
             try:
                 await wait_for_jobs(source_id)
             except TimeoutError:
@@ -151,8 +140,13 @@ async def run_scenario_call(
         if capture_writes is not None and "memory_error" not in row:
             try:
                 writes = await capture_writes([source_id])
-                row["memory_writes"] = public_memory_writes(
-                    call_name, turn_idx, writes.get(source_id, []))
+                accepted = writes.get(source_id, [])
+                if safety_issues is not None:
+                    from eval_harness.trace_evidence import inspect_redaction
+                    safety_issues.extend(inspect_redaction(
+                        {**row, "memory_writes": accepted},
+                        {**row, "memory_writes": public_memory_writes(call_name, turn_idx, accepted, customer_name=customer_name)}, call_spec=call_spec))
+                row["memory_writes"] = public_memory_writes(call_name, turn_idx, accepted, customer_name=customer_name)
             except Exception as exc:
                 row["memory_error"] = "capture_failed"
                 row["memory_writes"] = []
@@ -161,6 +155,8 @@ async def run_scenario_call(
         if capture_source_ids:
             row["_client_msg_id"] = source_id
         trace_rows.append(row)
+        status = "failed" if row.get("memory_error") or agent_text.startswith("[ERROR:") else "complete"
+        print(f"[eval] {config} {call_name} turn {turn_idx}: {status}", flush=True)
         if on_row is not None:
             on_row(row)
 
@@ -172,9 +168,16 @@ async def run_scenario_call(
             final_writes = await capture_writes(source_ids)
             for row, source_id in zip(trace_rows, source_ids):
                 if "memory_error" not in row:
-                    row["memory_writes"] = public_memory_writes(
-                        call_name, row["turn"], final_writes.get(source_id, []))
+                    accepted = final_writes.get(source_id, [])
+                    if safety_issues is not None:
+                        from eval_harness.trace_evidence import inspect_redaction
+                        safety_issues.extend(inspect_redaction(
+                            {**row, "memory_writes": accepted},
+                            {**row, "memory_writes": public_memory_writes(call_name, row["turn"], accepted, customer_name=customer_name)}, call_spec=call_spec))
+                    row["memory_writes"] = public_memory_writes(call_name, row["turn"], accepted, customer_name=customer_name)
         except Exception as exc:
+            for row in trace_rows:
+                row["memory_error"] = "capture_failed"
             logger.warning("Final distillation attribution failed for %s: %s",
                            call_name, type(exc).__name__)
 
@@ -184,7 +187,7 @@ async def run_scenario_call(
 def scenario_call_date(calls: dict[str, dict], call_name: str,
                        base_date: date) -> date:
     current = base_date
-    for name, spec in calls.items():
+    for name, spec in sorted(calls.items()):
         current = (date.fromisoformat(spec["call_date"]) if spec.get("call_date")
                    else current + timedelta(days=spec.get("days_later", 0)))
         if name == call_name:
@@ -195,27 +198,57 @@ def scenario_call_date(calls: dict[str, dict], call_name: str,
 def make_baseline_runtime(runtime: Any) -> Any:
     """Preserve CRM identity while isolating writes and hiding prior memory."""
     runtime.memory.include_prior = False
-    runtime.memory.namespace = "baseline"
     return runtime
 
 
-async def prepare_runtime_for_eval(runtime: Any, settings: Settings) -> dict:
-    """Clear mutable rows only after all MCP services identify one database."""
+class PreflightError(RuntimeError):
+    """Only fixed diagnostic codes and known service names cross the boundary."""
+    def __init__(self, code, message, *, service=None):
+        super().__init__(message)
+        self.error_code = code
+        self.service = service
+
+
+async def preflight_runtime(runtime: Any, settings: Settings, *,
+                            expected_database: str, release: dict) -> dict:
+    """Read-only checks; target is supplied by the operator, never inferred."""
+    if settings.app_env == "production" or not expected_database:
+        raise ValueError("Non-production --expected-database is required")
     identities = []
-    for service in ("catalog", "order", "memory"):
+    for service in ("catalog", "order", "memory", "knowledge"):
         identity = await runtime.tools.database_identity(service)
-        if not isinstance(identity, dict) or identity.get("error"):
-            raise RuntimeError(f"Cannot verify {service} MCP database identity")
-        identities.append((identity.get("database"), identity.get("host"),
-                           identity.get("port"), identity.get("server_started_at")))
-    if len(set(identities)) != 1 or not identities[0][0]:
-        raise RuntimeError("MCP services point to different databases")
+        if (not isinstance(identity, dict) or identity.get("error") or
+                identity.get("database") != expected_database or
+                not isinstance(identity.get("host"), str) or not identity["host"] or
+                type(identity.get("port")) is not int or not identity.get("server_started_at")):
+            raise PreflightError("mcp_database_identity_unavailable",
+                f"Cannot verify {service} MCP database identity", service=service)
+        identities.append(identity)
+        if identity != identities[0]:
+            raise PreflightError("mcp_database_identity_mismatch", "MCP services point to different databases", service=service)
+    runner_identity = await probe_runner_database(database_url(settings))
+    if runner_identity != identities[0]:
+        raise PreflightError("runner_database_identity_mismatch", "runner_database_identity_mismatch")
+    try:
+        served = await runtime.tools.knowledge_release()
+    except Exception:
+        raise PreflightError("knowledge_release_unavailable", "Knowledge release is unavailable", service="knowledge") from None
+    if any(not release.get(key) or served.get(key) != release[key]
+           for key in ("release_id", "manifest_hash")):
+        raise PreflightError("knowledge_release_mismatch", "Knowledge release is unavailable or changed", service="knowledge")
+    return identities[0]
+
+
+async def prepare_runtime_for_eval(runtime: Any, settings: Settings, *,
+                                   expected_database: str, release: dict) -> dict:
+    identity = await preflight_runtime(runtime, settings,
+        expected_database=expected_database, release=release)
     await reset_runtime_database(database_url(settings),
-                                 expected_database=identities[0][0],
-                                 expected_server_started_at=identities[0][3],
-                                 app_env=settings.app_env)
-    return {"database": identities[0][0], "host": identities[0][1],
-            "port": identities[0][2], "server_started_at": identities[0][3]}
+        expected_database=expected_database,
+        expected_server_started_at=identity["server_started_at"],
+        expected_server_host=identity["host"], expected_server_port=identity["port"],
+        app_env=settings.app_env)
+    return identity
 
 
 async def run_scenario_stream(
@@ -227,6 +260,7 @@ async def run_scenario_stream(
     capture_writes=None,
     on_row=None,
     trace: dict[tuple[str, str], list[dict[str, Any]]] | None = None,
+    safety_issues: list | None = None, on_turn=None,
 ) -> dict[tuple[str, str], list[dict[str, Any]]]:
     """Run all scenarios through the harness runtime."""
     trace = trace if trace is not None else {}
@@ -237,10 +271,16 @@ async def run_scenario_stream(
         raw_phone = sc.get("customer_phone", "0900000000")
         calls = sc.get("calls", {})
 
-        print(f"  [{idx:02d}/{total_sc:02d}] Scenario {sid} ({sc.get('persona')})...", end="", flush=True)
+        print(f"[eval] scenario {idx}/{total_sc}: starting", flush=True)
         t_sc_start = time.perf_counter()
 
-        for call_name, call_spec in calls.items():
+        for call_name, call_spec in sorted(calls.items()):
+            from eval_harness.seed_history import SeedHistoryGateway, parse_seed_history
+            if isinstance(getattr(runtime, "tools", None), SeedHistoryGateway):
+                identities = {c.get("channel", "hotline"): c.get("channel_identity", raw_phone)
+                              for c in calls.values()}
+                runtime.tools.select(sid, identities, parse_seed_history(
+                    call_spec.get("seed_history", []), call_date=scenario_call_date(calls, call_name, base_date)))
             call_phone = raw_phone
             rows: list[dict[str, Any]] = []
             trace[(sid, call_name)] = rows
@@ -259,11 +299,11 @@ async def run_scenario_stream(
                 wait_for_jobs=wait_for_jobs,
                 capture_writes=capture_writes,
                 on_row=on_row,
-                rows_out=rows,
+                rows_out=rows, safety_issues=safety_issues, on_turn=on_turn,
             )
 
         sc_duration = time.perf_counter() - t_sc_start
-        print(f" Done ({sc_duration:.1f}s)")
+        print(f"[eval] scenario {idx}/{total_sc}: finished ({sc_duration:.1f}s)", flush=True)
 
     return trace
 
@@ -303,6 +343,87 @@ def assert_trace_ready(scenarios: dict[str, Any],
                     "inspect the saved trace and LangMem worker job error; no score was published")
             if str(row.get("agent_text", "")).startswith("[ERROR:"):
                 raise RuntimeError("turn failed during evaluation")
+
+
+class WarmupGateway:
+    """Warm up the same graph/model without any mutable service access."""
+    def __init__(self, inner):
+        self.inner = inner
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+    async def invoke(self, name, args):
+        if name == "crm.get_customer":
+            return {"found": False}
+        if name == "memory.read":
+            return {"history": [], "profile": {}, "episodes": [], "turn_no": 1}
+        if name == "memory.write":
+            # Each warm-up uses a new session with exactly one synthetic turn.
+            # Persist validates the normal memory.write response contract.
+            return {"turn_no": 1, "memory_writes": []}
+        if name in {"order.create", "order.update", "schedule.callback", "handoff.transfer"}:
+            return {"error": "warmup_write_blocked"}
+        return await self.inner.invoke(name, args)
+
+    async def invoke_trusted(self, name, args, *pos, **kwargs):
+        # All mutation calls, including trusted agent calls, pass the same gate.
+        return await self.invoke(name, args)
+
+
+async def warm_up_configuration(runtime, *, turns: int = 3) -> dict:
+    for index in range(turns):
+        print(f"[eval] warmup {index + 1}/{turns}", flush=True)
+        await runtime.run(TextTurnRequest(client_msg_id=uuid4(), session_id=uuid4(),
+            channel="hotline", channel_identity=None, input_mode="clean", on=date(2026, 10, 15), text="Xin chào, bạn có thể hỗ trợ gì?"))
+    return {"turns": turns, "scored": False}
+
+
+async def run_configuration(*, scenarios: dict[str, dict], config: str, runtime,
+                            run_id: str, out: Path, wait_for_jobs, capture_writes,
+                            on_row=None, on_turn=None, btc_root: Path | None = None, safety_issues: list | None = None) -> dict:
+    from eval_harness.scenario_contract import dataset_coverage
+    if config == "baseline":
+        config = "baseline_no_memory"
+    if config not in {"full", "baseline_no_memory"}:
+        raise ValueError("unsupported_config")
+    runtime.memory.include_prior = config == "full"
+    trace = {}
+    if safety_issues is None:
+        safety_issues = []
+    original_on_turn = on_turn
+    if btc_root is not None:
+        from jsonschema import Draft202012Validator
+        handoff_validator = Draft202012Validator(json.loads((Path(btc_root) / "schemas/handoff_brief.schema.json").read_text()))
+        def on_turn(request, response, state, row):
+            for tool in state.get("tool_calls", []):
+                if tool.get("name") == "handoff.transfer":
+                    if next(handoff_validator.iter_errors(tool.get("args", {}).get("brief")), None):
+                        raise RuntimeError("handoff_schema_invalid")
+            if original_on_turn:
+                original_on_turn(request,response,state,row)
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", encoding="utf-8") as stream:
+        def append(row):
+            stream.write(json.dumps(row, ensure_ascii=False) + "\n")
+            stream.flush()
+            if on_row:
+                on_row(row)
+        try:
+            await run_scenario_stream(runtime, scenarios,
+                is_baseline=config == "baseline_no_memory", run_tag=run_id,
+                wait_for_jobs=wait_for_jobs, capture_writes=capture_writes,
+                on_row=append, trace=trace, safety_issues=safety_issues, on_turn=on_turn)
+        finally:
+            # Publish final attribution, including late identity backfill.
+            write_jsonl(trace, out)
+    assert_trace_ready(scenarios, trace)
+    if btc_root is not None:
+        validator = Draft202012Validator(json.loads((Path(btc_root) / "schemas/trace_log.schema.json").read_text()))
+        if any(next(validator.iter_errors(row), None) for rows in trace.values() for row in rows):
+            raise RuntimeError("trace_schema_invalid")
+    return {"coverage": dataset_coverage(scenarios), "trace": trace, "safety_issues": safety_issues}
 
 
 async def wait_for_distillation(dsn: str, source_turn_id: str,
@@ -388,156 +509,108 @@ def print_cli_summary(agent_kind: str, results: dict[str, Any]) -> None:
     print("=" * 65 + "\n")
 
 
+async def execute_configuration(*, settings, scenarios, config, run_id, out,
+                                btc_root, expected_database, release, runtime=None,
+                                worker_wait_seconds=180, on_turn=None):
+    """One authorized live lifecycle, shared by both single-trace CLIs."""
+    if Path(out).exists() or Path(out).with_suffix(".report.json").exists():
+        raise FileExistsError("output_exists_choose_new_path")
+    settings = settings.model_copy(update={"langfuse_capture_content": False})
+    from app.knowledge.context import release_context
+    from eval_harness.seed_history import SeedHistoryGateway
+    from eval_harness.official_pipeline import atomic_json
+    if runtime is None:
+        runtime = build_runtime(settings)
+        runtime = build_runtime(settings, gateway=SeedHistoryGateway(runtime.tools))
+    runtime.memory.include_prior = config == "full"
+    issues = []
+    phase = "preflight"
+    try:
+        with release_context(release["release_id"]):
+            print(f"[eval] {config}: preflight", flush=True)
+            await preflight_runtime(runtime, settings, expected_database=expected_database, release=release)
+            phase = "warmup"
+            warm = build_runtime(settings, gateway=WarmupGateway(runtime.tools))
+            warm.memory.include_prior = config == "full"
+            await warm_up_configuration(warm)
+            phase = "reset"
+            print(f"[eval] {config}: resetting approved runtime", flush=True)
+            identity = await prepare_runtime_for_eval(runtime, settings,
+                expected_database=expected_database, release=release)
+            phase = "conversation"
+            print(f"[eval] {config}: conversations", flush=True)
+            result = await run_configuration(scenarios=scenarios, config=config, runtime=runtime,
+                run_id=run_id, out=out, btc_root=btc_root,
+                wait_for_jobs=lambda source: wait_for_distillation(database_url(settings), source, worker_wait_seconds),
+                capture_writes=lambda ids: read_distillation_writes(database_url(settings), ids), on_turn=on_turn, safety_issues=issues)
+    except Exception as exc:
+        atomic_json(Path(out).with_suffix(".report.json"), {"status":"failed", "run_id":run_id,
+            "config":config,"error_type":type(exc).__name__,
+            "error_code":getattr(exc,"error_code",phase + "_failed"),
+            "phase":phase,"service":getattr(exc,"service",None),"safety_issues":issues})
+        raise RuntimeError("configuration_failed; inspect safe runner report") from None
+    result["database_identity"] = identity
+    result["status"] = "invalid" if result["safety_issues"] else "completed"
+    report = {k:v for k,v in result.items() if k != "trace"}
+    history = [{"scenario_id":sid,"call":call,"session_id":h["session_id"],
+                "sha256":hashlib.sha256(json.dumps(h,sort_keys=True).encode()).hexdigest()}
+               for sid,sc in scenarios.items() for call,spec in sc['calls'].items()
+               for h in spec.get('seed_history',[])]
+    report.update(run_id=run_id, config=config, knowledge_release_id=release["release_id"], seed_history=history,
+                  knowledge_release=release, warmup_turns=3, streaming=False)
+    atomic_json(Path(out).with_suffix(".report.json"), report)
+    return result
+
+
 async def main() -> None:
-    parser = argparse.ArgumentParser(description="Eval Harness Runner for Deep vs ReAct Agent")
-    parser.add_argument("--agent", choices=["deep", "react"], required=True, help="Agent core to evaluate")
-    parser.add_argument("--config", choices=["full", "baseline", "both"], default="full", help="Eval config to run")
-    parser.add_argument("--variant", choices=["enabled"],
-                        default="enabled", help="Deployment memory mode being measured")
-    parser.add_argument("--seed", type=int, default=7,
-                        help="Identical model seed across ablation runs")
-    parser.add_argument("--worker-wait-seconds", type=float, default=180,
-                        help="Maximum wait for background memory before the next turn")
-    parser.add_argument("--scenarios", default="eval_harness/benchmark_dataset.json", help="Path to scenarios")
-    parser.add_argument("--dry-run", type=int, default=0, help="Run only first N scenarios for dry-run")
-    parser.add_argument("--out", default=None, help="Output JSON path")
-    parser.add_argument("--run-id", default=None, help="Unique ID shared by this paired run")
-    args = parser.parse_args()
-
-    out_path = args.out
-    if not out_path:
-        out_dir = "eval_harness/results"
-        os.makedirs(out_dir, exist_ok=True)
-        out_path = os.path.join(
-            out_dir, f"benchmark_{args.agent}_{args.variant}_{args.config}.json")
-    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
-
-    scenarios_all = load_scenarios(args.scenarios)
-    if args.dry_run > 0:
-        limited_keys = list(scenarios_all.keys())[: args.dry_run]
-        scenarios = {k: scenarios_all[k] for k in limited_keys}
-        print(f"Running DRY-RUN mode on {len(scenarios)} scenario(s)...")
-    else:
-        scenarios = scenarios_all
-        print(f"Loaded {len(scenarios)} scenarios for evaluation.")
-
-    settings = Settings()
+    from eval_harness.scenario_contract import load_scenarios as checked_load
     from app.knowledge.context import capture_release
-    release = await capture_release(database_url(settings))
-    os.environ['KNOWLEDGE_RELEASE_ID'] = release['release_id']
-    settings.agent_kind = args.agent
-    settings.llm_seed = args.seed
-    print(f"\nInitializing Runtime for Agent: '{args.agent.upper()}' (Model: {settings.llm_model})...")
-    runtime = build_runtime(settings)
-
-    trace_full: dict[tuple[str, str], list[dict[str, Any]]] = {}
-    trace_baseline: dict[tuple[str, str], list[dict[str, Any]]] = {}
-    database_identity = None
-
-    def write_runner_report(path: str, config: str, run_id: str) -> None:
-        report = {"run_id": run_id, "config": config,
-                  "database_identity": database_identity,
-                  "knowledge_release_id": os.environ.get("KNOWLEDGE_RELEASE_ID", "btc-only")}
-        with open(path.removesuffix(".jsonl") + ".report.json", "w", encoding="utf-8") as stream:
-            json.dump(report, stream, ensure_ascii=False)
-
-    def trace_writer(path: str):
-        stream = open(path, "w", encoding="utf-8")
-
-        def append(row: dict[str, Any]) -> None:
-            stream.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
-            stream.flush()
-
-        return stream, append
-
-    if args.config in ("full", "both"):
-        database_identity = await prepare_runtime_for_eval(runtime, settings)
-        print(f"\n--- Running FULL Configuration (With Inter-Session Memory) ---")
-        waiter = lambda source_id: wait_for_distillation(
-            database_url(settings), source_id, args.worker_wait_seconds)
-        path = out_path.removesuffix(".json") + "_full.jsonl"
-        stream, append = trace_writer(path)
+    parser = argparse.ArgumentParser(description="BTC text runner; live model and runtime reset")
+    parser.add_argument("--agent", choices=["deep", "react"], required=True)
+    parser.add_argument("--config", choices=["full", "baseline", "baseline_no_memory", "both"], default="full")
+    parser.add_argument("--variant", choices=["enabled"], default="enabled")
+    parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--worker-wait-seconds", type=float, default=180)
+    parser.add_argument("--scenarios", required=True, type=Path)
+    parser.add_argument("--btc-root", required=True, type=Path)
+    parser.add_argument("--expected-database", default=os.getenv("EVAL_EXPECTED_DATABASE"))
+    parser.add_argument("--dry-run", type=int, help="Retired: use preflight --offline-check or --limit-scenarios for LIVE smoke")
+    parser.add_argument("--limit-scenarios", type=int, help="LIVE smoke subset (calls model and resets runtime)")
+    parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument("--run-id", default=None)
+    args = parser.parse_args()
+    if args.dry_run is not None:
+        parser.error("--dry-run retired; use preflight --offline-check or --limit-scenarios for LIVE smoke")
+    if not args.expected_database:
+        parser.error("--expected-database or EVAL_EXPECTED_DATABASE is required")
+    scenarios = checked_load(args.scenarios, btc_root=args.btc_root)
+    if args.limit_scenarios is not None:
+        if args.limit_scenarios < 1:
+            parser.error("--limit-scenarios must be positive")
+        scenarios = dict(list(scenarios.items())[:args.limit_scenarios])
+    settings = Settings()
+    settings.agent_kind, settings.llm_seed = args.agent, args.seed
+    release = (json.loads(os.environ["_EVAL_PINNED_RELEASE"]) if os.getenv("_EVAL_PINNED_RELEASE")
+               else await capture_release(database_url(settings)))
+    configurations = ["full", "baseline_no_memory"] if args.config == "both" else [
+        "baseline_no_memory" if args.config == "baseline" else args.config]
+    from eval_harness.official_pipeline import atomic_json
+    for config in configurations:
+        suffix = "baseline" if config == "baseline_no_memory" else config
+        trace = args.out.with_name(args.out.stem + f"_{suffix}.jsonl")
         try:
-            await run_scenario_stream(runtime, scenarios, is_baseline=False,
-                run_tag=f"{args.run_id}-full" if args.run_id else args.variant,
-                wait_for_jobs=waiter,
-                capture_writes=lambda ids: read_distillation_writes(
-                    database_url(settings), ids), on_row=append, trace=trace_full)
-        except Exception:
-            logger.exception("Full evaluation stopped unexpectedly; partial trace retained")
-        finally:
-            stream.close()
-            write_jsonl(trace_full, path)
-        assert_trace_ready(scenarios, trace_full)
-        write_runner_report(path, "full", f"{args.run_id}-full" if args.run_id else args.variant)
+            result = await execute_configuration(settings=settings, scenarios=scenarios, config=config,
+                run_id=(args.run_id or str(uuid4())) + "-" + suffix, out=trace,
+                btc_root=args.btc_root, expected_database=args.expected_database, release=release,
+                worker_wait_seconds=args.worker_wait_seconds)
+            if result["status"] != "completed":
+                raise RuntimeError("redaction_affects_scoring")
+        except Exception as exc:
+            if not trace.with_suffix(".report.json").exists():
+                atomic_json(trace.with_suffix(".report.json"), {"status":"failed", "error_type":type(exc).__name__})
+            raise RuntimeError("configuration_failed; inspect safe runner report") from None
+    atomic_json(args.out, {"status":"completed", "label":"internal_diagnostic_only", "configurations":configurations})
 
-    if args.config in ("baseline", "both"):
-        baseline_runtime = make_baseline_runtime(build_runtime(settings))
-        database_identity = await prepare_runtime_for_eval(baseline_runtime, settings)
-        print(f"\n--- Running BASELINE Configuration (No Inter-Session Memory) ---")
-        baseline_waiter = lambda source_id: wait_for_distillation(
-            database_url(settings), source_id, args.worker_wait_seconds)
-        path = out_path.removesuffix(".json") + "_baseline.jsonl"
-        stream, append = trace_writer(path)
-        try:
-            await run_scenario_stream(baseline_runtime, scenarios,
-                is_baseline=True,
-                run_tag=f"{args.run_id}-baseline" if args.run_id else "baseline",
-                wait_for_jobs=baseline_waiter,
-                on_row=append, trace=trace_baseline)
-        except Exception:
-            logger.exception("Baseline evaluation stopped unexpectedly; partial trace retained")
-        finally:
-            stream.close()
-        assert_trace_ready(scenarios, trace_baseline)
-        write_runner_report(path, "baseline_no_memory",
-                            f"{args.run_id}-baseline" if args.run_id else "baseline")
-    print("\nCalculating internal diagnostic metrics...")
-    eval_target_trace = trace_full if trace_full else (trace_baseline or {})
-
-    tsr_results = evaluate_task_success(scenarios, eval_target_trace)
-    mem_results = evaluate_memory_metrics(scenarios, eval_target_trace, trace_baseline if args.config == "both" else None)
-    recall_results = evaluate_memory_recall(scenarios, eval_target_trace)
-    hallu_results = evaluate_hallucination(scenarios, eval_target_trace)
-    guard_results = evaluate_guardrails(scenarios, eval_target_trace)
-    diag_results = evaluate_diagnostics_and_latency(eval_target_trace, warm_up_turns=0 if args.dry_run else 3)
-
-    output_doc = {
-        "meta": {
-            "agent_kind": args.agent,
-            "model": settings.llm_model,
-            "temperature": settings.llm_temperature,
-            "max_tokens": settings.llm_max_tokens,
-            "seed": settings.llm_seed,
-            "variant": args.variant,
-            "dataset_hash": hashlib.sha256(json.dumps(scenarios, sort_keys=True,
-                ensure_ascii=False).encode()).hexdigest(),
-            "scenario_ids": sorted(scenarios),
-            "config": args.config,
-            "reference_date": "2026-10-15",
-            "total_scenarios_evaluated": len(scenarios),
-            "scenarios_with_trace": len({sid for sid, _ in eval_target_trace}),
-            "memory_job_errors": {"full": memory_failure_counts(trace_full),
-                                  "baseline": memory_failure_counts(trace_baseline)},
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        },
-        "full_metrics": {
-            "tsr": tsr_results,
-            "memory": mem_results,
-            "memory_recall": recall_results,
-            "hallucination": hallu_results,
-            "guardrails": guard_results,
-            "diagnostics": diag_results,
-        },
-        "scenarios_breakdown": tsr_results.get("scenario_details", {}),
-    }
-
-    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(output_doc, f, indent=2, ensure_ascii=False)
-
-    print_cli_summary(args.agent, output_doc)
-    print(f"Saved complete benchmark results to: {out_path}")
 
 if __name__ == "__main__":
     asyncio.run(main())

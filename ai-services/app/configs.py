@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     mcp_knowledge_url: str | None = None
     knowledge_policy_config_file: Path | None = None
     knowledge_policy_source_dir: Path | None = None
+    cloudflare_account_id: str | None = None
+    cloudflare_api_token: SecretStr | None = None
+    qdrant_url: str = 'http://127.0.0.1:6333'
     mcp_catalog_url: str | None = None
     mcp_order_url: str | None = None
     mcp_memory_url: str | None = None

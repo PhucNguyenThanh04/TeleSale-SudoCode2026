@@ -74,6 +74,7 @@ class RunnerFailureTests(unittest.IsolatedAsyncioTestCase):
         from eval_harness.benchmark_runner import main
 
         class Runtime:
+            tools = SimpleNamespace()
             memory = SimpleNamespace(include_prior=True, namespace="")
 
             async def run(self, request):
@@ -93,8 +94,10 @@ class RunnerFailureTests(unittest.IsolatedAsyncioTestCase):
                 encoding="utf-8")
             report = Path(folder) / "report.json"
             args = ["benchmark_runner", "--agent", "deep", "--scenarios",
-                    str(dataset), "--out", str(report), "--run-id", "case-run"]
-            with patch.object(sys, "argv", args), patch(
+                    str(dataset), "--out", str(report), "--run-id", "case-run",
+                    "--btc-root", str(Path(__file__).resolve().parents[3] / "BTC-Data-Vong1-TEAMS"),
+                    "--expected-database", "offline"]
+            with patch("app.knowledge.context.capture_release", new_callable=AsyncMock, return_value={"release_id": "btc-only", "manifest_hash": "btc-only"}), patch("eval_harness.benchmark_runner.preflight_runtime", new_callable=AsyncMock), patch("eval_harness.benchmark_runner.warm_up_configuration", new_callable=AsyncMock), patch.object(sys, "argv", args), patch(
                 "eval_harness.benchmark_runner.build_runtime", return_value=Runtime()
             ), patch(
                 "eval_harness.benchmark_runner.prepare_runtime_for_eval", new_callable=AsyncMock
@@ -104,7 +107,7 @@ class RunnerFailureTests(unittest.IsolatedAsyncioTestCase):
                 "eval_harness.benchmark_runner.read_distillation_writes",
                 new_callable=AsyncMock, return_value={}
             ):
-                with self.assertRaisesRegex(RuntimeError, "turn"):
+                with self.assertRaisesRegex(RuntimeError, "configuration_failed"):
                     await main()
             self.assertTrue((Path(folder) / "report_full.jsonl").exists())
             row = json.loads((Path(folder) / "report_full.jsonl").read_text().splitlines()[0])

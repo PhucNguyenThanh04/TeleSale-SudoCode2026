@@ -1,5 +1,5 @@
 """Compose the dedicated knowledge process; startup never builds the corpus."""
-import os
+from app.knowledge.config import qdrant_url
 
 from qdrant_client import AsyncQdrantClient
 
@@ -23,7 +23,7 @@ def main() -> None:
         max_overflow=settings.db_max_overflow,
     )
     client = AsyncQdrantClient(
-        url=os.environ.get('QDRANT_URL', 'http://127.0.0.1:6333'),
+        url=qdrant_url(),
         timeout=config.dependency_timeout_seconds,
     )
     service = PolicySearchService(

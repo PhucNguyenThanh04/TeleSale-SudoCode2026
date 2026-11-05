@@ -41,3 +41,40 @@ def test_historical_offer_is_not_claimed_current():
 def test_stock_polarity_and_historical_scope():
     assert pairs('Hiện không còn hàng.') == [('in_stock', False)]
     assert pairs('Lần trước hết hàng; hiện còn hàng.') == [('historical_in_stock', False), ('in_stock', True)]
+
+
+@pytest.mark.parametrize('text,expected', [
+    ('Em là người thật ạ.', [('is_human', True)]),
+    ('Em không phải là người thật, em là AI.', []),
+    ('Em là người thật phải không?', []),
+    ('Khách hỏi “em là người thật” nghĩa là gì?', []),
+    ('Em không phải bot.', [('is_human', True)]),
+    ('Đổi trả trong 30 ngày; phí đổi 50.000đ; bảo hành 12 tháng.',
+     [('return_days',30),('exchange_fee_vnd',50000),('warranty_months',12)]),
+    ('Giá 50.000đ.', [('price_vnd',50000)]),
+    ('Hiện miễn phí vận chuyển.', [('freeship',True)]),
+])
+def test_extended_contract_claims(text, expected):
+    assert pairs(text) == expected
+
+
+@pytest.mark.parametrize('text,expected', [
+    ('Giá năm triệu hai trăm nghìn đồng.', [('price_vnd',5200000)]),
+    ('Đổi trả trong ba mươi ngày.', [('return_days',30)]),
+    ('Giao trong hai ngày.', [('delivery_days',2)]),
+    ('Nếu mua hôm nay thì giao trong 2 ngày.', []),
+    ('Lần trước giao trong 2 ngày.', [('historical_delivery_days',2)]),
+])
+def test_spoken_numbers_and_delivery_scope(text,expected):
+    assert pairs(text)==expected
+
+
+@pytest.mark.parametrize('text,expected', [
+    ('Giá không phải 500.000đ mà là 400.000đ.', [('price_vnd',400000)]),
+    ('Giá 400.000đ chứ không phải 500.000đ.', [('price_vnd',400000)]),
+    ('Chính sách cũ phiên bản 2026-06 đã hết hiệu lực.',
+     [('historical_policy_version','2026-06'),('old_policy_superseded',True)]),
+    ('Size mới hiện còn hàng.', [('new_size_in_stock',True)]),
+])
+def test_corrections_and_policy_scope(text,expected):
+    assert pairs(text)==expected

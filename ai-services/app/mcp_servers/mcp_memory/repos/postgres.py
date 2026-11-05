@@ -44,12 +44,11 @@ class MemoryRepo:
         """Report the database reached by this pool, without exposing credentials."""
         async with self.transaction() as conn:
             row = await conn.fetchrow(
-                "SELECT current_database() AS database, "
+                "SELECT current_database() AS database, inet_server_addr()::text AS host, inet_server_port() AS port, "
                 "pg_postmaster_start_time() AS server_started_at"
             )
-        url = make_url(self.dsn)
-        return {"database": row["database"], "host": url.host,
-                "port": url.port or 5432,
+        return {"database": row["database"], "host": row["host"],
+                "port": row["port"],
                 "server_started_at": row["server_started_at"].isoformat()}
 
     async def owner(self, conn, session_id: str) -> str | None:

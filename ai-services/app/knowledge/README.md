@@ -41,12 +41,16 @@ mcp_knowledge/
 ├── server.py            # Khởi tạo và nối thành phần, chạy MCP
 ├── config.py            # Đọc/validate cấu hình phục vụ
 ├── schemas.py           # Input/output tool, trusted context, runtime config
+├── assets/
+│   └── bge-m3-tokenizer.json # Tokenizer đã pin/hash; không chứa model weights
 ├── repos/
 │   ├── postgres.py      # Đọc serving snapshot, manifest và tombstone
 │   └── qdrant.py        # Upsert/query/verify dense+sparse index
 ├── services/
 │   ├── knowledge.py     # Readiness, search, nhóm evidence và pin release
-│   ├── embedding.py     # Model local, queue hữu hạn, một worker encode
+│   ├── embedding.py     # Tokenizer CPU, queue hữu hạn, dense HTTP encoder
+│   ├── cloudflare.py    # REST adapter và phân loại lỗi provider an toàn
+│   ├── bm25.py          # Tokenizer Unicode, artifact theo release, term weights CPU
 │   └── dependencies.py  # Deadline, retry và circuit breaker
 └── tools/
     ├── auth.py          # Ký/xác minh trusted context gắn với request

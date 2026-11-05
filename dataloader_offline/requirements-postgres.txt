@@ -1,1 +1,2 @@
 asyncpg>=0.30,<1
+pydantic>=2,<3

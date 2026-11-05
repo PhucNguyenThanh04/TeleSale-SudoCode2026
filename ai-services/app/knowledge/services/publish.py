@@ -1,8 +1,10 @@
 """Build immutable hybrid generations outside the approval/CAS transaction."""
+from app.knowledge.config import qdrant_url
 import time
 from app.knowledge.services.permissions import require_permission
 from app.knowledge.schemas import Conflict, KnowledgeError, digest, timestamp
-from app.knowledge.schemas import SourceChunk
+from app.knowledge.schemas import SourceChunk, HybridVector
+from app.mcp_servers.mcp_knowledge.services.bm25 import build_bm25_artifact, BM25Encoder, document_text
 from app.knowledge.policy.source import parse_policy_sources, content_hash
 from app.knowledge.services.source_validation import validate_sources
 
@@ -57,6 +59,12 @@ def _supplement(chunks, items):
     return list(rows.values())
 
 
+def _check_policy_sources(source_dir,metadata,items,snapshot_hash):
+    current=[c.model_dump(mode='json') for c in _supplement(parse_policy_sources(source_dir,metadata),items)]
+    if digest(sorted(current,key=lambda row:row['chunk_id']))!=snapshot_hash:
+        raise Conflict('Policy source changed during build')
+
+
 async def build_policy_release(repo, encoder, index, *, source_dir, metadata, revision_ids,
                                expected_active_id, actor_id):
     async with repo.transaction() as tx:
@@ -65,11 +73,12 @@ async def build_policy_release(repo, encoder, index, *, source_dir, metadata, re
             raise Conflict('Active release changed')
         items=await _approved(tx,revision_ids)
     config=encoder.config
-    chunks=_supplement(parse_policy_sources(source_dir,metadata),items)
+    chunks=sorted(_supplement(parse_policy_sources(source_dir,metadata),items), key=lambda c:c.chunk_id)
     snapshot=[c.model_dump(mode='json') for c in chunks]
     release_id='policy-'+digest({'chunks':snapshot,'config':config.model_dump(mode='json'),
         'items':items,'base':expected_active_id})[:32]
-    manifest={'index_kind':'hybrid','schema_version':2,'collection':release_id.replace('-','_'),
+    manifest={'index_kind':'hybrid','schema_version':3,'pipeline':'cloudflare_dense_bm25',
+        'bm25':build_bm25_artifact([document_text(c) for c in chunks],config),'shards':1,'collection':release_id.replace('-','_'),
         'model_fingerprint':config.fingerprint(),'config':config.model_dump(mode='json'),
         'config_hash':digest(config.model_dump(mode='json')),'metadata_hash':digest(metadata),
         'source_hashes':{c.chunk_id:c.source_hash for c in chunks},
@@ -77,6 +86,7 @@ async def build_policy_release(repo, encoder, index, *, source_dir, metadata, re
         'snapshot_hash':digest(sorted(snapshot,key=lambda row:row['chunk_id'])),'items':[{key:item[key] for key in ('id','gap_id','kind','sources','content_hash','test_hash')} for item in items],'checks':{'index_complete':False}}
     release={'id':release_id,'manifest':manifest,'manifest_hash':digest(manifest),'status':'building',
         'base_release_id':expected_active_id,'prepared_by':actor_id,'created_at':timestamp()}
+    cached = None
     async with repo.transaction() as tx:
         previous=await tx.get('releases',release_id)
         if previous and previous.get('status') in {'erased','revoked'}:
@@ -84,21 +94,39 @@ async def build_policy_release(repo, encoder, index, *, source_dir, metadata, re
         if previous and previous.get('status')=='ready':
             if previous['manifest'].get('snapshot_hash')!=manifest['snapshot_hash']:
                 raise Conflict('Immutable release mismatch')
-            return previous
-        await tx.put('releases',release_id,release)
-        for chunk in snapshot:
-            if await tx.get('policy_revocations',chunk['chunk_id']):
-                raise Conflict('Source revoked')
-            await tx.put('policy_sources',release_id+':'+chunk['chunk_id'],
-                {'id':release_id+':'+chunk['chunk_id'],'release_id':release_id,'chunk':chunk})
+            cached = previous
+        else:
+            await tx.put('releases',release_id,release)
+            for chunk in snapshot:
+                if await tx.get('policy_revocations',chunk['chunk_id']):
+                    raise Conflict('Source revoked')
+                await tx.put('policy_sources',release_id+':'+chunk['chunk_id'],
+                    {'id':release_id+':'+chunk['chunk_id'],'release_id':release_id,'chunk':chunk})
+    if cached:
+        await index.verify(cached,config,chunks=chunks)
+        _check_policy_sources(source_dir,metadata,items,manifest['snapshot_hash'])
+        async with repo.transaction() as tx:
+            await require_permission(tx,actor_id)
+            if ((await tx.get('active','current') or {}).get('release_id')!=expected_active_id
+                    or await tx.get('releases',release_id)!=cached):
+                raise Conflict('Release changed during verification')
+            if await _approved(tx,revision_ids)!=items:
+                raise Conflict('Approval changed during verification')
+            for chunk in chunks:
+                if await tx.get('policy_revocations',chunk.chunk_id):
+                    raise Conflict('Source revoked')
+        return cached
     if not encoder.ready:
         await encoder.start()
-    vectors=[]
+    lexical=BM25Encoder(manifest['bm25'])
     for chunk in chunks:
-        vectors.append(await encoder.encode(chunk.content+'\n'+'\n'.join(chunk.search_aliases),
-            deadline=time.monotonic()+config.deadline_seconds))
-    await index.upsert(release,chunks,vectors,config=config)
-    await index.verify(release,config)
+        text=document_text(chunk)
+        dense=await encoder.encode(text,deadline=time.monotonic()+config.deadline_seconds)
+        indices,weights=lexical.encode_document(text)
+        vector=HybridVector(dense=dense,sparse_indices=indices,sparse_values=weights)
+        await index.upsert(release,[chunk],[vector],config=config)
+    await index.verify(release,config,chunks=chunks)
+    _check_policy_sources(source_dir,metadata,items,manifest['snapshot_hash'])
     async with repo.transaction() as tx:
         await require_permission(tx,actor_id)
         if (await tx.get('active','current') or {}).get('release_id')!=expected_active_id:
@@ -112,7 +140,7 @@ async def build_policy_release(repo, encoder, index, *, source_dir, metadata, re
             if await tx.get('policy_revocations',chunk.chunk_id):
                 raise Conflict('Source revoked during build')
         manifest['checks']={'index_complete':True,'relevance_verified':config.relevance_verified}
-        release.update(manifest_hash=digest(manifest),status='ready' if config.relevance_verified else 'prepared')
+        release.update(manifest_hash=digest(manifest),status='ready')
         await tx.put('releases',release_id,release)
         await tx.put('audit','build-'+release_id,{'id':'build-'+release_id,'action':'prepare_hybrid',
             'release_id':release_id,'actor_id':actor_id,'at':timestamp()})
@@ -123,8 +151,9 @@ async def validate_hybrid_release(tx,release):
     manifest=release['manifest']
     if manifest.get('index_kind')!='hybrid' or not manifest.get('checks',{}).get('index_complete'):
         raise Conflict('Hybrid index not ready')
-    if not manifest.get('checks',{}).get('relevance_verified'):
-        raise Conflict('Relevance configuration not verified')
+    if manifest.get('schema_version') != 3 or manifest.get('pipeline') != 'cloudflare_dense_bm25':
+        raise Conflict('Release requires Cloudflare dense/BM25 rebuild')
+    BM25Encoder(manifest['bm25'])
     snapshot = []
     for key,source_hash in manifest['source_hashes'].items():
         if await tx.get('policy_revocations',key):
@@ -141,7 +170,6 @@ async def build_configured_policy_release(repo, revision_ids, expected_active_id
                                            source_dir=None, metadata_path=None, config_path=None):
     """Explicit administrative build; called only by a reviewer prepare operation."""
     import json
-    import os
     from pathlib import Path
     from qdrant_client import AsyncQdrantClient
     from app.configs import get_settings
@@ -159,7 +187,7 @@ async def build_configured_policy_release(repo, revision_ids, expected_active_id
     config=PolicyRuntimeConfig.model_validate(json.loads(Path(config_path).read_text(encoding='utf-8')))
     metadata=json.loads(Path(metadata_path).read_text(encoding='utf-8')) if metadata_path else default_metadata()
     encoder=PolicyEncoder(config)
-    client=AsyncQdrantClient(url=os.environ.get('QDRANT_URL','http://127.0.0.1:6333'),timeout=config.dependency_timeout_seconds)
+    client=AsyncQdrantClient(url=qdrant_url(),timeout=config.dependency_timeout_seconds)
     try:
         return await build_policy_release(repo,encoder,HybridPolicyIndex(client),source_dir=Path(source_dir),
             metadata=metadata,revision_ids=revision_ids,expected_active_id=expected_active_id,actor_id=actor_id)

@@ -126,7 +126,12 @@ def main() -> None:
     parser.add_argument("--scenarios", type=Path, required=True)
     parser.add_argument("--btc-root", type=Path, required=True)
     parser.add_argument("--trace", type=Path)
+    parser.add_argument("--offline-check", action="store_true", help="Validate files only; no model, MCP or database access")
     args = parser.parse_args()
+    if args.offline_check:
+        from eval_harness.scenario_contract import load_scenarios, dataset_coverage
+        print(json.dumps(dataset_coverage(load_scenarios(args.scenarios, btc_root=args.btc_root))))
+        return
     report = inspect_eval_inputs(args.scenarios, args.btc_root, args.trace)
     print(json.dumps(report, ensure_ascii=False, indent=2))
 

@@ -19,3 +19,13 @@ def test_question_targets(text, slots):
 def test_question_type_and_statement_are_distinct():
     assert extract_questions("Nhà mình có trẻ nhỏ, mẫu này có khóa an toàn.") == []
     assert extract_questions("Phòng vẫn 28m2 đúng không ạ?")[0]["type"] == "confirm"
+
+
+@pytest.mark.parametrize('text,slot', [
+    ('Chị cần em hỗ trợ gì thêm không ạ?', 'other'),
+    ('Cho em xin mã đơn hàng ạ.', 'order_id'),
+    ('Chị cho em biết địa chỉ giao hàng nhé.', 'address'),
+    ('Chị thanh toán bằng gì ạ?', 'payment'),
+])
+def test_fallback_and_requests_without_question_mark(text, slot):
+    assert [q['slot'] for q in extract_questions(text)] == [slot]

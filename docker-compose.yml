@@ -3,7 +3,7 @@
 
 services:
   qdrant:
-    image: qdrant/qdrant
+    image: qdrant/qdrant:v1.19.1
     container_name: telesale_qdrant
     restart: unless-stopped
     ports:
@@ -103,7 +103,6 @@ services:
       - telesale_network
 
   mcp-knowledge:
-    profiles: [knowledge]
     build:
       context: ./ai-services
       dockerfile: Dockerfile.knowledge
@@ -115,6 +114,9 @@ services:
       qdrant:
         condition: service_started
     environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-0}
       LLM_API_KEY: unused-for-mcp
       LLM_MODEL: unused-for-mcp
       MCP_HOST: 0.0.0.0
@@ -126,21 +128,18 @@ services:
       MCP_KNOWLEDGE_PORT: ${MCP_KNOWLEDGE_PORT:-8014}
       KNOWLEDGE_POLICY_CONFIG_FILE: /config/policy-runtime.json
       QDRANT_URL: http://qdrant:6333
-      HF_HUB_OFFLINE: "1"
-      TRANSFORMERS_OFFLINE: "1"
+      CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID:?Set CLOUDFLARE_ACCOUNT_ID in ai-services/.env}
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:?Set CLOUDFLARE_API_TOKEN in ai-services/.env}
     secrets:
       - mcp_knowledge_password
       - mcp_internal_token
     volumes:
-      - ${KNOWLEDGE_POLICY_CONFIG_FILE:-./config/policy-runtime.json}:/config/policy-runtime.json:ro
-      - ${KNOWLEDGE_MODEL_CACHE:-./storage/knowledge-model-cache}:/root/.cache/huggingface:ro
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+      - type: bind
+        source: ${KNOWLEDGE_POLICY_CONFIG_FILE:-./config/policy-runtime.json}
+        target: /config/policy-runtime.json
+        read_only: true
+        bind:
+          create_host_path: false
     ports:
       - "127.0.0.1:${MCP_KNOWLEDGE_PORT:-8014}:${MCP_KNOWLEDGE_PORT:-8014}"
     networks:

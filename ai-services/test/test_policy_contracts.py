@@ -35,3 +35,25 @@ def test_missing_dependency_is_attached_to_affected_evidence():
                    missing_required_section_ids=['CL-01']))
     assert row.applicability.missing_required_section_ids == ['CL-01']
     assert row.evidence_type == 'business_rule'
+
+
+def test_cloudflare_runtime_contract_has_no_local_model_or_credentials():
+    from app.mcp_servers.mcp_knowledge.schemas import PolicyRuntimeConfig
+    from test_policy_embedding import runtime_config
+    config = runtime_config()
+    data = config.model_dump()
+    assert data['provider'] == 'cloudflare'
+    assert data['model_name'] == '@cf/baai/bge-m3'
+    assert not {'device', 'dtype', 'model_revision', 'sparse_threshold'} & data.keys()
+    assert not {'cloudflare_api_token', 'api_token', 'cloudflare_account_id'} & data.keys()
+    assert config.fingerprint() != config.model_copy(update={'bm25_b': .5}).fingerprint()
+
+
+def test_cloudflare_settings_optional_and_mask_token(monkeypatch):
+    from app.configs import Settings
+    monkeypatch.setenv('CLOUDFLARE_API_TOKEN', 'fake-cloudflare-secret')
+    monkeypatch.setenv('CLOUDFLARE_ACCOUNT_ID', 'a' * 32)
+    settings = Settings(_env_file=None, llm_api_key='fake', llm_model='fake')
+    assert settings.cloudflare_account_id == 'a' * 32
+    assert settings.cloudflare_api_token.get_secret_value() == 'fake-cloudflare-secret'
+    assert 'fake-cloudflare-secret' not in repr(settings)

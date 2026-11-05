@@ -6,7 +6,7 @@ import json
 from datetime import date
 from typing import Any
 
-from .source import PolicyChunk, json_digest
+from .source import PolicyChunk, json_digest, release_counts
 
 DDL = """
 CREATE SCHEMA IF NOT EXISTS btc_source;
@@ -204,9 +204,4 @@ async def import_release(database_url: str, release: dict[str, Any]) -> dict[str
                 )
     finally:
         await connection.close()
-    return {
-        "products": len(products), "variants": sum(len(p.get("variants", [])) for p in products),
-        "promotions": len(release["promotions"]["promotions"]),
-        "inventory_events": len(release["inventory"]["events"]),
-        "customers": len(customers), "policy_chunks": len(chunks),
-    }
+    return release_counts(release)

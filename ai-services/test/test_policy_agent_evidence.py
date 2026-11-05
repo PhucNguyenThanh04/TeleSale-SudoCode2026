@@ -33,3 +33,26 @@ def test_unverified_policy_rights_are_blocked_even_with_optional_checks_disabled
     result=asyncio.run(nodes.verify_agent({'agent_draft':answer,'safe_text':'đổi trả?',
         'tool_calls':[call('conditional')]}))
     assert result['agent_text']!=answer
+
+
+def test_operational_policy_failure_has_generic_customer_message():
+    import asyncio
+    from app.agent.harness.agent_nodes import AgentNodes
+    state={'safe_text':'bảo hành?', 'agent_draft':'Cloudflare hết quota ạ.',
+        'tool_calls':[{'name':'policy.search','args':{},'result':{
+            'retrieval_status':'unavailable','error':'knowledge_unavailable','evidence':[]}}]}
+    result=asyncio.run(AgentNodes(None,None,None,5,3).verify_agent(state))
+    assert result['agent_text']=='Tạm thời chưa tra cứu được thông tin, vui lòng thử lại sau.'
+
+
+def test_mixed_tool_failure_preserves_supported_answer():
+    import asyncio
+    from app.agent.harness.agent_nodes import AgentNodes
+    from test_promotion_recovery import _state
+    state=_state()
+    state['tool_calls'].append({'name':'policy.search','args':{},'result':{
+        'retrieval_status':'unavailable','error':'knowledge_unavailable','evidence':[]}})
+    result=asyncio.run(AgentNodes(None,None,None,5,3).verify_agent(state))
+    assert 'Máy lọc A' in result['agent_text']
+    assert 'Tạm thời chưa tra cứu được thông tin, vui lòng thử lại sau.' in result['agent_text']
+    assert 'quota' not in result['agent_text']

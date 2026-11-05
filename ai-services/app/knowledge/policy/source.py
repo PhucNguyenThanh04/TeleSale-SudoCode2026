@@ -39,7 +39,10 @@ def _safe_body(body, transformation):
 def parse_policy_sources(directory: Path, metadata: dict) -> list[SourceChunk]:
     chunks = []
     seen = set()
-    for path in sorted(directory.glob('*.md')):
+    paths = sorted(directory.glob('*.md'))
+    if set(metadata.get('documents', {})) - {path.name for path in paths}:
+        raise ValueError('Required policy documents missing')
+    for path in paths:
         document = metadata.get('documents', {}).get(path.name)
         if not document or not {'date_basis', 'effective_from', 'effective_until', 'access', 'version'} <= document.keys():
             raise ValueError('Required document metadata missing')
@@ -81,6 +84,8 @@ def parse_policy_sources(directory: Path, metadata: dict) -> list[SourceChunk]:
                 required_context=required, required_links=rules.get('required_links', []),
                 rules=rules.get('rules', []), conflict=rules.get('conflict', False)))
     ids = {chunk.chunk_id for chunk in chunks}
+    if set(metadata.get('sections', {})) - seen:
+        raise ValueError('Required policy sections missing')
     if any(set(chunk.required_links)-ids for chunk in chunks):
         raise ValueError('Dangling required link')
     return chunks

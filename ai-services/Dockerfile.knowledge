@@ -1,13 +1,12 @@
-# Separate CUDA image; build explicitly after hardware/dependency review.
-FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && python3 -m venv /opt/venv
-ENV PATH=/opt/venv/bin:$PATH PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
-    HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
+# syntax=docker/dockerfile:1
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
+    PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=5 PIP_RESUME_RETRIES=5 PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /service
 COPY requirements.txt requirements-knowledge.txt ./
-RUN pip install --no-cache-dir torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cu126 \
-    && pip install --no-cache-dir -r requirements.txt -r requirements-knowledge.txt
+RUN --mount=type=cache,id=ai-services-pip-py312-cpu,target=/root/.cache/pip,sharing=locked \
+    python -m pip install --upgrade pip==25.2 \
+    && python -m pip install -r requirements.txt -r requirements-knowledge.txt
+# Includes only the pinned CPU tokenizer asset, never model weights or credentials.
 COPY app ./app
 CMD ["python", "-m", "app.mcp_servers.mcp_knowledge.server"]
