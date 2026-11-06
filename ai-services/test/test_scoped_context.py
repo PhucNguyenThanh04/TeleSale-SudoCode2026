@@ -165,7 +165,7 @@ class ScopedContextTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({product["sku"] for product in context["sales_history"]["products"]},
                          {"SKU-ALPHA", "SKU-BETA"})
 
-    async def test_multi_product_brief_refreshes_up_to_three_skus_concurrently(self):
+    async def test_multi_product_brief_does_not_refresh_advised_list_without_focus(self):
         import asyncio
         import time
 
@@ -216,20 +216,17 @@ class ScopedContextTest(unittest.IsolatedAsyncioTestCase):
             "crm_orders": [{"order_id": "OD1001", "sku": "SKU-2", "status": "delivered"}],
         }
         tools = DelayedTools()
-        t0 = time.perf_counter()
         loaded = await load_context(
             state, FourProductMemory(), tools,
             lambda: datetime(2026, 10, 15, tzinfo=timezone.utc))
-        elapsed = time.perf_counter() - t0
         brief = loaded["call_brief"]
         refreshed_skus = {args["sku"] for _, args in tools.calls}
-        self.assertEqual(refreshed_skus, {"SKU-4", "SKU-3", "SKU-2"})
-        self.assertLess(elapsed, 0.18)
+        self.assertEqual(refreshed_skus, set())
         self.assertEqual(brief["orders"],
                          [{"order_id": "OD1001", "variant_sku": "SKU-2", "status": "delivered"}])
         joined_warnings = " | ".join(brief["stale_warnings"])
         self.assertIn("180 ngày", joined_warnings)
-        self.assertIn("SKU-4-PRO", joined_warnings)
+        self.assertNotIn("SKU-4-PRO", joined_warnings)  # No current evidence of a successor.
         self.assertIn("2026-05-01", joined_warnings)
         self.assertIn("SKU-1", joined_warnings)
         self.assertIn("chị Lan", brief["suggested_opening"])

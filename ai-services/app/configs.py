@@ -33,8 +33,8 @@ class Settings(BaseSettings):
 
     llm_api_key: SecretStr = Field(min_length=1)
     llm_model: str = Field(min_length=1)
-    ollama_base_url: AnyHttpUrl = "https://ollama.com"
-    ollama_timeout_seconds: float = Field(default=30, gt=0)
+    llm_base_url: AnyHttpUrl = "https://api.openai.com/v1"
+    llm_timeout_seconds: float = Field(default=30, gt=0)
     llm_temperature: float = Field(default=0.2, ge=0, le=1)
     llm_max_tokens: int = Field(default=256, ge=1)
     llm_seed: int | None = None

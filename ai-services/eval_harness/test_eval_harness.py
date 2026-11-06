@@ -44,15 +44,15 @@ class TestEvalHarness(unittest.TestCase):
     def test_prior_fact_used_in_answer(self):
         from eval_harness.reference_adapter import facts_used
         self.assertEqual(facts_used("Phòng 25m² mình dùng AirPure X được ạ.", [],
-                                    {"room_area_m2": {"value": 25}}),
+                                    {"room_area_m2": {"value": 25, "source":"langmem:prior:t1"}}, current_session_id="now"),
                          ["room_area_m2"])
 
     def test_scoped_fact_used_in_tool_argument_is_counted(self):
         from eval_harness.reference_adapter import facts_used
         self.assertEqual(facts_used("Em kiểm tra mẫu trước đó ạ.", [
-            {"name": "catalog.search", "args": {"sku": "SKU-AP-X"}}
+            {"name": "catalog.search", "args": {"sku": "SKU-AP-X"}, "result":{"ok":True}}
         ], {}, {"product": {"SKU-AP-X": {
-            "product_advised": {"value": "SKU-AP-X"}}}}), ["product_advised"])
+            "product_advised": {"value": "SKU-AP-X", "source":"langmem:prior:t1"}}}}, current_session_id="now"), ["product_advised"])
 
     def test_reference_trace_has_required_fields_and_brief_latency(self):
         from eval_harness.reference_adapter import trace_line

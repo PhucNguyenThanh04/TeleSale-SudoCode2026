@@ -39,7 +39,7 @@ def _gift_supported(clause: str, promos: list[dict], items: list[dict]) -> bool:
     return any(len(description.split()) >= 2 and description in _fold(name) for name in names)
 
 
-def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]]) -> str | None:
+def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], *, focus_sku: str | None = None) -> str | None:
     successful = [c for c in tool_calls if isinstance(c.get("result"), dict) and "error" not in c["result"]]
     items = [item for c in successful if c.get("name") == "catalog.search"
              for item in c["result"].get("items", []) if isinstance(item, dict)]
@@ -52,11 +52,14 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]]) 
                  if not code.startswith(("SKU-", "OD-"))}
         if not codes and not re.search(r"khuyen mai|uu dai|giam|tang|bieu|freeship|mien phi (?:ship|van chuyen)", folded):
             continue
-        mentioned = {c.get("args", {}).get("sku") for c in quotes
-                     if _named(clause, str(c.get("args", {}).get("sku", ""))) or any(
-                         item.get("sku") == c.get("args", {}).get("sku") and item.get("name")
-                         and _named(clause, item["name"]) for item in items)}
-        selected = [c for c in quotes if not mentioned or c.get("args", {}).get("sku") in mentioned]
+        from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
+        mentioned = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
+        selected = [c for c in quotes if not mentioned or c.get('args', {}).get('sku') in mentioned]
+        if len(mentioned) > 1 and len(selected) == 1:
+            # Multiple variants without a sourced focus are still ambiguous.
+            parent = selected[0].get('args', {}).get('sku')
+            if not any(item.get('sku') == parent for item in items):
+                return "promotion_quote_missing"
         if not selected or len({c.get("args", {}).get("sku") for c in selected}) != 1:
             return "promotion_quote_missing"
         # Conflicting quotes for the selected item are ambiguous evidence.
@@ -67,17 +70,30 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]]) 
         promos = [p for p in result.get("applied_promos", []) if isinstance(p, dict)]
         on = call.get("args", {}).get("on")
         promos = [p for p in promos if not (on and p.get("valid_until") and p["valid_until"] < on)]
-        inactive = bool(re.search(r"het han|het hieu luc|khong con|khong (?:co|duoc)|chua (?:co|duoc)", folded))
+        inactive = bool(re.search(r"het han|het hieu luc|khong con|khong du dieu kien|khong (?:co|duoc)|chua (?:co|duoc)", folded))
         applied_codes = {p.get("promo_code") for p in promos}
+        expired_codes = {p.get('promo_code') if isinstance(p, dict) else p
+                         for p in result.get('expired_promos', [])}
+        ineligible_codes = {p.get('promo_code') for p in result.get('ineligible_promos', [])
+                            if isinstance(p, dict)}
+        exclusive_codes = {p.get('promo_code') if isinstance(p, dict) else p
+                           for p in result.get('not_applied_exclusive', [])}
+        if inactive and not codes and re.search(r'uu dai cu|khuyen mai cu|ma cu|het han|het hieu luc', folded):
+            return 'promotion_detail_unverified'
+        if inactive and not codes and re.search(r'khong (?:co|con).*(?:khuyen mai|uu dai)', folded) and promos:
+            return 'promotion_detail_unverified'
         if codes:
             if inactive:
-                if codes & applied_codes or not codes <= set(result.get("expired_promos", [])) | {
-                        p.get("promo_code") for p in result.get("ineligible_promos", [])}:
-                    return "promotion_code_mismatch"
+                supported = (expired_codes if re.search(r'het han|het hieu luc', folded)
+                             else ineligible_codes if 'khong du dieu kien' in folded
+                             else exclusive_codes if re.search(r'cong don|doc quyen', folded)
+                             else expired_codes | ineligible_codes | exclusive_codes)
+                if codes & applied_codes or not codes <= supported:
+                    return 'promotion_code_mismatch'
             elif not codes <= applied_codes:
-                return "promotion_code_mismatch"
+                return 'promotion_code_mismatch'
             if not inactive:
-                promos = [p for p in promos if p.get("promo_code") in codes]
+                promos = [p for p in promos if p.get('promo_code') in codes]
         shipping = bool(re.search(r"freeship|mien phi (?:ship|van chuyen)", folded))
         gift = bool(re.search(r"tang|bieu", folded))
         discount = bool(re.search(r"\bgiam\b", folded))

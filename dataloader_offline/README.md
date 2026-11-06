@@ -19,7 +19,7 @@ chạy model, kể cả khi truyền `--prepare-policy`. Nguồn mặc định l
 
 Có thể dùng venv riêng với `dataloader_offline/requirements-postgres.txt`
 (asyncpg và Pydantic 2) cho luồng chỉ nạp PostgreSQL. Luồng dựng index cần môi trường
-AI đã cài các dependency trong `ai-services/requirements-knowledge.txt` và cấu hình
+AI đã cài các dependency trong `ai-services/requirements.txt` và cấu hình
 theo [runbook](../ai-services/docs/mcp-knowledge-runbook.md).
 
 Lệnh nạp mặc định ghi PostgreSQL trong một transaction, dùng upsert; không tự

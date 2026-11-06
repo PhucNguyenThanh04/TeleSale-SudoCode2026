@@ -1,11 +1,15 @@
 """Assemble the small, masked model context for a text turn."""
 
+from app.mcp_servers.mcp_shared.decision_diagnostics import context_checkpoint
+
+
 import asyncio
 import time
 import logging
 import re
 import json
 from datetime import date, datetime
+from uuid import UUID
 from typing import Any, Callable
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -84,19 +88,28 @@ def prompt_context(state: TurnState, history_turns: int) -> dict[str, Any]:
         sales_history["orders"] = orders
     if state.get("remembered_order_ids"):
         sales_history["remembered_order_ids"] = list(state["remembered_order_ids"])
+    from app.mcp_servers.mcp_shared.commerce_evidence import build_commerce_evidence
     observations = [
-        {"name": call["name"], "result": safe_tool_result(call["result"])}
-        for call in state.get("tool_calls", []) if call["name"] != "crm.get_customer"
+        {'name': call['name'], 'args': safe_tool_result(call.get('args', {})),
+         'result': safe_tool_result(call['result']),
+         'evidence_scope': ('current_session' if call in state.get('session_tool_calls', [])
+                            else 'current_turn')}
+        for call in build_commerce_evidence(state) if call['name'] != 'crm.get_customer'
     ]
+    from app.mcp_servers.mcp_shared.consultation import derive_consultation, consultation_missing_fields
+    from app.schemas.consultation import mask_consultation
+    consultation=derive_consultation(state).model_dump(mode='json')
+    consultation['missing_fields']=consultation_missing_fields(state)
     return {
+        "consultation": mask_consultation(consultation),
         "on": state["request"].on.isoformat(),
         "input_mode": state["request"].input_mode,
         "identity_status": state["identity_status"],
         "customer_facts": _mask_context(customer_facts),
         "sales_history": _mask_context(sales_history),
-        "session_history": _mask_context(state.get("history", [])[-history_turns:]),
-        "previous_episodes": _mask_context(state.get("episodes", [])),
-        "current_episode": _mask_context(state.get("current_episode") or {}),
+        "session_history": _mask_context(state.get("history", [])[-history_turns:], ("history",)),
+        "previous_episodes": _mask_context(state.get("episodes", []), ("episodes",)),
+        "current_episode": _mask_context(state.get("current_episode") or {}, ("current_episode",)),
         "call_brief": _mask_context({key: value for key, value in
                                      (state.get("call_brief") or {}).items()
                                      if key not in {"customer_phone", "customer_name"}}),
@@ -170,13 +183,22 @@ def _open_episode_items(episodes: list[dict], kind: str) -> list[str]:
             for _, scope_id, value in scoped_values]
 
 
-def _mask_context(value: Any) -> Any:
+def _mask_context(value: Any, path: tuple[str, ...] = ()) -> Any:
     if isinstance(value, str):
+        if path in {('history', '[]', 'source_turn_id'),
+                    ('episodes', '[]', 'session_id'), ('current_episode', 'session_id')}:
+            try:
+                UUID(value)
+            except (ValueError, TypeError):
+                pass
+            else:
+                return value
         return mask_pii(value)
     if isinstance(value, list):
-        return [_mask_context(item) for item in value]
+        return [_mask_context(item, (*path, '[]')) for item in value]
     if isinstance(value, dict):
-        return {key: _mask_context(item) for key, item in value.items()}
+        from app.schemas.consultation import mask_consultation
+        return {key: mask_consultation(item) if key=='consultation' else _mask_context(item, (*path, key)) for key, item in value.items()}
     return value
 
 
@@ -255,7 +277,8 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
     context = await read_memory("memory.read", lambda: memory.read_context(session_id, customer_id))
     if "error" in context:
         return failed("memory.read", context.get("error"))
-    history = _mask_context(context.get("history", []))
+    context_checkpoint("context_loaded", state, context)
+    history = _mask_context(context.get("history", []), ("history",))
     profile = context.get("profile", {})
     scoped_facts = _safe_scoped_facts(context.get("scoped_facts", {}))
     episodes = list(context.get("episodes", []))
@@ -270,7 +293,8 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
                                 getattr(memory, "max_episodes", 5)) + [item for item in episodes
                                 if item.get("session_id") not in {
                                     accepted_item.get("session_id") for accepted_item in accepted}]
-    current_episode = _mask_context(context.get("current_episode") or {})
+    current_episode = _mask_context(context.get("current_episode") or {}, ("current_episode",))
+    context_checkpoint("context_masked", state, {"history": history, "episodes": episodes, "current_episode": current_episode})
     prior_ids = {str(item) for item in context.get("prior_session_ids", []) if item}
     prior_ids.update(str(item.get("session_id")) for item in episodes
                      if isinstance(item, dict) and item.get("session_id"))
@@ -292,7 +316,7 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
     episodes = rank_episodes(list(unique_episodes.values()), state.get("safe_text", ""),
                              getattr(memory, "max_episodes", 5))
     episodes = episodes[:getattr(memory, "max_episodes", 5)]
-    episodes = _mask_context(episodes)
+    episodes = _mask_context(episodes, ("episodes",))
     if not getattr(memory, "include_prior", True):
         episodes = []
         prior_ids = set()
@@ -321,8 +345,13 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
         candidate_skus = ordered_scoped + ([advised] if isinstance(advised, str)
                                            and advised not in scoped_products else [])
     candidate_skus = list(dict.fromkeys(candidate_skus))
-    refresh_skus = candidate_skus[:3]
-    skipped_skus = candidate_skus[3:]
+    from app.mcp_servers.mcp_shared.consultation import derive_consultation
+    focused = derive_consultation({**state, 'history': history, 'profile': profile,
+        'scoped_facts': scoped_facts, 'episodes': episodes, 'current_episode': current_episode}).focus_sku
+    # Refresh a sourced focus, or the sole historical candidate. Shortlisting is
+    # handled by BusinessTools within its budget, never a memory-list position.
+    refresh_skus = [focused] if focused else candidate_skus if len(candidate_skus) == 1 else []
+    skipped_skus = [sku for sku in candidate_skus if sku not in refresh_skus]
     quotes_by_sku = {}
     freshness_request = bool(re.search(
         r"(?i)giá|khuyến mãi|tồn kho|còn hàng|bao nhiêu|giảm giá|ưu đãi",
@@ -355,11 +384,14 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
             **({"customer_phone": state["customer_phone"]}
                if state.get("customer_phone") else {}),
         }
-        stock_res, quote_res = await asyncio.gather(
-            _invoke_refresh("inventory.check", inv_args),
-            _invoke_refresh("pricing.get_quote", quote_args),
-        )
-        return refresh_sku, inv_args, stock_res, quote_args, quote_res
+        from app.mcp_servers.mcp_shared.commerce_evidence import build_commerce_evidence
+        valid = build_commerce_evidence(state, args={'sku': refresh_sku, 'qty': 1})
+        async def read_needed(name, args):
+            existing = next((c for c in reversed(valid) if c['name'] == name), None)
+            return (existing['result'], False) if existing else (await _invoke_refresh(name, args), True)
+        (stock_res, stock_new), (quote_res, quote_new) = await asyncio.gather(
+            read_needed('inventory.check', inv_args), read_needed('pricing.get_quote', quote_args))
+        return refresh_sku, inv_args, stock_res, quote_args, quote_res, stock_new, quote_new
 
     if should_refresh and refresh_skus:
         refresh_results = await asyncio.gather(
@@ -367,9 +399,9 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
     else:
         refresh_results = []
 
-    for refresh_sku, inv_args, stock, quote_args, quote in refresh_results:
-        fresh_calls.append({"name": "inventory.check", "args": inv_args, "result": stock})
-        fresh_calls.append({"name": "pricing.get_quote", "args": quote_args, "result": quote})
+    for refresh_sku, inv_args, stock, quote_args, quote, stock_new, quote_new in refresh_results:
+        if stock_new:fresh_calls.append({'name': 'inventory.check', 'args': inv_args, 'result': stock})
+        if quote_new:fresh_calls.append({'name': 'pricing.get_quote', 'args': quote_args, 'result': quote})
         history_facts = scoped_products.get(refresh_sku, safe_sales)
         if (isinstance(quote, dict) and "error" not in quote
                 and type(quote.get("final_price_vnd")) is int

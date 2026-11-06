@@ -104,3 +104,11 @@ Thumbs.db
 .graphifyignore
 graphify-out/
 .superpowers/
+
+# Local tokenizer asset and selected design/audit documents
+/ai-services/app/mcp_servers/mcp_knowledge/assets/bge-m3-tokenizer.json
+/ai-services/docs/btc-requirements-audit-2026-11-04.md
+/ai-services/docs/superpowers/specs/2026-11-04-btc-eval-harness-repair-design.md
+/ai-services/docs/superpowers/specs/2026-11-03-mcp-knowledge-rag-design.md
+/ai-services/docs/superpowers/plans/2026-11-04-cloudflare-bm25-knowledge.md
+/ai-services/docs/superpowers/plans/2026-11-04-btc-eval-harness-repair.md

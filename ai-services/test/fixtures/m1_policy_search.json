@@ -1,0 +1,141 @@
+{
+  "name": "policy.search",
+  "args": {
+    "query": "Bên em cho đổi trả trong 14 ngày đúng không",
+    "on": "2026-10-15"
+  },
+  "result": {
+    "retrieval_status": "ok",
+    "context": {
+      "on": "2026-10-15",
+      "order_date": null,
+      "customer_reported_order_date": null,
+      "knowledge_release_id": "policy-79dd0a921214cb762c5e4514232d9522"
+    },
+    "truncated": false,
+    "evidence_set": {
+      "required_dependencies_complete": true,
+      "missing_required_section_ids": []
+    },
+    "evidence": [
+      {
+        "chunk_id": "CL-01",
+        "section_id": "CL-01",
+        "document_id": "changelog.md",
+        "content": "# Nhật ký thay đổi chính sách — Shop BTC\n\n01/10/2026 — Chính sách đổi trả phiên bản 2026-10\nThay thế phiên bản 2026-06. Thay đổi: thời hạn đổi trả 14 → **7 ngày**; đổi size lần đầu **miễn phí** (trước: 20.000đ); hoàn tiền 7 → **3–5 ngày làm việc**; lỗi nhà sản xuất đổi mới 15 → **30 ngày** (gia dụng, mẹ & bé). Đơn tạo trước 01/10/2026 vẫn áp dụng bản cũ.",
+        "source": {
+          "file": "changelog.md",
+          "version": "not_stated",
+          "location": "line:3",
+          "document_hash": "106960c3777e8995c5dcd84ea8e62c9593c2d74e2eff335e393f436ab71d0dfa"
+        },
+        "evidence_type": "business_rule",
+        "applicability": {
+          "status": "applicable",
+          "date_basis": "on",
+          "date_used": "2026-10-15",
+          "date_source": "runtime",
+          "required_context": [],
+          "missing_required_section_ids": [],
+          "rules": []
+        },
+        "retrieved_via": "vector"
+      },
+      {
+        "chunk_id": "DT-OLD-01",
+        "section_id": "DT-OLD-01",
+        "document_id": "chinh-sach-doi-tra-v2026-06-HET-HIEU-LUC.md",
+        "content": "# Chính sách đổi trả — Shop BTC (phiên bản 2026-06) — **HẾT HIỆU LỰC từ 01/10/2026**\n\n> Tài liệu này được giữ lại để tra cứu đơn hàng cũ (tạo trước 01/10/2026). Với đơn mới, áp dụng `chinh-sach-doi-tra.md` (phiên bản 2026-10). Xem `changelog.md`.\n\nThời hạn đổi trả\nKhách hàng được đổi hoặc trả sản phẩm trong vòng **14 ngày** kể từ ngày nhận hàng.",
+        "source": {
+          "file": "chinh-sach-doi-tra-v2026-06-HET-HIEU-LUC.md",
+          "version": "2026-06",
+          "location": "line:5",
+          "document_hash": "47f5e80b5d62ad3ca6e2168e46c301347af234241f2771a9096b85cf34e23b85"
+        },
+        "evidence_type": "business_rule",
+        "applicability": {
+          "status": "conditional",
+          "date_basis": "order_date",
+          "effective_until": "2026-09-30",
+          "required_context": [
+            "order_date"
+          ],
+          "missing_required_section_ids": [],
+          "rules": []
+        },
+        "retrieved_via": "vector"
+      },
+      {
+        "chunk_id": "DT-01",
+        "section_id": "DT-01",
+        "document_id": "chinh-sach-doi-tra.md",
+        "content": "# Chính sách đổi trả — Shop BTC (phiên bản 2026-10)\n\nMỗi mục có mã `[DT-xx]` — là `chunk_id` dùng để gán nhãn Recall@k. Khi chunk tài liệu, giữ nguyên ranh giới mục để chunk_id không bị trộn.\n\nThời hạn đổi trả\nKhách hàng được đổi hoặc trả sản phẩm trong vòng **7 ngày** kể từ ngày nhận hàng (tính theo ngày ký nhận trên đơn vận chuyển). Với ngành hàng gia dụng và mẹ & bé có lỗi kỹ thuật từ nhà sản xuất, thời hạn đổi mới là **30 ngày**.",
+        "source": {
+          "file": "chinh-sach-doi-tra.md",
+          "version": "2026-10",
+          "location": "line:5",
+          "document_hash": "8177c41dd7f026623d5fe106cdb0d0cdaa85b1d7cbe2652d6efa07fafcdc2493"
+        },
+        "evidence_type": "business_rule",
+        "applicability": {
+          "status": "conditional",
+          "date_basis": "order_date",
+          "effective_from": "2026-10-01",
+          "required_context": [
+            "order_date"
+          ],
+          "missing_required_section_ids": [],
+          "rules": []
+        },
+        "retrieved_via": "vector"
+      },
+      {
+        "chunk_id": "DT-OLD-04",
+        "section_id": "DT-OLD-04",
+        "document_id": "chinh-sach-doi-tra-v2026-06-HET-HIEU-LUC.md",
+        "content": "# Chính sách đổi trả — Shop BTC (phiên bản 2026-06) — **HẾT HIỆU LỰC từ 01/10/2026**\n\n> Tài liệu này được giữ lại để tra cứu đơn hàng cũ (tạo trước 01/10/2026). Với đơn mới, áp dụng `chinh-sach-doi-tra.md` (phiên bản 2026-10). Xem `changelog.md`.\n\nHoàn tiền\nHoàn tiền trong **7 ngày làm việc** sau khi nhận lại hàng.",
+        "source": {
+          "file": "chinh-sach-doi-tra-v2026-06-HET-HIEU-LUC.md",
+          "version": "2026-06",
+          "location": "line:14",
+          "document_hash": "47f5e80b5d62ad3ca6e2168e46c301347af234241f2771a9096b85cf34e23b85"
+        },
+        "evidence_type": "business_rule",
+        "applicability": {
+          "status": "conditional",
+          "date_basis": "order_date",
+          "effective_until": "2026-09-30",
+          "required_context": [
+            "order_date"
+          ],
+          "missing_required_section_ids": [],
+          "rules": []
+        },
+        "retrieved_via": "vector"
+      },
+      {
+        "chunk_id": "PB-04",
+        "section_id": "PB-04",
+        "document_id": "playbook-telesale.md",
+        "content": "# Playbook telesale — xử lý phản đối & quy tắc phát ngôn (Shop BTC, 10/2026)\n\nPlaybook là hướng dẫn cho nhân viên và agent. Nó **không** chứa giá/chính sách; các con số phải lấy từ catalog và tài liệu chính sách.\n\nPhản đối \"bên kia rẻ hơn\"\nNhư PB-02. Tuyệt đối không nói xấu đối thủ, không nói \"hàng bên đó là hàng giả\".",
+        "source": {
+          "file": "playbook-telesale.md",
+          "version": "not_stated",
+          "location": "line:14",
+          "document_hash": "ca74b496676a1bf88c7d0caf36cfaada69c9f9003045c98055426f259a0fae0d"
+        },
+        "evidence_type": "business_rule",
+        "applicability": {
+          "status": "applicable",
+          "date_basis": "on",
+          "date_used": "2026-10-15",
+          "date_source": "runtime",
+          "required_context": [],
+          "missing_required_section_ids": [],
+          "rules": []
+        },
+        "retrieved_via": "vector"
+      }
+    ]
+  }
+}

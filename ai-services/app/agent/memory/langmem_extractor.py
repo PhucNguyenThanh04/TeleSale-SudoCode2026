@@ -47,7 +47,7 @@ _INSTRUCTIONS = (
     "approval or information, record the stated dependency as an open blocker; a "
     "callback outcome alone does not preserve it. Return no memory when evidence is "
     "insufficient. Earlier turns are context; propose profile facts only from the "
-    "latest turn and cite its turn ID."
+    "latest turn and cite its turn ID. Leave topic.consultation null; MCP derives it from committed evidence. advice_given records agent speech, not customer facts. Never infer customer selection or consent from advice, a tool quote, a resolved blocker or another person agreeing. presented_offer and accepted_offer are canonical MCP views, not LLM proposals."
 )
 
 
@@ -221,3 +221,6 @@ def _supplement_customer_facts(last_turn: dict,
             except ValueError:
                 continue
     return added
+
+# Consultation is optional in TopicProposal. MCP reconstructs/adopts it from
+# committed evidence; model-generated summaries never authorize a purchase.

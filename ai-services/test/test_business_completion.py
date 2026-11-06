@@ -47,16 +47,17 @@ def test_parent_resolves_only_unique_catalog_variant_and_keeps_scopes():
     assert context["customer_facts"]["products"][1]["sku"] == "SKU-OTHER"
 
 
-def test_repeat_reads_do_not_spend_budget_and_writes_are_not_cached():
+def test_repeat_reads_do_not_spend_budget_and_completed_purchase_is_not_repeated():
     asyncio.run(_repeat_reads())
 
 
 async def _repeat_reads():
     current = state()
+    current['safe_text']='Mua SKU-TEST giá 120000đ, lên đơn giúp tôi.'
     current["session_tool_calls"] = [{"name": "catalog.search", "result": {
         "items": [{"sku": "SKU-TEST", "variants": []}]}}]
     gateway = AsyncMock()
-    gateway.invoke_trusted.return_value = {"sku": "SKU-TEST", "in_stock": True}
+    gateway.invoke_trusted.return_value = {"sku": "SKU-TEST", "in_stock": True, "qty":10}
     business = BusinessTools(gateway, current, 3, lambda: None)
     first = await business.invoke("inventory.check", {"sku": "SKU-TEST"})
     second = await business.invoke("inventory.check", {"sku": "SKU-TEST"})
@@ -69,18 +70,27 @@ async def _repeat_reads():
     created = await business.invoke("order.create", {"sku": "SKU-TEST", "price_vnd": 120000,
                                                     "payment": "COD", "qty": 1})
     assert created["status"] == "created"
-    assert (await business.invoke("order.create", {"sku": "SKU-TEST", "price_vnd": 120000})) == {
-        "error": "tool_limit"}
+    assert (await business.invoke("order.create", {"sku": "SKU-TEST", "price_vnd": 120000})) == created
     assert gateway.invoke_trusted.await_count == 3
 
 
 def test_ready_purchase_gets_one_continuation_but_unknown_customer_does_not():
-    async def run(identity, text="Lên đơn giúp tôi"):
+    async def run(identity, text="Lên đơn giúp tôi", session_quote=False):
         current = state()
         current["safe_text"] = text
         current["identity_status"] = identity
         node = object.__new__(AgentNodes)
+        current['session_tool_calls']=[{'name':'catalog.search','args':{},'result':{'items':[{'sku':'SKU-TEST','variants':[]}]}}]
+        current['history']=[{'customer':'Tôi chọn SKU-TEST.','agent':'SKU-TEST giá 120000đ.'}]
+        current['tool_calls']=[{'name':'inventory.check','args':{'sku':'SKU-TEST','on':'2026-10-15'},'result':{'in_stock':True,'qty':10}},
+            {'name':'pricing.get_quote','args':{'sku':'SKU-TEST','on':'2026-10-15','qty':1},'result':{'sku':'SKU-TEST','final_price_vnd':120000}}]
+        from copy import deepcopy
+        from test_commerce_evidence import bind_history_observations
+        prior_quote = current['tool_calls'].pop() if session_quote else deepcopy(current['tool_calls'][-1])
+        current['session_tool_calls'].append(prior_quote)
+        bind_history_observations(current)
         node.tools, node.llm = AsyncMock(), object()
+        node.tools.invoke_trusted.return_value = {'status':'created','order_id':'OD-CONTINUATION'}
         node.max_tool_calls, node.prompt_history_turns, node.agent_kind = 5, 6, "deep"
         node.clock = lambda: datetime.now(timezone.utc)
         agent = AsyncMock()
@@ -99,11 +109,14 @@ def test_ready_purchase_gets_one_continuation_but_unknown_customer_does_not():
         with patch("app.agent.harness.agent_nodes.build_agent", return_value=agent), \
              patch("app.agent.harness.agent_nodes.text_prompt", return_value="test"):
             await node.run_agent(current)
-        return agent.ainvoke.await_count
+        writes = [call for call in node.tools.invoke_trusted.await_args_list if call.args[0]=='order.create']
+        return agent.ainvoke.await_count, len(writes)
 
-    assert asyncio.run(run("known")) == 2
-    assert asyncio.run(run("unknown")) == 1
-    assert asyncio.run(run("known", "Chưa lên đơn nhé")) == 1
+    # Continuation now writes through BusinessTools instead of prompting the model again.
+    assert asyncio.run(run("known")) == (1, 1)
+    assert asyncio.run(run("known", session_quote=True)) == (1, 1)
+    assert asyncio.run(run("unknown")) == (1, 0)
+    assert asyncio.run(run("known", "Chưa lên đơn nhé")) == (1, 0)
 
 
 def test_invented_sku_is_not_sent_to_gateway_or_charged_to_budget():

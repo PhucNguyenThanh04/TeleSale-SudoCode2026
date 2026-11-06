@@ -1,36 +1,22 @@
 """Build the LangChain chat model used by LangGraph nodes."""
 
-from collections.abc import Generator
-
-import httpx
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_ollama import ChatOllama
-from pydantic import SecretStr
+from langchain_openai import ChatOpenAI
 
 from app.configs import Settings
 
 
-class _BearerTokenAuth(httpx.Auth):
-    """Attach the cloud token without storing it in printable client headers."""
-
-    def __init__(self, token: SecretStr) -> None:
-        self._token = token
-
-    def auth_flow(self, request: httpx.Request) -> Generator[httpx.Request, httpx.Response, None]:
-        request.headers["Authorization"] = f"Bearer {self._token.get_secret_value()}"
-        yield request
-
-
 def build_llm(settings: Settings) -> BaseChatModel:
-    """Configure direct Ollama Cloud access without sending a request."""
-    return ChatOllama(
+    """Configure OpenAI-compatible Chat Completions without sending a request."""
+    return ChatOpenAI(
         model=settings.llm_model,
-        base_url=str(settings.ollama_base_url).rstrip("/"),
-        client_kwargs={
-            "auth": _BearerTokenAuth(settings.llm_api_key),
-            "timeout": settings.ollama_timeout_seconds,
-        },
+        api_key=settings.llm_api_key,
+        base_url=str(settings.llm_base_url).rstrip("/"),
+        timeout=settings.llm_timeout_seconds,
+        use_responses_api=False,
+        # Luna requires non-reasoning mode for Chat Completions tool calls.
+        reasoning_effort="none" if settings.llm_model.startswith("gpt-6-luna") else None,
         temperature=settings.llm_temperature,
-        num_predict=settings.llm_max_tokens,
+        max_completion_tokens=settings.llm_max_tokens,
         seed=settings.llm_seed,
     )

@@ -1,0 +1,143 @@
+[
+  {
+    "scenario_id": "SC03",
+    "call": "call_1",
+    "turn": 1,
+    "args": {
+      "query": "Urban Classic",
+      "category": "giày sneaker"
+    }
+  },
+  {
+    "scenario_id": "SC03",
+    "call": "call_1",
+    "turn": 2,
+    "args": {
+      "query": "Urban Classic",
+      "category": "giày sneaker"
+    }
+  },
+  {
+    "scenario_id": "SC03",
+    "call": "call_1",
+    "turn": 3,
+    "args": {
+      "query": "Urban Classic",
+      "category": "giày sneaker"
+    }
+  },
+  {
+    "scenario_id": "SC04",
+    "call": "call_1",
+    "turn": 1,
+    "args": {
+      "query": "RunLite 2 Pro",
+      "category": "giày chạy bộ"
+    }
+  },
+  {
+    "scenario_id": "SC04",
+    "call": "call_1",
+    "turn": 2,
+    "args": {
+      "query": "RunLite 2 Pro",
+      "category": "giày chạy bộ"
+    }
+  },
+  {
+    "scenario_id": "SC04",
+    "call": "call_1",
+    "turn": 3,
+    "args": {
+      "query": "RunLite 2 Pro",
+      "category": "giày chạy bộ"
+    }
+  },
+  {
+    "scenario_id": "SC04",
+    "call": "call_2",
+    "turn": 1,
+    "args": {
+      "query": "RunLite 2 Pro",
+      "category": "giày chạy bộ"
+    }
+  },
+  {
+    "scenario_id": "SC04",
+    "call": "call_2",
+    "turn": 2,
+    "args": {
+      "query": "RunLite 2 Pro",
+      "category": "giày chạy bộ"
+    }
+  },
+  {
+    "scenario_id": "SC04",
+    "call": "call_2",
+    "turn": 3,
+    "args": {
+      "query": "RunLite 2 Pro",
+      "category": "giày chạy bộ"
+    }
+  },
+  {
+    "scenario_id": "SC06",
+    "call": "call_1",
+    "turn": 1,
+    "args": {
+      "query": "Xiaomi 4 Pro",
+      "category": "máy lọc không khí"
+    }
+  },
+  {
+    "scenario_id": "SC06",
+    "call": "call_1",
+    "turn": 1,
+    "args": {
+      "query": "Xiaomi",
+      "category": "máy lọc không khí"
+    }
+  },
+  {
+    "scenario_id": "SC06",
+    "call": "call_1",
+    "turn": 2,
+    "args": {
+      "query": "Xiaomi 4 Pro",
+      "category": "máy lọc không khí",
+      "min_room_area_m2": 35
+    }
+  },
+  {
+    "scenario_id": "SC06",
+    "call": "call_1",
+    "turn": 3,
+    "args": {
+      "category": "máy lọc không khí",
+      "max_price_vnd": 5500000,
+      "min_room_area_m2": 35
+    }
+  },
+  {
+    "scenario_id": "SC06",
+    "call": "call_2",
+    "turn": 1,
+    "args": {
+      "query": "Xiaomi 4 Pro",
+      "category": "máy lọc không khí",
+      "max_price_vnd": 5500000,
+      "min_room_area_m2": 35
+    }
+  },
+  {
+    "scenario_id": "SC06",
+    "call": "call_2",
+    "turn": 2,
+    "args": {
+      "query": "Xiaomi 4 Pro",
+      "category": "máy lọc không khí",
+      "max_price_vnd": 5500000,
+      "min_room_area_m2": 35
+    }
+  }
+]

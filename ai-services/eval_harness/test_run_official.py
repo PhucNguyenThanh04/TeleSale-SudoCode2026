@@ -16,7 +16,8 @@ def test_seed_fingerprint_must_match_across_configurations():
         require_same_seed("digest-a", "digest-b")
 
 
-def test_conversation_run_does_not_execute_retired_rag(tmp_path):
+@pytest.mark.parametrize('failure', [None, 'publish', 'missing', 'tampered', 'turn_missing', 'turn_tampered'])
+def test_conversation_run_does_not_execute_retired_rag(tmp_path, failure):
     scenarios = tmp_path / "scenarios"
     scenarios.mkdir()
     (scenarios / "case.json").write_text(json.dumps({
@@ -25,12 +26,42 @@ def test_conversation_run_does_not_execute_retired_rag(tmp_path):
 
     def fake_run(config, scenarios, agent, seed, run_id, out, **kwargs):
         trace = out / f"{config}.jsonl"
-        trace.write_text("", encoding="utf-8")
+        from eval_harness.extractor import extract_detailed
+        from eval_harness.extraction_report import write_extraction_sidecar
+        row = dict(run_id=run_id, config='full' if config == 'full' else 'baseline_no_memory', scenario_id='CASE-A', call='call_1', turn=1,
+                   agent_text='Dạ chào anh', tool_calls=[], questions=[], claims=[])
+        trace.write_text(json.dumps(row) + '\n')
+        write_extraction_sidecar(trace, out/('full.extraction.jsonl' if config == 'full' else 'baseline.extraction.jsonl'))
+        from eval_harness.turn_diagnostics import TurnDiagnostics
+        collector=TurnDiagnostics()
+        collector.observe(SimpleNamespace(session_id='now'),None,{},row,[])
+        refs=collector.write(trace)
         trace.with_suffix(".report.json").write_text(json.dumps({
-            "database_identity": identity}), encoding="utf-8")
+            "database_identity": identity, "turn_diagnostics":refs}), encoding="utf-8")
         return trace
 
-    settings = SimpleNamespace(app_env="test", llm_model="fake", ollama_base_url="https://offline.invalid",
+    def fake_publish(scenarios, full, baseline, score, metadata, **kwargs):
+        from eval_harness.extraction_report import summarize_extraction, sha256
+        if failure == 'publish':
+            raise OSError('synthetic publication failure')
+        result = {'status': 'validated', 'manifests': {'full': {}, 'baseline_no_memory': {}}}
+        if failure == 'missing':
+            return result
+        report = summarize_extraction({'full': full, 'baseline_no_memory': baseline}, kwargs['extraction_sidecars'], {})
+        path = score.parent/'extraction_report.json'
+        path.write_text(json.dumps(report))
+        result.update(extraction_status=report['extraction_status'],
+                      extraction_report={'path': path.name, 'sha256': sha256(path)})
+        if failure != 'turn_missing':
+            result['turn_diagnostics']={config:json.loads(path.with_suffix('.report.json').read_text())['turn_diagnostics']
+                for config,path in {'full':full,'baseline_no_memory':baseline}.items()}
+        if failure == 'turn_tampered':
+            full.with_suffix('.events.json').write_text('[]')
+        if failure == 'tampered':
+            kwargs['extraction_sidecars']['full'].write_text('')
+        return result
+
+    settings = SimpleNamespace(app_env="test", llm_model="fake", llm_base_url="https://offline.invalid",
                                llm_temperature=0, llm_max_tokens=1,
                                agent_prompt_history_turns=1,
                                agent_guardrails_enabled=True)
@@ -41,14 +72,13 @@ def test_conversation_run_does_not_execute_retired_rag(tmp_path):
                new_callable=AsyncMock, return_value="seed"), \
          patch("eval_harness.run_official.source_snapshot_digest", return_value="source"), \
          patch("eval_harness.run_official._run_one", side_effect=fake_run), \
-         patch("eval_harness.run_official.publish_pair", return_value={
-             "manifests": {"full": {}, "baseline_no_memory": {}}}), \
+         patch("eval_harness.run_official.publish_pair", side_effect=fake_publish), \
          patch("asyncpg.connect", side_effect=AssertionError("Retired RAG must not query source DB")):
         out = asyncio.run(run_pair(scenarios=scenarios, btc_root=__import__("pathlib").Path(__file__).resolve().parents[3] / "BTC-Data-Vong1-TEAMS",
                                    agent="deep", seed=7, out_root=tmp_path / "results", expected_database="telesale_eval_test"))
 
     run = json.loads((out / "run.json").read_text(encoding="utf-8"))
-    assert run["status"] == "validated"
+    assert run["status"] == ("failed" if failure else "validated")
     assert "rag_summary" not in run
     assert not (out / "rag_retrieval.json").exists()
 
@@ -91,3 +121,50 @@ def test_child_progress_is_inherited_unbuffered_but_stderr_stays_private(tmp_pat
     assert args.kwargs.get('stdout') is None
     assert args.kwargs['stderr']==subprocess.PIPE
     assert '[eval] full: starting' in capsys.readouterr().out
+
+
+def test_child_execution_error_survives_without_raw_stderr(tmp_path):
+    from eval_harness.run_official import _run_one
+    report = tmp_path/'full.diagnostics_full.report.json'
+    report.write_text(json.dumps({'status':'failed', 'phase':'warmup',
+        'error_code':'warmup_execution_unhealthy', 'execution_error': {
+            'phase':'model_invocation', 'status':'failed', 'error_type':'BadRequestError',
+            'http_status':400, 'error_code':'invalid_value', 'error_param':'tools[0].function.name',
+            'message':'private-secret'}}))
+    with patch('eval_harness.run_official.subprocess.run', return_value=SimpleNamespace(returncode=1, stderr='private-secret')):
+        with pytest.raises(RuntimeError) as caught:
+            _run_one('full',tmp_path,'deep',7,'r',tmp_path,btc_root=tmp_path,
+                     expected_database='telesale',release={'release_id':'r','manifest_hash':'h'})
+    assert caught.value.execution_error['error_type'] == 'BadRequestError'
+    assert 'private-secret' not in json.dumps(caught.value.__dict__)
+
+
+def test_full_failure_never_starts_baseline_or_publishes(tmp_path):
+    scenarios=tmp_path/'scenarios'
+    scenarios.mkdir()
+    (scenarios/'case.json').write_text(json.dumps({'scenario_id':'X','calls':{'call_1':{'customer_turns':['Chào']}}}))
+    with patch('eval_harness.run_official.Settings',return_value=SimpleNamespace(app_env='test')), \
+         patch('eval_harness.run_official.database_url',return_value='offline'), \
+         patch('eval_harness.run_official.capture_release',new_callable=AsyncMock,return_value={'release_id':'btc-only'}), \
+         patch('eval_harness.run_official.fingerprint_btc_source',new_callable=AsyncMock,return_value='seed'), \
+         patch('eval_harness.run_official._run_one',side_effect=RuntimeError('warmup failed')) as child, \
+         patch('eval_harness.run_official.publish_pair') as publish:
+        from pathlib import Path
+        btc=Path(__file__).resolve().parents[3]/'BTC-Data-Vong1-TEAMS'
+        out=asyncio.run(run_pair(scenarios=scenarios,btc_root=btc,agent='deep',seed=7,
+                                out_root=tmp_path/'runs',expected_database='telesale'))
+    assert child.call_count==1 and child.call_args.args[0]=='full'
+    publish.assert_not_called()
+    assert json.loads((out/'run.json').read_text())['status']=='failed'
+
+
+@pytest.mark.parametrize('payload', ['[]', 'null', '"private-secret"', '{broken'])
+def test_malformed_child_report_keeps_safe_runner_failure(tmp_path, payload):
+    from eval_harness.run_official import _run_one
+    (tmp_path/'full.diagnostics_full.report.json').write_text(payload)
+    with patch('eval_harness.run_official.subprocess.run',return_value=SimpleNamespace(returncode=1)):
+        with pytest.raises(RuntimeError) as caught:
+            _run_one('full',tmp_path,'deep',7,'r',tmp_path,btc_root=tmp_path,
+                     expected_database='telesale',release={'release_id':'r','manifest_hash':'h'})
+    assert caught.value.error_code == 'configuration_execution_failed'
+    assert 'private-secret' not in str(caught.value.__dict__)

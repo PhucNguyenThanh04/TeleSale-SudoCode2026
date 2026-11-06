@@ -17,7 +17,7 @@ def _state(text, *, price=4_800_000, budget=5_000_000, lock=False):
             {"name": "catalog.search",
              "args": {"query": "máy lọc", "min_room_area_m2": 27,
                       "max_price_vnd": budget},
-             "result": {"items": [{"sku": sku, "name": name,
+             "result": {"items": [{"sku": sku, "name": name, "variants": [],
                                    "attributes": {"room_area_m2": 30,
                                                   "child_safe_lock": lock}}],
                         "total": 1}},
@@ -50,7 +50,7 @@ def test_recovery_uses_validated_child_safe_option_with_different_budget():
 def test_recovery_names_product_in_each_feature_sentence_with_multiple_results():
     state = _state("Nhà có con nhỏ, phòng 27m2, ngân sách 5 triệu.")
     state["tool_calls"][0]["result"]["items"].append({
-        "sku": "SKU-FILTER-B", "name": "Máy lọc Filter B",
+        "sku": "SKU-FILTER-B", "name": "Máy lọc Filter B", "variants": [],
         "attributes": {"room_area_m2": 35, "child_safe_lock": True},
     })
     result = safe_catalog_reply(state)

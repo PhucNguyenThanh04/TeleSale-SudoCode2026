@@ -1,4 +1,4 @@
-"""Settings behavior without contacting Ollama Cloud."""
+"""Settings behavior without contacting a model provider."""
 
 import os
 import tempfile
@@ -15,15 +15,20 @@ from app.mcp_servers.mcp_shared.config import database_url, mcp_token
 class SettingsTest(unittest.TestCase):
     def test_loads_env_file_from_other_working_directory(self) -> None:
         with patch.dict(os.environ, {}, clear=True), tempfile.TemporaryDirectory() as cwd:
+            env_file = Path(cwd) / "service.env"
+            env_file.write_text("LLM_API_KEY=test-key\nLLM_MODEL=gpt-6-luna\n", encoding="utf-8")
             previous = Path.cwd()
             try:
-                os.chdir(cwd)
-                settings = Settings()
+                workdir = Path(cwd) / "other-directory"
+                workdir.mkdir()
+                os.chdir(workdir)
+                with patch.dict(Settings.model_config, {"env_file": env_file}):
+                    settings = Settings()
             finally:
                 os.chdir(previous)
 
-        self.assertEqual(settings.llm_model, "gemma4:31b")
-        self.assertEqual(str(settings.ollama_base_url), "https://ollama.com/")
+        self.assertEqual(settings.llm_model, "gpt-6-luna")
+        self.assertEqual(str(settings.llm_base_url), "https://api.openai.com/v1")
 
     def test_process_environment_overrides_file(self) -> None:
         with patch.dict(os.environ, {"LLM_MODEL": "another-model", "PORT": "9001",
@@ -49,7 +54,8 @@ class SettingsTest(unittest.TestCase):
 
         for change in (
             {"PORT": "0"},
-            {"OLLAMA_TIMEOUT_SECONDS": "0"},
+            {"LLM_BASE_URL": "invalid-url"},
+            {"LLM_TIMEOUT_SECONDS": "0"},
             {"LLM_TEMPERATURE": "1.5"},
             {"LLM_MAX_TOKENS": "0"},
             {"AGENT_MAX_TOOL_CALLS": "2"},
@@ -112,7 +118,7 @@ class SettingsTest(unittest.TestCase):
                      app_env="production", langfuse_capture_content=True)
 
     def test_mcp_settings_use_role_secret_files_without_leaking_password(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
+        with patch.dict(os.environ, {}, clear=True), tempfile.TemporaryDirectory() as temporary:
             password_file = Path(temporary) / "password"
             token_file = Path(temporary) / "token"
             password_file.write_text("special@password", encoding="utf-8")

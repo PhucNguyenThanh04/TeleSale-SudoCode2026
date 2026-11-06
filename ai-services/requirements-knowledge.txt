@@ -1,3 +1,0 @@
-# CPU token counting only. Dense embeddings use the Cloudflare API via existing httpx.
-# Install at build/setup time, never at runtime startup.
-tokenizers==0.23.3

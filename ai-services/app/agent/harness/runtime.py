@@ -107,7 +107,9 @@ class AgentHarnessRuntime:
                          "tool_calls": initial_calls}, config=config,
                     )
                     self._session_tool_calls[session_id].extend(
-                        deepcopy(state.get("tool_calls", [])))
+                        {**deepcopy(call), 'customer_id': state.get('customer_id'),
+                         'session_id': session_id, 'source_turn_id': str(turn.client_msg_id)}
+                        for call in state.get('tool_calls', []))
                     if trace:
                         trace_output = {"needs_handoff": state.get("needs_handoff", False),
                                         "tool_count": state.get("tool_count", 0),

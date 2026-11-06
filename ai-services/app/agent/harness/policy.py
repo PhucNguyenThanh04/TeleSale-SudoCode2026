@@ -1,12 +1,14 @@
 """Existing deterministic tool boundaries, separate from graph wiring."""
 
+from app.mcp_servers.mcp_shared.commerce_evidence import build_commerce_evidence
+
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Literal
 import unicodedata
 import re
 
-from app.agent.harness.catalog_query import clean_catalog_query
+from app.agent.harness.catalog_query import clean_catalog_query, canonical_catalog_category
 from app.agent.harness.handoff_brief import build_handoff_brief
 from app.agent.harness.state import TurnState
 
@@ -50,7 +52,7 @@ class ProductSelection:
 def resolve_product_selection(state: TurnState, args: dict[str, Any]) -> ProductSelection:
     """Resolve only from successful catalog metadata, preserving unknown state."""
     sku = args.get("sku")
-    items = [item for call in [*state.get("session_tool_calls", []), *state.get("tool_calls", [])]
+    items = [item for call in build_commerce_evidence(state)
              if call.get("name") == "catalog.search" and "error" not in call.get("result", {})
              for item in call.get("result", {}).get("items", []) if isinstance(item, dict)]
     parent = next((item for item in reversed(items) if item.get("sku") == sku or any(
@@ -66,11 +68,31 @@ def resolve_product_selection(state: TurnState, args: dict[str, Any]) -> Product
             "NFD", str(value).casefold().replace("đ", "d"))
             if unicodedata.category(char) != "Mn")
     selections = {}
-    customer_text = folded(state.get("safe_text", ""))
+    from app.mcp_servers.mcp_shared.consultation import _mentions
+    metadata = {item['sku']: item for item in items}
+    customer_texts = []
+    historical_focus = None
+    for turn in state.get('history', []):
+        if not isinstance(turn, dict):
+            continue
+        customer = turn.get('customer', turn.get('customer_text', ''))
+        named = _mentions(customer, metadata)
+        if named:
+            historical_focus = next(iter(named)) if len(named) == 1 else None
+        if historical_focus == parent_sku:
+            customer_texts.append(folded(customer))
+        agent_named = _mentions(turn.get('agent', turn.get('agent_text', '')), metadata)
+        if agent_named:
+            historical_focus = next(iter(agent_named)) if len(agent_named) == 1 else None
+    customer_texts.append(folded(state.get('safe_text', '')))
     for key, cue in (("size", r"(?:size|co|kich co)"), ("color", "mau")):
-        current = {str(v.get(key)): v.get(key) for v in parent["variants"] if isinstance(v, dict)
-                   and v.get(key) is not None and re.search(
-                       r"\b" + cue + r"\s+" + re.escape(folded(v[key])) + r"(?!\w)", customer_text)}
+        current = {}
+        for customer_text in customer_texts:
+            mentioned = {str(v.get(key)): v.get(key) for v in parent["variants"] if isinstance(v, dict)
+                         and v.get(key) is not None and re.search(
+                             r"\b" + cue + r"\s+" + re.escape(folded(v[key])) + r"(?!\w)", customer_text)}
+            if mentioned:
+                current = mentioned
         if len(current) > 1:
             return ProductSelection("selection_required", parent_sku=parent_sku, missing_fields=(key,))
         selections[key] = next(iter(current.values())) if current else args.get(key)
@@ -101,6 +123,8 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
     if name not in ALLOWED_TOOLS:
         return None
     args = dict(decision.tool_args)
+    if name == "catalog.search" and isinstance(args.get("category"), str):
+        args["category"] = canonical_catalog_category(args["category"])
     if name == "catalog.search" and isinstance(args.get("query"), str):
         args["query"] = clean_catalog_query(args["query"])
         # A wider second search should not silently drop the customer's filters.
@@ -187,8 +211,7 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
         if state.get("identity_status") != "known":
             return None
         sku = args.get("sku")
-        observations = [*state.get("session_tool_calls", []),
-                        *state.get("tool_calls", [])]
+        observations = build_commerce_evidence(state, args=args)
         on = request.on.isoformat()
         qty = args.get("qty", 1)
         latest = {}

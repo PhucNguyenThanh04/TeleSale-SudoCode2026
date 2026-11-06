@@ -75,6 +75,62 @@ def _valid_fact(fact: dict) -> bool:
                     and mask_pii(value) == value)))))
 
 
+async def _committed_episode_view(repo, conn, customer_id, session_id, previous, prior_episodes=None):
+    """Read-your-committed-turns without waiting for or writing the projection."""
+    from app.mcp_servers.mcp_shared.consultation import committed_consultation, admit_consultation
+    from app.mcp_servers.mcp_memory.services.episode_state import apply_episode_delta
+    if not hasattr(repo, 'recent_session_turns'):
+        return previous
+    if await repo.owner(conn, session_id) != customer_id:
+        return previous
+    count = await repo.turn_count(conn, session_id)
+    if type(count) is not int:
+        return previous
+    rows = await repo.recent_session_turns(conn, session_id, customer_id, count, limit=12)
+    if not isinstance(rows, list):
+        return previous
+    turns, calls = [], []
+    view = previous
+    for row in rows:
+        if not isinstance(row, dict) or not row.get('client_msg_id'):
+            continue
+        tid = str(row['client_msg_id'])
+        turn = {'customer_id': customer_id, 'session_id': session_id, 'turn_id': tid,
+                'on': str(row['on_date']), 'customer_text': row['customer_text'], 'agent_text': row['agent_text']}
+        turns.append(turn)
+        observed = row.get('tool_observations') or []
+        if isinstance(observed, str):
+            observed = json.loads(observed)
+        calls.extend({**c, 'source_turn_id': tid, 'customer_id': customer_id, 'session_id': session_id}
+                     for c in observed if isinstance(c, dict))
+        snapshot = committed_consultation(customer_id, session_id, turns, calls, prior_episodes=prior_episodes)
+        payload = snapshot.model_dump(mode='json')
+        fresh = {k: ref for k, ref in snapshot.source_refs.items() if ref.source_turn_id == tid}
+        if not set(fresh) - {'candidates'}:
+            continue
+        patch = {k: payload[k] for k in fresh}
+        patch['source_refs'] = {k: ref.model_dump(mode='json') for k, ref in fresh.items()}
+        admitted = admit_consultation(patch, customer_id=customer_id, session_id=session_id,
+                                     committed_turns=turns, tool_calls=calls, prior_episodes=prior_episodes)
+        if admitted:
+            old = view or {'schema_version': 1, 'customer_id': customer_id, 'session_id': session_id,
+                           'on_date': turn['on'], 'status': 'active', 'topics': []}
+            view = {**old, **apply_episode_delta(old, {'topic_updates': [
+                {'scope_type': 'global', 'scope_id': '', 'consultation': admitted}]},
+                source_turn_id=tid, customer_text=turn['customer_text'], agent_text=turn['agent_text'])}
+    if view and turns:
+        from app.mcp_servers.mcp_shared.presented_offers import derive_presented_offers
+        # A bounded read view of existing committed evidence, not another persisted history.
+        view = {**view, 'offer_candidates': [o.model_dump(mode='json') for o in
+            derive_presented_offers(customer_id=customer_id, session_id=session_id,
+                                    committed_turns=turns, tool_calls=calls)]}
+    return view
+
+
+from app.mcp_servers.mcp_shared.decision_diagnostics import memory_boundary, active as diagnostic_active, emit as diagnostic_emit
+
+
+@memory_boundary("memory_read")
 async def read(repo, customer_id: str | None, session_id: str,
                max_episodes: int = 5, include_prior: bool = True,
                projector=None) -> dict:
@@ -88,7 +144,8 @@ async def read(repo, customer_id: str | None, session_id: str,
             return {"error": "session_owner_mismatch"}
         turns = (await repo.recent_turns(conn, session_id, 12)
                  if hasattr(repo, "recent_turns") else await repo.turns(conn, session_id))
-        result = {"history": [{"customer": row["customer_text"], "agent": row["agent_text"]}
+        result = {"history": [{"customer": row["customer_text"], "agent": row["agent_text"],
+                               **({'source_turn_id': str(row['client_msg_id'])} if row.get('client_msg_id') else {})}
                               for row in turns], "profile": {},
                   "scoped_facts": {"product": {}, "room": {}},
                   "episodes": [], "current_episode": None,
@@ -114,9 +171,27 @@ async def read(repo, customer_id: str | None, session_id: str,
                     if hasattr(repo, "completed_job_revisions") else revisions)
                 facts = select_facts(fact_versions, completed)
                 all_episodes = select_episodes(episode_versions, completed)
+                if diagnostic_active():
+                    from types import SimpleNamespace
+                    diagnostic_state = {'customer_id': customer_id, 'history': result['history'],
+                        'request': SimpleNamespace(session_id=session_id)}
+                    for ep in all_episodes:
+                        for topic in ep.get('topics', []) if isinstance(ep, dict) else []:
+                            if isinstance(topic, dict) and isinstance(topic.get('consultation'), dict):
+                                diagnostic_emit('memory_projection', state=diagnostic_state, component='memory',
+                                    snapshot=topic['consultation'], revision=ep.get('revision'))
                 current = next((item for item in all_episodes
                     if item.get("session_id") == session_id), None)
                 episodes = all_episodes if include_prior else []
+                episodes = list(episodes)
+                if include_prior:
+                    for index, episode in enumerate(episodes[:max_episodes]):
+                        prior_id = str(episode.get('session_id', ''))
+                        if prior_id and prior_id != session_id:
+                            episodes[index] = await _committed_episode_view(
+                                repo, conn, customer_id, prior_id, episode)
+                current = await _committed_episode_view(repo, conn, customer_id, session_id, current,
+                    [ep for ep in episodes if str(ep.get("session_id")) != session_id])
         except Exception as exc:
             logging.getLogger(__name__).warning(
                 "LangMem store read failed: %s", type(exc).__name__)
@@ -153,6 +228,7 @@ async def read(repo, customer_id: str | None, session_id: str,
         return result
 
 
+@memory_boundary("memory_commit")
 async def write(repo, action: str, customer_id: str | None, session_id: str,
                 data: dict, operation_key: str | None = None) -> dict:
     if action != "commit_turn":
@@ -222,6 +298,11 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
             if customer_id:
                 await repo.enqueue_distillation(conn, session_id, customer_id,
                     str(source_turn_id), observations, outcome)
+                if diagnostic_active():
+                    from types import SimpleNamespace
+                    diagnostic_emit('memory_enqueue', component='memory', status='enqueued',
+                        state={'customer_id': customer_id, 'request': SimpleNamespace(
+                            session_id=session_id, client_msg_id=source_turn_id)})
             else:
                 if len(_ANONYMOUS_TURN_META) > 500:
                     _ANONYMOUS_TURN_META.clear()

@@ -12,6 +12,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.configs import Settings
+from app.agent.harness.execution_diagnostics import safe_failure_details
 from app.knowledge.context import capture_release, release_context, selected_release
 from app.mcp_servers.mcp_shared.config import database_url
 from eval_harness.seed_fingerprint import fingerprint_btc_source
@@ -19,6 +20,7 @@ from eval_harness.scenario_contract import load_scenarios, dataset_coverage, sna
 
 PROJECT = Path(__file__).resolve().parents[2]
 SERVICE = PROJECT / 'ai-services'
+_DECISION_ALIAS_KEY = os.urandom(32).hex()
 sys.path.insert(0,str(PROJECT))
 from eval.trace_audit import source_snapshot_digest
 from eval_harness.official_pipeline import publish_pair, atomic_json
@@ -34,6 +36,7 @@ def _run_one(config, scenarios, agent, seed, run_id, out, *, btc_root, expected_
     report=out/f'{config}.diagnostics.json'
     env=dict(os.environ)
     env['_EVAL_PINNED_RELEASE']=json.dumps(release)
+    env['_EVAL_DECISION_ALIAS_KEY'] = _DECISION_ALIAS_KEY
     env['KNOWLEDGE_RELEASE_ID']=release['release_id']
     # The child applies the same offline dataset validator before any mutation.
     print(f"[eval] {config}: starting", flush=True)
@@ -45,14 +48,21 @@ def _run_one(config, scenarios, agent, seed, run_id, out, *, btc_root, expected_
     trace=report.with_name(report.stem+f'_{suffix}.jsonl')
     # An invalid child deliberately exits nonzero but leaves complete safe evidence.
     side=trace.with_suffix('.report.json')
-    status=json.loads(side.read_text()).get('status') if side.exists() else None
+    try:
+        details=json.loads(side.read_text()) if side.exists() else {}
+    except (OSError, ValueError):
+        details={}
+    if not isinstance(details, dict):
+        details={}
+    status=details.get('status')
     if (completed.returncode and status!='invalid') or not trace.is_file():
         failure=RuntimeError('configuration_execution_failed')
-        details=json.loads(side.read_text()) if side.exists() else {}
         failure.safety_issues=details.get('safety_issues',[])
         failure.error_code=details.get('error_code','configuration_execution_failed')
         failure.phase=details.get('phase','configuration')
         failure.service=details.get('service')
+        for key,value in safe_failure_details(details).items():
+            setattr(failure,key,value)
         raise failure
     return trace
 
@@ -112,7 +122,7 @@ async def run_pair(*, scenarios: Path, btc_root: Path, agent: str, seed: int,
         if selected_digest!=_dataset_digest(load_scenarios(selected,btc_root=btc_root)):
             raise RuntimeError('Dataset snapshot changed during the run')
         from urllib.parse import urlsplit
-        provider=urlsplit(str(settings.ollama_base_url)).hostname
+        provider=urlsplit(str(settings.llm_base_url)).hostname
         metadata=dict(source_digest=source_before,seed_id=f'btc-source-seed-{seed}',seed_digest=seed_digest,
             model_id=settings.llm_model,model_params={'temperature':settings.llm_temperature,
                 'max_tokens':settings.llm_max_tokens,'seed':seed,'agent':agent,'provider':provider,
@@ -121,11 +131,40 @@ async def run_pair(*, scenarios: Path, btc_root: Path, agent: str, seed: int,
             hardware={'platform':platform.platform(),'machine':platform.machine(),'cpu_count':os.cpu_count(),
                       'ram_bytes':os.sysconf('SC_PAGE_SIZE')*os.sysconf('SC_PHYS_PAGES')},
             started_at_utc=started,expected_database=target,app_env=settings.app_env,knowledge_release=release)
+        from app.mcp_servers.mcp_shared.decision_diagnostics import enabled as decision_enabled
+        decision_ref = None
+        if decision_enabled():
+            try:
+                from eval_harness.turn_diagnostics import merge_decisions
+                decision_ref = merge_decisions(traces, out / 'decision_diagnostics.jsonl')
+            except Exception:
+                decision_ref = {'error': 'diagnostics_merge_failed', 'complete': False}
+            summary['decision_diagnostics'] = decision_ref
         print("[eval] pair: audit and BTC scoring", flush=True)
         result=publish_pair(selected,traces['full'],traces['baseline_no_memory'],out/'btc_score.json',
-            metadata,btc_root=btc_root,safety_issues=safety_issues)
-        summary.update(status=result.get('status','validated'),
-            score='btc_score.json' if result.get('status','validated')=='validated' else None,
+            metadata,btc_root=btc_root,safety_issues=safety_issues,
+            extraction_sidecars={'full':out/'full.extraction.jsonl', 'baseline_no_memory':out/'baseline.extraction.jsonl'},
+            require_turn_diagnostics=True, decision_diagnostics=decision_ref)
+        if result['status'] == 'validated':
+            from eval_harness.extraction_report import verify_extraction_report, sha256
+            reference = result['extraction_report']
+            if reference['path'] != 'extraction_report.json' or sha256(out/reference['path']) != reference['sha256']:
+                raise ValueError('Extraction summary reference mismatch')
+            report = verify_extraction_report(out/reference['path'])
+            if result['extraction_status'] != report['extraction_status']:
+                raise ValueError('Extraction status mismatch')
+            from eval_harness.turn_diagnostics import verify_report_turn_diagnostics
+            turn_refs=result['turn_diagnostics']
+            if set(turn_refs)!=set(traces):
+                raise ValueError('Missing configuration turn diagnostics')
+            for config,trace in traces.items():
+                if verify_report_turn_diagnostics(trace)!=turn_refs[config]:
+                    raise ValueError('Turn diagnostic reference mismatch')
+            summary.update(extraction_report=reference, extraction_status=report['extraction_status'],
+                           turn_diagnostics=turn_refs)
+        print(f"[eval] execution health: {result.get('execution_health', 'unknown')}", flush=True)
+        summary.update(status=result['status'], execution_health=result.get('execution_health','unknown'),
+            score='btc_score.json' if result['status']=='validated' else None,
             manifests={key:f'{key}.manifest.json' for key in result['manifests']},
             traces={key:path.name for key,path in traces.items()},scenarios=str(selected.resolve()),
             scenario_groups={sid:sc.get('level','Khác') for sid,sc in inputs.items()},
@@ -138,6 +177,7 @@ async def run_pair(*, scenarios: Path, btc_root: Path, agent: str, seed: int,
         summary.update(status='failed',error_type=type(exc).__name__,
             error_code=getattr(exc,'error_code','pair_failed'),
             phase=getattr(exc,'phase','coordinator'),service=getattr(exc,'service',None),
+            **safe_failure_details(exc),
             safety_issues=safety_issues)
     atomic_json(out/'run.json',summary)
     return out
@@ -148,11 +188,14 @@ def main():
     parser.add_argument('--scenarios',type=Path,default=SERVICE/'eval_harness/scenarios')
     parser.add_argument('--btc-root',type=Path,required=True)
     parser.add_argument('--expected-database',default=os.getenv('EVAL_EXPECTED_DATABASE'))
+    parser.add_argument('--decision-diagnostics', action='store_true', help='Capture safe decision evidence; remote memory/worker need EVAL_DECISION_DIAGNOSTICS=1')
     parser.add_argument('--agent',choices=('deep','react'),default='deep')
     parser.add_argument('--seed',type=int,default=7)
     parser.add_argument('--limit-scenarios',type=int)
     parser.add_argument('--out-root',type=Path,default=SERVICE/'eval_harness/results')
     args=parser.parse_args()
+    if args.decision_diagnostics:
+        os.environ['EVAL_DECISION_DIAGNOSTICS'] = '1'
     out=asyncio.run(run_pair(scenarios=args.scenarios.resolve(),btc_root=args.btc_root.resolve(),
         agent=args.agent,seed=args.seed,out_root=args.out_root.resolve(),
         expected_database=args.expected_database,limit_scenarios=args.limit_scenarios))
@@ -163,6 +206,8 @@ def main():
         print(f"phase={summary.get('phase')} code={summary.get('error_code')} service={summary.get('service')}")
     if status!='validated':
         raise SystemExit(1)
+    from eval_harness.report_metrics import render_run
+    print(render_run(out))
 
 
 if __name__=='__main__':

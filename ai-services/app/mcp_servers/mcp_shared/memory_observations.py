@@ -11,7 +11,7 @@ _FIELDS = {
     "inventory.check": ({"sku", "on"}, {"sku", "in_stock", "qty",
                                       "restock_expected", "discontinued", "successor_sku"}),
     "pricing.get_quote": ({"sku", "on", "qty"}, {"sku", "list_price_vnd",
-        "final_price_vnd", "applied_promos", "expired_promos"}),
+        "final_price_vnd", "applied_promos", "expired_promos", "freeship"}),
     "order.create": ({"sku", "qty", "price_vnd", "promo_code", "payment", "on"},
                      {"order_id", "status", "total_vnd"}),
     "schedule.callback": ({"window", "reason", "on"}, {"callback_id", "status", "window"}),
@@ -70,8 +70,9 @@ def memory_observations(calls: list[dict]) -> list[dict]:
         elif name == "pricing.get_quote":
             for field in ("applied_promos", "expired_promos"):
                 raw_promos = call["result"].get(field)
-                result[field] = [_pick(promo, _PROMO_FIELDS)
-                    for promo in raw_promos[:10] if isinstance(promo, dict)] \
+                result[field] = [(_pick(promo, _PROMO_FIELDS) if isinstance(promo, dict) else mask_pii(promo))
+                    for promo in raw_promos[:10] if isinstance(promo, dict)
+                    or field == 'expired_promos' and isinstance(promo, str)] \
                     if isinstance(raw_promos, list) else []
         item = {"name": name, "args": args, "result": result}
         if len(json.dumps(item, ensure_ascii=False, default=str)) <= 20000:

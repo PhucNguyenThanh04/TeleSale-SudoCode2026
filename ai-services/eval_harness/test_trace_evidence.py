@@ -62,3 +62,11 @@ def test_spaced_account_number_is_masked_without_reporting_clean():
     row=trace_line('r','full','X','call_1',1,'chào','Số tài khoản: 1234 5678 9012',[],[],[],10,None,'clean',safety_issues=issues)
     assert '1234 5678 9012' not in row['agent_text']
     assert any(i['type']=='pii_violation' for i in issues)
+
+
+def test_masked_semantic_cue_is_invalid_without_raw_extraction():
+    from eval_harness.reference_adapter import trace_line
+    issues=[]
+    row=trace_line('r','full','X','call_1',1,'chào','Giá 700.000đ',[],[],[],1,None,'clean',customer_name='Giá',safety_issues=issues)
+    assert any(issue['type']=='extracted_value' for issue in issues)
+    assert 'Giá' not in row['agent_text']

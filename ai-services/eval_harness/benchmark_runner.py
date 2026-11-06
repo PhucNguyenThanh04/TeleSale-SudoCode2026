@@ -63,7 +63,7 @@ async def run_scenario_call(
     rows_out: list[dict[str, Any]] | None = None,
     customer_name: str | None = None,
     safety_issues: list | None = None,
-    on_turn=None,
+    on_turn=None, diagnostics=None,
 ) -> list[dict[str, Any]]:
     """Execute all turns of a single call in a scenario."""
     session_id = uuid4()
@@ -76,6 +76,7 @@ async def run_scenario_call(
     input_mode = call_spec.get("input_mode", "asr_transcript" if "customer_turns_asr" in call_spec else "clean")
     trace_rows = rows_out if rows_out is not None else []
     source_ids: list[str] = []
+    source_rows: list[dict] = []
     prior_snapshot = None
 
     for turn_idx, user_text in enumerate(customer_turns, start=1):
@@ -93,8 +94,15 @@ async def run_scenario_call(
         t_start = time.perf_counter()
         call_brief_latency = None
 
+        from contextlib import nullcontext
+        from app.mcp_servers.mcp_shared.decision_diagnostics import capture_decisions, enabled as decision_enabled, emit as decision_emit, ingest
+        from app.agent.harness.observability import capture_diagnostic_events
+        state, resp, runtime_error, runtime_events = {}, None, None, []
+        decision_capture = None
         try:
-            resp = await runtime.run(turn_req)
+            with (capture_decisions(aliases=diagnostics.decision_aliases) if diagnostics is not None and decision_enabled() else nullcontext(None)) as decision_capture, capture_diagnostic_events() as runtime_events:
+                decision_emit("provenance", provenance=True)
+                resp = await runtime.run(turn_req)
             latency_ms = (time.perf_counter() - t_start) * 1000.0
             state = runtime.state_for(turn_req)
             if state is None:
@@ -113,6 +121,7 @@ async def run_scenario_call(
 
         except Exception as exc:
             latency_ms = (time.perf_counter() - t_start) * 1000.0
+            runtime_error = type(exc).__name__
             agent_text = f"[ERROR: {type(exc).__name__}]"
             tool_calls = []
             memory_writes = []
@@ -123,11 +132,15 @@ async def run_scenario_call(
                          facts_used_this_turn, latency_ms, call_brief_latency,
                          input_mode, customer_name=customer_name,
                          safety_issues=safety_issues, call_spec=call_spec)
+        if diagnostics is not None:
+            diagnostics.observe(turn_req, resp, state or {}, row, runtime_events, runtime_error=runtime_error)
         if on_turn is not None and not agent_text.startswith("[ERROR:"):
             on_turn(turn_req, resp, state, row)
         source_id = str(turn_req.client_msg_id)
-        source_ids.append(source_id)
-        if wait_for_jobs is not None:
+        if runtime_error is None:
+            source_ids.append(source_id)
+            source_rows.append(row)
+        if runtime_error is None and wait_for_jobs is not None:
             print(f"[eval] {config} {call_name} turn {turn_idx}: waiting memory", flush=True)
             try:
                 await wait_for_jobs(source_id)
@@ -137,10 +150,13 @@ async def run_scenario_call(
                 row["memory_error"] = "job_failed"
                 logger.warning("Distillation wait failed for %s: %s", source_id,
                                type(exc).__name__)
-        if capture_writes is not None and "memory_error" not in row:
+        if runtime_error is None and capture_writes is not None and "memory_error" not in row:
             try:
                 writes = await capture_writes([source_id])
                 accepted = writes.get(source_id, [])
+                if decision_capture is not None:
+                    from app.mcp_servers.mcp_shared.decision_diagnostics import observe_job
+                    observe_job(decision_capture, getattr(writes, 'decision_jobs', {}).get(source_id, {}), state)
                 if safety_issues is not None:
                     from eval_harness.trace_evidence import inspect_redaction
                     safety_issues.extend(inspect_redaction(
@@ -152,6 +168,11 @@ async def run_scenario_call(
                 row["memory_writes"] = []
                 logger.warning("Distillation capture failed for %s: %s", source_id,
                                type(exc).__name__)
+        if diagnostics is not None and decision_enabled():
+            try:
+                diagnostics.observe_decisions(row, decision_capture)
+            except Exception:
+                diagnostics.observe_decisions(row, None)
         if capture_source_ids:
             row["_client_msg_id"] = source_id
         trace_rows.append(row)
@@ -161,13 +182,24 @@ async def run_scenario_call(
             on_row(row)
 
     if capture_writes is not None and source_ids:
-        try:
-            if wait_for_jobs is not None:
-                for sid in source_ids:
-                    await wait_for_jobs(sid)
-            final_writes = await capture_writes(source_ids)
-            for row, source_id in zip(trace_rows, source_ids):
-                if "memory_error" not in row:
+        ready = []
+        for row, source_id in zip(source_rows, source_ids):
+            if "memory_error" in row:
+                continue
+            try:
+                if wait_for_jobs is not None:
+                    await wait_for_jobs(source_id)
+                ready.append((row, source_id))
+            except TimeoutError:
+                row["memory_error"] = "timeout"
+            except Exception as exc:
+                row["memory_error"] = "job_failed"
+                logger.warning("Final distillation wait failed for %s: %s",
+                               source_id, type(exc).__name__)
+        if ready:
+            try:
+                final_writes = await capture_writes([sid for _, sid in ready])
+                for row, source_id in ready:
                     accepted = final_writes.get(source_id, [])
                     if safety_issues is not None:
                         from eval_harness.trace_evidence import inspect_redaction
@@ -175,11 +207,11 @@ async def run_scenario_call(
                             {**row, "memory_writes": accepted},
                             {**row, "memory_writes": public_memory_writes(call_name, row["turn"], accepted, customer_name=customer_name)}, call_spec=call_spec))
                     row["memory_writes"] = public_memory_writes(call_name, row["turn"], accepted, customer_name=customer_name)
-        except Exception as exc:
-            for row in trace_rows:
-                row["memory_error"] = "capture_failed"
-            logger.warning("Final distillation attribution failed for %s: %s",
-                           call_name, type(exc).__name__)
+            except Exception as exc:
+                for row, _ in ready:
+                    row["memory_error"] = "capture_failed"
+                logger.warning("Final distillation attribution failed for %s: %s",
+                               call_name, type(exc).__name__)
 
     return trace_rows
 
@@ -260,7 +292,7 @@ async def run_scenario_stream(
     capture_writes=None,
     on_row=None,
     trace: dict[tuple[str, str], list[dict[str, Any]]] | None = None,
-    safety_issues: list | None = None, on_turn=None,
+    safety_issues: list | None = None, on_turn=None, diagnostics=None,
 ) -> dict[tuple[str, str], list[dict[str, Any]]]:
     """Run all scenarios through the harness runtime."""
     trace = trace if trace is not None else {}
@@ -299,7 +331,7 @@ async def run_scenario_stream(
                 wait_for_jobs=wait_for_jobs,
                 capture_writes=capture_writes,
                 on_row=on_row,
-                rows_out=rows, safety_issues=safety_issues, on_turn=on_turn,
+                rows_out=rows, safety_issues=safety_issues, on_turn=on_turn, diagnostics=diagnostics,
             )
 
         sc_duration = time.perf_counter() - t_sc_start
@@ -372,11 +404,28 @@ class WarmupGateway:
 
 
 async def warm_up_configuration(runtime, *, turns: int = 3) -> dict:
+    from app.agent.harness.observability import capture_diagnostic_events
+    from app.agent.harness.execution_diagnostics import execution_health, safe_execution_error
     for index in range(turns):
         print(f"[eval] warmup {index + 1}/{turns}", flush=True)
-        await runtime.run(TextTurnRequest(client_msg_id=uuid4(), session_id=uuid4(),
-            channel="hotline", channel_identity=None, input_mode="clean", on=date(2026, 10, 15), text="Xin chào, bạn có thể hỗ trợ gì?"))
-    return {"turns": turns, "scored": False}
+        with capture_diagnostic_events() as events:
+            try:
+                await runtime.run(TextTurnRequest(client_msg_id=uuid4(), session_id=uuid4(),
+                    channel="hotline", channel_identity=None, input_mode="clean", on=date(2026, 10, 15), text="Xin chào, bạn có thể hỗ trợ gì?"))
+            except Exception as exc:
+                error = safe_execution_error(exc, phase='preparation')
+                failure = RuntimeError('warmup_execution_unhealthy')
+                failure.error_code = 'warmup_execution_unhealthy'
+                failure.execution_error = next((e for e in events if e.get('status') == 'failed'), error)
+                raise failure from None
+        invoked = any(e.get('phase') == 'model_invocation' and e.get('status') == 'succeeded' for e in events)
+        if not invoked or execution_health([{'runtime_events': events}]) != 'healthy':
+            failure = RuntimeError('warmup_execution_unhealthy')
+            failure.error_code = 'warmup_execution_unhealthy'
+            failure.execution_error = next((e for e in events if e.get('status') == 'failed'),
+                {'version': 1, 'phase': 'model_invocation', 'status': 'unknown'})
+            raise failure
+    return {"turns": turns, "scored": False, "execution_health": "healthy"}
 
 
 async def run_configuration(*, scenarios: dict[str, dict], config: str, runtime,
@@ -402,8 +451,13 @@ async def run_configuration(*, scenarios: dict[str, dict], config: str, runtime,
                         raise RuntimeError("handoff_schema_invalid")
             if original_on_turn:
                 original_on_turn(request,response,state,row)
+    from eval_harness.turn_diagnostics import TurnDiagnostics
+    diagnostics = TurnDiagnostics()
     out = Path(out)
+    if any(p.exists() for p in (out, out.with_suffix('.stages.json'), out.with_suffix('.events.json'))):
+        raise FileExistsError('output_exists_choose_new_path')
     out.parent.mkdir(parents=True, exist_ok=True)
+    decision_refs = None
     with out.open("w", encoding="utf-8") as stream:
         def append(row):
             stream.write(json.dumps(row, ensure_ascii=False) + "\n")
@@ -414,16 +468,26 @@ async def run_configuration(*, scenarios: dict[str, dict], config: str, runtime,
             await run_scenario_stream(runtime, scenarios,
                 is_baseline=config == "baseline_no_memory", run_tag=run_id,
                 wait_for_jobs=wait_for_jobs, capture_writes=capture_writes,
-                on_row=append, trace=trace, safety_issues=safety_issues, on_turn=on_turn)
+                on_row=append, trace=trace, safety_issues=safety_issues, on_turn=on_turn, diagnostics=diagnostics)
         finally:
             # Publish final attribution, including late identity backfill.
             write_jsonl(trace, out)
+            diagnostic_refs = diagnostics.write(out)
+            from app.mcp_servers.mcp_shared.decision_diagnostics import enabled as decision_enabled
+            if decision_enabled():
+                try:
+                    decision_refs = diagnostics.write_decisions(out)
+                except Exception:
+                    decision_refs = {'error': 'diagnostics_write_failed'}
     assert_trace_ready(scenarios, trace)
     if btc_root is not None:
         validator = Draft202012Validator(json.loads((Path(btc_root) / "schemas/trace_log.schema.json").read_text()))
         if any(next(validator.iter_errors(row), None) for rows in trace.values() for row in rows):
             raise RuntimeError("trace_schema_invalid")
-    return {"coverage": dataset_coverage(scenarios), "trace": trace, "safety_issues": safety_issues}
+    from eval_harness.extraction_report import write_extraction_sidecar
+    sidecar_name = "full.extraction.jsonl" if config == "full" else "baseline.extraction.jsonl"
+    write_extraction_sidecar(out, out.parent / sidecar_name)
+    return {"coverage": dataset_coverage(scenarios), "trace": trace, "safety_issues": safety_issues, "turn_diagnostics":diagnostic_refs, **({"decision_diagnostics": decision_refs} if decision_refs is not None else {})}
 
 
 async def wait_for_distillation(dsn: str, source_turn_id: str,
@@ -457,6 +521,12 @@ async def wait_for_distillation(dsn: str, source_turn_id: str,
         await conn.close()
 
 
+class DistillationWrites(dict):
+    def __init__(self, values, decision_jobs):
+        super().__init__(values)
+        self.decision_jobs = decision_jobs
+
+
 async def read_distillation_writes(dsn: str, source_ids: list[str]) -> dict[str, list[dict]]:
     """Read only completed, accepted writes for the exact evaluated turns."""
     if not source_ids:
@@ -464,13 +534,25 @@ async def read_distillation_writes(dsn: str, source_ids: list[str]) -> dict[str,
     conn = await asyncpg.connect(dsn.replace("postgresql+asyncpg://",
                                           "postgresql://", 1))
     try:
-        rows = await conn.fetch("""SELECT source_turn_id,accepted_writes
+        from app.mcp_servers.mcp_shared.decision_diagnostics import enabled as decision_enabled
+        columns = ',job_id,status,accepted_proposals' if decision_enabled() else ''
+        rows = await conn.fetch(f"""SELECT source_turn_id,accepted_writes{columns}
             FROM runtime.langmem_distillation_jobs
             WHERE source_turn_id=ANY($1::uuid[]) AND status='completed'""",
             [UUID(item) for item in source_ids])
-        return {str(row["source_turn_id"]): (json.loads(row["accepted_writes"])
+        values = {str(row["source_turn_id"]): (json.loads(row["accepted_writes"])
                 if isinstance(row["accepted_writes"], str) else row["accepted_writes"])
                 for row in rows}
+        if not decision_enabled():
+            return values
+        jobs = {}
+        for row in rows:
+            proposals = row['accepted_proposals'] or {}
+            if isinstance(proposals, str):
+                proposals = json.loads(proposals)
+            jobs[str(row['source_turn_id'])] = {'revision': row['job_id'], 'status': row['status'],
+                'envelope': proposals.get('_decision_diagnostics')}
+        return DistillationWrites(values, jobs)
     finally:
         await conn.close()
 
@@ -513,7 +595,8 @@ async def execute_configuration(*, settings, scenarios, config, run_id, out,
                                 btc_root, expected_database, release, runtime=None,
                                 worker_wait_seconds=180, on_turn=None):
     """One authorized live lifecycle, shared by both single-trace CLIs."""
-    if Path(out).exists() or Path(out).with_suffix(".report.json").exists():
+    if any(path.exists() for path in (Path(out), Path(out).with_suffix('.report.json'),
+            Path(out).with_suffix('.stages.json'), Path(out).with_suffix('.events.json'))):
         raise FileExistsError("output_exists_choose_new_path")
     settings = settings.model_copy(update={"langfuse_capture_content": False})
     from app.knowledge.context import release_context
@@ -524,6 +607,7 @@ async def execute_configuration(*, settings, scenarios, config, run_id, out,
         runtime = build_runtime(settings, gateway=SeedHistoryGateway(runtime.tools))
     runtime.memory.include_prior = config == "full"
     issues = []
+    from app.agent.harness.execution_diagnostics import safe_failure_details
     phase = "preflight"
     try:
         with release_context(release["release_id"]):
@@ -544,11 +628,21 @@ async def execute_configuration(*, settings, scenarios, config, run_id, out,
                 wait_for_jobs=lambda source: wait_for_distillation(database_url(settings), source, worker_wait_seconds),
                 capture_writes=lambda ids: read_distillation_writes(database_url(settings), ids), on_turn=on_turn, safety_issues=issues)
     except Exception as exc:
+        from eval_harness.turn_diagnostics import verify_turn_diagnostics
+        diagnostic_refs = {}
+        try:
+            diagnostic_refs = verify_turn_diagnostics(Path(out))
+        except ValueError:
+            pass
         atomic_json(Path(out).with_suffix(".report.json"), {"status":"failed", "run_id":run_id,
+            **({'turn_diagnostics':diagnostic_refs} if diagnostic_refs else {}),
             "config":config,"error_type":type(exc).__name__,
             "error_code":getattr(exc,"error_code",phase + "_failed"),
-            "phase":phase,"service":getattr(exc,"service",None),"safety_issues":issues})
+            "phase":phase,"service":getattr(exc,"service",None),"safety_issues":issues,
+            **safe_failure_details(exc)})
         raise RuntimeError("configuration_failed; inspect safe runner report") from None
+    from eval_harness.turn_diagnostics import trace_execution_health
+    result["execution_health"] = trace_execution_health(Path(out))
     result["database_identity"] = identity
     result["status"] = "invalid" if result["safety_issues"] else "completed"
     report = {k:v for k,v in result.items() if k != "trace"}

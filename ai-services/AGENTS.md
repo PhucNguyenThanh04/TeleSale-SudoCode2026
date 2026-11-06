@@ -1,53 +1,65 @@
-# Repository Guidelines
+# AGENTS.md 
 
-## Architecture Rules
+Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
-- `app/` is the Python service: `api/` (HTTP), `agent/` (chat graph), `mcp_servers/` (catalog, order, memory tools).
-- Keep business rules in MCP services and shared modules; keep tool handlers thin.
-- SQL changes go in numbered migrations: `migrations/NNNN_description.sql`.
-- `eval_harness/` holds benchmark scenarios, validators, adapters and results. See `README.md` for runtime setup.
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
-## Working Style (read first)
+## 1. Think Before Coding
 
-- Work directly in this repository. Do NOT create git worktrees or copy the project.
-- Do exactly what was asked, nothing more. If you notice related work (dashboards, extra metrics, refactors), list it at the end and ask; do not build it.
-- Small tasks (bug fix, 1-3 files): no spec, no plan, no sub-agents. Edit, test, show the diff.
-- Larger features: propose a short plan (max ~10 lines) and wait for approval before coding.
-- Ask before any costly or hard-to-undo action: resetting databases, killing processes, deleting directories, installing dependencies.
-- Do not commit or `git add` unless asked.
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
 
-## Commands
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
 
-Run from `ai-services/`:
+## 2. Simplicity First
 
-```bash
-.venv/bin/python -m app                      # start API
-.venv/bin/python -m app.mcp_servers.run      # start MCP tool services (needs PostgreSQL roles)
-.venv/bin/python -m pytest path/to/test_file.py::test_name   # one test
-.venv/bin/python -m pytest test eval_harness/test_eval_harness.py   # full regression
-.venv/bin/python -m eval_harness.run_official --help         # official eval options
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+## 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
 ```
 
-## Testing Rules
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
-- While iterating, run only the tests for the file you changed.
-- Run the full suite once, right before reporting done.
-- Add a focused regression test for every behavior change, especially memory identity, policy grounding, MCP contracts, and trace/PII handling.
-- Style: four spaces, `snake_case` functions/modules, `PascalCase` classes, `test_*.py` files. Match adjacent files; no repo-wide formatter.
+---
 
-## Eval Harness Rules
-
-- Running the real eval (19 scenarios) calls the live model and costs quota. Never start it without explicit permission. Prefer replaying existing traces offline.
-- Do not edit BTC scenarios or validators. Fix the adapter or the agent instead.
-- Never publish or report a score from an incomplete or interrupted run.
-
-## PII and Trace Rules
-
-- Mask PII by field path (e.g. `args.customer_name`, `args.customer_phone`), never by key name alone.
-- Never mask tool names, call ids, or any field the scorer compares (`args_match`).
-- Any change to `reference_adapter.py` needs a test asserting every `tool_call["name"]` survives unchanged.
-- Never commit `.env`, API keys, DB passwords, or raw customer data. Keep prompts, traces and logs free of raw PII.
-
-## Commits and PRs
-
-Short imperative subjects, optional type/scope (`fix:`, `feat(speech):`). One focused change per commit. PR descriptions list behavior change, affected services/migrations, test commands with results, and config changes.
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

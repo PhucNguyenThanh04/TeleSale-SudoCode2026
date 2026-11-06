@@ -1,0 +1,11 @@
+{
+  "review": "self-reviewed language/permission labels; not independent human calibration",
+  "cases": [
+    {"split":"regression","text":"Tôi muốn tư vấn máy cho phòng 25m2, ngân sách tầm 5 triệu.","selected":false,"buy":false},
+    {"split":"development","text":"Cho tôi xem thêm Aster.","selected":false,"buy":false},
+    {"split":"development","text":"Tôi chọn Aster để xem giá.","selected":true,"buy":false},
+    {"split":"verification","text":"Lấy Brio, lên đơn giúp tôi.","selected":true,"buy":true},
+    {"split":"verification","text":"Chưa mua Aster nhé.","selected":false,"buy":false},
+    {"split":"verification","text":"Tôi cân nhắc Aster và Brio.","selected":false,"buy":false}
+  ]
+}

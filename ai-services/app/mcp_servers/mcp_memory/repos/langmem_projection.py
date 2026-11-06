@@ -24,6 +24,9 @@ _OPAQUE_FIELDS = {"session_id", "source_turn_id", "source", "scope_id",
 
 
 def _safe(value: Any, field: str = "") -> Any:
+    if field=='consultation' and isinstance(value,dict):
+        from app.schemas.consultation import mask_consultation
+        return mask_consultation(value)
     if isinstance(value, dict):
         return {key: _safe(item, key) for key, item in value.items()}
     if isinstance(value, list):

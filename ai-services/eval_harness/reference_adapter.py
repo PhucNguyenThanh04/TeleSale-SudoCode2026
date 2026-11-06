@@ -96,6 +96,8 @@ def _source_session_id(source: Any) -> str | None:
     if not isinstance(source, str):
         return None
     parts = source.split(":")
+    if any(not part or part.strip() != part or re.search(r"\s", part) for part in parts):
+        return None
     if parts[0] == "langmem":
         return parts[1] if len(parts) == 3 and all(parts) else None
     return parts[0] if len(parts) == 2 and all(parts) else None
@@ -121,46 +123,125 @@ def _spoken_fact(key: str, value: Any, text: str) -> bool:
         expected_kind = "competitor" if key == "competitor_price_vnd" else "price"
         if key == "budget_vnd" and not re.search(r"ngan sach|tam tien|tam gia", folded):
             return False
-        return any(amount == value and kind == expected_kind for amount, kind, _ in _money_claims(text))
+        money_text = re.sub(r"(?<=\d)d\b", "đ", text)
+        for plain, original in (("trieu", "triệu"), ("nghin", "nghìn"), ("ngan", "ngàn"), ("dong", "đồng")):
+            money_text = re.sub(r"\b" + plain + r"\b", original, money_text)
+        return any(amount == value and kind == expected_kind for amount, kind, _ in _money_claims(money_text))
     if key == "room_area_m2":
-        return bool(re.search(r"(?<!\d)" + re.escape(str(value)) + r"\s*(?:m2|m²|met vuong)(?!\w)", folded))
+        return bool(re.search(r"(?<![\w.])" + re.escape(str(value)) + r"\s*(?:m2|m²|met vuong)(?!\w)", folded))
+    if key == "blocker" and isinstance(value, str):
+        from app.agent.memory.decision_makers import roles_mentioned
+        roles = roles_mentioned(_fold(value))
+        if roles and re.search(r"\b(?:hoi|ban|trao doi)\b", _fold(value)):
+            return (roles_mentioned(folded) == roles and
+                    bool(re.search(r"\b(?:can|phai|cho|doi)\b", folded)) and
+                    bool(re.search(r"\b(?:hoi|ban|trao doi)\b", folded)) and
+                    not re.search(r"dong y roi|da .{0,40}(?:xong|dong y)|khong (?:con )?can", folded))
     return isinstance(value, (str, int)) and bool(re.search(
         r"(?<![\w-])" + re.escape(_fold(str(value))) + r"(?![\w-])", folded))
+
+
+# Generic room-type vocabulary only: never infer an arbitrary customer's label.
+_ROOM_ALIASES = {
+    "bedroom": ("bedroom", "bed room", "phong ngu"),
+    "living_room": ("living room", "living_room", "phong khach"),
+    "kitchen": ("kitchen", "bep", "phong bep"),
+    "dining_room": ("dining room", "dining_room", "phong an"),
+    "office": ("office", "phong lam viec"),
+    "bathroom": ("bathroom", "phong tam"),
+}
+
+
+def _literal_pattern(value: str) -> str:
+    return r"(?<![\w-])" + re.escape(value) + r"(?![\w-])"
+
+
+def _scope_units(text: str, scope_type: str | None, scope_id: str | None):
+    for clause in re.split(r"[!?;\n]|\.(?!\d)|,\s*(?!\d)", text):
+        if scope_id is None:
+            yield clause
+        elif scope_type == "room":
+            folded_id = _fold(str(scope_id))
+            aliases = _ROOM_ALIASES.get(folded_id, (folded_id,))
+            room_pattern = "|".join(_literal_pattern(alias) for alias in sorted(
+                {alias for group in _ROOM_ALIASES.values() for alias in group} | set(aliases), key=len, reverse=True)) + r"|\bphong\b|\broom\b"
+            mentions = list(re.finditer(room_pattern, clause))
+            for i, mention in enumerate(mentions):
+                if mention.group() in aliases:
+                    yield clause if len(mentions) == 1 else clause[mention.start():mentions[i+1].start() if i+1 < len(mentions) else len(clause)]
+        elif re.search(_literal_pattern(_fold(str(scope_id))), clause):
+            # Bind product values to their own mention, not another SKU in a list.
+            mentions = list(re.finditer(r"(?<![\w-])sku-[\w-]+", clause))
+            matching = [i for i,m in enumerate(mentions) if m.group() == _fold(str(scope_id))]
+            if matching:
+                for i in matching:
+                    yield clause[mentions[i].start():mentions[i+1].start() if i+1 < len(mentions) else len(clause)]
+            else:
+                yield clause
+
+
+def _speech_uses(text, key, value, scope_type, scope_id, *, customer=False):
+    # Confirming an exact, sourced prior value still demonstrates use. An
+    # open/disjunctive question or a proposed blocker does not establish it.
+    if not customer and key == "blocker" and ("?" in text or re.search(r"đúng không|phải không", text, re.I)):
+        return False
+    folded = _fold(re.sub(r"\*\*|__|`", "", text))
+    for unit in _scope_units(folded, scope_type, scope_id):
+        if not customer and "?" in text and re.search(r"\b(?:hay|hoac)\b", unit):
+            continue
+        if re.search(r'[“”"«»]|\bneu\b', unit):
+            continue
+        unit = re.sub(r"khong phai.+?\bma(?: la)?\s*", "", unit)
+        unit = re.split(r"\bchu khong(?: phai)?\b", unit)[0]
+        if key not in {"has_children", "in_stock"} and re.search(r"\b(?:khong|chua) (?:phai|con|can|co|rong|la|bang)\b", unit):
+            continue
+        if _spoken_fact(key, value, unit):
+            return True
+    return False
 
 
 def facts_used(agent_text: str, tool_calls: list[dict], prior_facts: dict,
                scoped_facts: dict | None = None,
                current_session_id: str | None = None, *, customer_text: str = "") -> list[str]:
-    """Only observable use of a sourced fact from before this call counts."""
-    candidates = [(key, fact, None) for key, fact in prior_facts.items()]
-    for scopes in (scoped_facts or {}).values():
-        if isinstance(scopes, dict):
-            for scope_id, facts in scopes.items():
-                if isinstance(facts, dict):
-                    candidates.extend((key, fact, scope_id) for key, fact in facts.items())
+    """Observable, scoped use of a sourced fact from a different session."""
+    if not current_session_id:
+        return []  # Session provenance cannot be verified.
+    candidates = [(key, fact, None, None) for key, fact in prior_facts.items()]
+    for scope_type, scopes in (scoped_facts or {}).items():
+        if scope_type not in {"product", "room"} or not isinstance(scopes, dict):
+            continue
+        for scope_id, facts in scopes.items():
+            if isinstance(facts, dict):
+                candidates.extend((key, fact, scope_type, scope_id) for key, fact in facts.items())
     arg_fields = {"product_advised": {"sku"}, "variant_sku": {"sku", "new_variant_sku"},
                   "price_quoted_vnd": {"price_vnd"}, "order_id": {"order_id"},
                   "payment": {"payment"}, "size": {"size"}, "color": {"color"},
-                  "preferred_size": {"size"}, "preferred_color": {"color"},
-                  "promo_code": {"promo_code"}}
+                  "preferred_size": {"size"}, "preferred_color": {"color"}, "promo_code": {"promo_code"}}
     used = set()
-    for key, fact, scope_id in candidates:
-        if current_session_id is not None:
-            source = _source_session_id(fact.get("source") if isinstance(fact, dict) else None)
-            if source is None or source == current_session_id:
-                continue
-        value = fact.get("value") if isinstance(fact, dict) else fact
-        if value is None or customer_text and _spoken_fact(key, value, customer_text):
+    for key, fact, scope_type, scope_id in candidates:
+        source = _source_session_id(fact.get("source") if isinstance(fact, dict) else None)
+        if source is None or source == current_session_id:
             continue
-        spoken = any(_spoken_fact(key, value, clause) and (
-            scope_id is None or str(scope_id).casefold() in clause.casefold())
-            for clause in re.split(r"[!?;\n]|\.(?!\d)", agent_text))
+        value = fact.get("value")
+        if value is None:
+            continue
+        if customer_text:
+            repeated = _speech_uses(customer_text, key, value, scope_type, scope_id, customer=True)
+            # A bare value provided just now is not proof of remembering its
+            # scoped prior fact. Explicitly different scopes remain distinct.
+            folded_customer = _fold(customer_text)
+            scope_mentioned = bool(re.search(r"\bphong\b|\broom\b|" + "|".join(
+                _literal_pattern(alias) for aliases in _ROOM_ALIASES.values() for alias in aliases), folded_customer)) if scope_type == "room" else bool(re.search(r"(?<![\w-])sku-[\w-]+", folded_customer))
+            if repeated or (scope_id is not None and not scope_mentioned and
+                    _speech_uses(customer_text, key, value, None, None, customer=True)):
+                continue
+        spoken = _speech_uses(agent_text, key, value, scope_type, scope_id)
         passed = any(
-            (scope_id is None or call.get("args", {}).get("sku") == scope_id
-             or call.get("args", {}).get("room") == scope_id)
+            (scope_id is None or call.get("args", {}).get("sku" if scope_type == "product" else "room") == scope_id)
             and any(type(arg) is type(value) and arg == value
                     for field, arg in call.get("args", {}).items() if field in arg_fields.get(key, {key}))
-            for call in tool_calls if "error" not in call.get("result", {}))
+            for call in tool_calls if isinstance(call.get('result'), dict) and
+                'error' not in call['result'] and call['result'].get('ok') is not False and call['result'].get('success') is not False)
         if spoken or passed:
             used.add(key)
     return sorted(used)
@@ -192,9 +273,10 @@ def trace_line(run_id: str, config: str, scenario_id: str, call: str, turn: int,
                total_ms: float, call_brief_latency_ms: float | None,
                input_mode: str, customer_name: str | None = None, *,
                safety_issues: list | None = None, call_spec: dict | None = None) -> dict[str, Any]:
-    raw_row = build_trace_row(scenario_id, call, turn, customer_text, agent_text,
-                              deepcopy(tool_calls), deepcopy(memory_writes), used_facts, total_ms,
-                              call_brief_latency_ms)
+    # Safety compares observations directly; raw PII never enters extraction.
+    raw_row = {"scenario_id": scenario_id, "call": call, "turn": turn,
+               "agent_text": agent_text, "tool_calls": deepcopy(tool_calls),
+               "memory_writes": deepcopy(memory_writes)}
     names = {customer_name} if customer_name else set()
     names.update(value for tool in tool_calls
                  for key, value in (tool.get("args") or {}).items()
@@ -220,9 +302,6 @@ def trace_line(run_id: str, config: str, scenario_id: str, call: str, turn: int,
     row = build_trace_row(scenario_id, call, turn, customer_text, agent_text,
                           safe_calls, public_writes, used_facts, total_ms,
                           call_brief_latency_ms)
-    row["claims"] = _safe_value(raw_row["claims"], ("claims",))
-    row["questions"] = _safe_value(raw_row["questions"], ("questions",))
-    row = _mask_names(row,names)
     if safety_issues is not None:
         from eval_harness.trace_evidence import inspect_redaction
         safety_issues.extend(inspect_redaction(raw_row, row, call_spec=call_spec or {}))

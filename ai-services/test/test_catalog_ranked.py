@@ -77,7 +77,7 @@ def test_agent_catalog_boundary_returns_products_in_one_call_without_new_args():
     state = {"request": request, "tool_calls": [], "tool_count": 0}
     business = BusinessTools(gateway, state, 3, lambda: None)
     search = next(tool for tool in business.langchain_tools()
-                  if tool.name == "catalog.search")
+                  if tool.name == "catalog_search")
     assert "required_features" not in search.args_schema.model_fields
     assert "unmatched_terms" not in search.args_schema.model_fields
     result = asyncio.run(business.invoke("catalog.search", {

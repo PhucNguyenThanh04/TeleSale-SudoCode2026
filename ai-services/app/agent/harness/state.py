@@ -43,6 +43,10 @@ class TurnState(TypedDict, total=False):
     agent_text: str
     agent_draft: str
     verifier_events: list[dict[str, Any]]
+    consultation: dict[str, Any]
+    consultation_scope: dict[str, Any]
+    followup_kind: str
+    policy_order_bindings: dict[int, str | None]
     needs_handoff: bool
     handoff_ticket_id: str | None
     memory_writes: list[dict[str, Any]]
