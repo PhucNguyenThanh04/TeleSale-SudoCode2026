@@ -121,14 +121,16 @@ class MemoryServiceTest(unittest.IsolatedAsyncioTestCase):
     async def test_anonymous_session_history_is_immediate(self):
         repo = TurnRepo()
         session_id = str(uuid4())
+        turn_id = str(uuid4())
         result = await write(repo, "commit_turn", None, session_id, {
             "customer_text": "Xin chào", "agent_text": "Dạ chào anh/chị",
             "on": "2026-10-15", "channel": "hotline",
-            "client_msg_id": str(uuid4())})
+            "client_msg_id": turn_id})
         self.assertEqual(result["turn_no"], 1)
         remembered = await read(repo, None, session_id)
         self.assertEqual(remembered["history"],
-                         [{"customer": "Xin chào", "agent": "Dạ chào anh/chị"}])
+                         [{"customer": "Xin chào", "agent": "Dạ chào anh/chị",
+                           "source_turn_id": turn_id}])
 
     async def test_verified_customer_keeps_earlier_anonymous_turn_in_same_session(self):
         from unittest.mock import AsyncMock

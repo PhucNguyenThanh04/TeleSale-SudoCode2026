@@ -159,6 +159,12 @@ def admit_episode_candidate(
         elif scope_type == "global":
             scope_id = ""
         upd = get_update(scope_type, scope_id)
+        if topic.consultation is not None and scope_type == 'global':
+            from app.mcp_servers.mcp_shared.consultation import admit_consultation
+            snapshot=admit_consultation(topic.consultation.model_dump(mode='json',exclude_unset=True),
+                customer_id=customer_id,session_id=session_id,committed_turns=turns,tool_calls=tool_calls)
+            if snapshot:
+                upd['consultation']=snapshot
         for field in ("customer_goal", "advice_given", "next_step"):
             ev = getattr(topic, field, None)
             if ev is not None and _valid_narrative(

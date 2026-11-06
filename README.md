@@ -15,7 +15,7 @@ GPU, CUDA or model weights are required. Set `CLOUDFLARE_ACCOUNT_ID` and
 release with `config/policy-runtime.json`, then start all four services from root:
 
 ```bash
-docker compose --env-file .env --env-file ai-services/.env up --build -d
+docker compose up --build -d
 ```
 
 The first env file supplies root database/Compose settings; the second supplies

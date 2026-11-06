@@ -39,9 +39,11 @@ class StatefulRuntime:
 def test_cli_pair_matches_hand_calculated_btc_metrics(tmp_path,monkeypatch):
     traces={}
     for entry in ('root','benchmark'):
+        run_dir=tmp_path/entry
+        run_dir.mkdir()
         for config in ('full','baseline_no_memory'):
             runtime=StatefulRuntime()
-            out=tmp_path/f'{entry}-{config}.jsonl'
+            out=run_dir/f'{entry}-{config}.jsonl'
             with patch('eval.run_eval.capture_release',new_callable=AsyncMock,return_value=RELEASE), \
                  patch('app.knowledge.context.capture_release',new_callable=AsyncMock,return_value=RELEASE), \
                  patch('eval_harness.benchmark_runner.build_runtime',return_value=runtime), \
@@ -54,7 +56,7 @@ def test_cli_pair_matches_hand_calculated_btc_metrics(tmp_path,monkeypatch):
                     asyncio.run(root_run(SimpleNamespace(scenarios=CASES,btc_root=BTC,config=config,
                         out=out,isolated_db=True,expected_database='offline'),runtime))
                 else:
-                    report=tmp_path/f'benchmark-{config}.diagnostic.json'
+                    report=run_dir/f'benchmark-{config}.diagnostic.json'
                     monkeypatch.setattr(sys,'argv',['runner','--agent','deep','--config',config,
                         '--scenarios',str(CASES),'--btc-root',str(BTC),'--out',str(report),
                         '--expected-database','offline'])

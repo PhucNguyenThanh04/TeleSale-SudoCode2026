@@ -61,9 +61,10 @@ def stage_evidence(state: dict, response: object, *, scenario_id: str,
                    call: str, turn: int, run_id: str, config: str) -> dict:
     profile = state.get("profile") if isinstance(state.get("profile"), dict) else {}
     current_id = str(getattr(state.get("request"), "session_id", ""))
+    from eval_harness.reference_adapter import _source_session_id
     prior = {key: fact for key, fact in profile.items()
-             if isinstance(fact, dict) and isinstance(fact.get("source"), str)
-             and fact["source"].split(":", 1)[0] != current_id}
+             if isinstance(fact, dict) and current_id and _source_session_id(fact.get("source")) is not None
+             and _source_session_id(fact.get("source")) != current_id}
     failure = state.get("memory_failure")
     identity = state.get("identity_status")
     identity = identity if identity in {"known", "unknown", "ambiguous"} else "unknown"

@@ -8,6 +8,7 @@ from eval.stage_evidence import stage_evidence
 class StageEvidenceTest(unittest.TestCase):
     def test_known_customer_records_stage_keys_without_values_or_pii(self):
         state = {
+            "request": SimpleNamespace(session_id="current"),
             "identity_status": "known", "customer_name": "Lan",
             "customer_phone": "0912345678", "profile": {
                 "budget_vnd": {"value": 5000000, "source": "old-session:1"}},
@@ -84,3 +85,13 @@ class StageEvidenceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_prior_keys_use_same_provenance_parser_as_carryover():
+    from types import SimpleNamespace
+    state={'request':SimpleNamespace(session_id='now'), 'profile': {
+        'size':{'value':42,'source':'langmem:now:t1'},
+        'budget_vnd':{'value':100,'source':'langmem:prior:t1'},
+        'payment':{'value':'COD','source':'invalid'}}}
+    result=stage_evidence(state,SimpleNamespace(call_brief=None),scenario_id='X',call='call_1',turn=1,run_id='r',config='full')
+    assert result['prior_fact_keys'] == ['budget_vnd']

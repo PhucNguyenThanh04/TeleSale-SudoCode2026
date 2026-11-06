@@ -42,7 +42,7 @@ sequence, giữ `btc_source`, knowledge và migration metadata; chặn productio
 Không có yêu cầu tên DB phải kết thúc bằng `_eval`. Có thể khai báo đích qua
 `EVAL_EXPECTED_DATABASE`; flag `--expected-database` ưu tiên hơn env.
 
-Cấu hình runtime dùng `LLM_API_KEY`, `LLM_MODEL`, `OLLAMA_BASE_URL`,
+Cấu hình runtime dùng `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`,
 `DATABASE_URL` hoặc cấu hình MCP DB hiện có, `MCP_CATALOG_URL`, `MCP_ORDER_URL`,
 `MCP_MEMORY_URL`, `MCP_KNOWLEDGE_URL`, `MCP_INTERNAL_TOKEN`; worker phải dùng
 cùng DB. Không đưa credentials vào manifest/log. `KNOWLEDGE_RELEASE_ID` nếu
@@ -290,3 +290,245 @@ docker compose ps -a langmem-worker
 ```
 
 Không dùng việc API trả lời được để kết luận worker memory đã sẵn sàng.
+
+## Replay cặp và diagnostics extraction
+
+Chạy từ `ai-services/`, không cần model, MCP hay DB:
+
+```bash
+.venv/bin/python -m eval_harness.reextract_trace \
+  --source-run eval_harness/results/20261104T160748Z-61e423c9 \
+  --output-dir eval_harness/results/20261104T160748Z-extraction-replay-NEW \
+  --btc-root /home/thanh-phuc/PyProject/sudocode/BTC-Data-Vong1-TEAMS
+```
+
+Output phải là thư mục chưa tồn tại, nằm ngoài nguồn. Công cụ audit hai trace,
+manifest, snapshot, schema và scorer; chấm lại trace gốc offline và so giá trị
+JSON trước khi tính delta. Lỗi hash score lịch sử chỉ được ghi nhận khi bản chấm
+lại khớp giá trị JSON và hash scorer đã ghi. Nguồn không bị sửa. Trace replay
+chỉ thay `questions`/`claims`; giữ nguyên `facts_used`, tools, memory và latency.
+`replay_manifest.json` có loại `offline-extraction-replay`, hashes nguồn/output,
+điểm gốc/replay và delta. Đây là thay phép đo lời thoại cũ, không phải cải thiện
+agent hoặc một live run mới. CLI đơn-file vẫn dùng được nhưng không tạo cặp đã
+kiểm provenance.
+
+Runner mới và replay dùng cùng core `extract_detailed(agent_text)` trên lời
+agent đã che PII, không nhận scenario hay tool truth. Câu hỏi nhiều slot tạo
+một candidate cho mỗi slot; câu hỏi chưa rõ slot dùng `other/open` có cờ bất
+định. Claim rõ nhưng thiếu mapping hoặc mất điều kiện khi project được giữ
+ở diagnostics, không gán thành một quyền lợi khác để scorer chấm.
+
+Mỗi lượt, kể cả lượt không có candidate, có một row trong
+`full.extraction.jsonl` hoặc `baseline.extraction.jsonl`. `extraction_report.json`
+ràng buộc hash hai trace/sidecars và fingerprint bytes `extractor.py` cùng
+`extraction_report.py` (mapping/normalize đều nằm trong extractor). Hàm
+`verify_extraction_report(Path(...))` kiểm lại đầy đủ với đúng phiên bản code;
+đổi extractor sẽ làm fingerprint khác báo cáo cũ.
+
+`extraction_status=needs_review` nghĩa là có unresolved, emitted có uncertainty,
+hoặc claim không project được vì thiếu mapping/qualifier. `complete` chỉ nói
+không có các trường hợp đó trong candidates đã phát hiện. Counter này không
+phải recall toàn bộ lời thoại; tỷ lệ không có mẫu số là `null`. `btc_checked`
+giữ nguyên dữ liệu scorer, không suy từ số emitted. Bộ nhãn fixture là tự review,
+không phải hiệu chuẩn độc lập hay bằng chứng đạt test ẩn.
+
+Run chính thức mới chỉ được `validated` sau khi đọc lại score bytes, manifests
+và diagnostics; `run.json` ghi tên/hash summary cùng extraction_status riêng.
+Safety-invalid hoặc lỗi integrity không được công bố thành run validated.
+Atomic áp dụng từng file; lỗi giữa chừng có thể để lại artifact để điều tra.
+Không dùng riêng việc có file score để kết luận run hoàn tất.
+
+## Carryover và bằng chứng fallback (đợt 2)
+
+`facts_used` chỉ tính khi có `current_session_id`, source hợp lệ thuộc phiên
+khác, và lời nói/tham số tool dùng đúng giá trị với đúng scope. Room scope có
+alias loại phòng tổng quát như `bedroom` ↔ “phòng ngủ”, `living_room` ↔ “phòng
+khách”; nhãn phòng tùy ý không được tự đoán. Product scope vẫn dùng định danh
+chính xác. Nhiều phòng trong cùng câu không được mượn diện tích của nhau.
+Khách vừa cung cấp lại giá trị, phủ định, câu hỏi mở/giá trị chưa rõ hoặc tool
+thất bại không tự chứng minh agent nhớ. Xác nhận một giá trị đã biết, khớp scope
+và nguồn phiên trước vẫn là sử dụng fact, giữ cách tính carryover hiện có. Snapshot đầu call vẫn là căn cứ, không dùng expected
+labels BTC. Helper không có current session trả `[]` vì chưa kiểm được nguồn.
+
+Root CLI và official runner dùng chung collector. Với trace `NAME.jsonl`,
+runner ghi `NAME.stages.json` và `NAME.events.json`, mỗi file có một record
+mỗi lượt, kể cả lượt không có event hoặc runtime lỗi. Định danh và hash lời
+agent phải khớp trace cuối; report của child ghi `turn_diagnostics` gồm rows,
+trace SHA256 và tên/hash hai sidecars. Official publisher và coordinator
+kiểm lại rồi mới ghi các tham chiếu đó vào `run.json` validated. File thiếu,
+trùng, lệch thứ tự/hash hoặc payload thừa không được coi là diagnostics hợp lệ.
+Không ghi đè sidecar cũ; chọn output mới cho mỗi run.
+
+Events chỉ lưu reason/type code trong vocabulary cho phép, grounding verdict,
+trạng thái lỗi tool/retrieval, model error và các sự kiện recovery attempted,
+unavailable, rejected, succeeded hoặc exhausted. Không lưu raw draft, prompt,
+claim values/source_evidence hay exception message. Capture hoạt động độc lập
+log level và nằm trong context riêng của lượt; warmup không được tính vào lượt
+đo. Các sự kiện recovery chỉ quan sát nhánh hiện có, không đổi thứ tự recovery,
+guardrails hoặc kết quả trả khách.
+
+`model.status=failed` cần sự kiện model_failed; `runtime_error` là lỗi thoát
+ra ngoài runtime, không tự quy thành lỗi model. Grounding rejected và verifier
+rejected được báo riêng. Recovery failed cần sự kiện exhausted; nếu không có
+bằng chứng tương ứng thì trạng thái là `unknown`. `fallback_observed` chỉ đánh
+dấu câu fallback trong trace, không suy nguyên nhân từ câu đó. Một lượt có thể
+vừa model lỗi vừa recovery thành công; không ép mọi lượt vào một nguyên nhân.
+
+Run cũ thiếu prior snapshot hoặc các sự kiện này không thể được bổ sung bằng
+cách suy từ lời thoại/tool outputs. Không tự tính lại CCR hay phân loại nguyên
+nhân fallback cho run `20261104T160748Z-61e423c9`. Kiểm đợt 2 dùng fixtures và
+runtime scripted offline; live evaluation cần được người dùng ủy quyền riêng.
+
+Sự kiện `model_failed` được phát trong khối xử lý agent hiện có, vốn bao gồm
+cả một số bước hậu xử lý/refresh quote. Code này xác nhận khối đó gặp exception;
+không đủ để quy lỗi riêng phía provider/model khi thiếu bằng chứng chi tiết hơn.
+
+## Luồng tư vấn, lựa chọn và quote (đợt 3)
+
+Runtime phân biệt danh sách tìm được, mẫu đề xuất, lựa chọn khách đã xác nhận,
+quote và quyền mua hiện tại. `consultation` trong prompt là dữ liệu đã suy từ
+bằng chứng; catalog/quote không tự là sự đồng ý. Quote được chuẩn bị qua read
+tools có giới hạn: một ứng viên chính và một phương án thay thế, trong tool
+budget/cache hiện có; không quét quote toàn catalog. Khi giá niêm yết lọc mất
+ứng viên, có thể đọc bổ sung bỏ riêng bộ lọc giá để kiểm quote, không tự nới
+ngân sách. Thuộc tính bắt buộc phải có dữ liệu đáp ứng; “có bé nhỏ” không tự
+thành bắt buộc child lock.
+
+Ngân sách tầm/khoảng và trần cứng đều không được tự cộng biên độ. Đồng ý xem
+mẫu đắt hơn khác đồng ý chi tiêu/mua. Consent cho một offer không đổi trần
+chung; đơn giá, tổng và số lượng phải rõ khi ảnh hưởng quyết định. “Đồng ý”
+chỉ nối thành mua khi ngay trước đó là câu xác nhận mua với một mẫu/giá rõ.
+Giá khách nói trực tiếp không bị ghi đè bằng giá offer khác đang là trọng tâm.
+
+Trước `order.create`, BusinessTools kiểm permission/selection và giữ điều
+kiện identity/variant/stock/quote hiện có. Quote/stock phải thuộc phiên mua
+hiện tại, đúng SKU/qty/ngày/điều kiện. Tăng giá hoặc mất quà/freeship cần xác
+nhận lại; giảm giá và giữ quyền lợi được tiếp tục với quyền mua còn hiệu lực.
+Cùng một write thành công bị retry trong lượt sẽ trả receipt, không tạo đơn
+lặp. Recovery chỉ dựng lời từ bằng chứng, không gọi tool hoặc ghi giao dịch.
+
+Trạng thái lưu tại optional `topics[*].consultation` của topic global trong
+JSON episode hiện có, không có migration. Source refs gắn customer/session/
+turn/role và evidence đã mask. Worker tự dựng từ committed evidence (kể cả khi
+LLM không đề xuất snapshot), rồi admission trước persist. Trường vắng không
+xóa trạng thái cũ; null có nguồn là revoke. `product_advised` legacy không
+được coi là customer selection. Quyền mua hiện tại nằm ở ConsultationDecision,
+không nằm trong snapshot; quyền chọn hộ từ phiên cũ không tự kích hoạt mua.
+Cùng ngày không rõ thứ tự mà source mâu thuẫn thì giữ unknown.
+
+Scorer/schema/scenario BTC và artifact run cũ giữ nguyên. Không có score mới
+hoặc kết luận đạt test ẩn từ unit/scripted runtime; mâu thuẫn ngân sách/expected
+của sample vẫn phải báo riêng, không ép agent chọn SKU mà scorer mong đợi.
+
+### Bằng chứng và continuation sau run 20261105T041922Z
+
+`commerce_evidence.build_commerce_evidence` chọn view đọc thương mại từ
+observations của phiên hiện tại theo ngày, SKU/variant, qty và đầu vào quote;
+view không được ghi lại thành tool calls. Refresh mới lỗi không hồi sinh
+kết quả cũ. Current policy/write calls giữ semantics riêng; không tái sử dụng
+policy hoặc receipt phiên trước để chứng minh một thao tác hiện tại.
+
+Read preparation có thể hydrate catalog trước khi kết luận thiếu lựa chọn,
+rồi đánh giá lại lời khách; SKU model đề xuất không cấp quyền mua. Khi khách
+đã đủ quyền, `BusinessTools.complete_purchase_if_ready` hoàn tất tối đa một
+continuation qua gate/gateway hiện có sau lượt model, thay việc chỉ nhắc model
+gọi order lần nữa. Không tự retry write lỗi/không chắc; receipt thành công
+được tái sử dụng theo idempotency hiện có.
+
+Recovery dùng cùng view hợp lệ và giải thích điều còn thiếu: mẫu, variant,
+cơ sở ngân sách, payment hoặc consent cho offer mới. Câu hỏi quà/ưu đãi không
+bị thay bằng một câu giá chung. Helpers vẫn thuần, không ghi giao dịch.
+History read trả thêm source_turn_id khi có client_msg_id hiện hữu; cache
+observations của runtime gắn owner/session/source turn. Không có migration.
+
+Focused regression: `test/test_commerce_evidence.py`,
+`test/test_purchase_continuation.py`, `test/test_consultation_response.py`,
+`eval_harness/test_evidence_continuation_end_to_end.py`. E2E dùng AgentNodes,
+BusinessTools, admission và JSON readback thật với model/tools scripted;
+không chứng minh chất lượng live model hoặc đạt test ẩn. Không rescore lời
+cũ để tuyên bố agent đã cải thiện; giữ discrepancy BTC riêng.
+
+## Trace quyết định bổ sung (opt-in)
+
+Thêm `--decision-diagnostics` vào lệnh `eval_harness.run_official` đang dùng;
+hoặc đặt `EVAL_DECISION_DIAGNOSTICS=1` trong môi trường harness. Cả full và
+baseline sẽ được thu thập. Đây vẫn là lệnh live hiện có, không phải replay.
+
+Memory MCP và LangMem worker cũng cần chạy **code mới** với
+`EVAL_DECISION_DIAGNOSTICS=1`. Compose đã truyền biến này cho hai service;
+đặt nó trong môi trường Compose hoặc file cấu hình Compose trước khi người
+vận hành rebuild/khởi động các service cho lần eval được phép tiếp theo.
+Nếu chạy Python trực tiếp, truyền biến vào từng process. Cờ ở harness không
+thay đổi môi trường của các server đang chạy. Chưa có log remote sẽ hiện
+`missing_components`, không được xem là bằng chứng memory/worker không chạy.
+Mặc định tắt; môi trường `APP_ENV=production` không bật capture remote.
+
+File để gửi phân tích là `results/<run_id>/decision_diagnostics.jsonl` cùng
+trace và `run.json`. Các file `<trace>.decisions.jsonl` là phần theo config
+được coordinator gom nguyên tử, không có nhiều process cùng append. Run và
+manifest liên kết checksum file này với checksum hai trace; chúng không đổi
+contract hoặc điểm BTC. Lỗi xuất diagnostics được báo riêng, không retry
+mua hàng hoặc đổi kết quả scoring.
+
+Đọc dòng cuối (`kind=summary`) trước: `complete`, `missing_components`,
+`missing_checkpoints`, `truncated`, `errors` cho biết có thể kết luận đến đâu.
+Checkpoint bị bỏ qua ở nhánh không áp dụng cũng xuất hiện trong danh sách
+thiếu; `complete=false` không tự có nghĩa agent lỗi. Chỉ kết luận theo event
+thực tế, ví dụ `gate_result.reason`, `tool_attempt`/`tool_result`, snapshot
+admission/projection/read/context và `final_commit`. `worker_projection`
+quan sát bên trong transaction; `job_readback.status=success` xác nhận job
+đã commit. Event từ các process có producer ID/sequence riêng; dùng turn,
+attempt và revision để nối, không so thứ tự timestamp giữa process.
+
+Source UUID chỉ giữ ở metadata đã định kiểu; customer/session dùng alias
+HMAC với khóa ngẫu nhiên của run, không lưu khóa hoặc raw PII trong file.
+`process_start=unknown` là chưa có bằng chứng thời điểm khởi động; timestamp
+`diagnostics_initialized_at` chỉ là lúc module diagnostics khởi tạo.
+Fingerprint mô tả code Python đã nạp (kể cả implementation được decorator
+bọc), không phải hash file hiện tại trên đĩa; so theo cùng component.
+Không có raw prompt/draft/evidence quote, exception text hoặc địa chỉ.
+Run cũ không được bổ sung ngược các snapshot chưa từng thu thập.
+
+
+## Contract tên tool và sức khỏe thực thi model
+
+Model nhận alias như `catalog_search`, `pricing_get_quote`, `order_create`.
+BusinessTools, MCP, memory evidence và trace BTC vẫn dùng `catalog.search`,
+`pricing.get_quote`, `order.create`. Deep/ReAct dùng cùng mapping; các chỉ dẫn
+local/managed được render tên tool ở boundary, không sửa dữ liệu hội thoại.
+
+Event sidecar bổ sung `execution/phase_result` version 1, ghi phase, trạng thái
+và lỗi có cấu trúc đã lọc: exception class, HTTP status, code/param trong
+vocabulary cho phép. Không ghi raw message, body hoặc stderr. Event cũ
+`model_failed` có thể bao gồm lỗi hậu xử lý; dùng execution phase của run mới
+để phân biệt. Run cũ thiếu evidence được giữ nguyên, không backfill success.
+
+Warm-up yêu cầu bằng chứng invoke thành công. Lỗi hoặc thiếu evidence dừng
+trước scored turns và các bước reset sau warm-up; cặp chưa hoàn tất không có
+score chính thức. Warm-up thành công chưa chứng minh tool roundtrip live.
+
+Report/manifest mới ghi `execution_health`: `healthy` khi evidence đủ và không
+có lỗi thực thi, `degraded` khi quan sát lỗi, `unknown` khi thiếu evidence.
+Một pair chỉ healthy khi cả hai nhánh healthy. Run đủ lượt có thể vừa
+`validated` vừa `degraded`: score BTC vẫn giữ nguyên, không loại lượt xấu.
+CLI in health riêng với trạng thái audit/scoring.
+
+Extractor phân biệt bản chính sách hiện hành với bản bị thay thế, kể cả
+quan hệ chủ động/bị động. Những khẳng định hiện hành sai vẫn được xuất để BTC
+chấm. Điều kiện/mơ hồ chưa biểu diễn được giữ trong extraction report; không
+coi excluded/unresolved là đúng. Replay vào output mới chỉ sửa cách đo trên
+lời thoại cũ, không phải bằng chứng agent live đã cải thiện.
+
+## In bảng chỉ số BTC của run đã lưu
+
+Từ `ai-services`:
+
+```bash
+.venv/bin/python -m eval_harness.report_metrics eval_harness/results/<run_id>
+```
+
+Lệnh chỉ đọc `run.json` và `btc_score.json`, không gọi model, không reset DB,
+không sửa kết quả. Từ đợt sửa M1 2026-11-06, `run_official` tự in bảng sau khi
+validated. Bảng ghi rõ mẫu số, ngưỡng, extraction cần review, độ phủ latency và
+WER/CER chưa đo trong eval text. Chi tiết sửa logic và chênh lệch sample:
+[`m1-repair-review-2026-11-06.md`](../docs/m1-repair-review-2026-11-06.md).

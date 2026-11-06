@@ -28,7 +28,7 @@ langchain[mcp]>=1.4.2,<1.5
 langchain-core>=1.3.3,<2
 langgraph>=1.2.12,<1.3
 langmem==0.0.30
-langchain-ollama>=1.1,<2
+langchain-openai>=1.7,<2
 deepagents>=0.7.23,<0.8
 langfuse>=4.17.0,<5
 
@@ -47,6 +47,10 @@ psycopg[binary,pool]>=3.2.9,<4
 SQLAlchemy[asyncio]>=2.0.54,<2.1
 asyncpg>=0.30,<1
 qdrant-client>=1.19.1,<1.20
+
+# CPU token counting for knowledge; dense embeddings use Cloudflare via httpx.
+# Install at build/setup time, never at runtime startup.
+tokenizers==0.23.3
 
 # Evaluation contracts and operational evidence.
 # BTC reference_eval.py remains authoritative; frameworks do not replace it.

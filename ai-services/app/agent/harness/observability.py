@@ -1,6 +1,8 @@
 """Operational logs for a chat turn; callers pass only non-sensitive metadata."""
 
 import logging
+from contextlib import contextmanager
+from contextvars import ContextVar
 import time
 from collections.abc import Awaitable, Callable
 from functools import wraps
@@ -78,6 +80,47 @@ VALUE_LABELS = {
 }
 
 
+_DIAGNOSTIC_EVENTS = ContextVar("turn_diagnostic_events", default=None)
+DIAGNOSTIC_REASONS = frozenset(VALUE_LABELS) | {
+    "order_selection_mismatch", "customer_erasure_unverified", "handoff_not_queued", "unknown_reason"}
+DIAGNOSTIC_ERRORS = frozenset({"TimeoutError", "RuntimeError", "ValueError", "TypeError", "KeyError",
+    "OSError", "ConnectionError", "APIError", "APIConnectionError", "APITimeoutError",
+    "RateLimitError", "HTTPStatusError", "ConnectError", "ReadTimeout", "GraphRecursionError", "other_error"})
+DIAGNOSTIC_RECOVERIES = frozenset({"safe_transaction_reply", "safe_quote_reply", "safe_promotion_reply", "safe_catalog_reply", "safe_consultation_reply"})
+_DIAGNOSTIC_PAIRS = frozenset({("run_agent", "model_failed"), ("verify", "grounding_checked"),
+    ("verify", "answer_checked"), ("verify", "recovery_attempted"), ("verify", "recovery_unavailable"),
+    ("verify", "recovery_rejected"), ("verify", "recovery_succeeded"), ("verify", "recovery_exhausted")})
+
+
+def safe_diagnostic_event(step, event, metadata):
+    if (step, event) == ('execution', 'phase_result'):
+        from app.agent.harness.execution_diagnostics import normalize_execution_event
+        return {'step': step, 'event': event, **normalize_execution_event(metadata)}
+    if not isinstance(step,str) or not isinstance(event,str) or (step, event) not in _DIAGNOSTIC_PAIRS:
+        return None
+    item = {"step": step, "event": event}
+    if 'accepted' in metadata and type(metadata['accepted']) is bool:
+        item['accepted'] = metadata['accepted']
+    if 'reason' in metadata:
+        item['reason'] = metadata['reason'] if isinstance(metadata['reason'],str) and metadata['reason'] in DIAGNOSTIC_REASONS else 'unknown_reason'
+    if 'error_type' in metadata:
+        item['error_type'] = metadata['error_type'] if isinstance(metadata['error_type'],str) and metadata['error_type'] in DIAGNOSTIC_ERRORS else 'other_error'
+    if isinstance(metadata.get('recovery'),str) and metadata['recovery'] in DIAGNOSTIC_RECOVERIES:
+        item['recovery'] = metadata['recovery']
+    return item
+
+
+@contextmanager
+def capture_diagnostic_events():
+    """Context-local, content-free observation; independent of log verbosity."""
+    events = []
+    token = _DIAGNOSTIC_EVENTS.set(events)
+    try:
+        yield events
+    finally:
+        _DIAGNOSTIC_EVENTS.reset(token)
+
+
 def _display_value(key: str, value: Any) -> str:
     if isinstance(value, bool):
         if key == "success":
@@ -102,6 +145,11 @@ def configure_agent_logging(level: str) -> None:
 def log_event(_turn: TextTurnRequest | TurnState, step: str, event: str,
               *, level: int = logging.INFO, **metadata: Any) -> None:
     """Log readable workflow events; the turn is deliberately not rendered."""
+    events = _DIAGNOSTIC_EVENTS.get()
+    if events is not None:
+        item = safe_diagnostic_event(step, event, metadata)
+        if item is not None:
+            events.append(item)
     if not logger.isEnabledFor(level):
         return
     title = f"{STEP_LABELS.get(step, step)}: {EVENT_LABELS.get(event, event)}"

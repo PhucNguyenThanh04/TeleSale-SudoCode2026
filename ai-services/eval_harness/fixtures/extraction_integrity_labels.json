@@ -1,0 +1,336 @@
+{
+  "description": "Self-reviewed speech labels; development and verification split, not independent human calibration. No BTC outcome/truth supplied to extractor.",
+  "cases": [
+    {
+      "split": "regression",
+      "text": "Để lên đơn chính xác, chị chốt chọn mẫu nào trong 3 mẫu AirPure Y, X và Pro hôm trước em tư vấn ạ?",
+      "questions": [
+        [
+          "product_advised",
+          "open"
+        ]
+      ],
+      "units": [
+        {
+          "kind": "question",
+          "anchor": "Để lên đơn chính xác, chị chốt chọn mẫu nào trong 3 mẫu AirPure Y, X và Pro hôm trước em tư vấn ạ",
+          "projection": [
+            "product_advised",
+            "open"
+          ],
+          "disposition": "emitted"
+        }
+      ]
+    },
+    {
+      "split": "regression",
+      "text": "Máy lọc không khí đang được miễn phí vận chuyển.",
+      "claims": [
+        [
+          "freeship",
+          true
+        ]
+      ],
+      "units": [
+        {
+          "kind": "claim",
+          "anchor": "Máy lọc không khí đang được miễn phí vận chuyển",
+          "projection": [
+            "freeship",
+            true
+          ],
+          "disposition": "emitted"
+        }
+      ]
+    },
+    {
+      "split": "regression",
+      "text": "Giá ưu đãi là 1.521.000đ.",
+      "claims": [
+        [
+          "price_vnd",
+          1521000
+        ],
+        [
+          "promo_active",
+          true
+        ]
+      ],
+      "units": [
+        {
+          "kind": "claim",
+          "anchor": "Giá ưu đãi là 1.521.000đ",
+          "projection": [
+            "price_vnd",
+            1521000
+          ],
+          "disposition": "emitted"
+        },
+        {
+          "kind": "claim",
+          "anchor": "Giá ưu đãi là 1.521.000đ",
+          "projection": [
+            "promo_active",
+            true
+          ],
+          "disposition": "emitted"
+        }
+      ]
+    },
+    {
+      "split": "regression",
+      "text": "Thời hạn đổi trả là trong vòng 7 ngày.",
+      "claims": [
+        [
+          "return_days",
+          7
+        ]
+      ],
+      "units": [
+        {
+          "kind": "claim",
+          "anchor": "Thời hạn đổi trả là trong vòng 7 ngày",
+          "projection": [
+            "return_days",
+            7
+          ],
+          "disposition": "emitted"
+        }
+      ]
+    },
+    {
+      "split": "development",
+      "text": "Tổng tiền 4.700.000đ.",
+      "excluded": [
+        "unsupported_mapping"
+      ],
+      "units": [
+        {
+          "kind": "claim",
+          "anchor": "Tổng tiền 4.700.000đ",
+          "disposition": "excluded",
+          "reason": "unsupported_mapping",
+          "qualifiers": {
+            "category": "total"
+          }
+        }
+      ]
+    },
+    {
+      "split": "development",
+      "text": "Lần đổi đầu tiên được miễn phí.",
+      "excluded": [
+        "qualified_not_representable"
+      ],
+      "units": [
+        {
+          "kind": "claim",
+          "anchor": "Lần đổi đầu tiên được miễn phí",
+          "disposition": "excluded",
+          "reason": "qualified_not_representable",
+          "qualifiers": {
+            "condition": "Lần đổi đầu tiên được miễn phí"
+          }
+        }
+      ]
+    },
+    {
+      "split": "development",
+      "text": "Nếu có lỗi nhà sản xuất thì được đổi mới trong 30 ngày.",
+      "excluded": [
+        "qualified_not_representable"
+      ],
+      "units": [
+        {
+          "kind": "claim",
+          "anchor": "Nếu có lỗi nhà sản xuất thì được đổi mới trong 30 ngày",
+          "disposition": "excluded",
+          "reason": "qualified_not_representable",
+          "qualifiers": {
+            "condition": "Nếu có lỗi nhà sản xuất thì được đổi mới trong 30 ngày"
+          }
+        }
+      ]
+    },
+    {
+      "split": "verification",
+      "text": "Anh chọn mẫu nào trong danh sách Aster, Brio, Coda ạ?",
+      "questions": [
+        [
+          "product_advised",
+          "open"
+        ]
+      ],
+      "units": [
+        {
+          "kind": "question",
+          "anchor": "Anh chọn mẫu nào trong danh sách Aster, Brio, Coda ạ",
+          "projection": [
+            "product_advised",
+            "open"
+          ],
+          "disposition": "emitted"
+        }
+      ]
+    },
+    {
+      "split": "verification",
+      "text": "Máy lọc không khí không được miễn phí giao hàng.",
+      "claims": [
+        [
+          "freeship",
+          false
+        ]
+      ],
+      "units": [
+        {
+          "kind": "claim",
+          "anchor": "Máy lọc không khí không được miễn phí giao hàng",
+          "projection": [
+            "freeship",
+            false
+          ],
+          "disposition": "emitted"
+        }
+      ]
+    },
+    {
+      "split": "verification",
+      "text": "Giá khuyến mãi là 730.000đ.",
+      "claims": [
+        [
+          "price_vnd",
+          730000
+        ],
+        [
+          "promo_active",
+          true
+        ]
+      ],
+      "units": [
+        {
+          "kind": "claim",
+          "anchor": "Giá khuyến mãi là 730.000đ",
+          "projection": [
+            "price_vnd",
+            730000
+          ],
+          "disposition": "emitted"
+        },
+        {
+          "kind": "claim",
+          "anchor": "Giá khuyến mãi là 730.000đ",
+          "projection": [
+            "promo_active",
+            true
+          ],
+          "disposition": "emitted"
+        }
+      ]
+    },
+    {
+      "split": "verification",
+      "text": "Chị cho biết cỡ và màu muốn lấy nhé.",
+      "questions": [
+        [
+          "size",
+          "open"
+        ],
+        [
+          "preferred_color",
+          "open"
+        ]
+      ],
+      "units": [
+        {
+          "kind": "question",
+          "anchor": "Chị cho biết cỡ và màu muốn lấy nhé",
+          "projection": [
+            "size",
+            "open"
+          ],
+          "disposition": "emitted"
+        },
+        {
+          "kind": "question",
+          "anchor": "Chị cho biết cỡ và màu muốn lấy nhé",
+          "projection": [
+            "preferred_color",
+            "open"
+          ],
+          "disposition": "emitted"
+        }
+      ]
+    },
+    {
+      "split": "verification",
+      "text": "Bảo hành trong mười tám tháng.",
+      "claims": [
+        [
+          "warranty_months",
+          18
+        ]
+      ],
+      "units": [
+        {
+          "kind": "claim",
+          "anchor": "Bảo hành trong mười tám tháng",
+          "projection": [
+            "warranty_months",
+            18
+          ],
+          "disposition": "emitted"
+        }
+      ]
+    },
+    {
+      "split": "verification",
+      "text": "Anh được đổi trả trong vòng 9 ngày.",
+      "claims": [
+        [
+          "return_days",
+          9
+        ]
+      ],
+      "units": [
+        {
+          "kind": "claim",
+          "anchor": "Anh được đổi trả trong vòng 9 ngày",
+          "projection": [
+            "return_days",
+            9
+          ],
+          "disposition": "emitted"
+        }
+      ]
+    },
+    {
+      "split": "verification",
+      "text": "Tổng đơn 6.100.000đ, dự kiến giao ngày 18/11.",
+      "excluded": [
+        "unsupported_mapping",
+        "unsupported_mapping"
+      ],
+      "units": [
+        {
+          "kind": "claim",
+          "anchor": "Tổng đơn 6.100.000đ",
+          "disposition": "excluded",
+          "reason": "unsupported_mapping",
+          "qualifiers": {
+            "category": "total"
+          }
+        },
+        {
+          "kind": "claim",
+          "anchor": "dự kiến giao ngày 18/11",
+          "disposition": "excluded",
+          "reason": "unsupported_mapping",
+          "qualifiers": {
+            "category": "calendar_delivery"
+          }
+        }
+      ]
+    }
+  ]
+}

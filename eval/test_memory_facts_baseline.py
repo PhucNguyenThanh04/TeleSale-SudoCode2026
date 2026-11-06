@@ -44,36 +44,30 @@ def test_blocker_normalization_is_reported_alongside_strict_score():
     assert score_normalized_blocker(unrelated)["tp"] == 0
 
 
-def test_candidate_diagnostics_reports_rejection_and_masks_pii():
-    detail = candidate_diagnostics("Tôi muốn size 42.", [], [
-        {"key": "size", "value": "42", "source": "customer"},
-        {"key": "blocker", "value": "Gọi 0901234567", "source": "customer"},
-    ], [{"key": "size", "value": "43", "source": "customer"}])
-    before = detail["before_fact_evidence"]
-    assert before[0]["fact_evidence"] == "customer"
-    assert before[0]["decision"] == "accepted"
-    assert before[1]["value"] == "[REDACTED_PII]"
-    assert before[1]["decision"] == "pii_value"
-    assert before[2]["decision"] == "pattern_not_matched"
-    assert detail["after_fact_evidence"] == [{"key": "size", "value": "42",
-                                               "source_kind": "customer"}]
+def test_retired_diagnostics_do_not_claim_to_validate_current_memory():
+    import pytest
+    with pytest.raises(RuntimeError, match="retired"):
+        candidate_diagnostics("Tôi muốn size 42.", [], [], [])
 
 
-def test_conflicting_evidenced_values_use_closed_reason_code():
-    detail = candidate_diagnostics("Tôi hỏi vợ rồi hỏi chồng.", [], [
-        {"key": "blocker", "value": "hỏi vợ", "source": "customer"},
-        {"key": "blocker", "value": "hỏi chồng", "source": "customer"},
-    ], [])
-    assert [item["decision"] for item in detail["before_fact_evidence"]] == [
-        "conflict", "conflict"]
-    assert detail["after_fact_evidence"] == []
+def test_retired_evaluator_stops_before_model_or_settings():
+    import asyncio
+    import pytest
+    from unittest.mock import patch
+    from eval.memory_facts_baseline import evaluate
+    with patch("app.configs.get_settings", side_effect=AssertionError("settings accessed")), \
+         patch("app.infarstructure.llm.build_llm", side_effect=AssertionError("model created")):
+        with pytest.raises(RuntimeError, match="retired"):
+            asyncio.run(evaluate([]))
 
 
-def test_other_objection_is_counted_with_redacted_quote():
-    detail = candidate_diagnostics("Máy này chạy ồn quá", [], [], [
-        {"key": "objection", "value": "ồn quá", "source": "customer",
-         "evidence_quote": "chạy ồn quá"},
-    ])
-    assert detail["other_objection_count"] == 1
-    assert detail["before_fact_evidence"][0]["normalized_value"] == "khac"
-    assert detail["after_fact_evidence"][0]["evidence_quote"] == "chạy ồn quá"
+def test_retired_cli_exits_without_output_or_traceback(tmp_path):
+    import subprocess
+    import sys
+    out = tmp_path / "result.json"
+    result = subprocess.run([sys.executable, "-m", "eval.memory_facts_baseline", "--out", str(out)],
+                            capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "retired" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert not out.exists()

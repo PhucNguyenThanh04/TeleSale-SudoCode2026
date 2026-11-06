@@ -13,7 +13,6 @@ from app.configs import get_settings
 from app.knowledge.context import capture_release
 from app.mcp_servers.mcp_shared.config import database_url
 from eval.catalog_search_benchmark import catalog_search_metrics
-from eval.stage_evidence import stage_evidence
 from eval_harness import benchmark_runner as runner
 from eval_harness.extractor import extract_questions as _questions, extract_claims as _claims
 from eval_harness.reference_adapter import facts_used, _safe_tool_calls
@@ -53,26 +52,16 @@ async def run(args, runtime=None) -> int:
     settings = get_settings()
     settings = settings.model_copy(update={'llm_seed':getattr(args,'seed',7)})
     release = await capture_release(database_url(settings))
-    stages, events = [], []
-    def observe(request, response, state, row):
-        stages.append(stage_evidence(state, response, scenario_id=row['scenario_id'],call=row['call'],
-            turn=row['turn'],run_id=row['run_id'],config=row['config']))
-        if state.get('verifier_events'):
-            from eval_harness.reference_adapter import _safe_value
-            events.append({'scenario_id':row['scenario_id'],'call':row['call'],'turn':row['turn'],
-                           'checks':_safe_value(state['verifier_events'])})
     sidecars_complete = False
     try:
         result = await runner.execute_configuration(settings=settings, scenarios=scenarios,config=args.config,
             runtime=runtime,run_id=str(uuid4()),out=args.out,btc_root=btc_root,
-            expected_database=target,release=release,on_turn=observe)
+            expected_database=target,release=release)
         rows = [r for rs in result['trace'].values() for r in rs]
         report_path=args.out.with_suffix('.report.json')
         report=json.loads(report_path.read_text())
         report['catalog_search']=catalog_search_metrics(rows)
         atomic_json(getattr(args,'report_out',None) or report_path,report)
-        atomic_json(args.out.with_suffix('.stages.json'),stages)
-        atomic_json(args.out.with_suffix('.events.json'),events)
         sidecars_complete = True
         if result['status'] != 'completed':
             raise RuntimeError('invalid: redaction_affects_scoring')

@@ -22,6 +22,18 @@ def state():
             "tool_calls": [], "session_tool_calls": [], "tool_count": 0}
 
 
+
+def selected_customer_offer(current, sku):
+    """Committed customer choice survives even when catalog metadata needs hydration."""
+    ref = {'customer_id': 'C-LOCAL', 'session_id': str(current['request'].session_id),
+           'source_turn_id': str(uuid4()), 'source_kind': 'customer',
+           'evidence_quote': f'Tôi chọn {sku}.'}
+    current['current_episode'] = {'customer_id': 'C-LOCAL', 'topics': [
+        {'scope_type': 'global', 'consultation': {'selected_sku': sku,
+         'source_refs': {'selected_sku': ref}}}]}
+    current['safe_text'] = current['request'].text = f'Mua {sku} giá 730 nghìn giúp tôi'
+
+
 def catalog(sku):
     return {"sku": sku, "variants": [
         {"variant_sku": sku + "-R", "size": 37, "color": "do"},
@@ -74,6 +86,8 @@ def test_create_requires_exact_stock_and_quote(mismatch):
 def test_returning_create_hydrates_catalog_without_recursive_lock():
     async def run():
         current = state()
+        selected_customer_offer(current, "SKU-LOCAL-BOOT")
+        current["safe_text"] = current["request"].text = "Mua SKU-LOCAL-BOOT size 37 màu đỏ giá 730 nghìn giúp tôi"
         current["session_tool_calls"] = evidence("SKU-LOCAL-BOOT-R")
         gateway = AsyncMock()
         async def invoke(name, args, *rest):
@@ -84,7 +98,7 @@ def test_returning_create_hydrates_catalog_without_recursive_lock():
         tools = BusinessTools(gateway, current, 4, lambda: None)
         result = await asyncio.wait_for(tools.invoke("order.create", {
             "sku": "SKU-LOCAL-BOOT", "size": 37, "color": "đỏ", "price_vnd": 730000}), 1)
-        assert result["status"] == "created"
+        assert result.get("status") == "created", result
         assert [c["name"] for c in current["tool_calls"]] == ["catalog.search", "order.create"]
         assert current["tool_calls"][-1]["args"]["sku"] == "SKU-LOCAL-BOOT-R"
         assert current["tool_count"] == 2
@@ -176,6 +190,7 @@ def test_mcp_reprices_variant_surcharge_and_size_exclusion(variant, price, expec
 def test_failed_catalog_and_budget_exhaustion_never_create():
     async def run(budget):
         current = state()
+        selected_customer_offer(current, 'SKU-LOCAL-A')
         gateway = AsyncMock()
         gateway.invoke_trusted.return_value = {'error':'catalog_unavailable'}
         tools = BusinessTools(gateway,current,budget,lambda:None)

@@ -2,6 +2,26 @@
 
 import re
 
+from app.mcp_servers.mcp_shared.commerce_rules import _search_text
+
+
+def canonical_catalog_category(category: str) -> str:
+    """Translate customer labels at the agent boundary, retaining unknown filters."""
+    aliases = {
+        "may loc khong khi": "gia-dung/may-loc-khong-khi",
+        "may loc nuoc": "gia-dung/may-loc-nuoc",
+        "noi chien": "gia-dung/noi-chien",
+        "noi chien khong dau": "gia-dung/noi-chien",
+        "giay": "thoi-trang/giay",
+        "giay sneaker": "thoi-trang/giay",
+        "giay chay bo": "thoi-trang/giay",
+        "ao khoac": "thoi-trang/ao-khoac",
+        "me va be": "me-be", "me be": "me-be",
+        "gia dung": "gia-dung", "thoi trang": "thoi-trang",
+    }
+    folded = " ".join(_search_text(category).split())
+    return aliases.get(folded, category)
+
 
 # a: automatic price search; m: model-proposed query; t: model cleanup trigger;
 # p: whole phrase removed from model-proposed queries before token filtering.

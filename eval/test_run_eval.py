@@ -170,8 +170,8 @@ class EvalRunnerTest(unittest.TestCase):
                 if str(path).endswith(".events.json"):
                     raise OSError("synthetic disk error")
                 real_atomic(path,value)
-            with patch("eval.run_eval.atomic_json",side_effect=write):
-                with self.assertRaises(OSError):
+            with patch("eval_harness.turn_diagnostics.atomic_json",side_effect=write):
+                with self.assertRaises(RuntimeError):
                     asyncio.run(run(SimpleNamespace(scenarios=btc/"test_set/public_sample",btc_root=btc,
                         config="full",out=output,isolated_db=True),_Runtime()))
             self.assertEqual(json.loads(output.with_suffix(".report.json").read_text())["status"],"failed")
@@ -199,8 +199,9 @@ class EvalRunnerTest(unittest.TestCase):
             events = json.loads(raw)
         self.assertTrue(events)
         self.assertEqual(events[0]["checks"][0]["reason"], "price_without_quote")
-        self.assertIn("claims", events[0]["checks"][0])
-        self.assertIn("source_evidence", events[0]["checks"][0])
+        self.assertEqual(set(events[0]["checks"][0]), {"reason"})
+        self.assertNotIn("agent_draft", raw)
+        self.assertNotIn("source_evidence", raw)
         self.assertNotIn("0912345678", raw)
 
     def test_live_database_name_is_checked_before_any_turn(self):

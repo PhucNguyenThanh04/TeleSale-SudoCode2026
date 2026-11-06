@@ -10,7 +10,11 @@ def test_three_warmups_do_not_write_business_or_memory_data():
     for name in ('order.create','handoff.transfer','memory.write','crm.get_customer'):
         asyncio.run(gateway.invoke(name,{}))
     assert not inner.invoke.called
-    runtime=SimpleNamespace(run=AsyncMock())
+    from app.agent.harness.observability import log_event
+    async def respond(request):
+        log_event({}, "execution", "phase_result", phase="model_invocation", status="succeeded")
+        log_event({}, "execution", "phase_result", phase="postprocess", status="succeeded")
+    runtime=SimpleNamespace(run=AsyncMock(side_effect=respond))
     result=asyncio.run(warm_up_configuration(runtime))
     assert result['turns']==3 and runtime.run.await_count==3
     requests=[c.args[0] for c in runtime.run.call_args_list]
@@ -52,7 +56,7 @@ def test_warmup_runs_real_graph_and_memory_contract_without_service_writes(monke
     runtime=AgentHarnessRuntime(FakeToolModel(replies=[AIMessage(content='Dạ, em nghe ạ.') for _ in range(3)]),
         gateway,MCPMemoryStore(gateway),agent_kind='deep')
     result=asyncio.run(warm_up_configuration(runtime))
-    assert result=={'turns':3,'scored':False}
+    assert result=={'turns':3,'scored':False,'execution_health':'healthy'}
     commits=[c for c in gateway.invoke.call_args_list if c.args[0]=='memory.write']
     assert len(commits)==3
     assert len({c.args[1]['session_id'] for c in commits})==3

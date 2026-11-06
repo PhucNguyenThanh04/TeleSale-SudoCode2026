@@ -1,19 +1,32 @@
 """Publish the shipped prompt texts to the production label once."""
 
+import argparse
+import hashlib
+
 from app.agent.implementations.business_agent import _SYSTEM_PROMPT
 from app.agent.memory.langmem_extractor import _INSTRUCTIONS
 from app.agent.prompts import MEMORY_PROMPT, SALES_PROMPT, _client
 from app.configs import get_settings
 
 
-def main() -> None:
+def prompt_manifest() -> dict[str, str]:
+    return {SALES_PROMPT: _SYSTEM_PROMPT, MEMORY_PROMPT: _INSTRUCTIONS}
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--dry-run', action='store_true', help='Print local text and SHA-256 without network')
+    args = parser.parse_args(argv)
+    if args.dry_run:
+        for name, content in prompt_manifest().items():
+            print(f'{name} sha256={hashlib.sha256(content.encode()).hexdigest()}\n{content}')
+        return
     settings = get_settings()
     if not all((settings.langfuse_public_key, settings.langfuse_secret_key,
                 settings.langfuse_base_url)):
         raise RuntimeError("Set LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY and LANGFUSE_BASE_URL")
     client = _client()
-    for name, content in ((SALES_PROMPT, _SYSTEM_PROMPT),
-                          (MEMORY_PROMPT, _INSTRUCTIONS)):
+    for name, content in prompt_manifest().items():
         try:
             existing = client.get_prompt(name, type="text", label="production",
                                          max_retries=0, fetch_timeout_seconds=3)

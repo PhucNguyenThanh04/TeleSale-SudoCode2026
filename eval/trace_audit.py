@@ -188,6 +188,14 @@ def build_manifest(*, trace_path: Path, scenarios_dir: Path, config: str,
         if runner_report.get('knowledge_release_id', 'btc-only') != knowledge_release['release_id']:
             raise ValueError('Runner knowledge release mismatch')
         metadata['knowledge_release'] = knowledge_release
+    health = 'unknown'
+    if runner_report.get('turn_diagnostics'):
+        from eval_harness.turn_diagnostics import verify_report_turn_diagnostics, trace_execution_health
+        verify_report_turn_diagnostics(trace_path)
+        health = trace_execution_health(trace_path)
+    elif runner_report.get('execution_health') not in (None, 'unknown'):
+        raise ValueError('Execution health lacks evidence')
+    metadata['execution_health'] = health
     score_inputs_path = scorer_report_path.with_suffix(".inputs.json")
     if not score_inputs_path.is_file():
         raise ValueError("score provenance sidecar is unavailable")

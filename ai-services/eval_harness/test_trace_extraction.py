@@ -143,3 +143,17 @@ def test_trace_masks_single_word_customer_name_across_text_tools_and_memory():
                      120, None, "clean", customer_name="Hoa")
     assert "Hoa" not in json.dumps(row, ensure_ascii=False)
     assert row["tool_calls"][0]["args"]["sku"] == "SKU-A"
+
+
+def test_core_only_receives_masked_speech(monkeypatch):
+    import eval_harness.extractor as extractor
+    original = extractor.extract_detailed
+    seen = []
+    def check(text):
+        assert 'Lan' not in text and '0901234567' not in text
+        seen.append(text)
+        return original(text)
+    monkeypatch.setattr(extractor, 'extract_detailed', check)
+    row = trace_line('r', 'full', 'X', 'call_1', 1, 'chào',
+        'Chị Lan, giá 700.000đ; gọi 0901234567.', [], [], [], 1, None, 'clean', customer_name='Lan')
+    assert seen == [row['agent_text']]

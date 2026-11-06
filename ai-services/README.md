@@ -1,8 +1,11 @@
 # Text-turn harness
 
-Copy `.env.example` to `.env` and set `LLM_API_KEY` to an Ollama Cloud API key.
-`LLM_MODEL=gemma4:31b` and `OLLAMA_BASE_URL=https://ollama.com` configure
-direct cloud access through `ChatOllama`. `LLM_TEMPERATURE` and
+Copy `.env.example` to `.env` and set `LLM_API_KEY` to your API key.
+`LLM_MODEL=gpt-6-luna` and `LLM_BASE_URL=https://api.openai.com/v1` configure
+OpenAI access through `ChatOpenAI`. For a compatible provider, set its base URL
+(including `/v1` when required) and supported model ID. GPT-6 Luna uses Chat
+Completions with `reasoning_effort=none` to support business tool calls.
+`LLM_TEMPERATURE` and
 `LLM_MAX_TOKENS` control sampling and the response length limit. The settings
 are loaded from this directory regardless of
 the current working directory; process environment variables take precedence.
@@ -19,7 +22,7 @@ settings needed for your run.
 | Group | Variables | Effect |
 |---|---|---|
 | API | `APP_NAME`, `APP_ENV`, `DEBUG`, `HOST`, `PORT`, `LOG_LEVEL`, `TIMEZONE` | API identity, environment label, debug flag, bind address, logging, callback timezone |
-| Ollama Cloud | `LLM_API_KEY`, `LLM_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_TIMEOUT_SECONDS`, `LLM_TEMPERATURE`, `LLM_MAX_TOKENS`, `LLM_SEED` | Model, authentication, timeout, response budget and reproducible sampling |
+| OpenAI-compatible API | `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, `LLM_TIMEOUT_SECONDS`, `LLM_TEMPERATURE`, `LLM_MAX_TOKENS`, `LLM_SEED` | Model, authentication, timeout, response budget and reproducible sampling |
 | Harness | `AGENT_KIND`, `AGENT_MAX_TOOL_CALLS`, `AGENT_PROMPT_HISTORY_TURNS`, `AGENT_GUARDRAILS_ENABLED` | Select `deep` or `react`, set tool and context limits, and toggle answer checks |
 | Memory | `MEMORY_MAX_EPISODES`, `LANGMEM_MODEL` | Customer-scoped LangMem knowledge and a separate distillation model; LangMem is the only runtime memory path |
 | Langfuse | `LANGFUSE_ENABLED`, `LANGFUSE_PROMPTS_ENABLED`, `LANGFUSE_CAPTURE_CONTENT`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` | Optional tracing and production-labeled prompt management; content capture is opt-in for development/test |
@@ -28,10 +31,23 @@ settings needed for your run.
 | MCP database | `DATABASE_URL` **or** `MCP_DB_HOST`, `MCP_DB_PORT`, `MCP_DB_NAME`, `MCP_DB_USER`, `MCP_DB_PASSWORD_FILE`; `MCP_INTERNAL_TOKEN_FILE` | Local connection or Compose role-specific secret files |
 
 `DATABASE_URL` is held as a secret by the settings object.
-Compose supplies each MCP process with its own DB role and secret file. Run
-Compose with **both** env files so the nonsecret MCP ports and pool settings
-come from `ai-services/.env` without injecting the Ollama key into MCP
-containers. A plain `docker compose up` uses default MCP tuning instead.
+Compose supplies each MCP process with its own DB role and secret file.
+From the repository root, use `docker compose up -d --build` and
+`docker compose down`; no shell exports or `--env-file` arguments are needed.
+Root `.env` configures Compose (database, published ports and resource tuning).
+Knowledge and the LangMem worker read their provider settings from the read-only
+mounted `ai-services/.env` at container startup; memory reads its diagnostics flag.
+The entrypoint selects only settings needed by that process. Host DATABASE_URL,
+admin credentials and host MCP URLs are not imported into the process environment.
+The mounted file itself contains credentials: only trusted service containers
+receive it. Changes require restarting the affected containers.
+
+This starts an already initialized installation. BTC import, SQL migrations,
+LangMem store setup and policy release preparation/activation remain one-time
+setup steps; startup never resets data or invokes embedding/model APIs for setup.
+Missing provider values are reported by the relevant container, not by Compose
+while parsing a `down` command.
+
 When changing an MCP port, update its `MCP_*_URL` in the same file. `MCP_HOST`
 is overridden to `0.0.0.0` inside Compose so the container can accept traffic;
 it remains loopback-bound on the host. The legacy `BACKEND_URL` and
@@ -316,7 +332,7 @@ For an isolated smoke test without changing the active Python environment:
 ```bash
 uv run --no-project --with 'langgraph>=1.2.12,<1.3' \
   --with 'deepagents>=0.7.23,<0.8' \
-  --with 'langchain-ollama>=1.1,<2' --with 'fastapi>=0.141.1,<0.142' \
+  --with 'langchain-openai>=1.7,<2' --with 'fastapi>=0.141.1,<0.142' \
   --with 'httpx>=0.28.1,<0.29' --with 'pydantic-settings>=2.10,<3' \
   --with 'fastmcp>=4.0.10,<4.1' --with 'asyncpg>=0.30,<1' \
   python -m unittest discover -s test -v

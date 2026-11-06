@@ -462,7 +462,7 @@ def check_grounding(candidate: str, tool_calls: list[dict[str, Any]]) -> str | N
         if not evidence:
             return 'unsupported_policy_or_internal_claim'
         source_text = ' '.join(row['content'] for row in evidence).casefold()
-        if any(value not in source_text for value in re.findall(r'\b\d+\s+ngày\b', candidate.casefold())):
+        if any(value not in source_text for value in re.findall(r'\b\d+\s+(?:ngày|tháng|năm)\b', candidate.casefold())):
             return 'unsupported_policy_or_internal_claim'
     return None
 
@@ -476,7 +476,7 @@ def _quote_money_values(result: dict[str, Any]) -> set[int]:
     return {value for value in values if type(value) is int}
 
 
-def _money_evidenced(candidate: str, successful: list[dict[str, Any]]) -> bool:
+def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *, focus_sku: str | None = None) -> bool:
     quotes: dict[str, dict[str, Any]] = {}
     for call in successful:
         if call.get("name") != "pricing.get_quote":
@@ -491,34 +491,34 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]]) -> bool:
         quotes[sku] = result
     if not quotes:
         return False
-    names = {item["sku"]: item["name"] for call in successful
-             if call.get("name") == "catalog.search"
-             for item in call.get("result", {}).get("items", [])
-             if isinstance(item, dict) and isinstance(item.get("sku"), str)
-             and isinstance(item.get("name"), str)}
-    evidenced_skus = known_skus(successful)
+    from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
     for clause in re.split(r"[;!?\n]|\.(?!\d)", candidate):
         claims = _money_claims(clause)
         if not claims:
             continue
-        explicit_skus = mentioned_skus(clause, evidenced_skus)
-        if set(_LEGACY_SKU_SIGNAL.findall(clause)) - explicit_skus:
+        if set(_LEGACY_SKU_SIGNAL.findall(clause)) - known_skus(successful):
             return False
-        if explicit_skus and not explicit_skus <= set(quotes):
-            return False
-        named_catalog_skus = {sku for sku, name in names.items()
-                              if name.casefold() in clause.casefold()}
-        if named_catalog_skus and not named_catalog_skus <= set(quotes):
-            return False
-        mentioned = {sku for sku in quotes
-                     if sku in explicit_skus
-                     or (sku in names and names[sku].casefold() in clause.casefold())}
-        if not mentioned and len(quotes) == 1:
+        bound = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
+        # A direct parent quote supports a parent price without picking a variant.
+        direct_parents = {sku for sku in bound & quotes.keys() if any(
+            c.get('name') == 'catalog.search' and any(i.get('sku') == sku for i in c['result'].get('items', []))
+            for c in successful)}
+        mentioned = direct_parents if len(direct_parents) == 1 else bound
+        if not bound and len(quotes) == 1:
             mentioned = set(quotes)
-        if len(mentioned) != 1:
+        if len(mentioned) != 1 or not mentioned <= quotes.keys():
             return False
         quote = quotes[next(iter(mentioned))]
         allowed = _quote_money_values(quote)
+        if re.search(r'\btong\b|ca don', _fold_text(clause)):
+            selected_call = next(c for c in successful if c.get('name') == 'pricing.get_quote'
+                                 and c.get('args', {}).get('sku') == next(iter(mentioned)))
+            qty = selected_call.get('args', {}).get('qty', 1)
+            total_values = {quote[k] * qty for k in ('final_price_vnd', 'list_price_vnd')
+                            if type(quote.get(k)) is int and type(qty) is int}
+            if any(kind == 'price' and amount not in total_values for amount, kind, _ in claims):
+                return False
+            allowed |= total_values
         if any(amount not in allowed for amount, _, _ in claims):
             return False
         actual_discount = quote.get("list_price_vnd", 0) - quote.get("final_price_vnd", 0)
@@ -589,7 +589,7 @@ def _catalog_budget_repetition_evidenced(candidate: str, customer_text: str,
 
 
 def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
-                 customer_text: str = "") -> tuple[str, str | None]:
+                 customer_text: str = "", *, focus_sku: str | None = None) -> tuple[str, str | None]:
     """Return a verified answer and a stable, non-sensitive rejection reason."""
     if not candidate.strip():
         return FALLBACK, "empty_answer"
@@ -613,7 +613,7 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         if not policy_chunks:
             return FALLBACK, "unsupported_policy_or_internal_claim"
         source_text = " ".join(chunk["content"] for chunk in policy_chunks)
-        policy_days = re.findall(r"\b\d+\s+ngày\b", candidate.casefold())
+        policy_days = re.findall(r"\b\d+\s+(?:ngày|tháng|năm)\b", candidate.casefold())
         if any(day not in source_text.casefold() for day in policy_days):
             return FALLBACK, "unsupported_policy_or_internal_claim"
     evidenced_skus = known_skus(successful)
@@ -627,7 +627,7 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     policy_amounts = (_money_claims(" ".join(chunk["content"] for chunk in policy_chunks))
                       if policy_claim else [])
     policy_values = {amount for amount, _, _ in policy_amounts}
-    if money_claims and not (_money_evidenced(candidate, successful) or
+    if money_claims and not (_money_evidenced(candidate, successful, focus_sku=focus_sku) or
                              policy_claim and not re.search(r"(?i)\bgiá(?:\s+bán)?\b", candidate)
                              and all(amount in policy_values
                                      for amount, _, _ in money_claims) or
@@ -636,36 +636,52 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
                              _catalog_budget_repetition_evidenced(candidate, customer_text,
                                                                   money_claims, successful)):
         return FALLBACK, "price_without_quote"
-    if _STOCK.search(candidate):
-        checks = [call for call in successful if call["name"] == "inventory.check"]
-        checked_skus = {call["args"].get("sku") for call in checks}
-        if len(checked_skus) != 1 or unverified_legacy_skus \
-                or (claimed_skus and claimed_skus != checked_skus):
-            return FALLBACK, "stock_sku_mismatch"
-        stock = checks[-1]["result"].get("in_stock")
-        if stock is None or ("hết hàng" in candidate.lower()) == stock:
-            return FALLBACK, "stock_result_mismatch"
-    if _STOCK_QTY.search(candidate):
-        checks = [call for call in successful if call["name"] == "inventory.check"]
-        signatures = {(call["args"].get("sku"), call["args"].get("on"),
-                       call["result"].get("qty")) for call in checks}
-        if len(signatures) != 1 or unverified_legacy_skus \
-                or (claimed_skus and claimed_skus != {checks[-1]["args"].get("sku")}) \
-                or any(int(qty) != checks[-1]["result"].get("qty")
-                                    for qty in _STOCK_QTY.findall(candidate)):
-            return FALLBACK, "stock_quantity_mismatch"
+    if _STOCK.search(candidate) or _STOCK_QTY.search(candidate):
+        from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
+        checks = [call for call in successful if call['name'] == 'inventory.check']
+        for clause in re.split(r'[;!?\n]|\.(?!\d)', candidate):
+            if not (_STOCK.search(clause) or _STOCK_QTY.search(clause)):
+                continue
+            bound = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
+            selected = [c for c in checks if not bound or c.get('args', {}).get('sku') in bound]
+            if len(bound) > 1 and not any(c.get('args', {}).get('sku') in {
+                    item.get('sku') for catalog in successful if catalog.get('name') == 'catalog.search'
+                    for item in catalog['result'].get('items', [])} for c in selected):
+                return FALLBACK, 'stock_sku_mismatch'
+            if len(selected) != 1 or unverified_legacy_skus:
+                return FALLBACK, 'stock_sku_mismatch'
+            stock = selected[0]['result'].get('in_stock')
+            if _STOCK.search(clause) and (stock is None or ('hết hàng' in clause.lower()) == stock):
+                return FALLBACK, 'stock_result_mismatch'
+            if any(int(qty) != selected[0]['result'].get('qty') for qty in _STOCK_QTY.findall(clause)):
+                return FALLBACK, 'stock_quantity_mismatch'
     if _ORDER.search(candidate) and not any(
         call["name"] == "order.create" and call["result"].get("status") == "created"
         for call in successful
     ):
         return FALLBACK, "order_creation_unverified"
-    promotion_reason = check_promotion_grounding(candidate, tool_calls)
+    promotion_reason = check_promotion_grounding(candidate, tool_calls, focus_sku=focus_sku)
     if promotion_reason:
         return FALLBACK, promotion_reason
     if _DELIVERY.search(candidate):
         orders = [call["result"] for call in successful if call["name"] == "order.create"
                   and call["result"].get("status") == "created"]
-        if len(orders) != 1 or str(orders[0].get("estimated_delivery")) not in candidate:
+        delivery_verified = len(orders) == 1 and str(orders[0].get("estimated_delivery")) in candidate
+        if not orders and not re.search(r'cam kết|đảm bảo|chắc chắn', candidate, re.IGNORECASE):
+            from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
+            clauses = [c for c in re.split(r'[;!?\n]|\.(?!\d)', candidate) if _DELIVERY.search(c)]
+            delivery_verified = bool(clauses)
+            for clause in clauses:
+                skus = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
+                quotes = [c for c in successful if c['name'] == 'pricing.get_quote'
+                          and c.get('args', {}).get('sku') in skus]
+                dates = re.findall(r'\b\d{4}-\d{2}-\d{2}\b', clause)
+                if (not re.search(r'\bdự kiến\b', clause, re.IGNORECASE)
+                        or len(skus) != 1 or len(quotes) != 1 or len(dates) != 1
+                        or dates[0] != quotes[0]['result'].get('estimated_delivery')
+                        or re.search(r'\d+\s*(?:ngày|giờ)', clause)):
+                    delivery_verified = False
+        if not delivery_verified:
             return FALLBACK, "delivery_unverified"
     if _ORDER_STATUS.search(candidate):
         status_results = [call["result"] for call in successful if call["name"] == "order.status"]

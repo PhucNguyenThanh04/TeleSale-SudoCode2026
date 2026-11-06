@@ -328,7 +328,11 @@ class DeepMemoryTest(unittest.IsolatedAsyncioTestCase):
         gateway = FakeGateway()
         runtime = DeepHarnessRuntime(model, gateway, FakeMemory())
         await runtime.run(turn("Em lên đơn giúp anh nhé"))
-        self.assertEqual([name for name, _ in gateway.calls], ["crm.get_customer", "catalog.search"])
+        # Metadata reads are allowed to interpret speech; they cannot authorize an order.
+        names = [name for name, _ in gateway.calls]
+        self.assertEqual(names[0], "crm.get_customer")
+        self.assertTrue(all(name == "catalog.search" for name in names[1:]))
+        self.assertLessEqual(len(names[1:]), 2)
 
 
 

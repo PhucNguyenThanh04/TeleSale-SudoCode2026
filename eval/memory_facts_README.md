@@ -1,16 +1,27 @@
-# Bộ đo memory v1
+# Bộ đo memory v1 — baseline lịch sử
 
-`memory_facts_v1.jsonl` gồm 50 lượt tổng hợp được gắn nhãn thủ công, không chứa dữ liệu khách thật. Các câu trải qua hàng gia dụng, giày, balo và vali, gồm ba `input_mode`, fact có cấu trúc, fact mở, câu hỏi, giả định, thông tin người thứ ba và dữ liệu cần loại. `preferred_size`/`preferred_color` là sở thích; `size`/`color` là lựa chọn giao dịch, theo `docs/memory-policy.md`. Khóa bộ nhãn này sau baseline; ca lỗi mới thêm vào bộ khác để tránh sửa nhãn theo output của model.
+Runner live `eval.memory_facts_baseline` đã ngừng hỗ trợ: nó gọi custom
+`fact_candidates` và `fact_extraction_mode=fallback`, đã bị loại khỏi production
+khi memory chuyển sang LangMem. Xem [cleanup audit](../ai-services/docs/cleanup-audit-2026-10-31.md).
+CLI và API evaluate/diagnostics legacy trả lỗi rõ trước khi đọc settings, dựng
+model hoặc ghi output. Không khôi phục validator cũ để tạo điểm cho runtime mới.
 
-Chạy từ gốc repo:
+`memory_facts_v1.jsonl` vẫn giữ nguyên 50 ca synthetic và nhãn lịch sử.
+Các helper `load_cases`, `score`, `score_keys`, `score_normalized_blocker` vẫn
+hoạt động offline để đọc/chấm lại predicted slots đã có; chúng không chứng minh
+chất lượng memory LangMem hiện tại. Các report cũ giữ nguyên giá trị lịch sử.
+
+Scorer strict so đúng key, kiểu và giá trị; wrong value tính cả FP và FN.
+Key-only chỉ so key. Chuẩn hóa blocker chỉ dùng cho chấm, không thay đổi runtime.
+Không sửa nhãn corpus theo output model.
+
+Kiểm tra offline từ root repository:
 
 ```bash
-ai-services/.venv/bin/python -m eval.memory_facts_baseline --out eval/memory_fallback_baseline.json
-ai-services/.venv/bin/python -m pytest -q eval/test_memory_facts_baseline.py
+ai-services/.venv/bin/python ai-services/eval_harness/offline_tests.py eval/test_memory_facts_baseline.py -q
 ```
 
-Runner dùng model/agent cấu hình trong `ai-services/.env`, gọi nhánh `run_agent` với `fact_extraction_mode=fallback` và tool nghiệp vụ mock chỉ đọc. Mỗi ca là một lượt độc lập; không gọi PostgreSQL, MCP HTTP hoặc ghi hồ sơ khách. Kết quả gồm nhãn, fact được nhận, số lần extractor chạy và thời gian từng ca. Scorer tính TP/FP/FN theo **đúng key, kiểu và giá trị**; paraphrase của slot dạng text hoặc dùng `size` thay `preferred_size` được tính là sai. Đây là baseline cho khả năng trích fact, không phải thước đo latency end-to-end hay public-sample đa phiên.
-
-Report còn ghi `key_only_slots` (chỉ đúng key) và `normalized_blocker_slots` bên cạnh `typed_slots` nghiêm ngặt. Phép chuẩn hóa chỉ dành cho chấm blocker: bỏ dấu/chấm câu/khoảng trắng thừa và quy về `hỏi vợ`/`hỏi chồng` khi cùng chỉ người cần hỏi; các key khác vẫn so khớp chính xác. Mỗi row có `diagnostics.before_fact_evidence` (nguồn agent/extractor, đề xuất đã che PII, kết quả kiểm và mã lý do thuộc `FactRejectReason` trong `guardrails/checks.py`; `pattern_not_matched` dùng cùng trường `key` để chỉ nhánh) cùng `diagnostics.after_fact_evidence` (fact thực sự được nhận). Mã lý do chỉ chẩn đoán, không thay đổi quy tắc ghi nhớ. File report chỉ nên chứa ca tổng hợp; runner từ chối câu đầu vào còn PII thô.
-
-Fact mở có nhãn nhưng runtime hiện chưa có tầng lưu này, nên baseline ghi `predicted=0`. Khi so với phiên bản `always`, chạy lại cả hai cấu hình cùng model/API/tham số và báo riêng precision/recall của slot và fact mở. Không dùng 50 câu này làm điều kiện rẽ nhánh trong runtime.
+Đánh giá runtime hiện tại dùng paired harness trong
+[eval_harness/README.md](../ai-services/eval_harness/README.md).
+Chạy live cần ủy quyền riêng; bộ 50 ca lịch sử không tự động được chuyển thành
+một benchmark LangMem mới và không thay thế bộ paired eval.

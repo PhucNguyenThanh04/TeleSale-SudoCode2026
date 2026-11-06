@@ -57,11 +57,11 @@ class MemoryRepo:
             UUID(session_id))
 
     async def turns(self, conn, session_id: str) -> list:
-        return await conn.fetch("""SELECT customer_text,agent_text FROM runtime.turns
+        return await conn.fetch("""SELECT customer_text,agent_text,client_msg_id FROM runtime.turns
             WHERE session_id=$1 ORDER BY turn_no""", UUID(session_id))
 
     async def recent_turns(self, conn, session_id: str, maximum: int) -> list:
-        rows = await conn.fetch("""SELECT customer_text,agent_text FROM runtime.turns
+        rows = await conn.fetch("""SELECT customer_text,agent_text,client_msg_id FROM runtime.turns
             WHERE session_id=$1 ORDER BY turn_no DESC LIMIT $2""", UUID(session_id), maximum)
         return list(reversed(rows))
 
@@ -209,11 +209,13 @@ class MemoryRepo:
 
     async def recent_session_turns(self, conn, session_id: str, customer_id: str,
                                    through_turn_no: int, limit: int = 5) -> list[dict]:
-        rows = await conn.fetch("""SELECT client_msg_id,customer_text,agent_text,
-            on_date,channel FROM runtime.turns
-            WHERE session_id=$1 AND customer_id=$2 AND turn_no<=$3
-              AND client_msg_id IS NOT NULL
-            ORDER BY turn_no DESC LIMIT $4""",
+        rows = await conn.fetch("""SELECT t.client_msg_id,t.customer_text,t.agent_text,
+            t.on_date,t.channel,j.tool_observations FROM runtime.turns t
+            LEFT JOIN runtime.langmem_distillation_jobs j ON j.session_id=t.session_id
+                AND j.source_turn_id=t.client_msg_id AND j.customer_id=t.customer_id
+            WHERE t.session_id=$1 AND t.customer_id=$2 AND t.turn_no<=$3
+              AND t.client_msg_id IS NOT NULL
+            ORDER BY t.turn_no DESC LIMIT $4""",
             UUID(session_id), customer_id, through_turn_no, limit)
         return [dict(row) for row in reversed(rows)]
 

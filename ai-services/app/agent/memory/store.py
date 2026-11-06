@@ -56,10 +56,11 @@ class MCPMemoryStore:
         return f"{self.namespace}:{customer_id}" if customer_id and self.namespace else customer_id
 
     async def read_context(self, session_id: str, customer_id: str | None) -> dict:
-        return await self.gateway.invoke("memory.read", {"session_id": session_id,
+        result = await self.gateway.invoke("memory.read", {"session_id": session_id,
                                                           "customer_id": self._id(customer_id),
                                                           "max_episodes": self.max_episodes,
                                                           "include_prior": self.include_prior})
+        return self._consume_diagnostics(result, customer_id)
 
     async def commit_turn(self, session_id: str, customer_id: str | None,
                           customer_text: str, agent_text: str, on: str, channel: str,
@@ -77,9 +78,19 @@ class MCPMemoryStore:
             data["outcome"] = outcome
         if tool_observations:
             data["tool_observations"] = safe_observations(tool_observations)
-        return await self.gateway.invoke("memory.write", {
+        result = await self.gateway.invoke("memory.write", {
             "action": "commit_turn", "session_id": session_id,
             "customer_id": self._id(customer_id),
             "data": data,
             "operation_key": f"{session_id}:{client_msg_id}:commit_turn",
         })
+
+        return self._consume_diagnostics(result, customer_id)
+
+    @staticmethod
+    def _consume_diagnostics(result, customer_id):
+        if isinstance(result, dict) and "_decision_diagnostics" in result:
+            from app.mcp_servers.mcp_shared.decision_diagnostics import ingest
+            result = dict(result)
+            ingest(result.pop("_decision_diagnostics"), customer_id=customer_id)
+        return result

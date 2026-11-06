@@ -28,6 +28,11 @@ def test_shared_runner_persists_accepted_writes_in_both_modes(tmp_path):
         result=asyncio.run(run_configuration(scenarios=scenarios,config=config,runtime=runtime,
             run_id='test',out=out,wait_for_jobs=AsyncMock(),capture_writes=accepted))
         rows=[json.loads(x) for x in out.read_text().splitlines()]
+        from eval_harness.extraction_report import make_extraction_row
+        from eval_harness.extractor import extract_detailed
+        side = tmp_path/('full.extraction.jsonl' if config == 'full' else 'baseline.extraction.jsonl')
+        details = [json.loads(line) for line in side.read_text().splitlines()]
+        assert details == [make_extraction_row(row, extract_detailed(row['agent_text'])) for row in rows]
         assert len(rows)==2 and rows[0]['memory_writes'][0]['value']==0
         assert rows[0]['customer_text']=='mot' and rows[0]['customer_input_mode']=='asr_transcript'
         assert rows[0].get('call_brief_latency_ms') is None
@@ -53,3 +58,25 @@ def test_failure_retains_safe_redaction_evidence(tmp_path):
             capture_writes=AsyncMock(return_value={}),safety_issues=issues))
     assert issues[0]['code']=='redaction_affects_scoring'
     assert '123456789012' not in (tmp_path/'partial.jsonl').read_text()
+
+
+def test_shared_runner_records_zero_event_and_runtime_failure_turns(tmp_path):
+    from app.agent.harness.observability import log_event
+    from eval_harness.turn_diagnostics import verify_turn_diagnostics
+    import pytest
+    class Failing(Runtime):
+        async def run(self, request):
+            if request.text=='lỗi':
+                raise TimeoutError('private 0912345678')
+            log_event({},'run_agent','model_failed',error_type='TimeoutError')
+            return await super().run(request)
+    out=tmp_path/'trace.jsonl'
+    with pytest.raises(RuntimeError):
+        asyncio.run(run_configuration(scenarios={'X':{'calls':{'call_1':{'customer_turns':['chào','lỗi']}}}},
+            config='full',runtime=Failing(),run_id='r',out=out,wait_for_jobs=AsyncMock(),capture_writes=AsyncMock(return_value={})))
+    refs=verify_turn_diagnostics(out)
+    assert refs['rows']==2
+    rows=json.loads(out.with_suffix('.events.json').read_text())
+    assert rows[0]['model']['status']=='failed'
+    assert rows[1]['runtime_error']=='TimeoutError'
+    assert '0912345678' not in out.with_suffix('.events.json').read_text()
