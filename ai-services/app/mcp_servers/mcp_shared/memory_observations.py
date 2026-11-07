@@ -7,7 +7,8 @@ from app.mcp_servers.mcp_shared.pii import mask_pii
 
 
 _FIELDS = {
-    "catalog.search": ({"query", "sku"}, {"items", "total"}),
+    "catalog.search": ({"query", "sku", "category", "max_price_vnd", "min_room_area_m2",
+                        "include_discontinued"}, {"items", "total"}),
     "inventory.check": ({"sku", "on"}, {"sku", "in_stock", "qty",
                                       "restock_expected", "discontinued", "successor_sku"}),
     "pricing.get_quote": ({"sku", "on", "qty"}, {"sku", "list_price_vnd",

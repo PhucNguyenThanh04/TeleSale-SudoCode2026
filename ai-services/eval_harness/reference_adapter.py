@@ -129,6 +129,9 @@ def _spoken_fact(key: str, value: Any, text: str) -> bool:
         return any(amount == value and kind == expected_kind for amount, kind, _ in _money_claims(money_text))
     if key == "room_area_m2":
         return bool(re.search(r"(?<![\w.])" + re.escape(str(value)) + r"\s*(?:m2|m²|met vuong)(?!\w)", folded))
+    if key == 'objection' and value == 'dat_qua':
+        return bool(re.search(r'\bdat_qua\b|\bgia\b.{0,40}\b(?:cao|dat)\b', folded)
+                    and not re.search(r'\b(?:khong|chua)\b.{0,15}\b(?:cao|dat)\b', folded))
     if key == "blocker" and isinstance(value, str):
         from app.agent.memory.decision_makers import roles_mentioned
         roles = roles_mentioned(_fold(value))
@@ -156,7 +159,7 @@ def _literal_pattern(value: str) -> str:
     return r"(?<![\w-])" + re.escape(value) + r"(?![\w-])"
 
 
-def _scope_units(text: str, scope_type: str | None, scope_id: str | None):
+def _scope_units(text: str, scope_type: str | None, scope_id: str | None, catalog_calls=()):
     for clause in re.split(r"[!?;\n]|\.(?!\d)|,\s*(?!\d)", text):
         if scope_id is None:
             yield clause
@@ -169,9 +172,20 @@ def _scope_units(text: str, scope_type: str | None, scope_id: str | None):
             for i, mention in enumerate(mentions):
                 if mention.group() in aliases:
                     yield clause if len(mentions) == 1 else clause[mention.start():mentions[i+1].start() if i+1 < len(mentions) else len(clause)]
-        elif re.search(_literal_pattern(_fold(str(scope_id))), clause):
+        elif scope_type == 'product':
+            from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
+            named = resolve_claim_skus(clause, catalog_calls)
+            if not re.search(_literal_pattern(_fold(str(scope_id))), clause):
+                if named == {scope_id}:
+                    yield clause
+                continue
             # Bind product values to their own mention, not another SKU in a list.
             mentions = list(re.finditer(r"(?<![\w-])sku-[\w-]+", clause))
+            aliases = resolve_claim_skus(re.sub(r'(?<![\w-])sku-[\w-]+', '', clause), catalog_calls)
+            if aliases and not {_fold(sku) for sku in aliases} <= {m.group() for m in mentions}:
+                continue
+            if len(mentions) == 1 and len(named) > 1:
+                continue
             matching = [i for i,m in enumerate(mentions) if m.group() == _fold(str(scope_id))]
             if matching:
                 for i in matching:
@@ -180,13 +194,13 @@ def _scope_units(text: str, scope_type: str | None, scope_id: str | None):
                 yield clause
 
 
-def _speech_uses(text, key, value, scope_type, scope_id, *, customer=False):
+def _speech_uses(text, key, value, scope_type, scope_id, *, customer=False, catalog_calls=()):
     # Confirming an exact, sourced prior value still demonstrates use. An
     # open/disjunctive question or a proposed blocker does not establish it.
     if not customer and key == "blocker" and ("?" in text or re.search(r"đúng không|phải không", text, re.I)):
         return False
     folded = _fold(re.sub(r"\*\*|__|`", "", text))
-    for unit in _scope_units(folded, scope_type, scope_id):
+    for unit in _scope_units(folded, scope_type, scope_id, catalog_calls):
         if not customer and "?" in text and re.search(r"\b(?:hay|hoac)\b", unit):
             continue
         if re.search(r'[“”"«»]|\bneu\b', unit):
@@ -202,10 +216,15 @@ def _speech_uses(text, key, value, scope_type, scope_id, *, customer=False):
 
 def facts_used(agent_text: str, tool_calls: list[dict], prior_facts: dict,
                scoped_facts: dict | None = None,
-               current_session_id: str | None = None, *, customer_text: str = "") -> list[str]:
-    """Observable, scoped use of a sourced fact from a different session."""
+               current_session_id: str | None = None, *, customer_text: str = "",
+               catalog_calls: list[dict] | None = None) -> list[str]:
+    """Observable matches to sourced prior-session facts, not proof of causality."""
     if not current_session_id:
         return []  # Session provenance cannot be verified.
+    catalog = [c for c in (catalog_calls if catalog_calls is not None else tool_calls)
+               if c.get('name') == 'catalog.search' and isinstance(c.get('result'), dict)
+               and 'error' not in c['result'] and c['result'].get('ok') is not False
+               and c['result'].get('success') is not False]
     candidates = [(key, fact, None, None) for key, fact in prior_facts.items()]
     for scope_type, scopes in (scoped_facts or {}).items():
         if scope_type not in {"product", "room"} or not isinstance(scopes, dict):
@@ -226,16 +245,16 @@ def facts_used(agent_text: str, tool_calls: list[dict], prior_facts: dict,
         if value is None:
             continue
         if customer_text:
-            repeated = _speech_uses(customer_text, key, value, scope_type, scope_id, customer=True)
+            repeated = _speech_uses(customer_text, key, value, scope_type, scope_id, customer=True, catalog_calls=catalog)
             # A bare value provided just now is not proof of remembering its
             # scoped prior fact. Explicitly different scopes remain distinct.
             folded_customer = _fold(customer_text)
             scope_mentioned = bool(re.search(r"\bphong\b|\broom\b|" + "|".join(
                 _literal_pattern(alias) for aliases in _ROOM_ALIASES.values() for alias in aliases), folded_customer)) if scope_type == "room" else bool(re.search(r"(?<![\w-])sku-[\w-]+", folded_customer))
             if repeated or (scope_id is not None and not scope_mentioned and
-                    _speech_uses(customer_text, key, value, None, None, customer=True)):
+                    _speech_uses(customer_text, key, value, None, None, customer=True, catalog_calls=catalog)):
                 continue
-        spoken = _speech_uses(agent_text, key, value, scope_type, scope_id)
+        spoken = _speech_uses(agent_text, key, value, scope_type, scope_id, catalog_calls=catalog)
         passed = any(
             (scope_id is None or call.get("args", {}).get("sku" if scope_type == "product" else "room") == scope_id)
             and any(type(arg) is type(value) and arg == value

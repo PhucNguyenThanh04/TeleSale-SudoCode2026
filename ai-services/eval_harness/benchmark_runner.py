@@ -113,9 +113,11 @@ async def run_scenario_call(
             memory_writes = state.get("memory_writes", [])
             if prior_snapshot is None:
                 prior_snapshot = deepcopy((state.get("profile", {}), state.get("scoped_facts", {})))
+            from app.mcp_servers.mcp_shared.commerce_evidence import build_commerce_evidence
             facts_used_this_turn = facts_used(
                 agent_text, tool_calls, *prior_snapshot,
-                current_session_id=str(session_id), customer_text=user_text)
+                current_session_id=str(session_id), customer_text=user_text,
+                catalog_calls=build_commerce_evidence(state))
             if turn_idx == 1 and call_name in {"call_2", "call_3"}:
                 call_brief_latency = (resp.call_brief or {}).get("latency_ms")
 

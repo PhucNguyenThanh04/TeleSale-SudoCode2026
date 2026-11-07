@@ -80,7 +80,9 @@ def _task_answer_complete(draft, state):
     from app.mcp_servers.mcp_shared.consultation import derive_consultation
     decision = derive_consultation(state)
     budget = decision.snapshot.budget.limit_vnd
-    from app.mcp_servers.mcp_shared.consultation_shortlist import build_shortlist, consultation_active, consultation_scope
+    from app.mcp_servers.mcp_shared.consultation_shortlist import (
+        build_shortlist, consultation_active, consultation_scope, prefers_child_safety,
+    )
     if (not decision.purchase_intent and consultation_active(state)
             and any(kind == 'price' for _, kind, _ in _money_claims(draft))):
         from app.mcp_servers.mcp_shared.consultation import _mentions, catalog_items
@@ -93,6 +95,10 @@ def _task_answer_complete(draft, state):
             named = _mentions(draft, catalog_items(state))
             allowed = {item['sku'] for item in shortlist.items}
             if named and not named <= allowed:
+                return False
+            child_safe = {item['sku'] for item in shortlist.items
+                          if item.get('attributes', {}).get('child_safe_lock') is True}
+            if named and prefers_child_safety(state) and child_safe and not named & child_safe:
                 return False
     needs_price = bool(re.search(r'\bgia\b|bao nhieu', folded)
                        or budget is not None and re.search(r'tu van|goi y|phu hop|ngan sach', folded))

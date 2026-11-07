@@ -60,7 +60,7 @@ def test_budget_followup_uses_previous_catalog_without_new_search():
     business = BusinessTools(gateway, state, 6, clock)
     assert asyncio.run(business.prepare_consultation())
     assert gateway.calls and gateway.calls[0][0] == 'pricing.get_quote'
-    assert gateway.calls[0][1]['sku'] == 'SKU-BERYL'
+    assert gateway.calls[0][1]['sku'] == 'SKU-ASTER'
     assert all(name != 'catalog.search' for name, _ in gateway.calls)
     assert state.get('tool_count') <= 2
 
@@ -73,7 +73,7 @@ def test_preparation_shortlist_is_independent_of_catalog_order():
         business = BusinessTools(gateway, state, 6, clock)
         asyncio.run(business.prepare_consultation())
         orders.append([args['sku'] for name, args in gateway.calls if name == 'pricing.get_quote'])
-    assert orders[0] == orders[1] and orders[0][0] == 'SKU-BERYL'
+    assert orders[0] == orders[1] and orders[0][0] == 'SKU-ASTER'
     assert 'SKU-CEDAR' not in orders[0]
 
 
@@ -87,7 +87,7 @@ def test_shortlist_preserves_scope_before_a_broad_search():
         'result': {'items': [unrelated, *products()]}})
     shortlist = build_shortlist(state, scope=scope)
     assert shortlist.scope_known
-    assert [p['sku'] for p in shortlist.items][:1] == ['SKU-BERYL']
+    assert [p['sku'] for p in shortlist.items][:1] == ['SKU-ASTER']
     assert 'SKU-UNRELATED' not in [p['sku'] for p in shortlist.items]
 
 
@@ -133,7 +133,7 @@ def test_explicit_product_type_change_does_not_reuse_old_scope():
 @pytest.mark.parametrize('quoted_price', [4500000, 5300000])
 def test_final_quote_drives_ranking_without_mutating_evidence(quoted_price):
     from app.mcp_servers.mcp_shared.consultation_shortlist import consultation_scope, build_shortlist
-    s = consultation_state()
+    s = consultation_state('Ngân sách khoảng 5 triệu.')
     scope = consultation_scope(s)
     s['tool_calls'] = [{'name': 'pricing.get_quote', 'args': {'sku': sku, 'qty': 1, 'on': '2026-11-05'},
         'result': {'sku': sku, 'final_price_vnd': price}} for sku, price in
@@ -142,6 +142,16 @@ def test_final_quote_drives_ranking_without_mutating_evidence(quoted_price):
     result = build_shortlist(s, scope=scope, quoted_only=True)
     assert result.items[0]['sku'] == ('SKU-ASTER' if quoted_price < 5000000 else 'SKU-BERYL')
     assert s == before
+
+
+def test_child_safety_from_memory_outranks_budget_without_relaxing_room_area():
+    from app.mcp_servers.mcp_shared.consultation_shortlist import consultation_scope, build_shortlist
+    items = products()
+    items[2]['attributes']['child_safe_lock'] = True
+    s = consultation_state('Ngân sách khoảng 5 triệu.', items=items)
+    s['profile'] = {'has_children': {'value': True}}
+    result = build_shortlist(s, scope=consultation_scope(s))
+    assert [item['sku'] for item in result.items] == ['SKU-ASTER', 'SKU-BERYL']
 
 
 def test_float_area_unknown_required_attributes_and_budget_basis():

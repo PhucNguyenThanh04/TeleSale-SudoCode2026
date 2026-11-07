@@ -1,5 +1,6 @@
 """Display saved BTC scores without models, DB access, rescoring or mutation."""
 import argparse
+from datetime import date, timedelta
 import json
 from pathlib import Path
 
@@ -25,6 +26,41 @@ def _rate(metrics, name, numerator=None, denominator=None):
     if numerator in metric and denominator in metric:
         result += f' ({metric[numerator]}/{metric[denominator]})'
     return result
+
+
+def _claim_mismatch_notes(directory, run, score):
+    from eval_harness.claim_evidence import explain_claim_mismatch
+    snapshots = directory / 'scenarios'
+    if not snapshots.is_dir():
+        return []
+    specs, dates = {}, {}
+    for path in sorted(snapshots.glob('*.json')):
+        scenario = json.loads(path.read_text())
+        on = date(2026, 10, 15)
+        for call, spec in scenario['calls'].items():
+            on = date.fromisoformat(spec['call_date']) if 'call_date' in spec else on + timedelta(days=spec.get('days_later', 0))
+            key = (scenario['scenario_id'], call)
+            specs[key], dates[key] = spec, on.isoformat()
+    notes = []
+    for config, key, label in [('full', 'system', 'Full'), ('baseline_no_memory', 'baseline', 'Baseline')]:
+        trace = (run.get('traces') or {}).get(config)
+        if not trace or not (directory / trace).is_file():
+            continue
+        rows = [json.loads(line) for line in (directory / trace).read_text().splitlines()]
+        by_turn = {(r['scenario_id'], r['call'], r['turn']): r for r in rows}
+        for example in score.get(key, {}).get('hallucination_rate', {}).get('examples', []):
+            identity = (example['scenario'], example['call'])
+            row = by_turn.get((*identity, example['turn']))
+            explanation = (explain_claim_mismatch(row, example['field'], example['claimed'], on=dates[identity])
+                           if row is not None and identity in dates else {'status': 'unresolved'})
+            message = 'chưa đủ bằng chứng quote tương thích để phân loại nguyên nhân.'
+            if explanation['status'] == 'supported_by_quote':
+                message = f"khớp quote {explanation['sku']}; lệch ground truth."
+                expected = ((specs[identity].get('success_if') or {}).get('args_match') or {}).get('sku')
+                if example['field'] == 'price_vnd' and expected and expected != explanation['sku']:
+                    message += f' Giá thuộc sản phẩm khác SKU kỳ vọng {expected}; vẫn giữ lỗi chọn sản phẩm.'
+            notes.append(f"- {label} {identity[0]}/{identity[1]}/turn {example['turn']}, {example['field']}: {message}")
+    return notes
 
 
 def render_run(directory: Path) -> str:
@@ -72,6 +108,11 @@ def render_run(directory: Path) -> str:
         lines.append('Chưa đủ ≥100 lượt/cấu hình để đánh giá p95 theo hướng dẫn BTC.')
     if run.get('extraction_status') != 'complete':
         lines.append('Extractor còn cần rà soát; không coi claim chưa phân giải là đúng.')
+    lines.append('CCR không phải tỷ lệ fact đã lưu/đọc thành công; thiếu ghi nhận sử dụng không tự chứng minh memory quên.')
+    lines.append('HR BTC đối chiếu ground_truth_facts; một sai lệch không tự chứng minh agent bịa thông tin.')
+    notes = _claim_mismatch_notes(directory, run, score)
+    if notes:
+        lines.extend(['', 'Đối chiếu quote cho các ví dụ HR được lưu (không điều chỉnh điểm BTC):', '', *notes, ''])
     lines.append('Bảng đọc nguyên số từ btc_score.json; không phải một lần eval mới.')
     return '\n'.join(lines)
 

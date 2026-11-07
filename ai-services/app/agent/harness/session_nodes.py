@@ -238,16 +238,8 @@ def safe_consultation_reply(state: TurnState) -> str | None:
         if 'identity' in missing:
             return 'Mình vui lòng xác minh thông tin khách hàng để em tiếp tục đặt hàng ạ.'
         if 'delivery' in missing:
-            from app.mcp_servers.mcp_shared.consultation import purchase_arguments, catalog_items
-            args = purchase_arguments(state)
-            quotes = [c for c in build_commerce_evidence(state, args=args)
-                      if c.get('name') == 'pricing.get_quote'] if args else []
-            if len(quotes) == 1 and isinstance(quotes[0]['result'].get('estimated_delivery'), str):
-                estimated = quotes[0]['result']['estimated_delivery']
-                label = catalog_items(state).get(decision.snapshot.selected_sku, {}).get('name', args['sku'])
-                return (f'{label} dự kiến giao ngày {estimated}. '
-                        'Mình có đồng ý điều chỉnh điều kiện giao hàng theo ngày dự kiến này không ạ?')
-            return 'Em chưa xác minh được điều kiện giao hàng mình yêu cầu. Mình muốn điều chỉnh điều kiện này không ạ?'
+            return ('Em chưa xác minh được khả năng đáp ứng thời hạn mình yêu cầu. '
+                    'Mình có muốn em kiểm tra thêm khả năng đáp ứng thời hạn này không ạ?')
         if 'requirements' in missing:
             return 'Mẫu đang chọn chưa đáp ứng đủ yêu cầu đã nêu. Mình muốn điều chỉnh yêu cầu nào ạ?'
         return 'Em chưa xác minh đủ giá và tồn kho cho đúng lựa chọn của mình nên chưa thể tạo đơn ạ.'

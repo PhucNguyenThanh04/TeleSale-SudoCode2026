@@ -140,3 +140,78 @@ def test_confirming_known_previous_fact_is_still_observable_use():
     scoped={'room':{'bedroom':{'room_area_m2':fact(31)}}}
     assert facts_used('Phòng ngủ 31m2 đúng không?',[],{},scoped,'now') == ['room_area_m2']
     assert facts_used('Phòng ngủ 31m2 đúng không?',[],{},scoped,'now',customer_text='Phòng ngủ 31m2.') == []
+
+
+def catalog_names():
+    return [{'name': 'catalog.search', 'args': {}, 'result': {'items': [
+        {'sku': 'SKU-A', 'name': 'Máy lọc Aster Air'},
+        {'sku': 'SKU-B', 'name': 'Máy lọc Beryl Air'}]}}]
+
+
+def test_catalog_name_can_bind_spoken_price_to_prior_product_scope():
+    scoped = {'product': {'SKU-A': {'price_quoted_vnd': fact(730000)}}}
+    assert facts_used('Aster Air giá 730.000đ.', catalog_names(), {}, scoped, 'now') == ['price_quoted_vnd']
+
+
+@pytest.mark.parametrize('text', ['Beryl Air giá 730.000đ.', 'Air giá 730.000đ.',
+    'Aster Air giá 800.000đ và Beryl Air giá 730.000đ.', 'Aster Air giá 800.000đ.',
+    'SKU-A giá 800.000đ và Beryl Air giá 730.000đ.'])
+def test_catalog_names_do_not_borrow_other_product_values_or_ambiguous_aliases(text):
+    scoped = {'product': {'SKU-A': {'price_quoted_vnd': fact(730000)}}}
+    assert facts_used(text, catalog_names(), {}, scoped, 'now') == []
+
+
+def test_named_customer_repetition_and_same_session_still_are_not_memory_credit():
+    scoped = {'product': {'SKU-A': {'price_quoted_vnd': fact(730000)}}}
+    text = 'Aster Air giá 730.000đ.'
+    assert facts_used(text, catalog_names(), {}, scoped, 'now', customer_text=text) == []
+    scoped['product']['SKU-A']['price_quoted_vnd']['source'] = 'langmem:now:t1'
+    assert facts_used(text, catalog_names(), {}, scoped, 'now') == []
+
+
+def test_prior_catalog_in_same_call_can_bind_name_when_current_turn_only_quotes():
+    scoped = {'product': {'SKU-A': {'price_quoted_vnd': fact(730000)}}}
+    assert facts_used('Aster Air giá 730.000đ.', [], {}, scoped, 'now',
+                      catalog_calls=catalog_names()) == ['price_quoted_vnd']
+
+
+@pytest.mark.parametrize('failure', [{'error': 'unavailable'}, {'ok': False}, {'success': False}])
+def test_failed_catalog_is_not_product_name_evidence(failure):
+    calls = catalog_names()
+    calls[0]['result'].update(failure)
+    scoped = {'product': {'SKU-A': {'price_quoted_vnd': fact(730000)}}}
+    assert facts_used('Aster Air giá 730.000đ.', calls, {}, scoped, 'now') == []
+
+
+@pytest.mark.parametrize('text,expected', [
+    ('Lần trước chị băn khoăn giá Aster Air hơi cao.', ['objection']),
+    ('Giá Aster Air quá đắt.', ['objection']),
+    ('Giá Aster Air không cao.', []),
+    ('Chị không còn băn khoăn giá Aster Air.', []),
+    ('Lần trước chị băn khoăn giá Beryl Air hơi cao.', []),
+])
+def test_price_objection_paraphrase_stays_bound_to_product_and_polarity(text, expected):
+    scoped = {'product': {'SKU-A': {'objection': fact('dat_qua')}}}
+    assert facts_used(text, catalog_names(), {}, scoped, 'now') == expected
+
+
+def test_runner_preserves_catalog_aliases_between_turns_without_recounting_new_facts():
+    import asyncio
+    from datetime import date
+    from types import SimpleNamespace
+    from eval_harness.benchmark_runner import run_scenario_call
+
+    class Runtime:
+        count = 0
+        async def run(self, request):
+            self.count += 1
+            return SimpleNamespace(agent_text='Dạ.' if self.count == 1 else 'Aster Air giá 730.000đ.', call_brief=None)
+        def state_for(self, request):
+            return {'request': request, 'profile': {}, 'tool_calls': [],
+                'session_tool_calls': catalog_names(), 'scoped_facts': {'product': {'SKU-A': {
+                    'price_quoted_vnd': fact(730000),
+                    'objection': fact('dat_qua', f'langmem:{request.session_id}:t1')}}}}
+
+    rows = asyncio.run(run_scenario_call(Runtime(), 'GENERIC', 'call_2',
+        {'customer_turns': ['Chào em', 'Tiếp tục nhé']}, date(2026, 11, 2), '0900000000'))
+    assert [r['facts_used'] for r in rows] == [[], ['price_quoted_vnd']]

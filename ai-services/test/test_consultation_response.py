@@ -109,12 +109,28 @@ def test_budget_followup_renders_the_verified_shortlist_not_raw_catalog_order():
     s = consultation_state()
     asyncio.run(BusinessTools(QuoteGateway(), s, 6, clock).prepare_consultation())
     answer = safe_catalog_reply(s)
-    assert 'Beryl Air' in answer and '4.800.000' in answer
-    assert 'Aster Air' not in answer and 'Cedar Air' not in answer
-    assert 'không có khóa trẻ em' in answer
+    assert 'Aster Air' in answer and '5.200.000' in answer
+    assert 'Beryl Air' not in answer and 'Cedar Air' not in answer
+    assert 'có khóa trẻ em' in answer and 'không có khóa trẻ em' not in answer
+    assert 'vượt mức chi' in answer and 'đồng ý' in answer
+    from app.mcp_servers.mcp_shared.consultation import derive_consultation
+    decision = derive_consultation(s)
+    assert decision.snapshot.selected_sku is None and decision.snapshot.accepted_offer is None
     calls = build_commerce_evidence(s)
     assert check_grounding(answer, calls) is None
     assert check_answer(answer, calls, s['safe_text'])[1] is None
+
+
+def test_grounded_cheaper_advice_cannot_skip_verified_child_safe_option():
+    from test_consultation_shortlist import consultation_state, QuoteGateway, clock
+    from app.agent.implementations.business_agent import BusinessTools
+    from app.agent.harness.agent_nodes import _task_answer_complete
+    import asyncio
+    s = consultation_state()
+    asyncio.run(BusinessTools(QuoteGateway(), s, 6, clock).prepare_consultation())
+    assert not _task_answer_complete('Beryl Air có giá 4.800.000đ, không có khóa trẻ em.', s)
+    assert _task_answer_complete(
+        'Aster Air có giá 5.200.000đ, có khóa trẻ em. Mẫu này vượt mức chi, mình đồng ý điều chỉnh không ạ?', s)
 
 
 def test_area_float_and_unverified_quotes_do_not_imply_no_catalog_options():
