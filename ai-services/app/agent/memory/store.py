@@ -30,6 +30,9 @@ class MemoryStore(Protocol):
 
     async def read_context(self, session_id: str, customer_id: str | None) -> dict: ...
 
+    async def read_turn_status(self, session_id: str, customer_id: str | None,
+                               client_msg_id: str) -> dict: ...
+
     async def commit_turn(self, session_id: str, customer_id: str | None,
                           customer_text: str, agent_text: str, on: str, channel: str,
                           client_msg_id: str,
@@ -61,6 +64,12 @@ class MCPMemoryStore:
                                                           "max_episodes": self.max_episodes,
                                                           "include_prior": self.include_prior})
         return self._consume_diagnostics(result, customer_id)
+
+    async def read_turn_status(self, session_id: str, customer_id: str | None,
+                               client_msg_id: str) -> dict:
+        return await self.gateway.invoke("memory.turn_status", {
+            "session_id": session_id, "customer_id": self._id(customer_id),
+            "client_msg_id": client_msg_id})
 
     async def commit_turn(self, session_id: str, customer_id: str | None,
                           customer_text: str, agent_text: str, on: str, channel: str,

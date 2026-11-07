@@ -4,7 +4,7 @@ import os
 import json
 from pathlib import Path
 
-from .models import Models, read_wav
+from ..models import Models, read_wav
 
 
 if __name__ == "__main__":

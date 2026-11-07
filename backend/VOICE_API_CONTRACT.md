@@ -16,8 +16,11 @@ backend/.venv/bin/python -m uvicorn app.voice_main:app --app-dir backend --host 
 This dedicated entrypoint does not start PostgreSQL/Redis or import the legacy
 operator routes. The existing `app.main` imports API modules absent from the
 checkout at implementation time; it is not the entrypoint for this demo.
-`app.voice_main` only exposes the voice WebSocket and FastAPI documentation; it
-does not serve or modify the frontend. WebSocket routes do not appear in OpenAPI.
+`app.voice_main` serves the call website at `/`, frontend assets at `/assets/`,
+the voice WebSocket and FastAPI documentation. Open http://127.0.0.1:8000 to call.
+The backend Dockerfile also starts this entrypoint. WebSocket routes do not appear
+in OpenAPI. See [frontend instructions](../frontend/README.md) for microphone and
+browser requirements.
 
 Settings come from `backend/.env` and environment variables:
 
@@ -105,12 +108,23 @@ the browser should pause forwarding audio until `listening` to avoid echo.
 Early, duplicate or wrong-turn playback acknowledgements produce a nonfatal
 `unexpected_playback` error and do not open listening.
 
-The first nonempty transcript calls `/v1/chat/turns` with a new `client_msg_id`,
-`channel`, `channel_identity`, `on`, the unchanged STT `text`, and
-`input_mode: asr_transcript`, without a session ID. Backend retains the returned
-harness `session_id` in memory and sends it on subsequent turns. Call Brief is
-forwarded when returned; there is no pre-call harness request or synthetic greeting.
-The gateway does not call an eval runner, seed conversation facts or create memory.
+At `start`, the backend creates a session UUID and calls authenticated
+`POST /v1/chat/sessions/prepare` with that ID, `channel`, `channel_identity` and
+`on`, concurrently with speech setup/listening. Preparation does not delay the
+`ready` event. The first transcript waits for preparation if necessary, then calls
+`/v1/chat/turns` with the same session ID, a new `client_msg_id`, unchanged STT
+`text` and `input_mode: asr_transcript`. Subsequent turns retain that session.
+The prepare endpoint resolves identity and builds context/Call Brief without
+inference, synthetic greetings, committed turns or distillation jobs. It requires
+`X-AI-Internal-Token`; configure the same token for gateway and AI service.
+
+Prepared commercial reads are consumed once within 30 seconds for the same
+customer/date. Each real turn still reads memory to enforce ownership and erasure
+barriers and see current history. The first real-turn Call Brief is rebuilt for
+the actual utterance and forwarded in `agent_reply`; the preliminary brief from
+preparation is not sent to the browser or spoken. A changed product, quantity or
+delivery condition still requires compatible evidence. The gateway does not call
+an eval runner, seed conversation facts or create memory.
 
 At the first accepted transcript, backend closes the speech connection, discarding
 unfinished/queued audio. This prevents delayed transcripts from becoming new turns
@@ -135,6 +149,7 @@ connection starts another call; harness resolves the returning customer again.
 | Nonfatal speech `transcription_failed` | Report error; continue listening |
 | Speech unavailable/disconnected, malformed event or fatal speech error | Fatal STT error; close |
 | Harness HTTP error, timeout or invalid response | Fatal harness error; close; no automatic retry |
+| Preparation HTTP error, timeout or changed session ID | Fatal `preparation_failed` harness error; close |
 | TTS HTTP/SSE failure, including stream ending without `done` | Nonfatal `tts_failed`; keep agent text |
 
 On `tts_failed`, stop and discard queued playback for that reply, then send
@@ -145,7 +160,7 @@ Errors contain stable codes rather than upstream payloads or customer data. Code
 include `start_required`, `start_timeout`, `invalid_command`, `already_started`,
 `unexpected_playback`, `audio_too_large`, `speech_unavailable`,
 `speech_disconnected`, `speech_failed`, speech-service error codes,
-`harness_failed`, and `tts_failed`.
+`preparation_failed`, `harness_failed`, and `tts_failed`.
 When a speech-service error identifies a previously announced speech turn, its
 `turn_id` is mapped to the same backend UUID as `speech_started`, allowing the
 frontend to mark that turn as failed. Connection-level errors may have no turn ID.
@@ -164,6 +179,6 @@ PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/test/test_voice_co
 Tests use fake speech and harness transports, including a real loopback WebSocket
 server with synthetic transcripts, fragmented SSE, multiple turns, playback gating,
 connection cleanup and failure paths. They do not call
-models, speech inference, databases or the public deployment. Full browser/live
-integration requires the frontend to implement this contract and services to be
-deployed; it is not established by these tests.
+models, speech inference, databases or the public deployment. Browser integration is covered separately by `test_voice_browser.py` with real
+Chrome and AudioWorklet against fake speech/agent transports; see the frontend
+README. Live model/service integration is not established by these offline tests.

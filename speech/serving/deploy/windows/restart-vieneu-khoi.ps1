@@ -8,7 +8,7 @@ $listener = Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction Sil
 if ($listener) {
     $processId = $listener.OwningProcess
     $process = Get-CimInstance Win32_Process -Filter "ProcessId=$processId"
-    if ($process.CommandLine -notlike '*uvicorn serving.vieneu_sidecar:app*--port 18111*') {
+    if ($process.CommandLine -notlike '*uvicorn speech.serving.vieneu_sidecar:app*--port 18111*') {
         throw "Port $port belongs to another process; refusing to stop it."
     }
 }

@@ -24,10 +24,12 @@ class ModelsTests(unittest.TestCase):
         model = Models.__new__(Models)
         model.vad_config = sherpa_onnx.VadModelConfig()
         model.vad_config.silero_vad.model = 'offline-test.onnx'
+        model.vad_config.provider = 'cuda'
         model.vad_config.silero_vad.min_silence_duration = 0.35
         with patch('speech.serving.models.sherpa_onnx.VoiceActivityDetector') as detector:
             model.create_vad()
             config = detector.call_args.args[0]
+            self.assertEqual(config.provider, 'cuda')
             self.assertAlmostEqual(config.silero_vad.min_silence_duration, 0.7)
             self.assertAlmostEqual(config.silero_vad.min_speech_duration, 0.2)
             self.assertAlmostEqual(model.vad_config.silero_vad.min_silence_duration, 0.35)

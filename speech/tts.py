@@ -24,6 +24,7 @@ import numpy as np
 from . import audio as au
 from .btc import text_sha256
 from .team import VALIDATOR_ONLY_FIELDS, VOICE_FIELDS
+from .text.tts import respell
 
 ELEVEN_API = "https://api.elevenlabs.io"
 DEFAULT_ELEVEN_MODEL = "eleven_flash_v2_5"
@@ -229,15 +230,6 @@ def with_full_text(dialogue: dict) -> dict:
     dialogue.setdefault("full_text", " ".join(turn["text"] for turn in dialogue["turns"]))
     dialogue.setdefault("n_turns", len(dialogue["turns"]))
     return dialogue
-
-
-def respell(text: str, mapping: dict[str, str]) -> str:
-    """Thay từ tiếng Anh bằng cách người Việt hay đọc ("size" → "sai") trước khi đưa cho giọng TTS tiếng Việt."""
-    if not mapping:
-        return text
-    lowered = {k.lower(): v for k, v in mapping.items()}
-    alternatives = "|".join(re.escape(k) for k in sorted(lowered, key=len, reverse=True))
-    return re.sub(rf"(?<!\w)({alternatives})(?!\w)", lambda m: lowered[m.group(0).lower()], text, flags=re.IGNORECASE)
 
 
 def _turn_params(dialogue: dict, turn: dict, engine: str, config: dict) -> dict:

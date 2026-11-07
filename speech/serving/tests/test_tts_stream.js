@@ -40,7 +40,7 @@ const context = {
   }),
 };
 
-vm.runInNewContext(fs.readFileSync(__dirname + '/tts.js', 'utf8'), context);
+vm.runInNewContext(fs.readFileSync(__dirname + '/../static/tts.js', 'utf8'), context);
 
 (async () => {
   const request = elements.speak.onclick();

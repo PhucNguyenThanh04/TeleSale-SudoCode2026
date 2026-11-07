@@ -1,13 +1,20 @@
-# `speech/` — Pipeline âm thanh Việt–Anh cho M1 (offline)
+# `speech/` — Pipeline âm thanh Việt–Anh và model serving
 
-Module này biến audio cuộc gọi tiếng Việt có chen tiếng Anh ("size", "ship", "COD", "AirPure"…) thành
+Phần offline của module này biến audio cuộc gọi tiếng Việt có chen tiếng Anh ("size", "ship", "COD", "AirPure"…) thành
 `hypotheses.json` đúng format BTC. Kết quả được chấm bằng chính `eval/reference_eval.py` của BTC.
 
 **Tra cứu ít tốn context:** đọc [FILE_MAP.md](FILE_MAP.md) trước, chọn đúng file theo công việc.
 Baseline B0/B1/B2 và gói replay offline được mô tả ở §10/§11 bên dưới.
 
-Module chạy độc lập và không chặn luồng chat text (`backend/` → `ai-services/`). Ở M2, phần streaming sẽ nối vào
-`ai-services/app/infarstructure/{VAD,STT,TTS}.py` (hiện các file này vẫn trống).
+Module có hai luồng: tạo/chấm dữ liệu offline bên dưới và API realtime trong
+[`serving/README.md`](serving/README.md). Serving dùng Silero/Gipformer cho STT,
+Korva/VieNeu cho TTS; backend điều phối cuộc gọi agent qua WebSocket.
+Pipeline TTS serving đã nối các luật đọc số, đơn vị, SĐT, ngày, viết tắt và từ điển
+phát âm dùng chung qua [`text/tts.py`](text/tts.py). Luồng này giữ dấu câu và không
+áp dụng các bước sửa ASR/chấm WER lên câu trả lời của agent.
+STT serving cũng đã nối `clean_hypothesis` và `normalize_text` của B2 vào sau
+Gipformer, trả dạng `written` cho agent ở cả REST/WS; các bộ lọc xác suất và
+hotwords riêng của Whisper không được giả lập trên Gipformer.
 
 ## 1. Bức tranh tổng thể
 
@@ -128,6 +135,8 @@ speech/
 ├── dialogues/team_clone.template.json    11 bản mẫu cho giọng clone VieNeu (T02, T13–T22)
 ├── voices.example.json      cấu hình giọng; chép thành voices.json để điền voice_id thật
 ├── team_voices.example.json mẫu khai báo giọng thành viên; chép thành data/team_voices.json
+├── text/tts.py              chuẩn bị text TTS dùng chung; respell cho offline, đọc số/từ điển cho serving
+├── serving/                 HTTP/WS, model adapters; static/, tests/, tools/, deploy/windows/
 ├── requirements.txt
 ├── test/                    unittest (không gọi mạng, không tải model)
 └── data/                    (.gitignore) datasets/, runs/, tts_cache/, inbox/elevenlabs/, voice_refs/, team_voices.json

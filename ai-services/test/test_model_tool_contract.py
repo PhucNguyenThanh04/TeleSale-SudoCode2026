@@ -15,7 +15,12 @@ from test_business_completion import state
 
 
 @pytest.mark.parametrize('kind', ['deep', 'react'])
-def test_real_model_tool_roundtrip(kind):
+@pytest.mark.parametrize('model_name,base_url', [
+    ('gpt-6-luna', 'https://offline.invalid/v1'),
+    ('gemma4:12b', 'https://ollama.com/v1'),
+    ('gemma4:31b', 'https://ollama.com/v1'),
+])
+def test_real_model_tool_roundtrip(kind, model_name, base_url):
     async def run():
         current = state()
         current['safe_text'] = 'Tìm máy lọc không khí'
@@ -23,11 +28,14 @@ def test_real_model_tool_roundtrip(kind):
         gateway.invoke_trusted.return_value = {'items': []}
         business = BusinessTools(gateway, current, 8, lambda: datetime.now(timezone.utc))
         model = build_llm(Settings(_env_file=None, llm_api_key='offline-key',
-            llm_model='gpt-6-luna', llm_base_url='https://offline.invalid/v1'))
+            llm_model=model_name, llm_base_url=base_url))
         requests = []
         async def send(client, request, **kwargs):
             payload = json.loads(request.content)
             requests.append(payload)
+            assert str(request.url) == base_url + '/chat/completions'
+            assert payload['model'] == model_name
+            assert payload['reasoning_effort'] == 'none'
             names = [t['function']['name'] for t in payload['tools']]
             assert len(names) == 9 and all(re.fullmatch(r'[A-Za-z0-9_-]{1,64}', n) for n in names)
             assert 'catalog_search' in names and 'write_file' not in names
@@ -41,7 +49,7 @@ def test_real_model_tool_roundtrip(kind):
                 assert json.loads(tool['content']) == {'items': []}
                 message = {'role': 'assistant', 'content': 'Chưa có kết quả.'}
             return httpx.Response(200, request=request, json={'id': 'offline',
-                'object': 'chat.completion', 'created': 0, 'model': 'gpt-6-luna',
+                'object': 'chat.completion', 'created': 0, 'model': model_name,
                 'choices': [{'index': 0, 'message': message,
                     'finish_reason': 'tool_calls' if len(requests) == 1 else 'stop'}]})
         with patch.object(httpx.AsyncClient, 'send', send):

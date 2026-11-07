@@ -1,4 +1,4 @@
-"""Isolated VieNeu v3 Turbo CPU service on a loopback-only port."""
+"""Isolated VieNeu v3 Turbo CUDA service on a loopback-only port."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import base64
 import io
 import json
 import logging
+import os
 import queue
 import threading
 import time
@@ -17,15 +18,19 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
-from .text_segments import split_tts_text
+from speech.text.tts import prepare_tts_text
+
+from .text_segments import prepare_tts_segments
 
 
 app = FastAPI(title="TeleSale VieNeu Sidecar", docs_url=None, redoc_url=None, openapi_url=None)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error")
 model = None
 voices: list[dict[str, str]] = []
 model_lock = threading.Lock()
 SAMPLE_RATE = 48_000
+tts_provider = None
+tts_warmup_runs = 0
 
 
 class Speech(BaseModel):
@@ -39,16 +44,36 @@ class StreamingSpeech(Speech):
 
 @app.on_event("startup")
 def load_model():
-    global model, voices
+    global model, voices, tts_provider, tts_warmup_runs
     from vieneu import Vieneu
 
-    model = Vieneu(mode="v3turbo", backend="onnx", precision="fp32")
-    voices = [{"label": label, "id": voice_id} for label, voice_id in model.list_preset_voices()]
+    provider = os.getenv("SPEECH_TTS_PROVIDER", "cuda").strip().lower()
+    if provider not in {"cuda", "cpu"}:
+        raise ValueError("SPEECH_TTS_PROVIDER must be cuda or cpu")
+    if provider == "cuda":
+        import torch
+        if not torch.cuda.is_available():
+            raise RuntimeError("VieNeu CUDA requested but PyTorch CUDA is unavailable")
+        candidate = Vieneu(mode="v3turbo", backend="pytorch", device="cuda", dtype="auto",
+                           max_batch_size=1, max_streams=1)
+        if candidate.backend != "pytorch" or candidate.engine.device.type != "cuda":
+            raise RuntimeError("VieNeu did not initialize on CUDA")
+    else:
+        candidate = Vieneu(mode="v3turbo", backend="onnx", device="cpu", precision="fp32")
+    presets = [{"label": label, "id": voice_id} for label, voice_id in candidate.list_preset_voices()]
+    for index in range(3):
+        has_audio = False
+        for frame in candidate.infer_stream(prepare_tts_text("Xin chào."), voice="Trúc Ly"):
+            has_audio |= np.asarray(frame).size > 0
+        if not has_audio:
+            raise RuntimeError("VieNeu warmup returned no audio")
+        logger.info("VieNeu TTS warmup %d/3 complete (provider=%s)", index + 1, provider)
+    model, voices, tts_provider, tts_warmup_runs = candidate, presets, provider, 3
 
 
 @app.get("/health")
 def health():
-    return {"status": "ready" if model else "loading", "engine": "vieneu-v3turbo-onnx-fp32", "voices": len(voices), "frame_streaming": True}
+    return {"status": "ready" if model else "loading", "engine": "vieneu-v3turbo-pytorch" if tts_provider == "cuda" else "vieneu-v3turbo-onnx-fp32", "tts_provider": tts_provider, "tts_warmup_runs": tts_warmup_runs, "voices": len(voices), "frame_streaming": True}
 
 
 @app.get("/voices")
@@ -61,7 +86,7 @@ def validate(body: Speech):
         raise HTTPException(503, "VieNeu is loading")
     if body.voice not in {item["id"] for item in voices}:
         raise HTTPException(400, "Unknown VieNeu voice")
-    chunks = split_tts_text(body.text)
+    chunks = prepare_tts_segments(body.text)
     if not chunks:
         raise HTTPException(400, "Text must contain spoken words")
     return chunks
@@ -70,7 +95,7 @@ def validate(body: Speech):
 def wav_synthesis(body: Speech):
     started = time.perf_counter()
     with model_lock:
-        audio = np.asarray(model.infer(body.text, voice=body.voice), dtype=np.float32).reshape(-1)
+        audio = np.asarray(model.infer(prepare_tts_text(body.text), voice=body.voice), dtype=np.float32).reshape(-1)
     output = io.BytesIO()
     sf.write(output, audio, SAMPLE_RATE, format="WAV", subtype="PCM_16")
     return output.getvalue(), round((time.perf_counter() - started) * 1000), round(len(audio) / SAMPLE_RATE, 3)

@@ -233,6 +233,15 @@ class MemoryRepo:
             WHERE job_id=$1""", job_id, status, error_code,
             json.dumps(accepted_writes or [], ensure_ascii=False))
 
+    async def turn_memory_status(self, conn, session_id: str, client_msg_id: str) -> dict | None:
+        row = await conn.fetchrow("""SELECT t.customer_id,j.status,j.error_code,j.accepted_writes
+            FROM runtime.turns t LEFT JOIN runtime.langmem_distillation_jobs j
+              ON j.session_id=t.session_id AND j.source_turn_id=t.client_msg_id
+              AND j.customer_id=t.customer_id
+            WHERE t.session_id=$1 AND t.client_msg_id=$2""",
+            UUID(session_id), UUID(client_msg_id))
+        return dict(row) if row else None
+
     async def completed_job_revisions(self, conn, customer_id: str,
                                       revisions: list[int]) -> set[int]:
         if not revisions:

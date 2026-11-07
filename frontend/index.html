@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Trò chuyện trực tiếp bằng giọng nói với trợ lý TeleSale.">
+  <title>TeleSale · Gọi trợ lý</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script type="module" src="/assets/call.js"></script>
+</head>
+<body>
+  <header><a class="brand" href="/">tele<span>sale</span><span class="brand-dot">●</span></a><span class="header-note">TRỢ LÝ GIỌNG NÓI</span></header>
+  <main>
+    <section class="call-panel" aria-labelledby="title">
+      <div class="eyebrow">MỘT CUỘC TRÒ CHUYỆN, MỌI GIẢI ĐÁP</div>
+      <h1 id="title">Cứ nói, <span>để em hỗ trợ.</span></h1>
+      <p class="intro">Tư vấn sản phẩm, giải đáp thắc mắc và hỗ trợ mua hàng.<br>Bắt đầu cuộc gọi và trò chuyện với trợ lý TeleSale.</p>
+      <div class="orb-wrap" data-state="idle" id="visual"><div class="orb"><svg viewBox="0 0 64 64" fill="none" aria-hidden="true"><rect x="24" y="10" width="16" height="29" rx="8" stroke="currentColor" stroke-width="3"/><path d="M17 30v2a15 15 0 0 0 30 0v-2M32 47v9m-8 0h16" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></div></div>
+      <div class="status-line"><span id="status-dot"></span><p id="status" role="status" aria-live="polite">Sẵn sàng trò chuyện</p><time id="duration" hidden>00:00</time></div>
+      <p id="hint" class="hint">Cho phép truy cập micro khi trình duyệt yêu cầu.</p>
+      <div class="actions">
+        <button id="start-call" type="button">☎ <span>Bắt đầu gọi</span></button>
+        <button id="end-call" type="button" disabled>■ <span>Kết thúc</span></button>
+      </div>
+      <p id="error" class="error" role="alert" hidden></p>
+      <p class="privacy">◉ &nbsp; Mic chỉ hoạt động trong phiên gọi. Bấm kết thúc để dừng.</p>
+      <details id="settings"><summary>Thông tin phiên</summary><div class="settings-grid">
+        <label>Kênh<select id="channel"><option value="web_chat">Website</option><option value="hotline">Hotline</option><option value="zalo_oa">Zalo OA</option><option value="chat_fanpage">Fanpage</option><option value="other">Khác</option></select></label>
+        <label>Định danh kênh<input id="identity" required maxlength="200" autocomplete="off"></label>
+        <label>Ngày nghiệp vụ<input id="scenario-date" type="date" required></label>
+      </div></details>
+    </section>
+    <section class="conversation" aria-labelledby="conversation-title">
+      <div class="conversation-head"><h2 id="conversation-title">Cuộc trò chuyện</h2><span>TRONG PHIÊN NÀY</span></div>
+      <div id="messages" role="log" aria-live="polite" aria-relevant="additions"><div id="empty"><span>“</span><p>Cuộc trò chuyện bắt đầu từ lời chào của bạn.</p><small>Nội dung sẽ xuất hiện tại đây khi bạn nói.</small></div></div>
+    </section>
+  </main>
+  <footer>TELESALE <span>Luôn sẵn sàng lắng nghe.</span></footer>
+</body>
+</html>

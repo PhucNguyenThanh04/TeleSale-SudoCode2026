@@ -14,6 +14,7 @@ from app.mcp_servers.mcp_shared.episode_evidence import evidence_supports
 from app.constants import PROFILE_SLOT_KEYS, SLOT_SPEC_BY_KEY, TOOL_ONLY_SLOT_KEYS, Slot
 from app.agent.guardrails.skus import known_skus, mentioned_skus
 from app.agent.guardrails.promotion_grounding import check_promotion_grounding
+from app.agent.guardrails.claims import assertion_text
 from app.agent.memory.decision_makers import PERSON_PATTERN
 
 
@@ -172,7 +173,7 @@ def _money_amount(value: str) -> int | None:
     if not match:
         return None
     digits, unit = match.groups()
-    if unit.lower() in {"triệu", "tr"} and "," in digits and "." not in digits:
+    if unit.lower() in {"triệu", "tr"} and re.fullmatch(r"\d+[.,]\d+", digits):
         number = float(digits.replace(",", "."))
     else:
         number = float(digits.replace(".", "").replace(",", ""))
@@ -441,6 +442,7 @@ def check_grounding(candidate: str, tool_calls: list[dict[str, Any]]) -> str | N
 
     The broader product, SKU and price evidence checks are added separately.
     """
+    candidate = assertion_text(candidate)
     successful = [call for call in tool_calls if "error" not in call.get("result", {})]
     # There is no authorized whole-customer purge tool in the current contract.
     if _customer_erasure_completion_claim(candidate):
@@ -455,14 +457,15 @@ def check_grounding(candidate: str, tool_calls: list[dict[str, Any]]) -> str | N
     if _unsupported_feature(candidate, successful):
         return "unsupported_product_spec"
     # Policy applicability is grounding, not an optional style/answer check.
-    from app.agent.guardrails.policy_grounding import policy_evidence_for_answer, policy_clarification_or_refusal
+    from app.agent.guardrails.policy_grounding import (policy_evidence_for_answer,
+        policy_clarification_or_refusal, policy_durations_supported)
     policy_calls = [c for c in successful if c.get('name') == 'policy.search']
     if _POLICY.search(candidate) and not policy_clarification_or_refusal(candidate):
         evidence = policy_evidence_for_answer(candidate, policy_calls)
         if not evidence:
             return 'unsupported_policy_or_internal_claim'
         source_text = ' '.join(row['content'] for row in evidence).casefold()
-        if any(value not in source_text for value in re.findall(r'\b\d+\s+(?:ngày|tháng|năm)\b', candidate.casefold())):
+        if not policy_durations_supported(candidate, source_text):
             return 'unsupported_policy_or_internal_claim'
     return None
 
@@ -593,6 +596,8 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     """Return a verified answer and a stable, non-sensitive rejection reason."""
     if not candidate.strip():
         return FALLBACK, "empty_answer"
+    answer = candidate
+    candidate = assertion_text(candidate)
     if _customer_erasure_completion_claim(candidate):
         return FALLBACK, "customer_erasure_unverified"
     if _INTERNAL.search(candidate) or _PRICE_REFERENCE.search(candidate):
@@ -604,8 +609,9 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     ]
     # A follow-up may answer a policy question with just its fee, omitting the
     # policy topic that appeared in the customer's utterance.
-    policy_claim = bool(_POLICY.search(candidate) or _POLICY.search(customer_text))
-    from app.agent.guardrails.policy_grounding import policy_evidence_for_answer, policy_clarification_or_refusal
+    policy_claim = bool(candidate.strip() and (_POLICY.search(candidate) or _POLICY.search(customer_text)))
+    from app.agent.guardrails.policy_grounding import (policy_evidence_for_answer,
+        policy_clarification_or_refusal, policy_durations_supported)
     policy_chunks = policy_evidence_for_answer(candidate, successful)
     if policy_clarification_or_refusal(candidate):
         policy_claim = False
@@ -613,8 +619,7 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         if not policy_chunks:
             return FALLBACK, "unsupported_policy_or_internal_claim"
         source_text = " ".join(chunk["content"] for chunk in policy_chunks)
-        policy_days = re.findall(r"\b\d+\s+(?:ngày|tháng|năm)\b", candidate.casefold())
-        if any(day not in source_text.casefold() for day in policy_days):
+        if not policy_durations_supported(candidate, source_text):
             return FALLBACK, "unsupported_policy_or_internal_claim"
     evidenced_skus = known_skus(successful)
     claimed_skus = mentioned_skus(candidate, evidenced_skus)
@@ -623,11 +628,23 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         return FALLBACK, "unsupported_comparison"
     if _unsupported_feature(candidate, successful):
         return FALLBACK, "unsupported_product_spec"
-    money_claims = _money_claims(candidate)
+    # Explicitly attributed customer budgets are not product-price claims.
+    customer_budgets = customer_budget_amounts(customer_text)
+    def budget_repetition(match):
+        amounts = _money_claims(match.group('amount'))
+        if len(amounts) == 1 and amounts[0][0] in customer_budgets:
+            return ''
+        return match.group()
+    money_candidate = re.sub(
+        r'(?:^|(?<=[.!?;]))\s*(?:(?:Dạ|Vâng)[, ]+)?(?:với |theo )?'
+        r'(?:ngân sách của (?:anh/chị|anh|chị|bạn)|(?:anh/chị|anh|chị|bạn) muốn giữ ngân sách)\s+'
+        r'(?:là\s+)?(?P<amount>\d[\d.,]*\s*(?:triệu|tr|nghìn|ngàn|k|đồng|đ|vnd))\b',
+        budget_repetition, candidate, flags=re.IGNORECASE)
+    money_claims = _money_claims(money_candidate)
     policy_amounts = (_money_claims(" ".join(chunk["content"] for chunk in policy_chunks))
                       if policy_claim else [])
     policy_values = {amount for amount, _, _ in policy_amounts}
-    if money_claims and not (_money_evidenced(candidate, successful, focus_sku=focus_sku) or
+    if money_claims and not (_money_evidenced(money_candidate, successful, focus_sku=focus_sku) or
                              policy_claim and not re.search(r"(?i)\bgiá(?:\s+bán)?\b", candidate)
                              and all(amount in policy_values
                                      for amount, _, _ in money_claims) or
@@ -699,7 +716,7 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         order_ids = set(_ORDER_ID.findall(candidate))
         if order_ids and order_ids != {status_results[0]["orders"][0].get("order_id")}:
             return FALLBACK, "order_id_mismatch"
-    return mask_pii(candidate.strip()), None
+    return mask_pii(answer.strip()), None
 
 
 
