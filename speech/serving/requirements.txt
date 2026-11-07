@@ -8,3 +8,4 @@ sherpa-onnx-core>=1.13,<2
 huggingface-hub>=0.25,<2
 korvatts>=0.1,<2
 httpx>=0.28,<1
+websockets>=13,<17

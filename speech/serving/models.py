@@ -68,6 +68,23 @@ class Models:
         from korvatts import TTS
         self.tts = TTS()
 
+    def create_vad(self):
+        config = sherpa_onnx.VadModelConfig()
+        config.silero_vad.model = self.vad_config.silero_vad.model
+        config.silero_vad.min_silence_duration = 0.7
+        config.silero_vad.min_speech_duration = 0.2
+        # ListenSession enforces the 30 s cap and reports its reason.
+        config.silero_vad.max_speech_duration = 60
+        config.sample_rate = SAMPLE_RATE
+        vad = sherpa_onnx.VoiceActivityDetector(config, buffer_size_in_seconds=35)
+        return vad, config.silero_vad.window_size
+
+    def transcribe_segment(self, samples: np.ndarray) -> str:
+        stream = self.recognizer.create_stream()
+        stream.accept_waveform(SAMPLE_RATE, samples)
+        self.recognizer.decode_stream(stream)
+        return stream.result.text.strip()
+
     def segments(self, samples: np.ndarray):
         vad = sherpa_onnx.VoiceActivityDetector(self.vad_config, buffer_size_in_seconds=35)
         window = self.vad_config.silero_vad.window_size
@@ -88,10 +105,8 @@ class Models:
         vad_ms = round((time.perf_counter() - start) * 1000)
         result = []
         for position, audio in segments:
-            stream = self.recognizer.create_stream()
-            stream.accept_waveform(SAMPLE_RATE, audio)
-            self.recognizer.decode_stream(stream)
-            result.append({"start_s": round(position, 3), "end_s": round(position + len(audio) / SAMPLE_RATE, 3), "text": stream.result.text.strip()})
+            text = self.transcribe_segment(audio)
+            result.append({"start_s": round(position, 3), "end_s": round(position + len(audio) / SAMPLE_RATE, 3), "text": text})
         stt_ms = round((time.perf_counter() - start) * 1000) - vad_ms
         return {"text": " ".join(item["text"] for item in result if item["text"]), "segments": result, "debug": {"vad_ms": vad_ms, "stt_ms": stt_ms, "audio_s": round(len(samples) / SAMPLE_RATE, 3), "streaming_stt": False}}
 

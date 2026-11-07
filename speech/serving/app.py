@@ -12,12 +12,13 @@ from collections import defaultdict, deque
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .models import Models, read_wav
+from .listen import serve_listen
 from .text_segments import split_tts_text
 
 
@@ -162,6 +163,11 @@ def index():
 @app.get("/tts.js", include_in_schema=False)
 def tts_script():
     return FileResponse(Path(__file__).with_name("tts.js"), media_type="application/javascript", headers={"Cache-Control": "no-store"})
+
+
+@app.websocket("/v1/speech/listen")
+async def listen(websocket: WebSocket):
+    await serve_listen(websocket, models, inference_lock)
 
 
 @app.post(
