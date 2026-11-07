@@ -23,6 +23,8 @@ from app.agent.mcp.gateway import ToolGateway
 from app.constants import (PROFILE_SLOT_KEYS,
                            SLOT_SPEC_BY_KEY, TOOL_ONLY_SLOT_KEYS, Slot)
 from app.schemas.brief import CallBrief
+from app.mcp_servers.mcp_memory.schemas import validate_read_response
+from app.mcp_servers.mcp_shared.memory_retrieval import rank_episodes
 
 
 def _build_brief_orders(state: TurnState, remembered_order_ids: list[str] | None = None,
@@ -105,8 +107,10 @@ def prompt_context(state: TurnState, history_turns: int) -> dict[str, Any]:
         "on": state["request"].on.isoformat(),
         "input_mode": state["request"].input_mode,
         "identity_status": state["identity_status"],
-        "customer_facts": _mask_context(customer_facts),
-        "sales_history": _mask_context(sales_history),
+        "honorific": (state.get("honorific") if state["identity_status"] == "known"
+                      and state.get("customer_id") else None),
+        "customer_facts": _mask_context(customer_facts, ("customer_facts",)),
+        "sales_history": _mask_context(sales_history, ("sales_history",)),
         "session_history": _mask_context(state.get("history", [])[-history_turns:], ("history",)),
         "previous_episodes": _mask_context(state.get("episodes", []), ("episodes",)),
         "current_episode": _mask_context(state.get("current_episode") or {}, ("current_episode",)),
@@ -149,9 +153,17 @@ def _split_facts(profile: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any
             continue
         public = {"key": key, "value": value,
                   "status": "active", "source_kind": fact.get("source_kind")}
-        for field in ("on", "source_tool", "source", "valid_until"):
+        for field in ("on", "source_tool", "source", "valid_until", "source_turn_id", "session_id"):
             if isinstance(fact.get(field), str) and mask_pii(fact[field]) == fact[field]:
                 public[field] = fact[field]
+            elif field in {"source_turn_id", "session_id"} and isinstance(fact.get(field), str):
+                try:
+                    UUID(fact[field])
+                except ValueError:
+                    continue
+                public[field] = fact[field]
+        if isinstance(fact.get("evidence_quote"), str):
+            public["evidence_quote"] = mask_pii(fact["evidence_quote"])
         if fact.get("source_kind") == "tool" or key in sales_keys:
             sales[key] = public
         else:
@@ -185,8 +197,10 @@ def _open_episode_items(episodes: list[dict], kind: str) -> list[str]:
 
 def _mask_context(value: Any, path: tuple[str, ...] = ()) -> Any:
     if isinstance(value, str):
-        if path in {('history', '[]', 'source_turn_id'),
-                    ('episodes', '[]', 'session_id'), ('current_episode', 'session_id')}:
+        if (path in {('history', '[]', 'source_turn_id'),
+                     ('episodes', '[]', 'session_id'), ('current_episode', 'session_id')}
+                or path and path[0] in {'customer_facts', 'sales_history'}
+                and path[-1] in {'source_turn_id', 'session_id'}):
             try:
                 UUID(value)
             except (ValueError, TypeError):
@@ -218,24 +232,6 @@ def _safe_scoped_facts(value: Any) -> dict[str, dict[str, dict[str, Any]]]:
             if values:
                 safe[scope_type][scope_id] = values
     return safe
-
-
-def rank_episodes(episodes: list[dict], customer_text: str, limit: int) -> list[dict]:
-    """Choose useful accepted episodes without mixing product histories."""
-    query = customer_text.casefold()
-    def score(item: dict):
-        topics = item.get("topics") or []
-        product_match = any(isinstance(topic, dict)
-            and topic.get("scope_type") == "product"
-            and isinstance(topic.get("scope_id"), str)
-            and topic["scope_id"].casefold() in query
-            for topic in topics)
-        open_blocker = any(isinstance(topic, dict)
-            and any(isinstance(entry, dict) and entry.get("kind") == "blocker"
-                    and entry.get("status") == "open"
-                    for entry in topic.get("items", [])) for topic in topics)
-        return (product_match, open_blocker, str(item.get("on", "")))
-    return sorted(episodes, key=score, reverse=True)[:limit]
 
 
 def _quoted_product_fields(facts: dict[str, Any]) -> dict[str, Any]:
@@ -274,7 +270,10 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
                 "memory_failure": operation,
                 "memory_blocked": reason == "customer_erasure_in_progress"}
 
-    context = await read_memory("memory.read", lambda: memory.read_context(session_id, customer_id))
+    read_kwargs = ({"query": state.get("safe_text", "")} if
+                   getattr(memory, "supports_retrieval_query", False) is True else {})
+    context = validate_read_response(await read_memory("memory.read", lambda:
+        memory.read_context(session_id, customer_id, **read_kwargs)))
     if "error" in context:
         return failed("memory.read", context.get("error"))
     context_checkpoint("context_loaded", state, context)

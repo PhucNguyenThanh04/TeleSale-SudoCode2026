@@ -34,11 +34,11 @@ async def test_memory_completes_for_original_turn_while_next_turn_is_active():
         await speech.sockets[0].event("transcript_final", text="phòng 25m2")
         first = await browser.until("agent_reply")
         assert first["memory_update"]["status"] == "pending"
-        await asyncio.wait_for(entered.wait(), 2)
-        await browser.until("audio_complete")  # Worker remains blocked.
+        await browser.until("audio_complete")  # No persistence before playback.
         await browser.command({"event": "playback_finished", "turn_id": first["turn_id"]})
         await browser.until("state", state="listening")
-        await speech.sockets[1].event("transcript_final", text="cảm ơn")
+        await asyncio.wait_for(entered.wait(), 2)
+        await speech.sockets[0].event("transcript_final", turn_id="turn-2", text="cảm ơn")
         second = await browser.until("agent_reply")
         assert second["turn_id"] != first["turn_id"]
         release.set()
@@ -69,7 +69,46 @@ async def test_end_cancels_pending_memory_poll():
 
     browser, speech, requests, http, task = await setup_call(reply, memory_handler=memory)
     await speech.sockets[0].event("transcript_final", text="phòng 25m2")
+    reply_event = await browser.until("agent_reply")
     await browser.until("audio_complete")
+    await browser.command({"event": "playback_finished", "turn_id": reply_event["turn_id"]})
     await asyncio.wait_for(entered.wait(), 2)
     await end_call(browser, http, task)
     assert cancelled.is_set()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["http", "wrong_turn", "timeout"])
+async def test_memory_lookup_failure_does_not_stop_audio_or_fake_completion(failure, monkeypatch):
+    import app.services.voice_call as voice
+    real_timeout = asyncio.timeout
+    if failure == "timeout":
+        monkeypatch.setattr(voice.asyncio, "timeout",
+            lambda seconds: real_timeout(0.02 if seconds == 60 else seconds))
+
+    async def reply(request, payload):
+        return httpx.Response(200, json={"session_id": payload["session_id"],
+            "agent_text": "Xin chào", "memory_update": {"turn_saved": True,
+                "status": "pending", "changes": []}})
+
+    async def memory(request, payload):
+        if failure == "http":
+            return httpx.Response(503, text="private error")
+        if failure == "timeout":
+            await asyncio.Event().wait()
+        return httpx.Response(200, json={"session_id": payload["session_id"],
+            "client_msg_id": "wrong", "memory_update": {"status": "completed", "changes": []}})
+
+    browser, speech, requests, http, task = await setup_call(reply, memory_handler=memory)
+    try:
+        await speech.sockets[0].event("transcript_final", text="phòng 25m2")
+        reply_event = await browser.until("agent_reply")
+        await browser.until("audio_complete")
+        await browser.command({"event": "playback_finished", "turn_id": reply_event["turn_id"]})
+        event = await browser.until("memory_update", tracking_finished=True)
+        assert event["memory_update"]["status"] == ("pending" if failure == "timeout" else "unavailable")
+        assert event["memory_update"]["changes"] == []
+        assert event["tracking_finished"] and not browser.closed
+        assert "private" not in str(event)
+    finally:
+        await end_call(browser, http, task)

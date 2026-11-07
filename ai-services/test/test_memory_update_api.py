@@ -1,7 +1,6 @@
 """Chat metadata and asynchronous memory reads with offline dependencies."""
 
 import unittest
-from unittest.mock import patch
 
 import httpx
 from langchain_core.messages import AIMessage
@@ -74,3 +73,21 @@ class MemoryUpdateApiTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status_args, {"session_id": payload["session_id"],
             "client_msg_id": payload["client_msg_id"], "customer_id": "C001"})
         self.assertEqual(model.seen, [])
+
+    async def test_failed_status_does_not_claim_completion_or_expose_customer_name(self):
+        from app.schemas.agent import TurnMemoryRequest
+        from unittest.mock import AsyncMock
+        runtime = AgentHarnessRuntime(FakeToolModel(replies=[]), FakeGateway(), FakeMemory())
+        request = turn("Alo")
+        status_request = TurnMemoryRequest.model_validate(request.model_dump(include={
+            "session_id", "client_msg_id", "channel", "channel_identity", "on"}))
+        runtime.memory.read_turn_status = AsyncMock(return_value={"error": "mcp_unavailable"})
+        result = await runtime.memory_update(status_request)
+        self.assertEqual(result.status, "unavailable")
+        self.assertEqual(result.changes, [])
+        runtime._session_identities[str(request.session_id)][1]["customer_name"] = "Lan"
+        runtime.memory.read_turn_status.return_value = {"turn_saved": True, "status": "completed",
+            "changes": [{"field": "blocker", "action": "added", "value": "Cần hỏi Lan",
+                         "source": "customer"}]}
+        result = await runtime.memory_update(status_request)
+        self.assertNotIn("Lan", result.model_dump_json())

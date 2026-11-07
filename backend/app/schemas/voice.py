@@ -24,14 +24,21 @@ class Start(Command):
 class PlaybackFinished(Command):
     event: Literal["playback_finished"]
     turn_id: NonEmpty
+    played_chars: int = Field(default=0, ge=0)
+
+
+class PlaybackProgress(Command):
+    event: Literal["playback_progress", "playback_stopped"]
+    turn_id: NonEmpty
+    played_chars: int = Field(ge=0)
 
 
 class End(Command):
     event: Literal["end"]
 
 
-_commands = TypeAdapter(Annotated[Start | PlaybackFinished | End, Field(discriminator="event")])
+_commands = TypeAdapter(Annotated[Start | PlaybackFinished | PlaybackProgress | End, Field(discriminator="event")])
 
 
-def parse_command(payload: object) -> Start | PlaybackFinished | End:
+def parse_command(payload: object) -> Start | PlaybackFinished | PlaybackProgress | End:
     return _commands.validate_python(payload)

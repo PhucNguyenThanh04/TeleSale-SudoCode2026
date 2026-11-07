@@ -14,6 +14,7 @@ from uuid import uuid4
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from app.agent.graph import build_graph
+from app.agent.harness.agent_nodes import AgentNodes
 from app.agent.implementations import AgentKind
 from app.agent.memory.store import MemoryStore
 from app.agent.harness.observability import log_event
@@ -25,7 +26,7 @@ from app.agent.mcp.gateway import ToolGateway
 from app.constants import DEFAULT_MAX_TOOL_CALLS, DEFAULT_PROMPT_HISTORY_TURNS
 from app.schemas.agent import (PrepareSessionRequest, PrepareSessionResponse,
                                TextTurnRequest, TextTurnResponse, TurnMemoryRequest,
-                               MemoryUpdate)
+                               MemoryUpdate, VoicePlaybackRequest)
 
 
 class AgentHarnessRuntime:
@@ -44,9 +45,11 @@ class AgentHarnessRuntime:
         if not guardrails_enabled:
             log_event(None, "verify", "answer_check_disabled", level=logging.WARNING,
                       reason="cấu hình tắt kiểm tra bổ sung; kiểm tra bằng chứng vẫn chạy")
+        self.nodes = AgentNodes(llm, tools, memory, max_tool_calls,
+                                prompt_history_turns, clock, agent_kind=agent_kind)
         self.graph = build_graph(llm, tools, memory, max_tool_calls,
                                  prompt_history_turns, clock, guardrails_enabled,
-                                 agent_kind)
+                                 agent_kind, nodes=self.nodes)
         self._locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._responses: dict[tuple[str, str], TextTurnResponse] = {}
         self._states: dict[tuple[str, str], TurnState] = {}
@@ -54,6 +57,58 @@ class AgentHarnessRuntime:
         self._session_tool_calls: dict[str, list[dict]] = defaultdict(list)
         self._preparations: dict[str, tuple[date, float, str | None, list[dict]]] = {}
         self._clock = clock
+        self._playback_tasks: dict[tuple[str, str], asyncio.Task] = {}
+        self._playback_receipts: dict[tuple[str, str], tuple[int, bool]] = {}
+
+    async def _finalize_playback(self, key, played_chars: int, interrupted: bool):
+        if key in self._playback_receipts:
+            if self._playback_receipts[key] != (played_chars, interrupted):
+                raise ValueError("Conflicting playback receipt")
+            return
+        state = self._states[key]
+        saved = {**state, "agent_text": state["agent_text"][:played_chars]}
+        result = await self.nodes.persist_agent(saved)
+        state.update(result)
+        self._playback_receipts[key] = (played_chars, interrupted)
+        task = self._playback_tasks.pop(key, None)
+        if task and task is not asyncio.current_task():
+            task.cancel()
+        self._responses[key].memory_update = MemoryUpdate(
+            turn_saved=not state.get("memory_blocked", False),
+            status=("unavailable" if state.get("memory_blocked") else
+                    "pending" if state.get("customer_id") else "not_applicable"))
+
+    async def record_playback(self, request: VoicePlaybackRequest) -> MemoryUpdate:
+        key = (str(request.session_id), str(request.client_msg_id))
+        async with self._locks[key[0]]:
+            state = self._states.get(key)
+            if (not state or state["request"].delivery_mode != "voice"
+                    or identity_fingerprint(request) != identity_fingerprint(state["request"])
+                    or request.on != state["request"].on):
+                raise ValueError("Playback identity or turn mismatch")
+            if request.played_chars > len(state["agent_text"]):
+                raise ValueError("Playback exceeds generated reply")
+            await self._finalize_playback(key, request.played_chars, request.interrupted)
+            return self._responses[key].memory_update
+
+    async def _expire_playback(self, key):
+        try:
+            await asyncio.sleep(300)
+            async with self._locks[key[0]]:
+                await self._finalize_playback(key, 0, True)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log_event(None, "playback", "commit_failed", error_type=type(exc).__name__)
+
+    async def close(self):
+        tasks = list(self._playback_tasks.values())
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        for key in list(self._playback_tasks):
+            async with self._locks[key[0]]:
+                await self._finalize_playback(key, 0, True)
 
     async def _identity_for(self, turn: TextTurnRequest) -> tuple[dict, list[dict]]:
         session_id = str(turn.session_id)
@@ -159,6 +214,10 @@ class AgentHarnessRuntime:
                 log_event(turn, "chat", "cache_hit",
                           duration_ms=round((time.perf_counter() - started) * 1000))
                 return self._responses[key]
+            # Never let the next turn use generated-but-unheard voice as history.
+            for pending in list(self._playback_tasks):
+                if pending[0] == session_id:
+                    await self._finalize_playback(pending, 0, True)
             try:
                 with (self.tracing.turn(turn) if self.tracing else nullcontext(None)) as trace:
                     identity, initial_calls = await self._identity_for(turn)
@@ -209,12 +268,14 @@ class AgentHarnessRuntime:
                 handoff_ticket_id=state.get("handoff_ticket_id"),
                 call_brief=state.get("call_brief"),
                 memory_update=MemoryUpdate(
-                    turn_saved=not state.get("memory_blocked", False),
+                    turn_saved=turn.delivery_mode != "voice" and not state.get("memory_blocked", False),
                     status=("unavailable" if state.get("memory_blocked") else
                             "pending" if state.get("customer_id") else "not_applicable")),
             )
             self._responses[key] = response
             self._states[key] = state
+            if turn.delivery_mode == "voice":
+                self._playback_tasks[key] = asyncio.create_task(self._expire_playback(key))
             log_event(turn, "chat", "completed",
                       duration_ms=round((time.perf_counter() - started) * 1000),
                       tool_calls=state.get("tool_count", 0),

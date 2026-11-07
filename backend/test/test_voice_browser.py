@@ -25,7 +25,8 @@ from test_voice_flow import Speech
 def site():
     requests = []
     options = {"tts_error": False, "agent_error": False, "wait_agent": False,
-               "memory_status": None, "memory_changes": []}
+               "memory_status": None, "memory_changes": [], "tts_samples": 1600,
+               "playback_receipts": []}
     speech = Speech()
 
     async def listen():
@@ -36,16 +37,17 @@ def site():
 
         async def send(audio):
             await original(audio)
-            if len(connection.sent) == 1:
-                await connection.event("speech_started")
-                await connection.event("transcript_final", text="Xin chào")
+            if len(connection.sent) in {1, 12, 24}:
+                turn_id = f"turn-{len(connection.sent)}"
+                await connection.event("speech_started", turn_id=turn_id)
+                await connection.event("transcript_final", turn_id=turn_id, text="Xin chào")
         connection.send = send
         return connection
 
     async def tts(text):
         # Audible-clock playback takes 0.1 s + a sentence pause.
         yield {"event": "audio_chunk", "index": 0, "sample_rate": 16000,
-               "pcm16_base64": base64.b64encode(b'\x00\x04' * 1600).decode()}
+               "pcm16_base64": base64.b64encode(b'\x00\x04' * options['tts_samples']).decode()}
         yield {"event": "segment_end", "index": 0}
         if options["tts_error"]:
             raise RuntimeError("offline TTS failure")
@@ -54,6 +56,12 @@ def site():
         payload = json.loads(request.content)
         if request.url.path == "/v1/chat/sessions/prepare":
             return httpx.Response(200, json={"session_id": payload["session_id"]})
+        if request.url.path == "/v1/chat/turns/playback":
+            options['playback_receipts'].append(payload)
+            return httpx.Response(200, json={"session_id": payload["session_id"],
+                "client_msg_id": payload["client_msg_id"], "memory_update": {
+                    "turn_saved": True, "status": "pending" if options["memory_status"] else "not_applicable",
+                    "changes": []}})
         if request.url.path == "/v1/chat/turns/memory":
             await asyncio.sleep(0.2)
             return httpx.Response(200, json={"session_id": payload["session_id"],
@@ -62,10 +70,12 @@ def site():
                     "changes": options["memory_changes"]}})
         requests.append(payload)
         if options["wait_agent"]:
-            await asyncio.Event().wait()
+            while options["wait_agent"]:
+                await asyncio.sleep(0.02)
         if options["agent_error"]:
             return httpx.Response(503)
-        body = {"session_id": payload["session_id"], "agent_text": "Xin chào"}
+        body = {"session_id": payload["session_id"], "agent_text": "Xin chào",
+                "call_brief": options.get("call_brief")}
         if options["memory_status"]:
             body["memory_update"] = {"turn_saved": True, "status": "pending", "changes": []}
         return httpx.Response(200, json=body)
@@ -232,6 +242,42 @@ def test_browser_tts_failure_resumes_listening(site, browser):
     assert len(requests) >= 2
 
 
+def test_browser_barge_in_stops_playout_and_discards_late_audio(site, browser):
+    url, requests, speech, options = site
+    options['tts_samples'] = 32000
+    js = open_site(browser, url)
+    assert js("""(async () => {
+      const { PCMPlayer } = await import('/assets/audio.js');
+      const enqueued = [], replies = []; let stops = 0;
+      const enqueue = PCMPlayer.prototype.enqueue, stop = PCMPlayer.prototype.stop;
+      PCMPlayer.prototype.enqueue = function(event) { enqueued.push(event.turn_id); return enqueue.call(this, event); };
+      PCMPlayer.prototype.stop = function() { stops++; return stop.call(this); };
+      const NativeSocket = window.WebSocket;
+      window.WebSocket = class extends NativeSocket {
+        constructor(...args) { super(...args); window.voiceSocket = this;
+          this.addEventListener('message', message => {
+            const event = JSON.parse(message.data);
+            if (event.event === 'agent_reply') replies.push(event);
+          });
+        }
+      };
+      document.querySelector('#start-call').click();
+      await waitFor(() => replies.length >= 2 && enqueued.includes(replies[1].turn_id));
+      if (!stops) throw Error('Barge-in did not stop audio');
+      const count = enqueued.length;
+      voiceSocket.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({
+        event: 'audio', turn_id: replies[0].turn_id, index: 0,
+        format: {encoding:'pcm_s16le',sample_rate:16000,channels:1}, audio_base64:'AAA='
+      }) }));
+      if (enqueued.length !== count) throw Error('Late audio reached player');
+      document.querySelector('#end-call').click();
+      return tracks.every(t => t.readyState === 'ended');
+    })()""")
+    assert len(requests) >= 2
+    assert options['playback_receipts'][0]['interrupted'] is True
+    assert options['playback_receipts'][0]['played_chars'] == 0
+
+
 @pytest.mark.parametrize("status,changes,expected", [
     ("completed", [{"field": "room_area_m2", "action": "added", "value": 25,
                     "source": "customer", "scope_type": "global", "scope_id": ""}], "25 m²"),
@@ -267,6 +313,7 @@ def test_browser_end_while_waiting_for_agent(site, browser):
       document.querySelector('#end-call').click();
       return tracks.every(t => t.readyState === 'ended') && !document.querySelector('#start-call').disabled;
     })()""")
+    options["wait_agent"] = False
 
 
 def test_browser_late_permission_and_denied_microphone(site, browser):
@@ -300,3 +347,35 @@ def test_browser_fatal_agent_error_releases_microphone(site, browser):
       return document.querySelector('#error').textContent.includes('Agent chưa trả lời');
     })()""")
     assert len(requests) == 1
+
+
+def test_browser_shows_returning_call_brief_once_without_raw_trace(site, browser):
+    url, requests, speech, options = site
+    options['call_brief'] = {
+        'is_returning': True, 'n_previous_sessions': 3,
+        'customer_phone': '0901234567',
+        'last_session': {'date': '2026-10-15', 'outcome': 'chot_don'},
+        'products_advised': [{'sku': 'SKU-AP-X', 'price_quoted_vnd': 4890000,
+                              'quoted_on': '2026-10-15', 'promo_code': 'GIFT-FILTER'}],
+        'orders': [{'order_id': 'OD600004', 'variant_sku': 'SKU-AP-X', 'status': 'created'}],
+        'open_blockers': [], 'open_questions': ['<img src=x onerror=alert(1)>'],
+        'must_not_ask': ['room_area_m2', 'has_children'],
+        'profile_facts': {'has_children': True, 'rooms': {'room_1': {
+            'room_area_m2': {'value': 25, 'source': 'private-langmem-source'}}},
+            'products': {'SKU-AP-X': {'blocker': {'value': 'đã giải quyết'}}}},
+        'stale_warnings': ['Cần kiểm tra lại ưu đãi.'],
+        'suggested_next_action': 'Tiếp tục tư vấn theo nhu cầu đã ghi nhận.',
+    }
+    js = open_site(browser, url)
+    assert js("""(async () => {
+      document.querySelector('#start-call').click();
+      await waitFor(() => document.querySelectorAll('.message.agent').length >= 2);
+      document.querySelector('#end-call').click();
+      return document.querySelectorAll('.call-brief').length === 1;
+    })()""")
+    text = js("document.querySelector('.call-brief').textContent")
+    for value in ('3 phiên', 'SKU-AP-X', '4.890.000', 'OD600004', '25 m²', 'Cần kiểm tra lại ưu đãi'):
+        assert value in text
+    assert '0901234567' not in text and 'private-langmem-source' not in text
+    assert 'đã giải quyết' not in text
+    assert js("document.querySelectorAll('.call-brief img').length") == 0

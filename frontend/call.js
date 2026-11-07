@@ -14,13 +14,14 @@ const states = {
   connecting: ['Đang kết nối…', 'Đang chuẩn bị micro và kết nối trợ lý.'],
   listening: ['Đang nghe bạn', 'Cứ nói tự nhiên, rồi ngừng một chút để em trả lời.'],
   processing: ['Đang suy nghĩ…', 'Trợ lý đang xử lý lời bạn vừa nói.'],
-  speaking: ['Trợ lý đang nói', 'Bạn có thể nói tiếp sau khi trợ lý trả lời xong.'],
+  speaking: ['Trợ lý đang nói', 'Bạn có thể nói để ngắt lời trợ lý.'],
   closed: ['Cuộc gọi đã kết thúc', 'Bấm bắt đầu gọi để mở một phiên mới.'],
 };
 const errors = {
   speech_unavailable: 'Chưa kết nối được dịch vụ nhận dạng giọng nói.',
   speech_disconnected: 'Kết nối nhận dạng giọng nói bị ngắt.',
   harness_failed: 'Agent chưa trả lời được. Kiểm tra dịch vụ AI và cấu hình backend.',
+  playback_failed: 'Chưa lưu được trạng thái phát của lượt gọi. Vui lòng kết nối lại.',
   tts_failed: 'Không phát được hết câu trả lời. Bạn có thể đọc nội dung và nói tiếp.',
   transcription_failed: 'Chưa nhận dạng được câu vừa nói. Bạn nói lại nhé.',
   overloaded: 'Dịch vụ giọng nói đang bận. Thử gọi lại sau.',
@@ -96,6 +97,65 @@ function renderMemory(panel, update, finished = false) {
   }
   panel.append(list);
 }
+function renderCallBrief(brief) {
+  const panel = document.createElement('details');
+  panel.className = 'call-brief';
+  panel.open = true;
+  const title = document.createElement('summary');
+  title.textContent = 'Tóm tắt khách quay lại';
+  panel.append(title);
+  function row(label, value, warning = false) {
+    if (value === null || value === undefined || value === '') return;
+    const line = document.createElement('div');
+    line.className = warning ? 'brief-warning' : 'brief-row';
+    const key = document.createElement('strong');
+    key.textContent = `${label}: `;
+    line.append(key, document.createTextNode(String(value)));
+    panel.append(line);
+  }
+  const outcomes = { chot_don: 'Đã chốt đơn', hen_goi_lai: 'Hẹn gọi lại',
+    tu_choi: 'Từ chối', chuyen_may: 'Chuyển nhân viên', khac: 'Trao đổi tư vấn' };
+  row('Lịch sử', `${brief.n_previous_sessions} phiên trước`
+    + (brief.last_session?.date ? ` · Gần nhất ${brief.last_session.date}` : ''));
+  row('Kết quả phiên gần nhất', outcomes[brief.last_session?.outcome]);
+  for (const product of brief.products_advised || []) {
+    row('Đã tư vấn', product.sku);
+    if (typeof product.price_quoted_vnd === 'number') {
+      row('Giá đã báo', `${product.price_quoted_vnd.toLocaleString('vi-VN')} đồng`
+        + (product.quoted_on ? ` (${product.quoted_on})` : '') + ' · Giá lịch sử');
+    }
+    row('Ưu đãi đã trao đổi', product.promo_code);
+  }
+  const orderStates = { created: 'Đã tạo', delivered: 'Đã giao', cancelled: 'Đã hủy',
+    shipping: 'Đang giao' };
+  for (const order of brief.orders || []) {
+    row('Đơn hàng', [order.order_id, order.variant_sku, orderStates[order.status] || order.status]
+      .filter(Boolean).join(' · '));
+  }
+  // Open items come only from the brief's resolved lists, never stale profile blockers.
+  for (const blocker of brief.open_blockers || []) row('Băn khoăn còn mở', blocker);
+  for (const question of brief.open_questions || []) row('Câu hỏi còn mở', question);
+  const knownFields = new Set(['room_area_m2', 'budget_vnd', 'has_children',
+    'preferred_size', 'preferred_color', 'size', 'color', 'payment', 'owned_sku']);
+  function facts(values, scope = '') {
+    for (const [field, fact] of Object.entries(values || {})) {
+      if (!knownFields.has(field)) continue;
+      let value = fact && typeof fact === 'object' ? fact.value : fact;
+      if (typeof value === 'boolean') value = value ? 'Có' : 'Không';
+      else if (typeof value === 'number') value = value.toLocaleString('vi-VN')
+        + (field === 'room_area_m2' ? ' m²' : field.endsWith('_vnd') ? ' đồng' : '');
+      if (typeof value === 'string') row((memoryFields[field] || field) + scope, value);
+    }
+  }
+  facts(brief.profile_facts);
+  for (const [room, values] of Object.entries(brief.profile_facts?.rooms || {})) facts(values, ` (${room})`);
+  for (const [sku, values] of Object.entries(brief.profile_facts?.products || {})) facts(values, ` (${sku})`);
+  row('Không cần hỏi lại', (brief.must_not_ask || []).map(field => memoryFields[field] || field).join(', '));
+  for (const warning of brief.stale_warnings || []) row('Cần lưu ý', warning, true);
+  row('Hướng tiếp tục', brief.suggested_next_action);
+  return panel;
+}
+
 function send(call, payload) {
   if (active === call && call.socket?.readyState === WebSocket.OPEN) {
     call.socket.send(JSON.stringify(payload));
@@ -137,7 +197,8 @@ function playbackFinished(call, turnId) {
   call.player.finish(() => {
     if (active !== call || call.turnId !== turnId) return;
     call.acknowledged = turnId;
-    send(call, { event: 'playback_finished', turn_id: turnId });
+    call.playedChars = call.lastMark;
+    send(call, { event: 'playback_finished', turn_id: turnId, played_chars: call.playedChars });
   });
 }
 function onEvent(call, event) {
@@ -159,7 +220,6 @@ function onEvent(call, event) {
       if (event.state === 'closed') { stopCall(call); break; }
       call.state = event.state;
       if (event.state === 'listening') {
-        call.encoder = new PCMEncoder(call.context.sampleRate);
         call.turnId = null;
       }
       showState(event.state);
@@ -168,9 +228,17 @@ function onEvent(call, event) {
     case 'speech_ended': $('hint').textContent = 'Đang nhận dạng lời bạn nói…'; break;
     case 'transcript_final': appendMessage('user', event.text); break;
     case 'agent_reply':
+      if (call.discardedTurns.has(event.turn_id)) break;
       call.turnId = event.turn_id;
+      call.playedChars = 0;
+      call.lastMark = 0;
+      call.audioIndex = 0;
       {
         const article = appendMessage('agent', event.agent_text);
+        if (event.call_brief?.is_returning && !call.briefShown) {
+          article.before(renderCallBrief(event.call_brief));
+          call.briefShown = true;
+        }
         if (event.memory_update) {
           const panel = document.createElement('section');
           panel.className = 'memory-update';
@@ -188,13 +256,40 @@ function onEvent(call, event) {
       if (panel) renderMemory(panel, event.memory_update, event.tracking_finished);
       break;
     }
-    case 'audio': call.player.enqueue(event); break;
-    case 'audio_segment_end': call.player.pause(event.pause_ms); break;
-    case 'audio_complete': playbackFinished(call, event.turn_id); break;
+    case 'playback_interrupt': {
+      const played = call.turnId === event.turn_id ? call.playedChars : 0;
+      call.discardedTurns.add(event.turn_id);
+      if (call.turnId === event.turn_id) {
+        call.player.stop();
+        call.turnId = null;
+      }
+      send(call, { event: 'playback_stopped', turn_id: event.turn_id, played_chars: played });
+      break;
+    }
+    case 'audio':
+      if (call.turnId !== event.turn_id || call.discardedTurns.has(event.turn_id)
+          || event.index !== call.audioIndex) break;
+      call.audioIndex++;
+      call.player.enqueue(event);
+      break;
+    case 'audio_segment_end':
+      if (call.turnId === event.turn_id) call.player.pause(event.pause_ms);
+      break;
+    case 'audio_mark':
+      if (call.turnId !== event.turn_id) break;
+      call.lastMark = event.played_chars;
+      call.player.mark(() => {
+        if (active !== call || call.turnId !== event.turn_id) return;
+        call.playedChars = Math.max(call.playedChars, event.played_chars);
+        send(call, { event: 'playback_progress', turn_id: event.turn_id, played_chars: call.playedChars });
+      });
+      break;
+    case 'audio_complete':
+      if (call.turnId === event.turn_id) playbackFinished(call, event.turn_id);
+      break;
     case 'error':
       showError(errors[event.code] || 'Có lỗi trong cuộc gọi. Vui lòng thử lại.');
       if (event.fatal) stopCall(call);
-      else if (event.stage === 'tts') playbackFinished(call, event.turn_id);
       break;
   }
 }
@@ -209,7 +304,7 @@ async function startCall() {
   const start = { event: 'start', channel: $('channel').value,
     channel_identity: $('identity').value.trim(), on: $('scenario-date').value };
   if (!start.channel_identity) { showError('Vui lòng nhập định danh kênh.'); return; }
-  const call = { state: 'connecting', memoryPanels: new Map() };
+  const call = { state: 'connecting', memoryPanels: new Map(), discardedTurns: new Set() };
   active = call;
   startButton.disabled = true;
   endButton.disabled = false;
@@ -252,7 +347,8 @@ async function startCall() {
       if (active === call) fail(call, 'Kết nối cuộc gọi đã bị ngắt. Bạn có thể bắt đầu phiên mới.');
     };
     call.capture.port.onmessage = ({ data }) => {
-      if (active !== call || call.state !== 'listening' || call.socket.readyState !== WebSocket.OPEN) return;
+      if (active !== call || !['listening', 'processing', 'speaking'].includes(call.state)
+          || call.socket.readyState !== WebSocket.OPEN) return;
       if (call.socket.bufferedAmount > 64000) {
         fail(call, 'Mạng không theo kịp âm thanh. Kiểm tra kết nối rồi gọi lại.');
         return;
