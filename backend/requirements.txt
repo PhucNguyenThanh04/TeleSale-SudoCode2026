@@ -31,6 +31,7 @@ redis>=6.4,<9
 
 # Async backend -> AI-service requests and streamed response proxying.
 httpx>=0.28.1,<0.29
+websockets>=14,<17
 
 # File uploads (datasets/audio); not an audio inference dependency.
 python-multipart>=0.0.20,<0.1

@@ -40,3 +40,21 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Return one validated settings object per process."""
     return Settings()
+
+
+class VoiceSettings(BaseSettings):
+    """Standalone voice gateway does not require database/operator settings."""
+
+    model_config = SettingsConfigDict(
+        env_file=_ENV_FILE, env_file_encoding="utf-8", extra="ignore", case_sensitive=False,
+    )
+
+    ai_service_url: str = "http://127.0.0.1:8001"
+    ai_service_timeout_seconds: float = Field(default=120, gt=0)
+    ai_internal_token: SecretStr | None = None
+    speech_http_url: str = "http://127.0.0.1:18110"
+    speech_listen_url: str = "ws://127.0.0.1:18110/v1/speech/listen"
+    speech_voice: str = "Trúc Ly"
+    speech_connect_timeout_seconds: float = Field(default=10, gt=0)
+    speech_timeout_seconds: float = Field(default=120, gt=0)
+    voice_start_timeout_seconds: float = Field(default=10, gt=0)
