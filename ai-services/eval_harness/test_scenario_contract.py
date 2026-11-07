@@ -39,3 +39,17 @@ def test_invalid_scoring_contract_is_rejected_before_runtime(tmp_path,success):
     p.write_text(json.dumps({'scenario_id':'X','calls':{'call_1':{'customer_turns':['a'],'success_if':success}}}))
     with pytest.raises(ValueError):
         load_scenarios(p,btc_root=BTC)
+
+
+def test_price_comparison_scenario_promotion_matches_source_quote():
+    from datetime import date, timedelta
+    from app.mcp_servers.mcp_shared.commerce_rules import quote
+    scenarios = load_scenarios(Path(__file__).with_name('scenarios'), btc_root=BTC)
+    calls = scenarios['SC02']['calls']
+    on = date(2026, 10, 15) + timedelta(days=calls['call_2']['days_later'])
+    products = json.loads((BTC / 'catalog/products.json').read_text())['products']
+    promos = json.loads((BTC / 'catalog/promotions.json').read_text())['promotions']
+    result = quote(products, promos, {'sku': calls['call_1']['facts_established']['product_advised'],
+                                    'qty': 1, 'on': on.isoformat()})
+    assert any(p['promo_code'] == 'GIFT-FILTER' for p in result['applied_promos'])
+    assert calls['call_2']['ground_truth_facts']['promo_active'] == bool(result['applied_promos'])

@@ -25,6 +25,7 @@ EVENTS = frozenset({'context_loaded', 'context_masked', 'memory_read', 'memory_c
 TOOLS = frozenset({'catalog.search', 'pricing.get_quote', 'inventory.check', 'order.create',
     'order.update', 'order.status', 'policy.search', 'crm.get_customer', 'handoff.transfer',
     'schedule.callback'})
+RETRIEVAL_STATUSES = frozenset({'ok', 'no_evidence', 'unavailable', 'timeout', 'overloaded'})
 REASONS = frozenset({'identity_required', 'purchase_permission_required', 'selection_required',
     'purchase_already_completed', 'catalog_required', 'variant_required', 'ambiguous',
     'selection_mismatch', 'selection_unavailable', 'quantity_required', 'quantity_mismatch', 'product_requirements_not_met',
@@ -210,12 +211,14 @@ def emit(event, *, state=None, component='runtime', **payload):
         if payload.get('status') in {'allowed', 'blocked', 'not_evaluated', 'success', 'failed',
                 'cached', 'unknown', 'enqueued', 'admitted', 'rejected', 'projected'}:
             item['status'] = payload['status']
-        for key in ('revision', 'history_count', 'turn_count', 'rejected_count'):
+        for key in ('revision', 'history_count', 'turn_count', 'rejected_count', 'evidence_count'):
             if type(payload.get(key)) is int and payload[key] >= 0:
                 item[key] = payload[key]
-        for key in ('receipt_present', 'context_present', 'context_matches', 'history_truncated', 'in_stock', 'fresh', 'quantity_sufficient'):
+        for key in ('receipt_present', 'query_present', 'context_present', 'context_matches', 'history_truncated', 'in_stock', 'fresh', 'quantity_sufficient'):
             if type(payload.get(key)) is bool:
                 item[key] = payload[key]
+        if payload.get('retrieval_status') in RETRIEVAL_STATUSES:
+            item['retrieval_status'] = payload['retrieval_status']
         for key in ('prompt_sha256',):
             if isinstance(payload.get(key), str) and re.fullmatch('[a-f0-9]{64}', payload[key]):
                 item[key] = payload[key]
@@ -332,7 +335,7 @@ def _wire_safe(value, key=''):
             'recommended_sku', 'focus_sku', 'price_vnd', 'qty', 'limit_vnd', 'on', 'session_ref'}
     if type(value) is bool:
         return key in {'source_valid_uuid', 'source_in_history', 'source_is_current', 'owner_matches',
-            'same_session', 'purchase_intent', 'free_shipping', 'freeship', 'cod_supported', 'receipt_present',
+            'same_session', 'purchase_intent', 'free_shipping', 'freeship', 'cod_supported', 'receipt_present', 'query_present',
             'context_present', 'context_matches', 'history_truncated', 'in_stock', 'fresh', 'quantity_sufficient',
             'child_lock_required', 'child_safe_lock', 'delivery_condition_present'}
     if key in {'room_area_m2', 'required_room_area_m2'} and type(value) in (int, float):
@@ -340,10 +343,11 @@ def _wire_safe(value, key=''):
     if type(value) is int:
         return key in {'sequence', 'revision', 'history_count', 'turn_count', 'rejected_count',
             'attempt_id', 'parent_id', 'observation_index', 'price_vnd', 'qty', 'limit_vnd',
-            'discount_vnd', 'discount_percent', 'schema_version', 'shipping_fee_vnd', 'prompt_version', 'available_qty'} and 0 <= value <= 10**12
+            'discount_vnd', 'discount_percent', 'schema_version', 'shipping_fee_vnd', 'prompt_version', 'available_qty', 'evidence_count'} and 0 <= value <= 10**12
     if not isinstance(value, str):
         return False
     choices = {'event': EVENTS, 'component': {'runtime', 'memory', 'worker', 'harness'},
+        'retrieval_status': RETRIEVAL_STATUSES,
         'origin': {'model', 'continuation', 'preparation', 'unknown'}, 'reason': REASONS,
         'tool': TOOLS, 'tool_name': TOOLS,
         'status': {'active', 'revoked', 'unknown', 'allowed', 'blocked', 'not_evaluated',
@@ -409,17 +413,23 @@ def tool_boundary(fn):
         token = _ATTEMPT.set(attempt)
         before = len(self.state.get('tool_calls', []))
         emit('tool_attempt', state=self.state, tool=name, args=proposed,
-             attempt_id=attempt, parent_id=parent, context_present=bool(proposed.get('address')))
+             attempt_id=attempt, parent_id=parent, context_present=bool(proposed.get('address')),
+             query_present=bool(isinstance(proposed.get('query'), str) and proposed['query'].strip()) if name == 'policy.search' else None)
         try:
             result = await fn(self, name, proposed)
             executed = len(self.state.get('tool_calls', [])) > before and any(
                 c.get('name') == name for c in self.state.get('tool_calls', [])[before:])
+            failed = (bool(result.get('error')) or result.get('ok') is False or result.get('success') is False
+                      or name == 'policy.search' and result.get('retrieval_status') in {'unavailable', 'timeout', 'overloaded'})
+            retrieval = ({'retrieval_status': result.get('retrieval_status'),
+                          'evidence_count': len(result['evidence']) if isinstance(result.get('evidence'), list) else None}
+                         if name == 'policy.search' else {})
             emit('tool_result', state=self.state, tool=name, attempt_id=attempt,
-                 status='failed' if result.get('error') and executed else 'blocked' if result.get('error') else 'success' if executed else 'cached',
+                 status='failed' if failed and executed else 'blocked' if failed else 'success' if executed else 'cached',
                  reason=result.get('error', 'not_evaluated'),
-                 receipt_present=bool(result.get('order_id') or result.get('ticket_id')),
+                 receipt_present=bool(result.get('order_id') or result.get('ticket_id')) if name in {'order.create', 'handoff.transfer'} else None,
                  args={k: v for k, v in result.items() if k in {'sku', 'price_vnd', 'qty', 'on'}},
-                 in_stock=result.get('in_stock'))
+                 in_stock=result.get('in_stock'), **retrieval)
             return result
         finally:
             _ATTEMPT.reset(token)

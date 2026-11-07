@@ -109,6 +109,8 @@ def _specific_query(value):
 
 
 def prefers_child_safety(state):
+    if shortlist_requirements(state).get('child_lock_required') is False:
+        return False
     return (state.get('profile', {}).get('has_children', {}).get('value') is True or
             any(re.search(r'\b(?:con nho|be nho|tre nho|tre em|em be)\b',
                           _search_text(t.get('customer', t.get('customer_text', ''))))
@@ -181,6 +183,10 @@ def build_shortlist(state: dict, *, scope: dict, quoted_only: bool = False) -> S
         if options.get('address'):
             read_args['address'] = options['address']
         compatible = build_commerce_evidence(state, args=read_args)
+        stock = next((c['result'] for c in compatible if c.get('name') == 'inventory.check'), None)
+        if stock is not None and (stock.get('in_stock') is False or
+                type(stock.get('qty')) is int and stock['qty'] < qty):
+            continue
         quote = _quote(state, resolved, qty)
         if not any(c.get('name') == 'pricing.get_quote' for c in compatible):
             quote = None
@@ -194,7 +200,8 @@ def build_shortlist(state: dict, *, scope: dict, quoted_only: bool = False) -> S
         else:
             affordability = 1 if cost is None else 0 if cost <= budget.limit_vnd else 2
         preference = int(soft_child and attrs.get('child_safe_lock') is not True)
-        rank = (affordability, preference, price if price is not None else math.inf, resolved)
+        # Household safety comes before the desired spend; purchase still needs budget consent.
+        rank = (preference, affordability, price if price is not None else math.inf, resolved)
         ranked.append((rank, {**deepcopy(item), 'resolved_sku': resolved,
                               'quoted_price_vnd': quote, 'quote_qty': qty}))
     return Shortlist([item for _, item in sorted(ranked, key=lambda pair: pair[0])],

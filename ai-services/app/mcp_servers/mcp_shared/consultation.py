@@ -461,7 +461,8 @@ def purchase_block_reason(state: dict, args: dict) -> str | None:
         diagnostic_emit('stock_binding', state=state, args={**stock[-1].get('args', {}), 'available_qty': stock[-1].get('result', {}).get('qty')} if stock else {}, fresh=bool(stock and stock[-1].get('args', {}).get('on')==on), quantity_sufficient=bool(stock and type(stock[-1].get('result', {}).get('qty')) is int and stock[-1]['result']['qty']>=qty), status='success' if stock and successful(stock[-1]) else 'failed', in_stock=stock[-1].get('result', {}).get('in_stock') if stock else None)
     if not stock or not successful(stock[-1]) or stock[-1].get('args',{}).get('on')!=on or stock[-1]['result'].get('in_stock') is not True or type(stock[-1]['result'].get('qty')) is not int or stock[-1]['result'].get('qty',0)<qty:
         return 'current_stock_required'
-    if needs.get('delivery_condition') and not _delivery_condition_met(state, needs['delivery_condition'], compatible):
+    # The current tools provide estimates, not confirmation of customer deadlines.
+    if needs.get('delivery_condition'):
         return 'delivery_confirmation_required'
     if needs.get('required_promo_code') and not any(t.get('promo_code')==needs['required_promo_code'] for t in quote.promo_terms):return 'offer_confirmation_required'
     consent=snap.accepted_offer
@@ -479,30 +480,6 @@ def purchase_block_reason(state: dict, args: dict) -> str | None:
         if not consent or (budget_ref and offer_ref and budget_ref.source_turn_id==offer_ref.source_turn_id):return 'budget_consent_required'
     return None
 
-
-
-def _delivery_condition_met(state, condition, compatible):
-    """Only discharge an understood deadline using a fresh, argument-bound quote.
-
-    Persisted relative deadlines remain unresolved: their original date must not
-    be silently moved to the current week on a later call.
-    """
-    from datetime import date, timedelta
-    if condition != state.get('safe_text'):
-        return False
-    folded = _search_text(condition)
-    deadline = re.search(r'\bgiao trong tuan nay(?:\s+(?:nhe|a|nha))*[.!]*$', folded)
-    if not deadline or re.search(r'\bgiao\b|\btruoc\b|\bgio\b', folded[:deadline.start()]):
-        return False
-    quotes = [c for c in compatible if c.get('name') == 'pricing.get_quote' and successful(c)]
-    if len(quotes) != 1:
-        return False
-    try:
-        on = date.fromisoformat(str(getattr(state.get('request'), 'on', '')))
-        estimate = date.fromisoformat(quotes[0]['result'].get('estimated_delivery'))
-    except (TypeError, ValueError):
-        return False
-    return on <= estimate <= on + timedelta(days=6 - on.weekday())
 
 
 def purchase_arguments(state: dict) -> dict | None:

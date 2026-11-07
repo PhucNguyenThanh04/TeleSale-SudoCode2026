@@ -124,6 +124,55 @@ def test_tool_attempt_blocked_before_mcp_is_visible():
     assert outcome['status'] == 'blocked' and outcome['reason'] == 'identity_required'
 
 
+@pytest.mark.parametrize('retrieval,status,count', [
+    ('ok', 'success', 2), ('no_evidence', 'success', 0),
+    ('unavailable', 'failed', 0), ('timeout', 'failed', 0), ('overloaded', 'failed', 0),
+])
+def test_policy_result_reports_retrieval_instead_of_transaction_receipt(retrieval, status, count):
+    import asyncio
+    d = api()
+    result = {'retrieval_status': retrieval, 'evidence': [{'content': 'PRIVATE'}] * count}
+
+    class Tools:
+        def __init__(self): self.state = {'tool_calls': []}
+        @d.tool_boundary
+        async def invoke(self, name, args):
+            self.state['tool_calls'].append({'name': name, 'args': args, 'result': result})
+            return result
+
+    with d.capture_decisions() as capture:
+        actual = asyncio.run(Tools().invoke('policy.search', {'query': 'PRIVATE'}))
+    assert actual == result
+    attempt = next(e for e in capture.events if e['event'] == 'tool_attempt')
+    outcome = next(e for e in capture.events if e['event'] == 'tool_result')
+    assert attempt['query_present'] is True and attempt['args'] == {}
+    assert outcome['retrieval_status'] == retrieval and outcome['evidence_count'] == count
+    assert outcome['status'] == status
+    assert 'receipt_present' not in outcome
+    assert 'PRIVATE' not in json.dumps(capture.events)
+    assert all(d.valid_event(e) for e in capture.events)
+    with d.capture_decisions() as received:
+        d.ingest({'events': capture.events})
+    assert received.events == capture.events
+
+
+@pytest.mark.parametrize('tool,key', [('order.create', 'order_id'), ('handoff.transfer', 'ticket_id')])
+def test_transaction_receipt_remains_available(tool, key):
+    import asyncio
+    d = api()
+    class Tools:
+        def __init__(self): self.state = {'tool_calls': []}
+        @d.tool_boundary
+        async def invoke(self, name, args):
+            result = {key: 'RECEIPT'}
+            self.state['tool_calls'].append({'name': name, 'args': args, 'result': result})
+            return result
+    with d.capture_decisions() as capture:
+        asyncio.run(Tools().invoke(tool, {}))
+    outcome = next(e for e in capture.events if e['event'] == 'tool_result')
+    assert outcome['receipt_present'] is True
+
+
 def test_decision_file_binds_trace_and_reports_missing_components(tmp_path):
     from eval_harness.turn_diagnostics import TurnDiagnostics, verify_decisions
     d = api()

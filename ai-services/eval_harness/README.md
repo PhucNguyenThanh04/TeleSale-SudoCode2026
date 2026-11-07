@@ -241,6 +241,21 @@ BTC gốc; không gán mã từ tool vào câu generic để né lỗi chấm. B
 bằng 0 vẫn giữ relative reduction `null` và verdict gốc: chưa chứng minh
 được giảm 40%, không tự chuyển thành pass.
 
+SC02 trong bộ scenario local đã sửa `promo_active=true` cho cuộc gọi ngày
+18/10/2026, khớp quote có `GIFT-FILTER` đến 22/10/2026. Test offline đối chiếu
+nhãn này bằng logic pricing và catalog nguồn. Snapshot/scorer/điểm các run cũ
+giữ nguyên; thay nhãn không phải bằng chứng hành vi agent đã cải thiện.
+Bảng `report_metrics` giải thích các ví dụ HR bằng quote cùng lượt, đúng SKU
+và ngày trong snapshot. Claim khớp quote nhưng khác SKU kỳ vọng vẫn giữ lỗi
+chọn sản phẩm. Quote lỗi, cũ, mơ hồ hoặc không chứng minh đúng quyền lợi được
+đánh dấu chưa đủ bằng chứng; không sửa claims hay tạo HR thay thế.
+
+Yêu cầu giao đúng hạn của SC02 chưa có bằng chứng xác nhận được đáp ứng.
+Ngày dự kiến từ quote local không tự cho phép đặt đơn theo thời hạn đó, kể cả
+khi khách đồng ý ngày dự kiến. Agent giữ yêu cầu và làm rõ/kiểm tra khả năng
+đáp ứng; không tự tạo handoff chung chỉ vì cần làm rõ. Không thêm lượt khách
+đồng ý ngày cố định để làm scenario đạt; giữ 39 lượt và snapshot các run cũ.
+
 `facts_used`/CCR không thể tái dựng đầy đủ từ trace public cũ vì thiếu hồ sơ
 và provenance trước call. Replay giữ nguyên field này. Các run mới giữ
 snapshot fact đầu call và chỉ tính sử dụng có nguồn từ session trước, đúng
@@ -249,6 +264,15 @@ chứng minh agent nhớ. Memory recall/precision là diagnostic khớp expected
 slot/value theo call; danh sách expected không đầy đủ và `written` không
 phải số record vật lý hay số fact rác. ID đơn động khác nhãn cố định vẫn là
 discrepancy khi chưa có ánh xạ được xác minh.
+
+`facts_used` nhận diện tên sản phẩm/alias không mơ hồ từ catalog của phiên,
+không buộc agent đọc mã SKU. Metadata được giữ giữa các lượt của cùng call;
+không dùng metadata này để tạo fact hoặc nguồn memory mới. Cách nói giá cao/
+quá đắt có thể khớp objection `dat_qua`, nhưng vẫn kiểm sản phẩm và phủ định.
+Chỉ có key trong profile/scoped facts không được cộng vào sử dụng. Chỉ số
+phản ánh khớp quan sát được với fact phiên trước, không chứng minh quan hệ
+nhân quả rằng model lấy giá từ memory thay vì quote mới có cùng giá trị.
+Không tính lại CCR run cũ khi thiếu snapshot nguồn/provenance trước call.
 
 ## Khi eval dừng vì memory job thất bại
 
@@ -455,9 +479,10 @@ hoặc đặt `EVAL_DECISION_DIAGNOSTICS=1` trong môi trường harness. Cả f
 baseline sẽ được thu thập. Đây vẫn là lệnh live hiện có, không phải replay.
 
 Memory MCP và LangMem worker cũng cần chạy **code mới** với
-`EVAL_DECISION_DIAGNOSTICS=1`. Compose đã truyền biến này cho hai service;
-đặt nó trong môi trường Compose hoặc file cấu hình Compose trước khi người
-vận hành rebuild/khởi động các service cho lần eval được phép tiếp theo.
+`EVAL_DECISION_DIAGNOSTICS=1`. Compose mount `ai-services/.env` read-only
+vào `/config/service.env`; `scripts/container_start.py` đọc cờ này khi mỗi
+service khởi động. Đặt cờ trong file đó trước khi người vận hành rebuild/
+khởi động lại các service cho lần eval được phép tiếp theo.
 Nếu chạy Python trực tiếp, truyền biến vào từng process. Cờ ở harness không
 thay đổi môi trường của các server đang chạy. Chưa có log remote sẽ hiện
 `missing_components`, không được xem là bằng chứng memory/worker không chạy.
@@ -479,6 +504,16 @@ admission/projection/read/context và `final_commit`. `worker_projection`
 quan sát bên trong transaction; `job_readback.status=success` xác nhận job
 đã commit. Event từ các process có producer ID/sequence riêng; dùng turn,
 attempt và revision để nối, không so thứ tự timestamp giữa process.
+
+Với `policy.search`, đọc `retrieval_status` và `evidence_count` ở
+`tool_result`; `no_evidence` khác lỗi `unavailable`/`timeout`/`overloaded`.
+`query_present` ở `tool_attempt` xác nhận có query mà không ghi nội dung
+khách vào diagnostics. `args={}` có thể chỉ là kết quả lọc dữ liệu.
+`receipt_present` chỉ áp dụng cho `order.create`/`handoff.transfer`; log mới
+không xuất trường này cho truy xuất. Giá trị `false` của trường này trong
+log policy cũ không chứng minh truy xuất thất bại. Trạng thái truy xuất tốt
+và số evidence chưa đủ chứng minh agent đã chọn hoặc trả lời đúng chính sách;
+vẫn phải đối chiếu evidence và câu trả lời trong trace nghiệp vụ.
 
 Source UUID chỉ giữ ở metadata đã định kiểu; customer/session dùng alias
 HMAC với khóa ngẫu nhiên của run, không lưu khóa hoặc raw PII trong file.
