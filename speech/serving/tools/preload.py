@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 
-from .models import Models
+from ..models import Models
 
 
 if __name__ == "__main__":

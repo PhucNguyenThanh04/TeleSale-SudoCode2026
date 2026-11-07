@@ -82,6 +82,43 @@ class BuildLLMTest(unittest.TestCase):
         self.assertIsInstance(llm, ChatOpenAI)
         self.assertIsNone(llm.reasoning_effort)
 
+    def test_ollama_cloud_gemma_disables_thinking_on_the_wire(self) -> None:
+        for model in ("gemma4:12b", "gemma4:31b"):
+            with self.subTest(model=model):
+                llm = build_llm(Settings(_env_file=None, llm_api_key="ollama-test-key",
+                    llm_model=model, llm_base_url="https://ollama.com/v1"))
+                requests = []
+
+                def send(client, request, **kwargs):
+                    requests.append(request)
+                    return httpx.Response(200, request=request, json={
+                        "id": "ollama-test", "object": "chat.completion", "created": 0,
+                        "model": model, "choices": [{"index": 0,
+                            "message": {"role": "assistant", "content": "Xin chào"},
+                            "finish_reason": "stop"}]})
+
+                async def async_send(client, request, **kwargs):
+                    return send(client, request, **kwargs)
+
+                with patch.object(httpx.Client, "send", send):
+                    self.assertEqual(llm.invoke("Chào").content, "Xin chào")
+                with patch.object(httpx.AsyncClient, "send", async_send):
+                    self.assertEqual(asyncio.run(llm.ainvoke("Chào")).content, "Xin chào")
+                self.assertEqual(len(requests), 2)
+                for request in requests:
+                    self.assertEqual(str(request.url), "https://ollama.com/v1/chat/completions")
+                    self.assertEqual(request.headers["Authorization"], "Bearer ollama-test-key")
+                    payload = json.loads(request.content)
+                    self.assertEqual(payload["model"], model)
+                    self.assertEqual(payload["reasoning_effort"], "none")
+
+    def test_ollama_thinking_option_is_scoped_to_cloud_gemma(self) -> None:
+        for model, base_url in (("custom-model", "https://ollama.com/v1"),
+                                ("gemma4:31b", "https://other.example/v1")):
+            llm = build_llm(Settings(_env_file=None, llm_api_key="test-key",
+                llm_model=model, llm_base_url=base_url))
+            self.assertIsNone(llm.reasoning_effort)
+
 
 if __name__ == "__main__":
     unittest.main()

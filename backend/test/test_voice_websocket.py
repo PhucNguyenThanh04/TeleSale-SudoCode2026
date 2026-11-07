@@ -1,5 +1,4 @@
 import json
-from uuid import uuid4
 
 import httpx
 from fastapi.testclient import TestClient
@@ -37,10 +36,12 @@ def test_route_runs_a_turn_without_auth_and_preserves_internal_token():
     requests = []
     def handler(request):
         assert request.headers["X-AI-Internal-Token"] == "internal-only"
-        assert request.url.path == "/v1/chat/turns"
         payload = json.loads(request.content)
+        if request.url.path == "/v1/chat/sessions/prepare":
+            return httpx.Response(200, json={"session_id": payload["session_id"]})
+        assert request.url.path == "/v1/chat/turns"
         requests.append(payload)
-        return httpx.Response(200, json={"session_id": str(uuid4()), "agent_text": "Xin chào"})
+        return httpx.Response(200, json={"session_id": payload["session_id"], "agent_text": "Xin chào"})
 
     with TestClient(create_app(settings)) as client:
         app = client.app

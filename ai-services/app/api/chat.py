@@ -7,13 +7,32 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from app.agent.chat import chat
 from app.agent.harness.runtime import AgentHarnessRuntime
 from app.configs import get_settings
-from app.schemas.agent import ChatRequest, ChatResponse
+from app.schemas.agent import (ChatRequest, ChatResponse, PrepareSessionRequest,
+                               PrepareSessionResponse, TurnMemoryRequest, TurnMemoryResponse)
 
 router = APIRouter(prefix="/v1/chat", tags=["chat"])
 
 
 async def get_harness(request: Request) -> AgentHarnessRuntime:
     return request.app.state.harness
+
+
+@router.post("/sessions/prepare", response_model=PrepareSessionResponse)
+async def prepare_session(
+    session: PrepareSessionRequest, request: Request,
+    harness: AgentHarnessRuntime = Depends(get_harness),
+) -> PrepareSessionResponse:
+    expected = get_settings().ai_internal_token
+    if not expected or not hmac.compare_digest(
+        request.headers.get("X-AI-Internal-Token", ""), expected.get_secret_value()
+    ):
+        raise HTTPException(401, "Unauthorized AI caller")
+    try:
+        return await harness.prepare_session(session)
+    except ValueError:
+        raise HTTPException(409, "Session identity conflict") from None
+    except RuntimeError:
+        raise HTTPException(503, "Session preparation unavailable") from None
 
 
 @router.post("/turns", response_model=ChatResponse)
@@ -28,3 +47,23 @@ async def create_text_turn(
     ):
         raise HTTPException(401, "Unauthorized AI caller")
     return await chat(turn, runtime=harness)
+
+
+@router.post("/turns/memory", response_model=TurnMemoryResponse)
+async def turn_memory(
+    turn: TurnMemoryRequest, request: Request,
+    harness: AgentHarnessRuntime = Depends(get_harness),
+) -> TurnMemoryResponse:
+    expected = get_settings().ai_internal_token
+    if not expected or not hmac.compare_digest(
+        request.headers.get("X-AI-Internal-Token", ""), expected.get_secret_value()
+    ):
+        raise HTTPException(401, "Unauthorized AI caller")
+    try:
+        update = await harness.memory_update(turn)
+    except ValueError:
+        raise HTTPException(409, "Session identity conflict") from None
+    except RuntimeError:
+        raise HTTPException(503, "Memory status unavailable") from None
+    return TurnMemoryResponse(session_id=turn.session_id, client_msg_id=turn.client_msg_id,
+                              memory_update=update)

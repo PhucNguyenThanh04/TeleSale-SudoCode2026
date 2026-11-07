@@ -6,10 +6,14 @@ import httpx
 from app.api.chat import get_harness
 from app.main import app
 from app.configs import get_settings
-from app.schemas.agent import TextTurnResponse
+from app.schemas.agent import TextTurnResponse, PrepareSessionResponse
 
 
 class _Harness:
+    async def prepare_session(self, request):
+        return PrepareSessionResponse(session_id=request.session_id,
+            call_brief={"must_not_ask": ["preferred_color"]})
+
     async def run(self, turn):
         return TextTurnResponse(client_msg_id=turn.client_msg_id,
                                 session_id=turn.session_id,
@@ -75,6 +79,21 @@ class ChatApiTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_requires_backend_token(self) -> None:
         self.assertEqual((await self.post(self.payload, headers={})).status_code, 401)
+
+    async def test_prepare_requires_token_and_accepts_no_fake_utterance(self) -> None:
+        payload = {key: self.payload[key] for key in
+                   ("session_id", "channel", "channel_identity", "on")}
+        async with httpx.AsyncClient(transport=self.transport, base_url="http://test") as client:
+            denied = await client.post("/v1/chat/sessions/prepare", json=payload)
+            self.assertEqual(denied.status_code, 401)
+            response = await client.post("/v1/chat/sessions/prepare", json=payload,
+                                         headers=self.headers)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json(), {"session_id": payload["session_id"],
+                "call_brief": {"must_not_ask": ["preferred_color"]}})
+            invalid = await client.post("/v1/chat/sessions/prepare",
+                json=payload | {"text": "fake turn"}, headers=self.headers)
+            self.assertEqual(invalid.status_code, 422)
 
     async def test_openapi_exposes_request_and_response(self) -> None:
         async with httpx.AsyncClient(transport=self.transport, base_url="http://test") as client:

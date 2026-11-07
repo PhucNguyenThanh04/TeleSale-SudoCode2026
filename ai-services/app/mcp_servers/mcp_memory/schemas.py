@@ -13,6 +13,12 @@ class ReadInput(BaseModel):
     include_prior: bool = True
 
 
+class TurnStatusInput(BaseModel):
+    customer_id: str | None = None
+    session_id: UUID
+    client_msg_id: UUID
+
+
 class WriteInput(BaseModel):
     action: Literal["commit_turn"]
     customer_id: str | None = None

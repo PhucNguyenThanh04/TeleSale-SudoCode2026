@@ -88,17 +88,22 @@ class Speech:
             raise RuntimeError("upstream private detail")
 
 
-async def setup_call(handler=None):
+async def setup_call(handler=None, prepare_handler=None, memory_handler=None):
     browser, speech, requests = Browser(), Speech(), []
-    harness_session = str(uuid4())
-
     async def respond(request):
         payload = json.loads(request.content)
+        if request.url.path == "/v1/chat/sessions/prepare":
+            if prepare_handler:
+                return await prepare_handler(request, payload)
+            return httpx.Response(200, json={"session_id": payload["session_id"],
+                                            "call_brief": None})
+        if request.url.path == "/v1/chat/turns/memory":
+            return await memory_handler(request, payload)
         requests.append(payload)
         if handler:
             return await handler(request, payload)
         return httpx.Response(200, json={"client_msg_id": payload["client_msg_id"],
-            "session_id": harness_session, "agent_text": "Xin chào", "call_brief": {"summary": "old"},
+            "session_id": payload["session_id"], "agent_text": "Xin chào", "call_brief": {"summary": "old"},
             "needs_handoff": False, "handoff_ticket_id": None})
 
     http = httpx.AsyncClient(base_url="http://agent", transport=httpx.MockTransport(respond))
@@ -133,7 +138,7 @@ async def test_two_turns_keep_session_and_drop_stale_audio():
     assert requests[0]["input_mode"] == "asr_transcript"
     assert requests[0]["on"] == "2026-10-15"
     assert requests[0]["channel_identity"] == "zalo_dung99"
-    assert "session_id" not in requests[0]
+    assert requests[0]["session_id"] == reply["session_id"]
     UUID(requests[0]["client_msg_id"])
     await browser.audio(b"echo")
     await browser.command({"event": "playback_finished", "turn_id": "wrong"})
@@ -293,3 +298,69 @@ async def test_calls_have_independent_harness_sessions():
     for browser, speech, requests, http, task in (first, second):
         await browser.until("audio_complete")
         await end_call(browser, http, task)
+
+
+@pytest.mark.asyncio
+async def test_preparation_overlaps_listening_and_first_turn_waits_for_it():
+    entered, release = asyncio.Event(), asyncio.Event()
+    prepared = []
+
+    async def prepare(request, payload):
+        prepared.append(payload)
+        entered.set()
+        await release.wait()
+        return httpx.Response(200, json={"session_id": payload["session_id"],
+                                        "call_brief": {"summary": "prepared"}})
+
+    browser, speech, requests, http, task = await setup_call(prepare_handler=prepare)
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+        assert prepared[0]["channel_identity"] == START["channel_identity"]
+        assert "text" not in prepared[0] and "client_msg_id" not in prepared[0]
+        await speech.sockets[0].event("transcript_final", text="hỏi đơn hàng")
+        await browser.until("state", state="processing")
+        assert requests == []
+        release.set()
+        reply = await browser.until("agent_reply")
+        assert reply["session_id"] == prepared[0]["session_id"]
+        assert requests[0]["session_id"] == prepared[0]["session_id"]
+        # Actual-turn brief wins over a preliminary opening built without speech.
+        assert reply["call_brief"] == {"summary": "old"}
+    finally:
+        await end_call(browser, http, task)
+
+
+@pytest.mark.asyncio
+async def test_disconnect_cancels_preparation_without_calling_agent():
+    entered, cancelled = asyncio.Event(), asyncio.Event()
+
+    async def prepare(request, payload):
+        entered.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    browser, speech, requests, http, task = await setup_call(prepare_handler=prepare)
+    await asyncio.wait_for(entered.wait(), 2)
+    await browser.incoming.put({"type": "websocket.disconnect"})
+    await asyncio.wait_for(task, 2)
+    assert cancelled.is_set() and requests == []
+    assert all(socket.closed for socket in speech.sockets)
+    await http.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["http", "session"])
+async def test_failed_preparation_closes_without_agent_or_private_error(failure):
+    async def prepare(request, payload):
+        if failure == "http":
+            return httpx.Response(503, text="private upstream details")
+        return httpx.Response(200, json={"session_id": str(uuid4())})
+
+    browser, speech, requests, http, task = await setup_call(prepare_handler=prepare)
+    error = await browser.until("error", stage="harness")
+    await asyncio.wait_for(task, 2)
+    assert error["fatal"] and "private" not in json.dumps(error)
+    assert requests == [] and browser.closed
+    await http.aclose()

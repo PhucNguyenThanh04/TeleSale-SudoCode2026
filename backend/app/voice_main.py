@@ -1,9 +1,12 @@
 """Standalone demo entrypoint: uvicorn app.voice_main:app --app-dir backend."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.voice import router
 from app.configs import VoiceSettings
@@ -39,6 +42,13 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
 
     app = FastAPI(title="TeleSale Voice Demo Gateway", version="0.1.0", lifespan=lifespan)
     app.include_router(router)
+    frontend = Path(__file__).resolve().parents[2] / "frontend"
+    app.mount("/assets", StaticFiles(directory=frontend), name="voice-assets")
+
+    @app.get("/", include_in_schema=False)
+    async def voice_site():
+        return FileResponse(frontend / "index.html")
+
     return app
 
 

@@ -1,0 +1,10 @@
+# Linux x86_64, CPython 3.12; system CUDA 13 and cuDNN 9 required.
+# The regular PyPI sherpa-onnx wheel is CPU-only. This wheel bundles its own ORT.
+-r requirements.txt
+sherpa-onnx @ https://huggingface.co/csukuangfj2/sherpa-onnx-wheels/resolve/main/cuda/1.13.8/sherpa_onnx-1.13.8+cuda13.cudnn9.onnxruntime1.28.2-cp312-cp312-linux_x86_64.whl
+# VieNeu GPU backend (CUDA 13); do not use the CPU ONNX engine for CUDA TTS.
+torch==2.14.0
+transformers==5.20.2
+safetensors==0.8.0
+# Keep the Python CUDA EP on the same ORT API generation as sherpa's bundled 1.28.2.
+onnxruntime-gpu==1.28.0

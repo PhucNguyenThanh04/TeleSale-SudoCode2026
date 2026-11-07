@@ -37,6 +37,8 @@ class VoiceCall:
         self.front_task = None
         self.speech_task = None
         self.reply_task = None
+        self.prepare_task = None
+        self.memory_tasks = set()
         self.send_lock = asyncio.Lock()
 
     async def send(self, event: str, **fields):
@@ -72,7 +74,51 @@ class VoiceCall:
             socket, self.socket = self.socket, None
             await socket.close()
 
+    async def prepare(self):
+        try:
+            response = await self.ai_http.post("/v1/chat/sessions/prepare", json={
+                "session_id": self.session_id, "channel": self.start.channel,
+                "channel_identity": self.start.channel_identity,
+                "on": self.start.on.isoformat(),
+            })
+            response.raise_for_status()
+            if str(UUID(response.json()["session_id"])) != self.session_id:
+                raise ValueError("Harness changed prepared session")
+        except Exception:
+            await self.error("harness", "preparation_failed", True)
+            raise FatalCallError from None
+
+    async def track_memory(self, turn_id: str, client_msg_id: str, initial: dict):
+        payload = {"session_id": self.session_id, "client_msg_id": client_msg_id,
+                   "channel": self.start.channel, "channel_identity": self.start.channel_identity,
+                   "on": self.start.on.isoformat()}
+        update = initial
+        try:
+            async with asyncio.timeout(60):
+                while True:
+                    response = await self.ai_http.post("/v1/chat/turns/memory", json=payload)
+                    response.raise_for_status()
+                    result = response.json()
+                    if (result["session_id"] != payload["session_id"]
+                            or result["client_msg_id"] != client_msg_id):
+                        raise ValueError("Memory status changed turn")
+                    update = result["memory_update"]
+                    if update["status"] != "pending":
+                        break
+                    await asyncio.sleep(1)
+        except TimeoutError:
+            update = {"turn_saved": initial["turn_saved"], "status": "pending", "changes": []}
+        except Exception:
+            update = {"turn_saved": initial["turn_saved"], "status": "unavailable", "changes": []}
+        try:
+            await self.send("memory_update", turn_id=turn_id, client_msg_id=client_msg_id,
+                            memory_update=update, tracking_finished=True)
+        except Exception:
+            pass  # The call may have disconnected while the status request finished.
+
     async def reply(self, text: str):
+        if self.prepare_task is not None:
+            await self.prepare_task
         request = {
             "client_msg_id": str(uuid4()),
             "channel": self.start.channel,
@@ -102,7 +148,14 @@ class VoiceCall:
         await self.send("agent_reply", turn_id=self.turn_id, session_id=self.session_id,
                         agent_text=agent_text, call_brief=result.get("call_brief"),
                         needs_handoff=result.get("needs_handoff", False),
-                        handoff_ticket_id=result.get("handoff_ticket_id"))
+                        handoff_ticket_id=result.get("handoff_ticket_id"),
+                        memory_update=result.get("memory_update"))
+        memory_update = result.get("memory_update")
+        if memory_update and memory_update.get("status") == "pending":
+            task = asyncio.create_task(self.track_memory(
+                self.turn_id, request["client_msg_id"], memory_update))
+            self.memory_tasks.add(task)
+            task.add_done_callback(self.memory_tasks.discard)
         await self.set_state("speaking")
         try:
             index = 0
@@ -211,17 +264,23 @@ class VoiceCall:
                 await self.error("protocol", "start_required", True)
                 return
             self.start = start
+            self.session_id = str(uuid4())
+            self.prepare_task = asyncio.create_task(self.prepare())
             await self.listen()
             await self.send("ready", audio=INPUT_AUDIO)
             await self.set_state("listening")
             self.front_task = asyncio.create_task(self.browser.receive())
             while True:
-                tasks = [t for t in (self.front_task, self.speech_task, self.reply_task) if t is not None]
+                tasks = [t for t in (self.front_task, self.speech_task, self.reply_task,
+                                     self.prepare_task) if t is not None]
                 done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
                 if self.front_task in done:
                     if not await self.on_frontend(self.front_task.result()):
                         break
                     self.front_task = asyncio.create_task(self.browser.receive())
+                if self.prepare_task is not None and self.prepare_task in done:
+                    self.prepare_task.result()
+                    self.prepare_task = None
                 # Recheck task references: a playback ack can replace the listener.
                 if self.speech_task is not None and self.speech_task in done:
                     try:
@@ -242,10 +301,11 @@ class VoiceCall:
         except (FatalCallError, WebSocketDisconnect):
             pass
         finally:
-            for task in (self.front_task, self.reply_task):
+            cleanup = [self.front_task, self.reply_task, self.prepare_task, *self.memory_tasks]
+            for task in cleanup:
                 if task is not None:
                     task.cancel()
-            await asyncio.gather(*(t for t in (self.front_task, self.reply_task) if t is not None),
+            await asyncio.gather(*(t for t in cleanup if t is not None),
                                  return_exceptions=True)
             with suppress(Exception):
                 await self.stop_listening()

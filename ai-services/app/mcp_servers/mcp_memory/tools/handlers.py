@@ -4,8 +4,9 @@ from fastmcp import FastMCP
 from fastmcp.server.auth import StaticTokenVerifier
 from pydantic import ValidationError
 
-from app.mcp_servers.mcp_memory.schemas import ReadInput, WriteInput
+from app.mcp_servers.mcp_memory.schemas import ReadInput, WriteInput, TurnStatusInput
 from app.mcp_servers.mcp_memory.services.memory import read, write
+from app.mcp_servers.mcp_memory.services.turn_status import read_turn_status
 from app.mcp_servers.mcp_memory.repos.langmem_projection import LangMemProjection
 from app.mcp_servers.mcp_shared.observability import (
     log_mcp_exception, log_mcp_validation, trace_mcp_call,
@@ -18,6 +19,9 @@ async def invoke(repo, name: str, args: dict) -> dict:
 
 async def _invoke(repo, name: str, args: dict) -> dict:
     try:
+        if name == "memory.turn_status":
+            payload = TurnStatusInput.model_validate(args).model_dump(mode="json")
+            return await read_turn_status(repo, **payload)
         if name == "memory.read":
             payload = ReadInput.model_validate(args).model_dump(mode="json")
             projector = LangMemProjection(repo.dsn) if hasattr(repo, "dsn") else None
@@ -51,5 +55,10 @@ def create_server(repo, token: str | None = None) -> FastMCP:
     async def memory_write(action: str, customer_id: str | None, session_id: str,
                            data: dict, operation_key: str | None = None) -> dict:
         return await invoke(repo, "memory.write", locals())
+
+    @mcp.tool(name="memory.turn_status")
+    async def memory_turn_status(customer_id: str | None, session_id: str,
+                                 client_msg_id: str) -> dict:
+        return await invoke(repo, "memory.turn_status", locals())
 
     return mcp

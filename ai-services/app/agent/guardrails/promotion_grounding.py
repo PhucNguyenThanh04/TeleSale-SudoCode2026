@@ -4,6 +4,7 @@ from datetime import date
 from typing import Any
 
 from app.mcp_servers.mcp_shared.commerce_rules import _search_text
+from app.agent.guardrails.claims import assertion_text
 
 
 def _fold(text: str) -> str:
@@ -40,17 +41,21 @@ def _gift_supported(clause: str, promos: list[dict], items: list[dict]) -> bool:
 
 
 def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], *, focus_sku: str | None = None) -> str | None:
+    candidate = assertion_text(candidate)
     successful = [c for c in tool_calls if isinstance(c.get("result"), dict) and "error" not in c["result"]]
     items = [item for c in successful if c.get("name") == "catalog.search"
              for item in c["result"].get("items", []) if isinstance(item, dict)]
     quotes = [c for c in successful if c.get("name") == "pricing.get_quote"]
     for clause in re.split(r"\.(?!\d)|[;!\n]|\bnhưng\b|,\s*(?=(?:hôm nay|hiện tại)\b)", candidate):
         folded = _fold(clause)
+        # Product benefits such as "giảm bụi" / "tăng chất lượng" are not offers.
+        commercial = _fold(re.sub(r'\btăng\b', '', clause, flags=re.IGNORECASE))
+        commercial = re.sub(r'\bgiam\s+(?:bui|min|on|mui|vi khuan)\b', '', commercial)
         if "?" in clause or re.search(r"\b(?:lan truoc|truoc day)\b", folded) and not re.search(r"\b(?:hien|hom nay|dang)\b", folded):
             continue
         codes = {code for code in re.findall(r"\b[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+\b", clause)
                  if not code.startswith(("SKU-", "OD-"))}
-        if not codes and not re.search(r"khuyen mai|uu dai|giam|tang|bieu|freeship|mien phi (?:ship|van chuyen)", folded):
+        if not codes and not re.search(r"\b(?:khuyen mai|uu dai|giam|tang|bieu|freeship|mien phi (?:ship|van chuyen))\b", commercial):
             continue
         from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
         mentioned = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
@@ -95,8 +100,8 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
             if not inactive:
                 promos = [p for p in promos if p.get('promo_code') in codes]
         shipping = bool(re.search(r"freeship|mien phi (?:ship|van chuyen)", folded))
-        gift = bool(re.search(r"tang|bieu", folded))
-        discount = bool(re.search(r"\bgiam\b", folded))
+        gift = bool(re.search(r"\b(?:tang|bieu)\b", commercial))
+        discount = bool(re.search(r"\bgiam\b", commercial))
         if inactive and not codes and (gift and any(p.get("type") == "gift" for p in promos)
                                       or shipping and result.get("freeship") is True):
             return "promotion_detail_unverified"

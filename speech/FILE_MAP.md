@@ -33,6 +33,9 @@ replay.py: mốc A/C → clip khách → ASR B2 → turns.jsonl dùng chung cho 
 | Cắt audio hoặc phone/noise | `audio.py`; cần biết nguồn timestamp mới đọc `tts.py`: `synth_dataset` |
 | Bàn giao lượt khách | `replay.py`: `prepare_replay`, `export_replay`, `validate_turns`, `verify_bundle`; `examples\replay_sessions.example.json` |
 | Kiểm giao diện backend | `..\backend\app\schemas\chat.py`, `..\backend\CHAT_API_CONTRACT.md` — chỉ đọc, không cần quét graph/MCP |
+| STT serving/hậu xử lý B2 | `serving/models.py`: `transcribe_segment`; dùng lại `asr.clean_hypothesis`, `normalize.normalize_text`; `serving/tests/test_stt_pipeline.py` |
+| TTS model serving/phát âm | `text/tts.py`, `serving/text_segments.py`, `serving/models.py`, `serving/vieneu_sidecar.py`; test trong `serving/tests/` |
+| Chạy API/demo/công cụ vận hành | `serving/README.md`, `serving/app.py`, `serving/static/`, `serving/tools/`, `serving/deploy/windows/` |
 | Tạo thêm audio | `dialogues`, `tts.py`; ElevenLabs nhập file mới đọc `manual.py`, clone giọng mới đọc `team.py` |
 | Kiểm kịch bản/nguồn BTC | `validate.py`, `btc.py`; không sửa dữ liệu BTC gốc |
 | Kiểm hồi quy mới | `test\test_baseline.py`, `test\test_replay.py`; các test cũ theo tên module |

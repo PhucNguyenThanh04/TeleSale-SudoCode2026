@@ -13,6 +13,32 @@ The API key is not included in `.env.example` and must not be committed.
 Run `python -m app` from `ai-services/` to use `HOST`, `PORT` and `LOG_LEVEL`
 from `.env`. Environment variables set by the shell override the file.
 
+### Gemma 4 on Ollama Cloud
+
+Use the direct Cloud endpoint; no local Ollama server or model download is needed:
+
+```dotenv
+LLM_BASE_URL=https://ollama.com/v1
+LLM_MODEL=gemma4:31b
+LLM_API_KEY=replace-with-ollama-cloud-api-key
+LANGMEM_MODEL=
+```
+
+Check the current model IDs at <https://ollama.com/api/tags>. At the time of this
+change, Cloud lists `gemma4:31b`, not `gemma4:12b`; a local library tag does not
+establish Cloud availability. Do not reuse an OpenAI key for this endpoint.
+The client sends `reasoning_effort=none` for Gemma 4 on `ollama.com`, which Ollama
+maps to disabled thinking for models that support it. See the
+[compatibility documentation](https://docs.ollama.com/api/openai-compatibility).
+Other compatible providers do not receive this Gemma-specific setting.
+
+An empty `LANGMEM_MODEL` uses the same model for the memory worker. Restart the
+host AI process after changing `.env`, and restart the `langmem-worker` container
+if it is running (`docker compose restart langmem-worker` from the repo root).
+The backend and speech services do not need model-specific changes. Offline
+request/tool tests do not verify Cloud credentials, model availability or latency;
+no live model evaluation is performed by this migration.
+
 ## Runtime settings
 
 All settings below are validated in `app/configs.py`. Copy the grouped
@@ -66,6 +92,19 @@ to extract profile facts and call episodes. The worker checks each proposal
 against committed customer text or a successful business tool before writing
 it to the customer namespace in `runtime.store`. Synchronous fact and episode
 writes are disabled in the service runtime.
+Voice calls first use authenticated `POST /v1/chat/sessions/prepare` with
+`session_id`, `channel`, `channel_identity` and `on`. This prepares CRM identity,
+context and an optional returning-customer Call Brief without calling the model,
+committing a turn or enqueuing LangMem work. The gateway runs preparation alongside
+STT setup and listening, then uses the same session for the first real transcript.
+The runtime consumes prepared reads once within 30 seconds, only for the same
+customer and business date. They are prior evidence, so a new quantity, product or
+address can require a new quote. A process restart or another AI worker falls back
+to the ordinary turn path; correctness does not depend on hitting a warm process.
+The actual first-turn brief is rebuilt from current memory and customer text using
+the existing brief rules, including orders, open blockers, known slots and stale
+warnings. The preliminary prepare response is not spoken or substituted for it.
+
 Working memory is read synchronously from `runtime.turns` for every turn in
 the same session; recent customer and agent turns are passed to the model with
 their conversation roles and do not wait for LangMem distillation.

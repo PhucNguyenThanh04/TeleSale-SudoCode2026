@@ -17,7 +17,6 @@ from test_voice_speech import FragmentedSSE
 @pytest.mark.asyncio
 async def test_real_speech_websocket_and_tts_adapter_for_two_turns():
     received_audio, requests, speech_connections = [], [], []
-    session_id = str(uuid4())
 
     async def listen(socket):
         speech_connections.append(socket)
@@ -31,8 +30,10 @@ async def test_real_speech_websocket_and_tts_adapter_for_two_turns():
 
     def harness(request):
         payload = json.loads(request.content)
+        if request.url.path == "/v1/chat/sessions/prepare":
+            return httpx.Response(200, json={"session_id": payload["session_id"]})
         requests.append(payload)
-        return httpx.Response(200, json={"session_id": session_id, "agent_text": "Trả lời"})
+        return httpx.Response(200, json={"session_id": payload["session_id"], "agent_text": "Trả lời"})
 
     def tts(request):
         assert json.loads(request.content) == {"text": "Trả lời", "voice": "Trúc Ly"}
@@ -76,5 +77,5 @@ async def test_real_speech_websocket_and_tts_adapter_for_two_turns():
     assert received_audio == [b"\x00\x01" * 320] * 2
     assert len(speech_connections) == 2
     assert len(requests) == 2
-    assert requests[1]["session_id"] == session_id
+    assert requests[1]["session_id"] == requests[0]["session_id"]
     assert replies[0]["turn_id"] != replies[1]["turn_id"]

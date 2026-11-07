@@ -23,5 +23,18 @@ def policy_evidence_for_answer(candidate, calls):
 
 
 def policy_clarification_or_refusal(candidate):
+    if re.fullmatch(
+            r'(?:Dạ[, ]+)?(?:anh/chị|anh|chị) cho em (?:xin|biết) '
+            r'(?:tên sản phẩm|mã sản phẩm|mã đơn hàng)(?: ạ)?[.?]?',
+            candidate.strip(), re.IGNORECASE):
+        return True
     return (bool(_UNCONFIRMED.search(candidate)) or candidate.rstrip().endswith('?')) and not (
         _ENTITLEMENT.search(candidate) or re.search(r'\d',candidate))
+
+
+def policy_durations_supported(candidate, source_text):
+    def durations(text):
+        return {(int(n) * (12 if unit == 'năm' else 1),
+                 'ngày' if unit == 'ngày' else 'tháng')
+                for n, unit in re.findall(r'\b(\d+)\s+(ngày|tháng|năm)\b', text.casefold())}
+    return durations(candidate) <= durations(source_text)

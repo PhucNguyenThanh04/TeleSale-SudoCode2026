@@ -19,12 +19,12 @@ from pydantic import BaseModel, Field
 
 from .models import Models, read_wav
 from .listen import serve_listen
-from .text_segments import split_tts_text
+from .text_segments import prepare_tts_segments
 
 
 app = FastAPI(
     title="TeleSale Speech API",
-    description="CPU speech service: Silero VAD, Gipformer STT, KorvaTTS and VieNeu. Public demo API; no authentication required.",
+    description="CUDA speech service: Silero VAD, Gipformer STT, KorvaTTS and VieNeu. Public demo API; no authentication required.",
     version="0.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -152,17 +152,18 @@ async def startup():
 
 @app.get("/health", tags=["Status"], summary="Model readiness")
 def health():
-    return {"status": "ready" if models else "loading", "vad": "silero", "stt": "gipformer1.5-68M-rnnt-int8", "tts": "korvatts", "additional_tts": "vieneu-v3turbo-onnx-fp32 (separate sidecar)", "stt_streaming": False}
+    provider = getattr(models, "asr_provider", None)
+    return {"status": "ready" if models else "loading", "vad": "silero", "vad_provider": getattr(models, "vad_provider", None), "vad_warmup_runs": getattr(models, "vad_warmup_runs", 0), "tts_provider": getattr(models, "tts_provider", None), "tts_warmup_runs": getattr(models, "tts_warmup_runs", 0), "stt": "gipformer1.5-68M-rnnt" + ("-int8" if provider == "cpu" else "-fp32"), "stt_provider": provider, "stt_warmup_runs": getattr(models, "asr_warmup_runs", 0), "tts": "korvatts", "additional_tts": "vieneu-v3turbo (separate sidecar)", "stt_streaming": False}
 
 
 @app.get("/", include_in_schema=False)
 def index():
-    return FileResponse(Path(__file__).with_name("index.html"), headers={"Cache-Control": "no-store"})
+    return FileResponse(Path(__file__).with_name("static") / "index.html", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/tts.js", include_in_schema=False)
 def tts_script():
-    return FileResponse(Path(__file__).with_name("tts.js"), media_type="application/javascript", headers={"Cache-Control": "no-store"})
+    return FileResponse(Path(__file__).with_name("static") / "tts.js", media_type="application/javascript", headers={"Cache-Control": "no-store"})
 
 
 @app.websocket("/v1/speech/listen")
@@ -234,7 +235,7 @@ async def synthesize_sequence(body: Synthesis, request: Request, response: Respo
         raise HTTPException(503, "Models are loading")
     if body.voice not in VOICES:
         raise HTTPException(400, "Unknown voice")
-    chunks = split_tts_text(body.text)
+    chunks = prepare_tts_segments(body.text)
     if not chunks:
         raise HTTPException(400, "Text must contain spoken words")
     response.headers["Cache-Control"] = "no-store"
@@ -264,7 +265,7 @@ async def synthesize_stream(body: Synthesis, request: Request):
         raise HTTPException(503, "Models are loading")
     if body.voice not in VOICES:
         raise HTTPException(400, "Unknown voice")
-    chunks = split_tts_text(body.text)
+    chunks = prepare_tts_segments(body.text)
     if not chunks:
         raise HTTPException(400, "Text must contain spoken words")
 

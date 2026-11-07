@@ -4,9 +4,16 @@ from __future__ import annotations
 
 import re
 
+from speech.text.tts import prepare_tts_text
+
 
 MAX_WORDS_PER_SEGMENT = 20
 _NUMBER_DOT = "\ue000"
+
+
+def prepare_tts_segments(text: str) -> list[str]:
+    """Expand spoken text before enforcing the model's word limit."""
+    return split_tts_text(prepare_tts_text(text))
 
 
 def split_tts_text(text: str) -> list[str]:
