@@ -130,6 +130,36 @@ class SynthDatasetTests(unittest.TestCase):
         self.assertEqual(dialogue["full_text"], "dạ shop chào anh phí ship bao nhiêu em")
         self.assertNotIn("tts_text", dialogue["turns"][0])
 
+    def test_customer_noise_only_changes_customer_waveform(self):
+        source = {**self.SOURCE, "noise_scope": "customer",
+                  "dialogues": [{**self.SOURCE["dialogues"][0], "noisy": True}]}
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(
+                tts.ENGINES, {"edge": lambda text, params: tone(440, seconds=0.2)}):
+            base = Path(tmp)
+            results = []
+            for noisy in (False, True):
+                out = base / str(noisy)
+                manifest = tts.synth_dataset(source, out, engine="edge", config=VoiceTests.CONFIG,
+                                             cache_dir=base / "cache", channel="none", add_noise=noisy)
+                audio = au.decode(out / "audio" / "T9.wav")
+                segments = json.loads((out / "audio" / "T9.segments.json").read_text(encoding="utf-8"))["segments"]
+                results.append((audio, segments))
+                self.assertEqual(manifest["noise_scope"], "customer")
+                self.assertEqual(manifest["dialogues"][0]["noise_added"], noisy)
+
+        (clean, clean_segments), (noisy, noisy_segments) = results
+        self.assertEqual(clean_segments, noisy_segments)
+        self.assertEqual(clean.size, noisy.size)
+        for segment in clean_segments:
+            start, end = (round(segment[key] * SR) for key in ("start", "end"))
+            a, b = clean[start:end], noisy[start:end]
+            # Allow the final peak normalization to apply a common gain.
+            a, b = a / np.max(np.abs(a)), b / np.max(np.abs(b))
+            if segment["speaker"] == "A":
+                np.testing.assert_allclose(a, b, atol=2e-4)
+            else:
+                self.assertGreater(float(np.std(a - b)), 0.05)
+
     def test_manifest_records_provenance_and_ground_truth_hash(self):
         provenance = {"source": {"file": "/scripts/team.json", "sha256": "abc"}, "noise": None,
                       "team_preview": False}

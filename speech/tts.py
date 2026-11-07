@@ -290,18 +290,27 @@ def synth_dataset(source: dict, out_dir: Path, *, engine: str, config: dict, cac
     """
     dialogues = [d for d in source["dialogues"] if not only or d["id"] in only]
     rows = plan(dialogues, engine, config)
+    noise_scope = source.get("noise_scope", "dialogue")
+    if noise_scope not in {"dialogue", "customer"}:
+        raise ValueError("noise_scope phải là dialogue hoặc customer")
     rng = np.random.default_rng(seed)
+    customer_noise_rng = np.random.default_rng(seed)
     out_dir = Path(out_dir)
     sr = au.SAMPLE_RATE
     manifest = {"engine": engine, "channel": channel, "snr_db_noisy": snr_db if add_noise else None, "seed": seed,
                 "pronounce": config.get(engine, {}).get("pronounce", {}), **(provenance or {}), "dialogues": []}
+    if "noise_scope" in source:
+        manifest["noise_scope"] = noise_scope
     new_chars = 0
     for dialogue in dialogues:
+        noise_added = bool(dialogue.get("noisy")) and add_noise
         pieces, segments, cursor = [au.silence(0.3)], [], 0.3
         for row in (r for r in rows if r["dialogue"] == dialogue["id"]):
             clip, cached = synth_text(row["text"], engine, row["params"], cache_dir)
             new_chars += 0 if cached else len(row["text"])
             clip = au.peak_normalize(au.trim(clip))
+            if noise_added and noise_scope == "customer" and row["speaker"] == "C" and clip.size:
+                clip = au.add_noise(clip, snr_db, customer_noise_rng, noise)
             gap = float(rng.uniform(0.25, 0.8))
             start, end = cursor, cursor + clip.size / sr
             segments.append({"idx": row["idx"], "speaker": row["speaker"], "start": round(start, 3),
@@ -309,7 +318,7 @@ def synth_dataset(source: dict, out_dir: Path, *, engine: str, config: dict, cac
             pieces += [clip, au.silence(gap)]
             cursor = end + gap
         mix = np.concatenate(pieces)
-        if dialogue.get("noisy") and add_noise:
+        if noise_added and noise_scope == "dialogue":
             mix = au.add_noise(mix, snr_db, rng, noise)
         if channel == "phone":
             mix = au.telephone(mix)
@@ -319,7 +328,7 @@ def synth_dataset(source: dict, out_dir: Path, *, engine: str, config: dict, cac
             json.dump({"id": dialogue["id"], "segments": segments}, fh, ensure_ascii=False, indent=1)
         manifest["dialogues"].append({"id": dialogue["id"], "duration_s": round(mix.size / sr, 2),
                                       "noisy": bool(dialogue.get("noisy")),
-                                      "noise_added": bool(dialogue.get("noisy")) and add_noise,
+                                      "noise_added": noise_added,
                                       "n_turns": len(segments)})
     ground_truth = {k: v for k, v in source.items() if k != "dialogues"}
     ground_truth["dialogues"] = [with_full_text(d) for d in dialogues]
