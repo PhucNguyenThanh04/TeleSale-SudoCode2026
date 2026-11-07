@@ -343,6 +343,36 @@ revisions after each completed job.
 
 ## Theo dõi một lượt chat
 
+### Bộ nhớ sau từng lượt
+
+`POST /v1/chat/turns` trả thêm `memory_update`. Response không chờ LangMem:
+
+```json
+{"memory_update":{"turn_saved":true,"status":"pending","changes":[]}}
+```
+
+Khách chưa xác minh có `status: "not_applicable"`: hội thoại trong phiên vẫn
+được lưu, chưa có job ghi fact dài hạn. `turn_saved: false` nghĩa là chưa xác
+nhận đã lưu (ví dụ khi bị chặn bởi yêu cầu xóa dữ liệu).
+
+Backend có thể gọi `POST /v1/chat/turns/memory` với header
+`X-AI-Internal-Token` và body gồm `session_id`, `client_msg_id`, `channel`,
+`channel_identity`, `on` của lượt. Response chứa hai UUID trên và `memory_update`.
+Trạng thái là `pending`, `completed`, `failed`, `not_applicable` hoặc `unavailable`.
+Chỉ job `completed` mới trả thay đổi từ `accepted_writes` thực sự đã ghi:
+
+```json
+{"turn_saved":true,"status":"completed","changes":[{"field":"room_area_m2","action":"added","value":25,"source":"customer","scope_type":"room","scope_id":"room_a"}]}
+```
+
+`action` là `added`, `updated`, `deleted`; xóa có `value: null`. Không suy ra giá
+trị cũ. Danh sách rỗng khi hoàn tất nghĩa là không có fact hồ sơ mới; worker vẫn
+có thể cập nhật episode. API chỉ trả các slot được phép và giá trị scalar đã
+che PII; không trả proposal, bằng chứng gốc, customer ID hay chi tiết lỗi worker.
+Lookup kiểm tra chủ session/lượt và barrier xóa dữ liệu, không gọi model.
+MCP memory cần chạy phiên bản có tool read-only `memory.turn_status`; không cần
+migration mới. Khởi động lại MCP memory, AI service và gateway để áp dụng.
+
 Đặt `LOG_LEVEL=INFO` trong `ai-services/.env` rồi chạy `python -m app`.
 Outer graph ghi log các bước nhận yêu cầu, xác định khách, đọc ngữ cảnh,
 chạy agent đã chọn, kiểm tra câu trả lời và ghi bộ nhớ. Agent tự lặp giữa
@@ -456,3 +486,48 @@ runner, bốn MCP và accepted memory writes. Cần khai báo `--btc-root` và D
 DB đang kết nối. Chỉ chạy live/reset sau ủy quyền riêng. Trạng thái `invalid`
 cho bằng chứng chấm bị mất sau redaction; `validated` không bảo đảm đạt chất
 lượng/latency BTC.
+
+## Voice playback receipts
+
+`POST /v1/chat/turns` defaults to `delivery_mode: text` and retains immediate
+conversation persistence. The trusted voice gateway uses `delivery_mode: voice`:
+the harness verifies/generates once but defers the conversation commit until
+`POST /v1/chat/turns/playback`. This token-protected endpoint takes the session/turn
+IDs, original channel identity/date, `played_chars` and `interrupted`; it commits
+only the confirmed original-text prefix, retaining customer speech and successful
+tool observations. It never invokes business tools again. Repeated identical
+receipts are idempotent; conflicting or mismatched receipts return 409.
+
+A missing receipt is finalized with no confirmed assistant speech after 300
+seconds, before a subsequent turn, or on orderly shutdown. These pending states
+share the existing process-local session/cache boundary: keep a session on the
+same worker. The change adds no crash recovery or cross-process receipt storage.
+See [voice protocol](../backend/VOICE_API_CONTRACT.md) for playback markers,
+interruption and offline verification.
+
+## Query-aware memory retrieval
+
+`memory.read` accepts an optional `query` (up to 8000 characters); existing callers
+can omit it. The harness passes the current masked customer text through
+`MCPMemoryStore`. Stores without `supports_retrieval_query = True` retain their
+original two-argument `read_context` call.
+
+Completed, authorized active prior episodes are ranked before `max_episodes`
+is applied: exact product scope, accent-insensitive text overlap, open blockers,
+then date. This is deterministic lexical retrieval, without embedding/model
+calls. An empty query keeps the MCP's existing chronological shortlist. Current
+session context remains separate, and `include_prior=false` suppresses both prior
+episodes and prior-session IDs. Accepted blocker/question resolutions remain
+visible even if the resolving session is outside the selected shortlist.
+
+`ReadResponse` validates history, profile facts, room/product scopes and episode
+envelopes at MCP output, store and harness boundaries. Malformed required fields
+return `invalid_tool_result`; canonical extension fields and legacy optional
+fields are retained. Fact context now includes masked `evidence_quote` and source
+turn/session IDs when available, alongside `on` and `valid_until`. These identify
+historical evidence; they do not authorize current prices, stock or consent.
+
+The local sales prompt explains these source fields and that missing retrieved
+context does not prove the customer never supplied information. No managed prompt
+is published by this change. Deployments using Langfuse production prompts need
+the reviewed local prompt published through the existing release workflow.

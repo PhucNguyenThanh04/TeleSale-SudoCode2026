@@ -4,6 +4,8 @@ from typing import Any, Protocol
 
 from app.agent.mcp.gateway import ToolGateway
 from app.mcp_servers.mcp_shared.memory_observations import memory_observations
+from app.mcp_servers.mcp_shared.pii import mask_pii
+from app.mcp_servers.mcp_memory.schemas import validate_read_response
 
 
 def safe_observations(calls: list[dict]) -> list[dict]:
@@ -28,7 +30,8 @@ def memory_error_code(result: Any) -> str:
 class MemoryStore(Protocol):
     include_prior: bool
 
-    async def read_context(self, session_id: str, customer_id: str | None) -> dict: ...
+    async def read_context(self, session_id: str, customer_id: str | None,
+                           *, query: str = "") -> dict: ...
 
     async def read_turn_status(self, session_id: str, customer_id: str | None,
                                client_msg_id: str) -> dict: ...
@@ -47,6 +50,7 @@ class MCPMemoryStore:
 
     supports_tool_observations = True
     supports_knowledge_signals = True
+    supports_retrieval_query = True
 
     def __init__(self, gateway: ToolGateway, namespace: str = "",
                  include_prior: bool = True, max_episodes: int = 5) -> None:
@@ -58,12 +62,14 @@ class MCPMemoryStore:
     def _id(self, customer_id: str | None) -> str | None:
         return f"{self.namespace}:{customer_id}" if customer_id and self.namespace else customer_id
 
-    async def read_context(self, session_id: str, customer_id: str | None) -> dict:
+    async def read_context(self, session_id: str, customer_id: str | None,
+                           *, query: str = "") -> dict:
         result = await self.gateway.invoke("memory.read", {"session_id": session_id,
                                                           "customer_id": self._id(customer_id),
                                                           "max_episodes": self.max_episodes,
-                                                          "include_prior": self.include_prior})
-        return self._consume_diagnostics(result, customer_id)
+                                                          "include_prior": self.include_prior,
+                                                          "query": mask_pii(query)[:8000]})
+        return validate_read_response(self._consume_diagnostics(result, customer_id))
 
     async def read_turn_status(self, session_id: str, customer_id: str | None,
                                client_msg_id: str) -> dict:

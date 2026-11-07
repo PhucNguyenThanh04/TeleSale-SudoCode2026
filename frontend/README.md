@@ -36,8 +36,19 @@ hoạt động trên secure context (HTTPS hoặc localhost). Đây là demo kh�
 nhập; không tự công khai dịch vụ ra Internet. Không lưu âm thanh/transcript vào
 trình duyệt; nội dung chỉ hiển thị trong phiên trang đang mở.
 
-Luồng hiện tại nói theo lượt: mic tiếp tục mở trong phiên nhưng chỉ gửi âm thanh
-khi trạng thái “Đang nghe”; chưa hỗ trợ ngắt lời agent giữa câu.
+Mic tiếp tục gửi âm thanh khi trợ lý đang xử lý hoặc đang nói. Bạn có thể nói
+để ngắt lời; backend dừng lượt phát cũ và xử lý câu mới theo đúng thứ tự.
+
+Dưới mỗi câu trả lời có “Bộ nhớ sau lượt này” khi AI trả metadata: đã lưu hội
+thoại, đang cập nhật hồ sơ, hoặc danh sách fact thực sự được ghi mới/cập nhật/xóa.
+Kết quả LangMem được cập nhật nền qua WebSocket, không chặn phát tiếng. Job hoàn
+tất nhưng không ghi fact hiển thị “Không có thay đổi hồ sơ mới”; job lỗi, không
+đọc được hoặc quá 60 giây hiển thị trạng thái riêng, không giả định đã nhớ.
+Kết thúc cuộc gọi sẽ dừng theo dõi; pending chưa có kết quả được ghi rõ trên UI.
+Demo mặc định dùng định danh `web_chat` chưa xác minh nên chỉ lưu hội thoại;
+muốn thấy fact dài hạn cần dùng khách đã nhận diện và chạy LangMem worker.
+Chỉ hiển thị các slot được phép đã che PII, không hiển thị proposal hay bằng
+chứng gốc. Thay đổi episode/brief không nằm trong danh sách thay đổi fact này.
 
 ## Kiểm thử offline
 
@@ -59,3 +70,13 @@ chất lượng model hoặc độ trễ hội thoại thật.
   các dịch vụ theo README gốc bằng tài khoản có quyền Docker trước khi gọi thật.
 - API AI và gateway đã khởi động; trạng thái ready của API không xác nhận LLM,
   database, index knowledge hoặc các công cụ nghiệp vụ hoạt động.
+
+## Ngắt lời và xác nhận phát
+
+Micro tiếp tục gửi audio khi trợ lý đang xử lý hoặc đang nói. Khi backend báo
+`playback_interrupt`, trình duyệt dừng nguồn audio, bỏ hàng đợi và xác nhận mốc
+`played_chars` cuối đã phát hết. Các audio cũ đến trễ không được phát lại.
+Mốc được xác nhận theo đồng hồ AudioContext, không theo lúc nhận gói tin.
+Memory giọng nói chỉ lưu các câu đã xác nhận phát hết; phần câu bị ngắt giữa
+chừng được bỏ qua vì chưa có thời gian từng từ. Bật echo cancellation và nên
+kiểm tra trên thiết bị thật; test offline không đánh giá chất lượng chống vọng.

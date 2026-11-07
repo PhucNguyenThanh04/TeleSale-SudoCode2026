@@ -19,10 +19,10 @@ def build_graph(llm: BaseChatModel, tools: ToolGateway, memory: MemoryStore,
                 prompt_history_turns: int = DEFAULT_PROMPT_HISTORY_TURNS,
                 clock: Callable[[], datetime] | None = None,
                 guardrails_enabled: bool = True,
-                agent_kind: AgentKind = "deep"):
+                agent_kind: AgentKind = "deep", nodes: AgentNodes | None = None):
     """Production outer graph shared by the selectable agent implementations."""
-    nodes = AgentNodes(llm, tools, memory, max_tool_calls, prompt_history_turns, clock,
-                       agent_kind=agent_kind)
+    nodes = nodes or AgentNodes(llm, tools, memory, max_tool_calls, prompt_history_turns, clock,
+                                agent_kind=agent_kind)
     nodes.guardrails_enabled = guardrails_enabled
     graph = StateGraph(TurnState)
     graph.add_node("accept", nodes.accept)
@@ -34,6 +34,7 @@ def build_graph(llm: BaseChatModel, tools: ToolGateway, memory: MemoryStore,
     graph.add_edge("accept", "retrieve_context")
     graph.add_edge("retrieve_context", "run_agent")
     graph.add_edge("run_agent", "verify")
-    graph.add_edge("verify", "persist")
+    graph.add_conditional_edges("verify", lambda state:
+        END if state["request"].delivery_mode == "voice" else "persist")
     graph.add_edge("persist", END)
     return graph.compile()

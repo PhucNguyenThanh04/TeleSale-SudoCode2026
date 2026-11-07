@@ -37,6 +37,7 @@ class ChatRequest(BaseModel):
     on: date
     text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=8000)]
     input_mode: InputMode
+    delivery_mode: Literal["text", "voice"] = "text"
     verified_customer_id: str | None = None
     verified_phone: str | None = None
 
@@ -70,6 +71,11 @@ class TurnMemoryResponse(BaseModel):
     session_id: UUID
     client_msg_id: UUID
     memory_update: MemoryUpdate
+
+
+class VoicePlaybackRequest(TurnMemoryRequest):
+    played_chars: int = Field(default=0, ge=0)
+    interrupted: bool = True
 
 
 class TextTurnResponse(BaseModel):

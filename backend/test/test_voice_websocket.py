@@ -39,6 +39,10 @@ def test_route_runs_a_turn_without_auth_and_preserves_internal_token():
         payload = json.loads(request.content)
         if request.url.path == "/v1/chat/sessions/prepare":
             return httpx.Response(200, json={"session_id": payload["session_id"]})
+        if request.url.path == "/v1/chat/turns/playback":
+            return httpx.Response(200, json={"session_id": payload["session_id"],
+                "client_msg_id": payload["client_msg_id"], "memory_update": {
+                    "turn_saved": True, "status": "not_applicable", "changes": []}})
         assert request.url.path == "/v1/chat/turns"
         requests.append(payload)
         return httpx.Response(200, json={"session_id": payload["session_id"], "agent_text": "Xin chào"})

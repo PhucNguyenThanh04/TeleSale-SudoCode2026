@@ -21,17 +21,21 @@ async def test_real_speech_websocket_and_tts_adapter_for_two_turns():
     async def listen(socket):
         speech_connections.append(socket)
         await socket.send(json.dumps({"event": "ready", "session_id": str(uuid4()), "audio": INPUT_AUDIO}))
-        received_audio.append(await socket.recv())
-        # Speech IDs repeat when the backend opens the next listening window.
-        for name, fields in [("speech_started", {}), ("speech_ended", {"reason": "silence"}),
-                             ("transcript_final", {"text": "Khách nói"})]:
-            await socket.send(json.dumps({"event": name, "turn_id": "turn-1", **fields}))
+        for turn in range(2):
+            received_audio.append(await socket.recv())
+            for name, fields in [("speech_started", {}), ("speech_ended", {"reason": "silence"}),
+                                 ("transcript_final", {"text": "Khách nói"})]:
+                await socket.send(json.dumps({"event": name, "turn_id": f"turn-{turn}", **fields}))
         await socket.wait_closed()
 
     def harness(request):
         payload = json.loads(request.content)
         if request.url.path == "/v1/chat/sessions/prepare":
             return httpx.Response(200, json={"session_id": payload["session_id"]})
+        if request.url.path == "/v1/chat/turns/playback":
+            return httpx.Response(200, json={"session_id": payload["session_id"],
+                "client_msg_id": payload["client_msg_id"], "memory_update": {
+                    "turn_saved": True, "status": "not_applicable", "changes": []}})
         requests.append(payload)
         return httpx.Response(200, json={"session_id": payload["session_id"], "agent_text": "Trả lời"})
 
@@ -75,7 +79,7 @@ async def test_real_speech_websocket_and_tts_adapter_for_two_turns():
             await asyncio.gather(task, return_exceptions=True)
 
     assert received_audio == [b"\x00\x01" * 320] * 2
-    assert len(speech_connections) == 2
+    assert len(speech_connections) == 1
     assert len(requests) == 2
     assert requests[1]["session_id"] == requests[0]["session_id"]
     assert replies[0]["turn_id"] != replies[1]["turn_id"]

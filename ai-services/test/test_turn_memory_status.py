@@ -87,3 +87,30 @@ class TurnMemoryStatusTest(unittest.IsolatedAsyncioTestCase):
         repo.row = {"customer_id": "C1", "status": "completed", "accepted_writes": []}
         self.assertEqual(await self.lookup(repo),
             {"turn_saved": True, "status": "completed", "changes": []})
+
+    async def test_mcp_adapter_reads_same_turn_and_rejects_invalid_ids(self):
+        from app.agent.mcp.gateway import MCPGateway
+        from app.agent.memory.store import MCPMemoryStore
+        from app.mcp_servers.mcp_memory.tools.handlers import create_server
+        repo = StatusRepo()
+        repo.row.update(status="completed", accepted_writes=[
+            {"key": "room_area_m2", "op": "set", "value": 25}])
+        memory = MCPMemoryStore(MCPGateway(None, None, create_server(repo)))
+        result = await memory.read_turn_status(str(uuid4()), "C1", str(uuid4()))
+        self.assertEqual(result["changes"][0]["value"], 25)
+        invalid = await memory.read_turn_status("invalid", "C1", str(uuid4()))
+        self.assertIn("error", invalid)
+
+    async def test_postgres_query_uses_session_and_message_and_job_owner(self):
+        from unittest.mock import AsyncMock
+        from app.mcp_servers.mcp_memory.repos.postgres import MemoryRepo
+        session, message = uuid4(), uuid4()
+        conn = AsyncMock()
+        conn.fetchrow.return_value = {"customer_id": "C1", "status": "completed"}
+        result = await MemoryRepo("postgresql://offline").turn_memory_status(
+            conn, str(session), str(message))
+        sql, bound_session, bound_message = conn.fetchrow.await_args.args
+        self.assertEqual((bound_session, bound_message), (session, message))
+        self.assertIn("t.session_id=$1 AND t.client_msg_id=$2", sql)
+        self.assertIn("j.customer_id=t.customer_id", sql)
+        self.assertEqual(result["status"], "completed")

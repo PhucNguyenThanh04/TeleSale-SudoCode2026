@@ -26,6 +26,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        await app.state.harness.close()
         if app.state.harness.tracing:
             app.state.harness.tracing.shutdown()
         if getattr(app.state, "knowledge_repo", None):

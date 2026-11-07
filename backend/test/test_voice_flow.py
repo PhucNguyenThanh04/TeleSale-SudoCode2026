@@ -88,8 +88,9 @@ class Speech:
             raise RuntimeError("upstream private detail")
 
 
-async def setup_call(handler=None, prepare_handler=None, memory_handler=None):
+async def setup_call(handler=None, prepare_handler=None, memory_handler=None, playback_handler=None):
     browser, speech, requests = Browser(), Speech(), []
+    turn_updates = {}
     async def respond(request):
         payload = json.loads(request.content)
         if request.url.path == "/v1/chat/sessions/prepare":
@@ -99,9 +100,18 @@ async def setup_call(handler=None, prepare_handler=None, memory_handler=None):
                                             "call_brief": None})
         if request.url.path == "/v1/chat/turns/memory":
             return await memory_handler(request, payload)
+        if request.url.path == "/v1/chat/turns/playback":
+            if playback_handler:
+                return await playback_handler(request, payload)
+            return httpx.Response(200, json={"session_id": payload["session_id"],
+                "client_msg_id": payload["client_msg_id"], "memory_update": {
+                    "turn_saved": True, "status": "not_applicable", "changes": []} | turn_updates.get(payload["client_msg_id"], {})})
         requests.append(payload)
         if handler:
-            return await handler(request, payload)
+            response = await handler(request, payload)
+            if response.status_code == 200:
+                turn_updates[payload["client_msg_id"]] = response.json().get("memory_update", {})
+            return response
         return httpx.Response(200, json={"client_msg_id": payload["client_msg_id"],
             "session_id": payload["session_id"], "agent_text": "Xin chào", "call_brief": {"summary": "old"},
             "needs_handoff": False, "handoff_ticket_id": None})
@@ -121,7 +131,7 @@ async def end_call(browser, http, task):
 
 
 @pytest.mark.asyncio
-async def test_two_turns_keep_session_and_drop_stale_audio():
+async def test_two_turns_keep_session_and_reject_duplicate_transcripts():
     browser, speech, requests, http, task = await setup_call()
     await browser.audio(b"raw-pcm")
     first = speech.sockets[0]
@@ -133,7 +143,7 @@ async def test_two_turns_keep_session_and_drop_stale_audio():
     assert reply["call_brief"] == {"summary": "old"}
     assert reply["turn_id"] == started["turn_id"]
     await browser.until("audio_complete")
-    assert first.closed and first.sent == [b"raw-pcm"]
+    assert not first.closed and first.sent == [b"raw-pcm"]
     assert requests[0]["text"] == "giá bao nhiêu"
     assert requests[0]["input_mode"] == "asr_transcript"
     assert requests[0]["on"] == "2026-10-15"
@@ -146,17 +156,18 @@ async def test_two_turns_keep_session_and_drop_stale_audio():
     await first.event("transcript_final", text="late old audio")
     await browser.command({"event": "playback_finished", "turn_id": reply["turn_id"]})
     await browser.until("state", state="listening")
-    second = speech.sockets[1]
+    second = first
+    assert len(speech.sockets) == 1
     await browser.command({"event": "playback_finished", "turn_id": reply["turn_id"]})
     await browser.until("error", code="unexpected_playback")
-    await second.event("transcript_final", text="mua nhé")
+    await second.event("transcript_final", turn_id="turn-2", text="mua nhé")
     reply2 = await browser.until("agent_reply")
     await browser.until("audio_complete")
     assert reply2["turn_id"] != reply["turn_id"]
     assert len(requests) == 2
     assert requests[1]["session_id"] == reply["session_id"]
     assert requests[1]["client_msg_id"] != requests[0]["client_msg_id"]
-    assert b"echo" not in first.sent
+    assert b"echo" in first.sent
     await end_call(browser, http, task)
     assert browser.closed and all(s.closed for s in speech.sockets)
 
@@ -217,13 +228,15 @@ async def test_harness_failure_closes_without_retry():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("stage", ["listening", "harness", "tts", "playback"])
 async def test_disconnect_cleans_up_at_each_stage(stage):
-    entered, cancelled = asyncio.Event(), asyncio.Event()
+    entered, cancelled, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
     async def wait_harness(request, payload):
         entered.set()
         try:
-            await asyncio.Event().wait()
-        finally:
+            await release.wait()
+        except asyncio.CancelledError:
             cancelled.set()
+            raise
+        return httpx.Response(200, json={"session_id": payload["session_id"], "agent_text": "Xin chào"})
     browser, speech, requests, http, task = await setup_call(wait_harness if stage == "harness" else None)
     if stage == "tts":
         speech.tts_wait = asyncio.Event()
@@ -236,15 +249,16 @@ async def test_disconnect_cleans_up_at_each_stage(stage):
             if stage == "playback":
                 await browser.until("audio_complete")
     await browser.incoming.put({"type": "websocket.disconnect"})
+    release.set()
     await asyncio.wait_for(task, 2)
     assert all(s.closed for s in speech.sockets)
     if stage == "harness":
-        assert cancelled.is_set()
+        assert not cancelled.is_set()
     await http.aclose()
 
 
 @pytest.mark.asyncio
-async def test_early_playback_ack_does_not_resume_or_forward_audio():
+async def test_early_playback_ack_is_rejected_while_microphone_stays_live():
     browser, speech, requests, http, task = await setup_call()
     speech.tts_wait = asyncio.Event()
     await speech.sockets[0].event("transcript_final", text="hi")

@@ -8,7 +8,8 @@ from app.agent.chat import chat
 from app.agent.harness.runtime import AgentHarnessRuntime
 from app.configs import get_settings
 from app.schemas.agent import (ChatRequest, ChatResponse, PrepareSessionRequest,
-                               PrepareSessionResponse, TurnMemoryRequest, TurnMemoryResponse)
+                               PrepareSessionResponse, TurnMemoryRequest, TurnMemoryResponse,
+                               VoicePlaybackRequest)
 
 router = APIRouter(prefix="/v1/chat", tags=["chat"])
 
@@ -67,3 +68,23 @@ async def turn_memory(
         raise HTTPException(503, "Memory status unavailable") from None
     return TurnMemoryResponse(session_id=turn.session_id, client_msg_id=turn.client_msg_id,
                               memory_update=update)
+
+
+@router.post("/turns/playback", response_model=TurnMemoryResponse)
+async def voice_playback(
+    playback: VoicePlaybackRequest, request: Request,
+    harness: AgentHarnessRuntime = Depends(get_harness),
+) -> TurnMemoryResponse:
+    expected = get_settings().ai_internal_token
+    if not expected or not hmac.compare_digest(
+        request.headers.get("X-AI-Internal-Token", ""), expected.get_secret_value()
+    ):
+        raise HTTPException(401, "Unauthorized AI caller")
+    try:
+        update = await harness.record_playback(playback)
+    except ValueError:
+        raise HTTPException(409, "Playback identity or receipt conflict") from None
+    except RuntimeError:
+        raise HTTPException(503, "Playback persistence unavailable") from None
+    return TurnMemoryResponse(session_id=playback.session_id,
+                              client_msg_id=playback.client_msg_id, memory_update=update)

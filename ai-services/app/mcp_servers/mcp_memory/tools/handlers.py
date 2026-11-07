@@ -4,7 +4,8 @@ from fastmcp import FastMCP
 from fastmcp.server.auth import StaticTokenVerifier
 from pydantic import ValidationError
 
-from app.mcp_servers.mcp_memory.schemas import ReadInput, WriteInput, TurnStatusInput
+from app.mcp_servers.mcp_memory.schemas import (ReadInput, WriteInput, TurnStatusInput,
+                                                validate_read_response)
 from app.mcp_servers.mcp_memory.services.memory import read, write
 from app.mcp_servers.mcp_memory.services.turn_status import read_turn_status
 from app.mcp_servers.mcp_memory.repos.langmem_projection import LangMemProjection
@@ -25,7 +26,7 @@ async def _invoke(repo, name: str, args: dict) -> dict:
         if name == "memory.read":
             payload = ReadInput.model_validate(args).model_dump(mode="json")
             projector = LangMemProjection(repo.dsn) if hasattr(repo, "dsn") else None
-            return await read(repo, **payload, projector=projector)
+            return validate_read_response(await read(repo, **payload, projector=projector))
         if name == "memory.write":
             payload = WriteInput.model_validate(args).model_dump(mode="json")
             return await write(repo, **payload)
@@ -48,7 +49,8 @@ def create_server(repo, token: str | None = None) -> FastMCP:
 
     @mcp.tool(name="memory.read")
     async def memory_read(customer_id: str | None, session_id: str,
-                          max_episodes: int = 5, include_prior: bool = True) -> dict:
+                          max_episodes: int = 5, include_prior: bool = True,
+                          query: str = "") -> dict:
         return await invoke(repo, "memory.read", locals())
 
     @mcp.tool(name="memory.write")

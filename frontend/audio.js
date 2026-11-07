@@ -38,6 +38,8 @@ export class PCMPlayer {
     this.until = 0;
     this.sources = new Set();
     this.timer = null;
+    this.markTimers = new Set();
+    this.epoch = 0;
   }
   enqueue(event) {
     if (event.format.encoding !== 'pcm_s16le' || event.format.channels !== 1) {
@@ -62,18 +64,35 @@ export class PCMPlayer {
     this.until = Math.max(this.context.currentTime, this.until) + milliseconds / 1000;
   }
   finish(callback) {
+    const epoch = this.epoch;
     // Check the audio clock, since a suspended/background context may stop advancing.
     const check = () => {
-      if (this.context.state === 'closed') return;
+      if (this.context.state === 'closed' || this.epoch !== epoch) return;
       if (this.context.currentTime >= this.until && this.sources.size === 0) callback();
       else this.timer = setTimeout(check, 40);
     };
     clearTimeout(this.timer);
     check();
   }
+  mark(callback) {
+    const target = this.until, epoch = this.epoch;
+    const check = () => {
+      if (this.epoch !== epoch || this.context.state === 'closed') return;
+      if (this.context.currentTime >= target) callback();
+      else {
+        const timer = setTimeout(() => { this.markTimers.delete(timer); check(); }, 40);
+        this.markTimers.add(timer);
+      }
+    };
+    check();
+  }
   stop() {
+    this.epoch++;
     clearTimeout(this.timer);
+    for (const timer of this.markTimers) clearTimeout(timer);
+    this.markTimers.clear();
     for (const source of this.sources) { source.stop(); source.disconnect(); }
     this.sources.clear();
+    this.until = this.context.currentTime;
   }
 }

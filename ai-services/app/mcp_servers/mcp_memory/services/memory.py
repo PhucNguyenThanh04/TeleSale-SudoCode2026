@@ -12,6 +12,7 @@ from uuid import UUID
 from app.mcp_servers.mcp_shared.pii import mask_pii
 from app.mcp_servers.mcp_memory.repos.langmem_projection import select_facts, select_episodes
 from app.constants import Slot
+from app.mcp_servers.mcp_shared.memory_retrieval import rank_episodes, resolved_episode_view
 
 
 _FACT_KEY = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
@@ -133,7 +134,7 @@ from app.mcp_servers.mcp_shared.decision_diagnostics import memory_boundary, act
 @memory_boundary("memory_read")
 async def read(repo, customer_id: str | None, session_id: str,
                max_episodes: int = 5, include_prior: bool = True,
-               projector=None) -> dict:
+               projector=None, query: str = "") -> dict:
     async with repo.transaction() as conn:
         if customer_id and hasattr(repo, "is_erasure_blocked"):
             await repo.lock_key(conn, f"erasure:{customer_id}")
@@ -182,16 +183,22 @@ async def read(repo, customer_id: str | None, session_id: str,
                                     snapshot=topic['consultation'], revision=ep.get('revision'))
                 current = next((item for item in all_episodes
                     if item.get("session_id") == session_id), None)
-                episodes = all_episodes if include_prior else []
-                episodes = list(episodes)
+                prior_episodes = [item for item in all_episodes
+                    if item.get('session_id') != session_id
+                    and item.get('status', 'active') == 'active'] if include_prior else []
+                prior_episodes = resolved_episode_view(prior_episodes, all_episodes)
+                episodes = (rank_episodes(prior_episodes, mask_pii(query), max_episodes)
+                            if query else prior_episodes[:max_episodes])
                 if include_prior:
-                    for index, episode in enumerate(episodes[:max_episodes]):
+                    for index, episode in enumerate(episodes):
                         prior_id = str(episode.get('session_id', ''))
                         if prior_id and prior_id != session_id:
                             episodes[index] = await _committed_episode_view(
                                 repo, conn, customer_id, prior_id, episode)
+                refreshed = {ep['session_id']: ep for ep in episodes}
                 current = await _committed_episode_view(repo, conn, customer_id, session_id, current,
-                    [ep for ep in episodes if str(ep.get("session_id")) != session_id])
+                    [refreshed.get(item['session_id'], item) for item in prior_episodes])
+                episodes = resolved_episode_view(episodes, [*all_episodes, *([current] if current else [])])
         except Exception as exc:
             logging.getLogger(__name__).warning(
                 "LangMem store read failed: %s", type(exc).__name__)
@@ -210,6 +217,9 @@ async def read(repo, customer_id: str | None, session_id: str,
                       "on": fact.get("on"), "source_kind": fact.get("source_kind"),
                       "source_tool": fact.get("source_tool"),
                       "evidence_quote": fact.get("evidence_quote")}
+            for field in ("source_turn_id", "session_id"):
+                if isinstance(fact.get(field), str):
+                    public[field] = fact[field]
             if fact.get("valid_until"):
                 public["valid_until"] = fact.get("valid_until")
             if scope_type == "global":
@@ -222,8 +232,8 @@ async def read(repo, customer_id: str | None, session_id: str,
             and item.get("session_id") != session_id
             and item.get("status", "active") == "active"][:max_episodes]
         result["prior_session_ids"] = [item["session_id"]
-            for item in episodes if isinstance(item, dict)
-            and item.get("session_id") != session_id]
+            for item in all_episodes if isinstance(item, dict)
+            and item.get("session_id") != session_id] if include_prior else []
         result["owned_order_ids"] = await repo.order_links(conn, customer_id) if include_prior else []
         return result
 
