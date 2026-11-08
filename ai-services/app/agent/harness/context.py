@@ -345,8 +345,9 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
                                            and advised not in scoped_products else [])
     candidate_skus = list(dict.fromkeys(candidate_skus))
     from app.mcp_servers.mcp_shared.consultation import derive_consultation
-    focused = derive_consultation({**state, 'history': history, 'profile': profile,
-        'scoped_facts': scoped_facts, 'episodes': episodes, 'current_episode': current_episode}).focus_sku
+    consultation = derive_consultation({**state, 'history': history, 'profile': profile,
+        'scoped_facts': scoped_facts, 'episodes': episodes, 'current_episode': current_episode})
+    focused = consultation.focus_sku
     # Refresh a sourced focus, or the sole historical candidate. Shortlisting is
     # handled by BusinessTools within its budget, never a memory-list position.
     refresh_skus = [focused] if focused else candidate_skus if len(candidate_skus) == 1 else []
@@ -474,6 +475,20 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
             product = {"sku": advised, "promo_code": safe_sales.get(Slot.PROMO_CODE, {}).get("value")}
             product.update(_quoted_product_fields(safe_sales))
             advised_products.append(product)
+        # The canonical snapshot can already reflect later advice while the
+        # independent fact projection still contains only an earlier product.
+        snapshot = consultation.snapshot
+        recommended_ref = snapshot.source_refs.get('recommended_sku')
+        selected_ref = snapshot.source_refs.get('selected_sku')
+        recommended = (snapshot.recommended_sku if recommended_ref
+                       and recommended_ref.source_kind == 'agent' else None)
+        selected = (snapshot.selected_sku if selected_ref
+                    and selected_ref.source_kind == 'customer' else None)
+        discussed = {product['sku'] for product in advised_products}
+        for sku in (recommended, selected):
+            if sku and sku not in discussed:
+                advised_products.append({'sku': sku})
+                discussed.add(sku)
         known_slots = set(safe_customer) | set(safe_sales)
         for groups in scoped_facts.values():
             for facts in groups.values():
@@ -498,6 +513,8 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
             last_session=last,
             requested_skus=requested_skus,
             advised_products=advised_products,
+            recommended_sku=recommended,
+            selected_sku=selected,
             open_blockers=open_blockers,
         )
         brief = CallBrief(
@@ -508,6 +525,8 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
                           "channel": last["channel"], "summary": last["summary"],
                           "outcome": last["outcome"]},
             products_advised=advised_products,
+            recommended_sku=recommended,
+            selected_sku=selected,
             orders=brief_orders,
             open_blockers=open_blockers,
             open_questions=_open_episode_items(episodes, "question"),

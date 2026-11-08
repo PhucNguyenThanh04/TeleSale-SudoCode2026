@@ -5,6 +5,7 @@ from typing import Any
 
 from app.agent.guardrails.checks import _money_claims
 from app.constants import Slot
+from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
 
 
 def _reported_money(answer: str, value: int) -> bool:
@@ -50,15 +51,61 @@ def _product_named(answer: str, sku: str, calls: list[dict[str, Any]]) -> bool:
 
 def _reported_promo(promo: dict[str, Any], answer: str,
                     quote: dict[str, Any]) -> bool:
-    code = promo.get("promo_code")
-    if isinstance(code, str) and code.casefold() in answer.casefold():
+    """Match an affirmative benefit to one verified applied promotion."""
+    promos = [item for item in quote.get("applied_promos", [])
+              if isinstance(item, dict)]
+    # Keep punctuation in each clause so questions cannot become assertions.
+    clauses = re.split(r"(?<=[!?;\n])|(?<!\d)\.(?!\d)", answer)
+    for clause in clauses:
+        if "?" in clause or re.search(
+                r"(?i)\b(?:không|chưa|hết hạn|kiểm tra|xác minh|tra cứu|nếu)\b", clause):
+            continue
+        codes = [item for item in promos if isinstance(item.get("promo_code"), str)
+                 and re.search(r"(?<![\w-])" + re.escape(item["promo_code"]) +
+                               r"(?![\w-])", clause, re.IGNORECASE)]
+        matches = codes
+        if not codes:
+            amounts = {amount for amount, kind, negative in _money_claims(clause)
+                       if kind == "discount" and not negative}
+            percentages = [float(value.replace(",", ".")) for value in re.findall(
+                r"(?i)(\d+(?:[.,]\d+)?)\s*(?:%|phần trăm)", clause)]
+            base = quote.get("list_price_vnd")
+            matches = []
+            for item in promos:
+                kind, discount = item.get("type"), item.get("discount_vnd")
+                monetary = (kind in {"fixed", "percent"}
+                            and isinstance(discount, (int, float)) and discount > 0
+                            and (discount in amounts or (
+                                kind == "percent" and isinstance(base, (int, float))
+                                and base > 0 and re.search(r"(?i)giảm|chiết khấu", clause)
+                                and any(abs(base * percent / 100 - discount) <= 1
+                                        for percent in percentages))))
+                gift = kind == "gift" and re.search(r"(?i)\b(?:tặng|biếu)\b", clause)
+                shipping = (kind == "freeship" and quote.get("freeship") is True
+                            and re.search(r"(?i)miễn phí vận chuyển|\bfreeship\b", clause))
+                if monetary or gift or shipping:
+                    matches.append(item)
+            # Different benefit types may be communicated together. Ambiguity
+            # is between offers explaining the same benefit, not gift vs price.
+            benefit = promo.get("type")
+            kinds = {"fixed", "percent"} if benefit in {"fixed", "percent"} else {benefit}
+            matches = [item for item in matches if item.get("type") in kinds]
+        if len(matches) != 1 or matches[0] != promo:
+            continue
+        # A stated deadline must belong to this offer, never a neighboring one.
+        deadlines = re.findall(
+            r"(?i)(?:đến|hạn)(?:\s+ngày)?\s+(\d{1,2})/(\d{1,2})(?:/(\d{4}))?", clause)
+        expiry = str(promo.get("valid_until", ""))
+        if deadlines and any(
+                expiry[5:10] != f"{int(month):02d}-{int(day):02d}"
+                or (year and expiry[:4] != year) for day, month, year in deadlines):
+            continue
+        iso_deadlines = re.findall(
+            r"(?i)(?:đến|hạn)(?:\s+ngày)?\s+(\d{4}-\d{2}-\d{2})", clause)
+        if any(deadline != expiry for deadline in iso_deadlines):
+            continue
         return True
-    gift_promos = [item for item in quote.get("applied_promos", [])
-                   if isinstance(item, dict) and item.get("type") == "gift"]
-    return (promo.get("type") == "gift" and len(gift_promos) == 1
-            and promo == gift_promos[0]
-            and bool(re.search(r"(?i)\b(?:tặng|biếu)\b[^.!?]{1,100}", answer))
-            and not re.search(r"(?i)\b(?:không|chưa)\s+(?:được\s+)?(?:tặng|biếu)\b", answer))
+    return False
 
 
 def _product_segments(answer: str, sku: str, calls: list[dict[str, Any]]) -> list[str]:
@@ -102,26 +149,25 @@ def reported_tool_fact(key: str, value: Any, answer: str,
                 for segment in _product_segments(answer, sku, calls))
         return (type(value) is int and len(quote_skus) == 1
                 and bool(quotes) and _reported_money(answer, value))
-    if key == Slot.PROMO_CODE:
+    if key in {Slot.PROMO_CODE, Slot.PROMO_EXPIRY}:
         quotes = [call for call in calls if call.get("name") == "pricing.get_quote"
-                  and (sku is None or call.get("args", {}).get("sku") == sku)]
-        quote_skus = {call.get("args", {}).get("sku") for call in quotes}
+                  and "error" not in call.get("result", {})]
+        quoted_skus = {call.get("args", {}).get("sku") for call in quotes}
+        named_skus = resolve_claim_skus(answer, calls)
+        if sku and named_skus and sku not in named_skus:
+            return False
         text = (" ".join(_product_segments(answer, sku, calls))
-                if sku and len(quote_skus) > 1 else answer)
-        return any(_reported_promo(promo, text, call["result"])
-                   for call in quotes for promo in call.get("result", {}).get("applied_promos", [])
-                   if isinstance(promo, dict) and promo.get("promo_code") == value)
-    if key == Slot.PROMO_EXPIRY:
-        quoted_skus = {call.get("args", {}).get("sku") for call in calls
-                       if call.get("name") == "pricing.get_quote"}
-        text = (" ".join(_product_segments(answer, sku, calls))
-                if sku and len(quoted_skus) > 1 else answer)
+                if sku and (len(quoted_skus) > 1 or len(named_skus) > 1) else answer)
+        field = "promo_code" if key == Slot.PROMO_CODE else "valid_until"
         return isinstance(value, str) and any(
-            promo.get("valid_until") == value
+            promo.get(field) == value
+            and (not call.get("args", {}).get("on") or not promo.get("valid_until")
+                 or promo["valid_until"] >= call["args"]["on"])
             and _reported_promo(promo, text, call["result"])
-            for call in calls if call.get("name") == "pricing.get_quote"
-            and (sku is None or call.get("args", {}).get("sku") == sku)
-            for promo in call.get("result", {}).get("applied_promos", []))
+            for call in quotes if (sku is None or call.get("args", {}).get("sku") == sku)
+            and call.get("result", {}).get("sku", sku) == call.get("args", {}).get("sku")
+            for promo in call.get("result", {}).get("applied_promos", [])
+            if isinstance(promo, dict))
     if key == Slot.VARIANT_SKU:
         return isinstance(value, str) and (value.casefold() in answer.casefold()
             or any(call.get("name") == "order.create"
