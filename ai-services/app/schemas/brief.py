@@ -37,6 +37,8 @@ class CallBrief(BaseModel):
     n_previous_sessions: int = Field(ge=0)
     last_session: PreviousSession | None
     products_advised: list[AdvisedProduct]
+    recommended_sku: str | None = None
+    selected_sku: str | None = None
     open_blockers: list[str]
     must_not_ask: list[str]
     suggested_opening: str

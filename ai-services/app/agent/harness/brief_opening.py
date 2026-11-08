@@ -10,6 +10,8 @@ def build_suggested_opening(
     last_session: dict[str, Any] | None = None,
     requested_skus: list[str] | None = None,
     advised_products: list[dict[str, Any]] | None = None,
+    recommended_sku: str | None = None,
+    selected_sku: str | None = None,
     open_blockers: list[str] | None = None,
     fallback_blocker: str | None = None,
 ) -> str:
@@ -34,6 +36,8 @@ def build_suggested_opening(
     product_item = None
     if len(req) == 1:
         product_item = f"mẫu {req[0]}"
+    elif selected_sku or recommended_sku:
+        product_item = f"mẫu {selected_sku or recommended_sku}"
     elif len(products) == 1 and isinstance(products[0].get("sku"), str):
         product_item = f"mẫu {products[0]['sku']}"
     elif len(products) > 1:
@@ -42,11 +46,15 @@ def build_suggested_opening(
     blocker_item = blockers[0].strip() if blockers and isinstance(blockers[0], str) and blockers[0].strip() else None
 
     if outcome == "chot_don":
-        target = product_item or "đơn hàng lần trước"
+        # A later recommendation/selection does not identify the created order.
+        target = (product_item if not (recommended_sku or selected_sku) else None) or "đơn hàng lần trước"
         return f"{greeting}, lần trước mình đã đặt {target}. Hôm nay mình cần em hỗ trợ thêm thông tin gì về đơn hàng ạ?"
 
     if product_item:
-        context = f"{greeting}, lần trước mình đã trao đổi về {product_item}."
+        if recommended_sku and not selected_sku and not req:
+            context = f"{greeting}, lần trước em có đề xuất {product_item}."
+        else:
+            context = f"{greeting}, lần trước mình đã trao đổi về {product_item}."
     else:
         context = f"{greeting}, em tiếp tục hỗ trợ phần mình đang trao đổi."
     if blocker_item:
