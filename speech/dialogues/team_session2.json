@@ -1838,7 +1838,7 @@
         {
           "idx": 1,
           "speaker": "C",
-          "text": "chào em, anh đặt nồi chiên lock and lock bốn lít hôm trước giao biên hòa. trên app anh chưa thấy mã theo dõi. anh cần coi đơn vào chưa, chứ cuối tuần có khách tới nhà nên anh đang tính thực đơn.",
+          "text": "chào em, anh đặt nồi chiên lốc en lốc bốn lít hôm trước giao biên hòa. trên app anh chưa thấy mã theo dõi. anh cần coi đơn vào chưa, chứ cuối tuần có khách tới nhà nên anh đang tính thực đơn.",
           "tts_text": "Chào em, anh đặt nồi chiên Lock and Lock bốn lít hôm trước giao Biên Hòa. Trên app anh chưa thấy mã theo dõi. Anh cần coi đơn vào chưa, chứ cuối tuần có khách tới nhà nên anh đang tính thực đơn.",
           "entities": {}
         },
@@ -1878,7 +1878,7 @@
         {
           "idx": 6,
           "speaker": "A",
-          "text": "dạ, mẫu lock and lock bốn lít của đơn này là bản điều khiển bằng núm cơ theo thông tin sản phẩm. hình có màn hình số có thể là mẫu khác. khi nhận anh đối chiếu tên và mẫu trên hộp giúp em.",
+          "text": "dạ, mẫu lốc en lốc bốn lít của đơn này là bản điều khiển bằng núm cơ theo thông tin sản phẩm. hình có màn hình số có thể là mẫu khác. khi nhận anh đối chiếu tên và mẫu trên hộp giúp em.",
           "tts_text": "Dạ, mẫu Lock and Lock bốn lít của đơn này là bản điều khiển bằng núm cơ theo thông tin sản phẩm. Hình có màn hình số có thể là mẫu khác. Khi nhận anh đối chiếu tên và mẫu trên hộp giúp em.",
           "entities": {}
         },
