@@ -1,0 +1,120 @@
+{
+  "scenario_id": "SC-T21",
+  "level": "M1",
+  "persona": "So sánh máy lọc và xử lý giá bên khác",
+  "hard_case": "so_gia_va_khuyen_mai_het_han",
+  "customer_phone": "0700000021",
+  "customer_name": "Khách thử T21",
+  "honorific": "chị",
+  "notes": "Nguồn speech T21. AIR-OCT hết hạn trước phiên 2. Báo lại giá theo ngày gọi và không xác nhận giá bên khác. Call 3 follows T21-S03 when this scenario has a justified third contact; see speech dialogue source.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-28",
+      "customer_goal": "So sánh máy lọc và xử lý giá bên khác",
+      "customer_turns": [
+        "chào em, chị đang phân vân máy lọc không khí Samsung AX 40 với AirPure Pro cho phòng khách 40 mét vuông",
+        "chỗ khác chị thấy bán Samsung có 5,9 triệu, sao bên em mắc vậy",
+        "còn AirPure Pro thì sao em",
+        "ok, để chị cân nhắc thêm rồi báo em sau nhé",
+        "ok, cảm ơn em"
+      ],
+      "facts_established": {
+        "room_area_m2": 40,
+        "competitor_price_vnd": 5900000,
+        "product_advised": "SKU-AP-PRO"
+      },
+      "success_if": {
+        "tool_called": "pricing.get_quote",
+        "args_match": {
+          "sku": "SKU-AP-PRO"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {
+        "promo_AIR-OCT_active": true
+      },
+      "channel_identity": "0700000021",
+      "expected_outcome": "hen_goi_lai"
+    },
+    "call_2": {
+      "channel": "zalo_oa",
+      "channel_identity": "team-harness-v1-t21",
+      "call_date": "2026-11-01",
+      "customer_turns": [
+        "Chị nhắn lại vụ AirPure Pro hôm trước. Mã giảm tháng 10 còn dùng được không em?",
+        "Em cho chị giá hôm nay với. Chị chỉ hỏi giá, chưa đặt nhé."
+      ],
+      "must_carry_over": [
+        "room_area_m2"
+      ],
+      "must_not_ask": [
+        "room_area_m2"
+      ],
+      "success_if": {
+        "tool_called": "pricing.get_quote",
+        "args_match": {
+          "sku": "SKU-AP-PRO"
+        },
+        "forbidden_claims": [
+          {
+            "field": "promo_AIR-OCT_active",
+            "value": true
+          }
+        ],
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {
+        "price_vnd": 7990000,
+        "in_stock": true,
+        "promo_AIR-OCT_active": false
+      }
+    },
+    "call_3": {
+      "channel": "hotline",
+      "channel_identity": "0700000021",
+      "call_date": "2026-11-02",
+      "customer_goal": "Chủ tài khoản xác nhận AirPure Pro sau khi chồng hỏi thông tin ở cuộc gọi trước; kiểm giá/tồn rồi tạo đúng một đơn COD.",
+      "customer_turns": [
+        "alo em, chị là chủ tài khoản đây. hôm trước chồng chị gọi hỏi air piu pro, chị đã đọc lại phần tư vấn rồi và muốn xác nhận mua một máy.",
+        "đúng mẫu air piu pro cho phòng khách khoảng bốn mươi mét vuông. chị xác nhận thông tin này trong tài khoản của mình nha.",
+        "nếu tổng tiền đúng giá em vừa báo thì chị đồng ý lên đơn. chị xác nhận lại là một máy air piu pro thôi.",
+        "chị xác nhận đúng như vậy, em tạo đơn cho chị đi."
+      ],
+      "must_carry_over": [
+        "room_area_m2",
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "room_area_m2",
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-AP-PRO",
+          "payment": "COD",
+          "qty": 1,
+          "price_vnd": 7990000
+        }
+      },
+      "ground_truth_facts": {
+        "promo_AIR-OCT_active": false,
+        "price_vnd": 7990000,
+        "in_stock": true
+      },
+      "expected_outcome": "chot_don",
+      "speech_dialogue_ref": "T21-S03"
+    }
+  }
+}

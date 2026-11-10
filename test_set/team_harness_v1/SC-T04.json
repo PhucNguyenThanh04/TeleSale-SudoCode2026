@@ -1,0 +1,71 @@
+{
+  "scenario_id": "SC-T04",
+  "level": "M1",
+  "persona": "Hỏi ưu đãi và mua nồi chiên Philips 6.2L",
+  "hard_case": "hoi_khuyen_mai_chua_bat_dau",
+  "customer_phone": "0700000004",
+  "customer_name": "Khách thử T04",
+  "honorific": "chị",
+  "notes": "Nguồn speech T04. Tại ngày gọi ưu đãi 11-11 chưa bắt đầu. Không cam kết trước.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-28",
+      "customer_goal": "Hỏi ưu đãi và mua nồi chiên Philips 6.2L",
+      "customer_turns": [
+        "hello em, chị đang coi con nồi chiên Philips 6,2 lít, đang có deal gì không em",
+        "nghe nói 11 tháng 11 có flash sale với voucher xịn lắm, hay chị đợi tới đó rồi order cho rẻ",
+        "ok vậy chị lấy luôn, bảo hành bao lâu em, ship về gò vấp mấy ngày",
+        "ok, em lên order COD cho chị nha, thanks em"
+      ],
+      "facts_established": {
+        "product_advised": "SKU-AF-6L",
+        "payment": "COD",
+        "order_id": "generated_by_order.create"
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-AF-6L",
+          "payment": "COD",
+          "qty": 1,
+          "price_vnd": 3990000
+        },
+        "forbidden_claims": [
+          {
+            "field": "promo_11-11_active",
+            "value": true
+          }
+        ]
+      },
+      "ground_truth_facts": {
+        "price_vnd": 3990000,
+        "in_stock": true,
+        "promo_11-11_active": false
+      },
+      "channel_identity": "0700000004",
+      "expected_outcome": "chot_don"
+    },
+    "call_2": {
+      "channel": "zalo_oa",
+      "channel_identity": "team-harness-v1-t04",
+      "call_date": "2026-10-30",
+      "customer_turns": [
+        "Em ơi, chị hỏi tình trạng đơn mình đặt bên em lần trước. Em tra giúp nhé.",
+        "Chị chưa giữ mã đơn. Em xem đơn đó đã được tiếp nhận chưa giúp chị."
+      ],
+      "must_carry_over": [
+        "order_id",
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "order_id",
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "order.status"
+      },
+      "ground_truth_facts": {}
+    }
+  }
+}

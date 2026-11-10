@@ -1,0 +1,95 @@
+{
+  "scenario_id": "SC-T03",
+  "level": "M1",
+  "persona": "So sánh máy lọc nước và đặt Kangaroo RO10",
+  "hard_case": null,
+  "customer_phone": "0700000003",
+  "customer_name": "Khách thử T03",
+  "honorific": "anh",
+  "notes": "Nguồn speech T03. Phiên 2 hỏi tiếp về đơn vừa tạo. ID đơn do tool sinh trong phiên 1. Call 3 follows T03-S03 when this scenario has a justified third contact; see speech dialogue source.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-16",
+      "customer_goal": "So sánh máy lọc nước và đặt Kangaroo RO10",
+      "customer_turns": [
+        "chào em, nhà anh dùng nước máy, anh đang xem máy lọc nước Kangaroo 10 lõi, giá bao nhiêu em",
+        "còn máy Karofi 9 lõi thì sao em, mấy cái lõi filter có được warranty không",
+        "ok, vậy anh lấy Kangaroo cho chắc, giao về từ sơn bắc ninh có mất phí ship không",
+        "được, anh trả COD nhé",
+        "ok em, cảm ơn nhé"
+      ],
+      "facts_established": {
+        "product_advised": "SKU-WF-RO10",
+        "payment": "COD",
+        "order_id": "generated_by_order.create"
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-WF-RO10",
+          "payment": "COD",
+          "qty": 1,
+          "price_vnd": 6890000
+        }
+      },
+      "ground_truth_facts": {},
+      "channel_identity": "0700000003",
+      "expected_outcome": "chot_don"
+    },
+    "call_2": {
+      "channel": "zalo_oa",
+      "channel_identity": "team-harness-v1-t03",
+      "call_date": "2026-10-18",
+      "customer_turns": [
+        "Em ơi, anh hỏi tình trạng đơn mình đặt bên em lần trước. Em tra giúp nhé.",
+        "Anh chưa giữ mã đơn. Em xem đơn đó đã được tiếp nhận chưa giúp anh."
+      ],
+      "must_carry_over": [
+        "order_id",
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "order_id",
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "order.status"
+      },
+      "ground_truth_facts": {}
+    },
+    "call_3": {
+      "channel": "hotline",
+      "channel_identity": "0700000003",
+      "call_date": "2026-11-03",
+      "customer_goal": "Theo dõi đơn Kangaroo RO10 đã nhận và hỏi tiếp lịch lắp đặt, không tự hứa lịch.",
+      "customer_turns": [
+        "chào em, anh gọi lại đơn máy lọc kang ga ru mười lõi. hôm trước em nói chưa có mã vận đơn, giờ nhà anh nhận máy rồi nhưng chưa thấy ai hướng dẫn lắp.",
+        "trên hộp ghi đúng kang ga ru mười lõi. anh gọi theo số trên phiếu thì họ bảo chưa có lịch kỹ thuật, em kiểm tra xem đơn đang tới bước nào được không?",
+        "vậy anh có tự nối đường nước tạm để thử máy trước được không? thợ sửa bếp nhà anh còn hai hôm nữa mới quay lại.",
+        "anh chỉ muốn biết ai sẽ gọi và gọi qua kênh nào, chứ không cần em đặt lịch cố định khi chưa chắc."
+      ],
+      "must_carry_over": [
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "order.status",
+        "args_match": {
+          "customer_phone": "0700000003"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {},
+      "expected_outcome": "tra_cuu_don",
+      "speech_dialogue_ref": "T03-S03"
+    }
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "scenario_id": "SC-T19",
+  "level": "M1",
+  "persona": "Hỏi bảo hành mở rộng và mua máy tiệt trùng Moaz Bebe",
+  "hard_case": null,
+  "customer_phone": "0700000019",
+  "customer_name": "Khách thử T19",
+  "honorific": "anh",
+  "notes": "Nguồn speech T19. Phiên 2 hỏi tiếp về đơn vừa tạo. ID đơn do tool sinh trong phiên 1.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-21",
+      "customer_goal": "Hỏi bảo hành mở rộng và mua máy tiệt trùng Moaz Bebe",
+      "customer_turns": [
+        "chào em, anh muốn hỏi máy tiệt trùng sấy khô Moaz Bebe, máy này dùng thế nào em",
+        "máy bảo hành bao lâu em",
+        "anh muốn mua thêm bảo hành mở rộng có được không",
+        "ừ, giao về hải phòng mất mấy ngày, phí giao thế nào em",
+        "được, anh lấy một máy, chuyển khoản luôn nhé"
+      ],
+      "facts_established": {
+        "product_advised": "SKU-MB-STER",
+        "payment": "bank",
+        "order_id": "generated_by_order.create"
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-MB-STER",
+          "payment": "bank",
+          "qty": 1,
+          "price_vnd": 1890000
+        }
+      },
+      "ground_truth_facts": {
+        "price_vnd": 1890000,
+        "in_stock": true
+      },
+      "channel_identity": "0700000019",
+      "expected_outcome": "chot_don"
+    },
+    "call_2": {
+      "channel": "zalo_oa",
+      "channel_identity": "team-harness-v1-t19",
+      "call_date": "2026-10-23",
+      "customer_turns": [
+        "Em ơi, anh hỏi tình trạng đơn mình đặt bên em lần trước. Em tra giúp nhé.",
+        "Anh chưa giữ mã đơn. Em xem đơn đó đã được tiếp nhận chưa giúp anh."
+      ],
+      "must_carry_over": [
+        "order_id",
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "order_id",
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "order.status"
+      },
+      "ground_truth_facts": {}
+    }
+  }
+}

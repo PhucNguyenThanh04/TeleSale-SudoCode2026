@@ -1,0 +1,65 @@
+{
+  "scenario_id": "SC-T16",
+  "level": "M1",
+  "persona": "Mua nồi chiên Lock&Lock 4L, trả tiền khi nhận hàng",
+  "hard_case": null,
+  "customer_phone": "0700000016",
+  "customer_name": "Khách thử T16",
+  "honorific": "anh",
+  "notes": "Nguồn speech T16. Phiên 2 hỏi tiếp về đơn vừa tạo. ID đơn do tool sinh trong phiên 1.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-20",
+      "customer_goal": "Mua nồi chiên Lock&Lock 4L, trả tiền khi nhận hàng",
+      "customer_turns": [
+        "chào em, anh muốn mua nồi chiên không dầu Lock&Lock 4 lít, nồi này nấu được những gì em",
+        "nồi này bảo hành bao lâu em",
+        "anh ở biên hòa, đồng nai, giao về có mất phí không em",
+        "vậy anh đặt một nồi, nhận hàng rồi trả tiền nhé",
+        "được rồi, cảm ơn em"
+      ],
+      "facts_established": {
+        "product_advised": "SKU-AF-4L",
+        "payment": "COD",
+        "order_id": "generated_by_order.create"
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-AF-4L",
+          "payment": "COD",
+          "qty": 1,
+          "price_vnd": 1890000
+        }
+      },
+      "ground_truth_facts": {
+        "price_vnd": 1890000,
+        "in_stock": true
+      },
+      "channel_identity": "0700000016",
+      "expected_outcome": "chot_don"
+    },
+    "call_2": {
+      "channel": "zalo_oa",
+      "channel_identity": "team-harness-v1-t16",
+      "call_date": "2026-10-22",
+      "customer_turns": [
+        "Em ơi, anh hỏi tình trạng đơn mình đặt bên em lần trước. Em tra giúp nhé.",
+        "Anh chưa giữ mã đơn. Em xem đơn đó đã được tiếp nhận chưa giúp anh."
+      ],
+      "must_carry_over": [
+        "order_id",
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "order_id",
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "order.status"
+      },
+      "ground_truth_facts": {}
+    }
+  }
+}

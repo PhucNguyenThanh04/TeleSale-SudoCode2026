@@ -1,0 +1,67 @@
+{
+  "scenario_id": "SC-T07",
+  "level": "M1",
+  "persona": "Đặt áo Warmly size L đen và hỏi đổi size",
+  "hard_case": null,
+  "customer_phone": "0907312845",
+  "customer_name": "Khách thử T07",
+  "honorific": "chị",
+  "notes": "Nguồn speech T07. Phiên 2 hỏi tiếp về đơn vừa tạo. ID đơn do tool sinh trong phiên 1.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-22",
+      "customer_goal": "Đặt áo Warmly size L đen và hỏi đổi size",
+      "customer_turns": [
+        "hi em, chị muốn order áo phao Warmly size l màu đen, em check còn hàng không",
+        "ok chị lấy một cái, ship COD về tân bình nha, phí ship nhiêu em",
+        "số chị là 0907312845, có gì em inbox Zalo cho chị check lại nha",
+        "ok, lỡ mặc không vừa thì đổi size được không em",
+        "ok, thank you em"
+      ],
+      "facts_established": {
+        "size": "L",
+        "color": "den",
+        "product_advised": "SKU-JK-DWN-L-DEN",
+        "payment": "COD",
+        "order_id": "generated_by_order.create"
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-JK-DWN-L-DEN",
+          "payment": "COD",
+          "qty": 1,
+          "price_vnd": 1490000
+        }
+      },
+      "ground_truth_facts": {
+        "price_vnd": 1490000,
+        "in_stock": true
+      },
+      "channel_identity": "0907312845",
+      "expected_outcome": "chot_don"
+    },
+    "call_2": {
+      "channel": "zalo_oa",
+      "channel_identity": "team-harness-v1-t07",
+      "call_date": "2026-10-24",
+      "customer_turns": [
+        "Em ơi, chị hỏi tình trạng đơn mình đặt bên em lần trước. Em tra giúp nhé.",
+        "Chị chưa giữ mã đơn. Em xem đơn đó đã được tiếp nhận chưa giúp chị."
+      ],
+      "must_carry_over": [
+        "order_id",
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "order_id",
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "order.status"
+      },
+      "ground_truth_facts": {}
+    }
+  }
+}

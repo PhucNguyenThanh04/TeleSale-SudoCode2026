@@ -1,0 +1,105 @@
+{
+  "scenario_id": "SC-T22",
+  "level": "M1",
+  "persona": "Trả nồi chiên chưa dùng và hỏi cách hoàn tiền COD",
+  "hard_case": "bao_mat_thong_tin_hoan_tien",
+  "customer_phone": "0937164052",
+  "customer_name": "Khách thử T22",
+  "honorific": "anh",
+  "notes": "Nguồn speech T22. Không thu thập số tài khoản qua thoại; khách hỏi cách theo dõi yêu cầu hoàn tiền ở phiên 2. Call 3 follows T22-S03 when this scenario has a justified third contact; see speech dialogue source.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-29",
+      "customer_goal": "Trả nồi chiên chưa dùng và hỏi cách hoàn tiền COD",
+      "customer_turns": [
+        "hi em, anh muốn return cái nồi chiên Xiaomi mới mua, dùng không hợp, chưa xài lần nào",
+        "mã đơn là OD768213, anh nhận hàng hôm 24",
+        "ok, đơn đó anh trả COD thì refund kiểu gì em",
+        "ok, vậy anh đọc số tài khoản banking cho em luôn nhé",
+        "ok em, thanks em",
+        "Anh xác nhận gửi trả cái nồi chiên chưa sử dụng nhé."
+      ],
+      "facts_established": {
+        "order_id": "OD768213",
+        "payment": "COD"
+      },
+      "success_if": {
+        "tool_called": "order.update",
+        "args_match": {
+          "order_id": "OD768213",
+          "action": "return"
+        }
+      },
+      "ground_truth_facts": {},
+      "channel_identity": "0937164052"
+    },
+    "call_2": {
+      "channel": "hotline",
+      "channel_identity": "0937164052",
+      "call_date": "2026-10-31",
+      "customer_turns": [
+        "Anh hỏi tiếp vụ trả nồi chiên hôm trước. Đơn đó hoàn tiền qua hình thức nào vậy em?",
+        "Thông tin tài khoản nhận hoàn tiền thì anh nhập ở đâu cho an toàn?"
+      ],
+      "must_carry_over": [
+        "payment"
+      ],
+      "must_not_ask": [
+        "payment"
+      ],
+      "success_if": {
+        "tool_called": null,
+        "must_say_any": [
+          "biểu mẫu",
+          "form hoàn tiền",
+          "điền vào form"
+        ],
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {
+        "refund_vnd": 1590000
+      }
+    },
+    "call_3": {
+      "channel": "hotline",
+      "channel_identity": "0937164052",
+      "call_date": "2026-11-07",
+      "customer_goal": "Theo dõi yêu cầu trả nồi Xiaomi cũ sau khi hãng vận chuyển lấy hàng; không tạo phiếu trả thứ hai.",
+      "customer_turns": [
+        "anh nhắn tiếp yêu cầu trả nồi chiên xiao mi hôm trước. bên giao đã lấy hàng rồi, anh có mã bàn giao nhưng app vẫn hiện đang xử lý.",
+        "anh chưa nhập biểu mẫu hoàn tiền vì muốn chắc hàng đã về kho. em kiểm tra giúp anh có ghi nhận nhận hàng chưa nha.",
+        "có người nhắn bảo hàng về kho rồi nhưng phải chuyển phí xử lý trước mới được hoàn. anh chưa bấm vào link đó.",
+        "nếu trạng thái chưa cập nhật thì anh chờ thêm, không tạo phiếu trả thứ hai. em cứ giữ yêu cầu cũ giúp anh."
+      ],
+      "must_carry_over": [
+        "payment",
+        "order_id"
+      ],
+      "must_not_ask": [
+        "payment",
+        "order_id"
+      ],
+      "success_if": {
+        "tool_called": "order.status",
+        "args_match": {
+          "customer_phone": "0937164052"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {},
+      "expected_outcome": "tra_cuu_hoan_hang",
+      "speech_dialogue_ref": "T22-S03"
+    }
+  }
+}

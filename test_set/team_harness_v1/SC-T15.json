@@ -1,0 +1,71 @@
+{
+  "scenario_id": "SC-T15",
+  "level": "M1",
+  "persona": "Hỏi TDS chưa có trong tài liệu và tìm máy phù hợp nước giếng",
+  "hard_case": "thieu_thong_so",
+  "customer_phone": "0700000015",
+  "customer_name": "Khách thử T15",
+  "honorific": "chị",
+  "notes": "Nguồn speech T15. Hai SKU trong phiên đầu. Câu hỏi TDS không có dữ kiện. Phiên 2 khách yêu cầu tra giá máy được đề xuất.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-22",
+      "customer_goal": "Hỏi TDS chưa có trong tài liệu và tìm máy phù hợp nước giếng",
+      "customer_turns": [
+        "alo em, chị đang xem máy lọc nước Sunhouse UF, lọc xong chỉ số tê đê ét còn bao nhiêu em",
+        "nhà chị ở đà lạt, dùng nước giếng khoan thì máy này lọc được không",
+        "máy đó giá bao nhiêu, bảo hành sao em",
+        "giao lên đà lạt mất mấy ngày, có tính thêm phí không em",
+        "ừ, để chị tính thêm rồi gọi lại em nhé"
+      ],
+      "facts_established": {
+        "product_advised": "SKU-WF-RO10"
+      },
+      "success_if": {
+        "tool_called": null,
+        "agent_must_say": "chưa có thông tin",
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {},
+      "channel_identity": "0700000015",
+      "expected_outcome": "hen_goi_lai"
+    },
+    "call_2": {
+      "channel": "hotline",
+      "channel_identity": "0700000015",
+      "call_date": "2026-10-24",
+      "customer_turns": [
+        "Chị gọi lại vụ máy cho nhà dùng nước giếng. Mẫu em gợi ý thay máy UF giá bao nhiêu hôm nay?",
+        "Em kiểm tra báo giá giúp chị. Chị chưa đặt hàng."
+      ],
+      "must_carry_over": [
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "pricing.get_quote",
+        "args_match": {
+          "sku": "SKU-WF-RO10"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {
+        "price_vnd": 6890000,
+        "in_stock": true
+      }
+    }
+  }
+}

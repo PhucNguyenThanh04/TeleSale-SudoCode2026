@@ -1,0 +1,62 @@
+{
+  "scenario_id": "SC-T12",
+  "level": "M1",
+  "persona": "Hỏi thu cũ đổi mới và mua AirPure Y",
+  "hard_case": "khuyen_mai_khong_cong_don",
+  "customer_phone": "0973508164",
+  "customer_name": "Khách thử T12",
+  "honorific": "chị",
+  "notes": "Nguồn speech T12. Dùng lịch sử mua đủ điều kiện từ nguồn speech. Chấm giá AirPure Y ở tham số tạo đơn; giá các mẫu không dùng một nhãn chung.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-27",
+      "customer_goal": "Hỏi thu cũ đổi mới và mua AirPure Y",
+      "customer_turns": [
+        "chào em, năm ngoái chị mua máy lọc không khí AirPure ích bản 2024 bên em, giờ chị muốn lên đời, bên em có trade in không",
+        "chị đang xem AirPure Pro, nghe nói đang giảm 300 nghìn, trừ thêm trade in thì còn bao nhiêu em",
+        "vẫn hơi cao, còn AirPure y thì sao em",
+        "ok, chị lấy AirPure y, chị chuyển khoản nhé, giao về thái nguyên",
+        "ok em, cảm ơn em nhé"
+      ],
+      "facts_established": {
+        "product_advised": "SKU-AP-Y",
+        "payment": "bank",
+        "order_id": "generated_by_order.create"
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-AP-Y",
+          "payment": "bank",
+          "qty": 1,
+          "price_vnd": 4800000
+        }
+      },
+      "ground_truth_facts": {},
+      "channel_identity": "0973508164",
+      "expected_outcome": "chot_don"
+    },
+    "call_2": {
+      "channel": "hotline",
+      "channel_identity": "0973508164",
+      "call_date": "2026-10-29",
+      "customer_turns": [
+        "Em ơi, chị hỏi tình trạng đơn mình đặt bên em lần trước. Em tra giúp nhé.",
+        "Chị chưa giữ mã đơn. Em xem đơn đó đã được tiếp nhận chưa giúp chị."
+      ],
+      "must_carry_over": [
+        "order_id",
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "order_id",
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "order.status"
+      },
+      "ground_truth_facts": {}
+    }
+  }
+}

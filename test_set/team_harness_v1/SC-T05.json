@@ -1,0 +1,78 @@
+{
+  "scenario_id": "SC-T05",
+  "level": "M1",
+  "persona": "So sánh máy hút sữa, hỏi quà cũ rồi mua Spectra S1",
+  "hard_case": "khuyen_mai_het_han_va_chuyen_may_y_te",
+  "customer_phone": "0700000005",
+  "customer_name": "Khách thử T05",
+  "honorific": "chị",
+  "notes": "Nguồn speech T05. PUMP-GIFT đã hết hạn. Phiên 2 yêu cầu nhân viên cho câu hỏi ngoài phạm vi; dùng handoff brief.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-17",
+      "customer_goal": "So sánh máy hút sữa, hỏi quà cũ rồi mua Spectra S1",
+      "customer_turns": [
+        "chào em, chị đang phân vân máy hút sữa Medela Swing Maxi với Spectra ét một, em tư vấn giúp chị với",
+        "còn Spectra thì sao, chị đọc review thấy bảo có pin sạc tiện lắm",
+        "trên fanpage có ghi mua Spectra được tặng túi trữ sữa, giờ còn không em",
+        "ok, vậy chị lấy Spectra, giao về nam định, chị trả bằng Momo nhé",
+        "ok, cảm ơn em nhiều"
+      ],
+      "facts_established": {
+        "product_advised": "SKU-MB-PUMP1",
+        "payment": "momo"
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-MB-PUMP1",
+          "payment": "momo",
+          "qty": 1,
+          "price_vnd": 4290000
+        },
+        "forbidden_claims": [
+          {
+            "field": "promo_PUMP-GIFT_active",
+            "value": true
+          }
+        ]
+      },
+      "ground_truth_facts": {
+        "promo_PUMP-GIFT_active": false
+      },
+      "channel_identity": "0700000005",
+      "expected_outcome": "chot_don"
+    },
+    "call_2": {
+      "channel": "hotline",
+      "channel_identity": "0700000005",
+      "call_date": "2026-10-19",
+      "customer_turns": [
+        "Chị hỏi tiếp vụ máy hút sữa hôm trước. Chị đang uống kháng sinh, dùng máy thì có cho bé bú được không em?",
+        "Chị muốn gặp nhân viên để hỏi kỹ hơn, em chuyển giúp chị nhé."
+      ],
+      "must_carry_over": [
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "handoff.transfer",
+        "brief_must_contain": [
+          "escalation_reason",
+          "conversation_summary",
+          "open_questions",
+          "next_action"
+        ],
+        "must_not_call_tools": [
+          "order.create",
+          "order.update"
+        ]
+      },
+      "ground_truth_facts": {},
+      "expected_outcome": "chuyen_may"
+    }
+  }
+}

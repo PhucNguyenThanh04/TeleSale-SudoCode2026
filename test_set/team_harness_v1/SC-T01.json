@@ -1,0 +1,110 @@
+{
+  "scenario_id": "SC-T01",
+  "level": "M1",
+  "persona": "Hỏi tồn kho, khuyến mãi và mua Xiaomi Smart 4 Pro",
+  "hard_case": null,
+  "customer_phone": "0700000001",
+  "customer_name": "Khách thử T01",
+  "honorific": "anh",
+  "notes": "Nguồn speech T01. Tình huống tiếp nối hỏi người nhà. Bản harness đổi đoạn chốt phiên đầu thành cân nhắc rồi chốt phiên sau. Call 3 follows T01-S03 when this scenario has a justified third contact; see speech dialogue source.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-20",
+      "customer_goal": "Hỏi tồn kho, khuyến mãi và mua Xiaomi Smart 4 Pro",
+      "customer_turns": [
+        "hi em, anh muốn check con Xiaomi Smart 4 Pro, bây giờ còn hàng chưa em",
+        "ok, có voucher hay sale gì thêm không em, phí ship về quận 7 bao nhiêu",
+        "Ừ để anh hỏi vợ rồi báo lại em nhé."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-XM-4P",
+        "blocker": "can hoi vo"
+      },
+      "success_if": {
+        "tool_called": "pricing.get_quote",
+        "args_match": {
+          "sku": "SKU-XM-4P"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {
+        "price_vnd": 5490000,
+        "in_stock": true
+      },
+      "channel_identity": "0700000001",
+      "expected_outcome": "hen_goi_lai"
+    },
+    "call_2": {
+      "channel": "zalo_oa",
+      "channel_identity": "team-harness-v1-t01",
+      "call_date": "2026-10-22",
+      "customer_turns": [
+        "Anh nhắn lại vụ máy lọc hôm trước. Vợ anh đồng ý rồi, em xem giá và tồn kho hôm nay giúp anh.",
+        "Ok em lên đơn cho anh một máy, thanh toán COD, giao về Quận 7, TP.HCM nhé."
+      ],
+      "must_carry_over": [
+        "product_advised",
+        "blocker"
+      ],
+      "must_not_ask": [
+        "product_advised",
+        "blocker"
+      ],
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-XM-4P",
+          "payment": "COD",
+          "qty": 1,
+          "price_vnd": 5490000
+        }
+      },
+      "ground_truth_facts": {
+        "price_vnd": 5490000,
+        "in_stock": true
+      },
+      "expected_outcome": "chot_don"
+    },
+    "call_3": {
+      "channel": "hotline",
+      "channel_identity": "0700000001",
+      "call_date": "2026-10-28",
+      "customer_goal": "Kiểm tra đơn Xiaomi Smart 4 Pro đã giao và xác minh phần quà tặng, không tạo đơn mới.",
+      "customer_turns": [
+        "alo em, anh là người đặt máy xiao mi smart bốn pro hôm trước. hộp mới giao tới rồi, anh muốn kiểm lại đơn với khoản thu trước khi khui.",
+        "anh mở thông tin đơn thấy tiền máy rồi mà chưa thấy dòng màng lọc tặng kèm. vậy món đó được giao chung hay shop gửi riêng vậy em?",
+        "phiếu giao ghi đúng tên máy, còn người giao nói anh chuyển thêm phí để nhận quà. khoản đó không có trong đơn thì anh không chuyển đúng không?",
+        "anh chưa trả thêm gì hết. vậy em ghi nhận giúp anh là đã nhận máy, đang hỏi riêng phần quà, không phải báo thiếu máy nha."
+      ],
+      "must_carry_over": [
+        "product_advised",
+        "blocker"
+      ],
+      "must_not_ask": [
+        "product_advised",
+        "blocker"
+      ],
+      "success_if": {
+        "tool_called": "order.status",
+        "args_match": {
+          "customer_phone": "0700000001"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {},
+      "expected_outcome": "tra_cuu_don",
+      "speech_dialogue_ref": "T01-S03"
+    }
+  }
+}

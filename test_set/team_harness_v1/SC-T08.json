@@ -1,0 +1,71 @@
+{
+  "scenario_id": "SC-T08",
+  "level": "M1",
+  "persona": "Tìm quạt có remote thay cho Tower Fan đã hết hàng",
+  "hard_case": "san_pham_het_hang_va_thay_the",
+  "customer_phone": "0700000008",
+  "customer_name": "Khách thử T08",
+  "honorific": "anh",
+  "notes": "Nguồn speech T08. Tách câu chốt sang phiên 2 và để khách chọn rõ mẫu thay thế.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-22",
+      "customer_goal": "Tìm quạt có remote thay cho Tower Fan đã hết hàng",
+      "customer_turns": [
+        "hello em, anh muốn mua quạt tháp Xiaomi Tower Fan, con này có remote với app không em",
+        "tiếc ghê, vậy em có con nào có remote, chạy êm, tầm 2,5 triệu đổ lại không",
+        "ok, con này có app không, ship về quận 3 mấy ngày em",
+        "phí ship sao em, có freeship không",
+        "Cảm ơn em, để anh cân nhắc mẫu có remote rồi nhắn lại."
+      ],
+      "facts_established": {
+        "budget_vnd": 2500000
+      },
+      "success_if": {
+        "tool_called": "inventory.check",
+        "args_match": {
+          "sku": "SKU-FAN-TWR"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {},
+      "channel_identity": "0700000008",
+      "expected_outcome": "hen_goi_lai"
+    },
+    "call_2": {
+      "channel": "zalo_oa",
+      "channel_identity": "team-harness-v1-t08",
+      "call_date": "2026-10-24",
+      "customer_turns": [
+        "Anh chọn quạt Panasonic F-409 có remote. Nhớ giúp anh mức ngân sách hôm trước nhé.",
+        "Em lên đơn một cái, COD, giao Quận 3, TP.HCM cho anh."
+      ],
+      "must_carry_over": [
+        "budget_vnd"
+      ],
+      "must_not_ask": [
+        "budget_vnd"
+      ],
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-FAN-DC1",
+          "payment": "COD",
+          "qty": 1,
+          "price_vnd": 2450000
+        }
+      },
+      "ground_truth_facts": {
+        "price_vnd": 2450000,
+        "in_stock": true
+      },
+      "expected_outcome": "chot_don"
+    }
+  }
+}

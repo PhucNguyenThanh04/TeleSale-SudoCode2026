@@ -1,0 +1,75 @@
+{
+  "scenario_id": "SC-T18",
+  "level": "M1",
+  "persona": "Mua bình sữa và máy hâm sữa, hỏi đổi trả và freeship",
+  "hard_case": null,
+  "customer_phone": "0700000018",
+  "customer_name": "Khách thử T18",
+  "honorific": "anh",
+  "notes": "Nguồn speech T18. Phiên 2 khách chọn COD. Không lấy ngưỡng freeship theo món của mock làm nhãn cho cả giỏ.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-23",
+      "customer_goal": "Mua bình sữa và máy hâm sữa, hỏi đổi trả và freeship",
+      "customer_turns": [
+        "alo em, anh muốn mua bình sữa Pigeon PPSU, bình này giá bao nhiêu em",
+        "anh lấy thêm máy hâm sữa Fatz 4 chức năng, máy này làm được gì em",
+        "lỡ bé không chịu bình thì anh đổi được không em",
+        "Anh cân nhắc lấy cả hai. Đơn này có freeship không em?",
+        "ok em, cảm ơn em"
+      ],
+      "facts_established": {
+        "product_advised": "SKU-MB-MON"
+      },
+      "success_if": {
+        "tool_called": "policy.search",
+        "must_say_any": [
+          "bóc seal",
+          "bóc niêm phong",
+          "mở niêm phong",
+          "mở seal"
+        ],
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {},
+      "channel_identity": "0700000018",
+      "expected_outcome": "hen_goi_lai"
+    },
+    "call_2": {
+      "channel": "hotline",
+      "channel_identity": "0700000018",
+      "call_date": "2026-10-25",
+      "customer_turns": [
+        "Anh gọi lại vụ bình Pigeon với máy hâm Fatz bốn chức năng hôm trước.",
+        "Em lên đơn mỗi loại một cái, giao về Ninh Bình. Anh trả COD nhé."
+      ],
+      "must_carry_over": [
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-MB-BOT",
+          "payment": "COD",
+          "qty": 1,
+          "price_vnd": 289000
+        },
+        "also_ordered": [
+          "SKU-MB-MON"
+        ],
+        "total_match_vnd": 779000
+      },
+      "ground_truth_facts": {},
+      "expected_outcome": "chot_don"
+    }
+  }
+}

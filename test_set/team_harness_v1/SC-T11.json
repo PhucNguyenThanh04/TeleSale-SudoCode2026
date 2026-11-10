@@ -1,0 +1,58 @@
+{
+  "scenario_id": "SC-T11",
+  "level": "M1",
+  "persona": "Tra cứu đơn giao chậm",
+  "hard_case": null,
+  "customer_phone": "0918460273",
+  "customer_name": "Khách thử T11",
+  "honorific": "anh",
+  "notes": "Nguồn speech T11. Trạng thái fixture là đang giao ở cả hai phiên. Không gán trạng thái giao thành công hoặc mã vận đơn.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-27",
+      "customer_goal": "Tra cứu đơn giao chậm",
+      "customer_turns": [
+        "alo em, anh đặt nồi chiên Xiaomi từ thứ 6 tuần trước mà giờ chưa thấy giao, mã đơn OD731508",
+        "sao lâu vậy em, đặt từ thứ 6 lận",
+        "mà anh có thấy tracking gì đâu, mã vận đơn ở đâu em",
+        "ok, lỡ hôm nay anh không có nhà thì sao",
+        "ok em, cảm ơn em"
+      ],
+      "facts_established": {
+        "order_id": "OD731508"
+      },
+      "success_if": {
+        "tool_called": "order.status",
+        "args_match": {
+          "order_id": "OD731508"
+        }
+      },
+      "ground_truth_facts": {
+        "order_status": "shipping"
+      },
+      "channel_identity": "0918460273"
+    },
+    "call_2": {
+      "channel": "hotline",
+      "channel_identity": "0918460273",
+      "call_date": "2026-10-29",
+      "customer_turns": [
+        "Anh hỏi tiếp đơn nồi chiên bị giao chậm hôm trước. Đơn đó đang ở trạng thái nào rồi em?",
+        "Anh chưa nhận được tin nhắn vận đơn, em kiểm tra đơn cũ giúp anh."
+      ],
+      "must_carry_over": [
+        "order_id"
+      ],
+      "must_not_ask": [
+        "order_id"
+      ],
+      "success_if": {
+        "tool_called": "order.status"
+      },
+      "ground_truth_facts": {
+        "order_status": "shipping"
+      }
+    }
+  }
+}

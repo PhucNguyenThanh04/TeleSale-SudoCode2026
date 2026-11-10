@@ -1,0 +1,120 @@
+{
+  "scenario_id": "SC-T13",
+  "level": "M1",
+  "persona": "Tìm máy lọc phòng ngủ trong ngân sách, hỏi khóa trẻ em và bảo hành",
+  "hard_case": "doi_ngan_sach",
+  "customer_phone": "0700000013",
+  "customer_name": "Khách thử T13",
+  "honorific": "anh",
+  "notes": "Nguồn speech T13. Khách nâng ngân sách ở phiên 2, diện tích và trẻ nhỏ giữ nguyên. Call 3 follows T13-S03 when this scenario has a justified third contact; see speech dialogue source.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-20",
+      "customer_goal": "Tìm máy lọc phòng ngủ trong ngân sách, hỏi khóa trẻ em và bảo hành",
+      "customer_turns": [
+        "chào em, anh cần máy lọc không khí cho phòng ngủ 25 mét vuông, tầm 3 triệu đổ lại",
+        "nhà anh có em bé, máy có khóa trẻ em không em",
+        "ừ, máy bảo hành bao lâu, điều khiển bằng điện thoại được không",
+        "giao về huế mất mấy ngày, có mất phí giao không em",
+        "được, để anh suy nghĩ thêm rồi gọi lại em sau"
+      ],
+      "facts_established": {
+        "room_area_m2": 25,
+        "budget_vnd": 3000000,
+        "has_children": true
+      },
+      "success_if": {
+        "tool_called": "catalog.search",
+        "must_say_any": [
+          "khóa trẻ em",
+          "khóa an toàn trẻ em"
+        ],
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {},
+      "channel_identity": "0700000013",
+      "expected_outcome": "hen_goi_lai"
+    },
+    "call_2": {
+      "channel": "zalo_oa",
+      "channel_identity": "team-harness-v1-t13",
+      "call_date": "2026-10-22",
+      "customer_turns": [
+        "Anh nhắn lại vụ máy lọc phòng ngủ hôm trước. Ngân sách giờ tối đa 5,5 triệu. Phòng vẫn như cũ nhé em.",
+        "Anh cần máy có khóa trẻ em. Em gợi ý giúp một mẫu, anh chưa đặt ngay nhé."
+      ],
+      "must_carry_over": [
+        "room_area_m2"
+      ],
+      "must_not_ask": [
+        "room_area_m2"
+      ],
+      "success_if": {
+        "tool_called": "catalog.search",
+        "args_match": {
+          "max_price_vnd": 5500000
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {},
+      "memory_expectation": {
+        "budget_vnd": 5500000,
+        "superseded": {
+          "budget_vnd": 3000000
+        }
+      }
+    },
+    "call_3": {
+      "channel": "zalo_oa",
+      "channel_identity": "team-harness-v1-t13",
+      "call_date": "2026-11-05",
+      "customer_goal": "Tiếp tục tìm máy lọc phòng ngủ theo ngân sách, diện tích và yêu cầu khóa trẻ em; hôm nay chỉ nhận tư vấn.",
+      "customer_turns": [
+        "anh nhắn lại về máy lọc phòng ngủ hôm trước. ngân sách tối đa của anh vẫn như lần trước, giờ anh muốn xem đúng mẫu có khóa trẻ em.",
+        "phòng ngủ hai mươi lăm mét vuông như lần trước. anh không muốn lấy mẫu cho phòng lớn vì vừa tốn tiền vừa chiếm chỗ.",
+        "nếu có một mẫu hơi cao hơn ngân sách nhưng có đúng tính năng thì cứ báo riêng, đừng tự cộng phụ kiện vào giá nha em.",
+        "anh muốn biết bảo hành mấy tháng với lõi thay có nằm trong bảo hành không. cái này ảnh hưởng tiền về sau."
+      ],
+      "must_carry_over": [
+        "budget_vnd",
+        "room_area_m2",
+        "has_children"
+      ],
+      "must_not_ask": [
+        "budget_vnd",
+        "room_area_m2",
+        "has_children"
+      ],
+      "success_if": {
+        "tool_called": "catalog.search",
+        "args_match": {
+          "max_price_vnd": 5500000
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {
+        "budget_vnd": 5500000,
+        "room_area_m2": 25,
+        "has_children": true
+      },
+      "expected_outcome": "tu_van_san_pham",
+      "speech_dialogue_ref": "T13-S03"
+    }
+  }
+}

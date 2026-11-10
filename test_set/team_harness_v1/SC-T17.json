@@ -1,0 +1,122 @@
+{
+  "scenario_id": "SC-T17",
+  "level": "M1",
+  "persona": "Mua giày RunLite size 41 đen kèm tất",
+  "hard_case": "khuyen_mai_het_han",
+  "customer_phone": "0700000017",
+  "customer_name": "Khách thử T17",
+  "honorific": "anh",
+  "notes": "Nguồn speech T17. Giữ biến thể và kiểm lại RUN-10 sau 25/10. Phiên 2 khách chọn chuyển khoản. Call 3 follows T17-S03 when this scenario has a justified third contact; see speech dialogue source.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-22",
+      "customer_goal": "Mua giày RunLite size 41 đen kèm tất",
+      "customer_turns": [
+        "hello em, anh thấy fanpage đang sale giày RunLite 1, deal này tới khi nào vậy em",
+        "chân anh dài 25 phân, giày thường thì anh đi size 40",
+        "ok, check giúp anh size 41 màu đen, sau sale còn bao nhiêu em",
+        "ok, anh add thêm một hộp tất RunLite cho đủ combo nha, hộp bao nhiêu em",
+        "Anh cân nhắc đôi giày và hộp tất, để anh gọi lại nhé."
+      ],
+      "facts_established": {
+        "size": 41,
+        "color": "den"
+      },
+      "success_if": {
+        "tool_called": "pricing.get_quote",
+        "args_match": {
+          "sku": "SKU-SN-RUN1-41-DEN"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {
+        "promo_RUN-10_active": true
+      },
+      "channel_identity": "0700000017",
+      "expected_outcome": "hen_goi_lai"
+    },
+    "call_2": {
+      "channel": "hotline",
+      "channel_identity": "0700000017",
+      "call_date": "2026-10-27",
+      "customer_turns": [
+        "Anh gọi lại vụ RunLite 1 và hộp tất hôm trước. Deal cũ còn không em?",
+        "Anh lấy một đôi đúng size và màu hôm trước, kèm một hộp tất RunLite. Anh chuyển khoản nhé."
+      ],
+      "must_carry_over": [
+        "size",
+        "color"
+      ],
+      "must_not_ask": [
+        "size",
+        "color"
+      ],
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-SN-RUN1-41-DEN",
+          "payment": "bank",
+          "qty": 1,
+          "price_vnd": 1290000
+        },
+        "also_ordered": [
+          "SKU-SN-SOCK"
+        ],
+        "total_match_vnd": 1439000,
+        "forbidden_claims": [
+          {
+            "field": "promo_RUN-10_active",
+            "value": true
+          }
+        ]
+      },
+      "ground_truth_facts": {
+        "promo_RUN-10_active": false
+      },
+      "expected_outcome": "chot_don"
+    },
+    "call_3": {
+      "channel": "hotline",
+      "channel_identity": "0700000017",
+      "call_date": "2026-11-05",
+      "customer_goal": "Kiểm tra đơn RunLite đã tạo và quà tất theo xác nhận, không đổi hay tạo đơn mới.",
+      "customer_turns": [
+        "chào em, anh gọi đơn giày run lai size bốn mươi mốt màu đen đặt hôm trước. anh nhận được tin nhắn xác nhận rồi, muốn kiểm xem đôi tất khuyến mãi có nằm chung đơn không.",
+        "trong tin nhắn chỉ thấy tên đôi giày với số tiền, không thấy tất. chương trình tặng tất lúc đặt có áp dụng cho đơn của anh không em?",
+        "nếu không có tất thì anh không cần đặt thêm đâu. anh chỉ muốn biết tin nhắn xác nhận có thiếu dòng hay không.",
+        "rồi. em kiểm tra giúp trạng thái đơn đang giao hay còn ở kho, anh không cần hủy hay sửa gì hết."
+      ],
+      "must_carry_over": [
+        "product_advised",
+        "size",
+        "color"
+      ],
+      "must_not_ask": [
+        "product_advised",
+        "size",
+        "color"
+      ],
+      "success_if": {
+        "tool_called": "order.status",
+        "args_match": {
+          "customer_phone": "0700000017"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {},
+      "expected_outcome": "tra_cuu_don",
+      "speech_dialogue_ref": "T17-S03"
+    }
+  }
+}

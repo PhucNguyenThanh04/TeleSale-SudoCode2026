@@ -1,0 +1,111 @@
+{
+  "scenario_id": "SC-T06",
+  "level": "M1",
+  "persona": "Đổi lựa chọn từ HikePro trắng hết hàng sang xám",
+  "hard_case": "doi_mau_khi_het_hang",
+  "customer_phone": "0700000006",
+  "customer_name": "Khách thử T06",
+  "honorific": "anh",
+  "notes": "Nguồn speech T06. Màu trắng hết hàng; chốt màu xám ở phiên 2 sau khi khách nêu COD. Call 3 follows T06-S03 when this scenario has a justified third contact; see speech dialogue source.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-19",
+      "customer_goal": "Đổi lựa chọn từ HikePro trắng hết hàng sang xám",
+      "customer_turns": [
+        "alo em, anh muốn mua giày trekking HikePro, chân anh dài 25,5 phân thì đi size nào",
+        "anh thích màu trắng, em check giúp anh size 41 màu trắng còn không",
+        "vậy lấy màu xám đi em, giá bao nhiêu, đi không vừa thì đổi trả sao",
+        "ok, ship về hà đông phí bao nhiêu em",
+        "Anh nghiêng về đôi màu xám. Để anh xem thêm rồi nhắn lại em nhé."
+      ],
+      "facts_established": {
+        "size": 41,
+        "color": "xam"
+      },
+      "success_if": {
+        "tool_called": "inventory.check",
+        "args_match": {
+          "sku": "SKU-SN-TRK-41-TRANG"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {},
+      "channel_identity": "0700000006",
+      "expected_outcome": "hen_goi_lai"
+    },
+    "call_2": {
+      "channel": "zalo_oa",
+      "channel_identity": "team-harness-v1-t06",
+      "call_date": "2026-10-21",
+      "customer_turns": [
+        "Anh nhắn lại vụ giày hôm trước, chốt giúp anh đôi HikePro màu xám đúng size đã nói.",
+        "Anh thanh toán COD, giao về Hà Đông, Hà Nội nhé."
+      ],
+      "must_carry_over": [
+        "size",
+        "color"
+      ],
+      "must_not_ask": [
+        "size",
+        "color"
+      ],
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-SN-TRK-41-XAM",
+          "payment": "COD",
+          "qty": 1,
+          "price_vnd": 1990000
+        }
+      },
+      "ground_truth_facts": {
+        "price_vnd": 1990000,
+        "in_stock": true
+      },
+      "expected_outcome": "chot_don"
+    },
+    "call_3": {
+      "channel": "hotline",
+      "channel_identity": "0700000006",
+      "call_date": "2026-11-04",
+      "customer_goal": "Hỏi điều kiện đổi HikePro xám size 41 lên 42; chưa đồng ý tạo yêu cầu khi chưa rõ tồn và phí.",
+      "customer_turns": [
+        "alo em, đôi hike pro màu xám size bốn mươi mốt nhận rồi. anh mang thử trong nhà thấy phần mũi hơi chật, muốn hỏi đổi lên size bốn mươi hai được không.",
+        "anh chỉ mang thử trên nền sạch, chưa đi ra ngoài. tem với hộp còn đủ, nhưng anh lỡ bóc miếng dán ngoài hộp rồi.",
+        "màu xám size bốn mươi hai có sẵn không? nếu chưa có thì anh muốn biết trước rồi mới quyết định, không đổi qua màu khác đâu.",
+        "vậy em cứ kiểm tra tồn với điều kiện trước. anh chưa đồng ý tạo phiếu đổi cho tới khi biết rõ phí."
+      ],
+      "must_carry_over": [
+        "size",
+        "color"
+      ],
+      "must_not_ask": [
+        "size",
+        "color"
+      ],
+      "success_if": {
+        "tool_called": "inventory.check",
+        "args_match": {
+          "sku": "SKU-SN-TRK-42-XAM"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {
+        "in_stock": true
+      },
+      "expected_outcome": "tu_van_doi_hang",
+      "speech_dialogue_ref": "T06-S03"
+    }
+  }
+}

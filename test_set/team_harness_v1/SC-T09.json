@@ -1,0 +1,116 @@
+{
+  "scenario_id": "SC-T09",
+  "level": "M1",
+  "persona": "Hỏi AirPure Pro hết hàng và xin báo khi có hàng",
+  "hard_case": "ton_kho_thay_doi",
+  "customer_phone": "0986214735",
+  "customer_name": "Khách thử T09",
+  "honorific": "anh",
+  "notes": "Nguồn speech T09. AirPure Pro hết hàng phiên đầu, có lại phiên sau. Khách xác nhận ngày giờ hẹn cụ thể ở phiên 2. Call 3 follows T09-S03 when this scenario has a justified third contact; see speech dialogue source.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-19",
+      "customer_goal": "Hỏi AirPure Pro hết hàng và xin báo khi có hàng",
+      "customer_turns": [
+        "chào em, anh muốn mua máy lọc không khí AirPure Pro cho phòng 35 mét vuông, bên em còn hàng không",
+        "tiếc quá, giá bao nhiêu em, có khuyến mãi gì không",
+        "ok, khi nào restock thì em gọi lại cho anh nhé, anh muốn kịp chương trình",
+        "ok, máy có app với khóa trẻ em không em, nhà anh có con nhỏ",
+        "ok, cảm ơn em"
+      ],
+      "facts_established": {
+        "room_area_m2": 35,
+        "has_children": true,
+        "product_advised": "SKU-AP-PRO"
+      },
+      "success_if": {
+        "tool_called": "inventory.check",
+        "args_match": {
+          "sku": "SKU-AP-PRO"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {
+        "price_vnd": 7690000,
+        "in_stock": false
+      },
+      "channel_identity": "0986214735"
+    },
+    "call_2": {
+      "channel": "hotline",
+      "channel_identity": "0986214735",
+      "call_date": "2026-10-21",
+      "customer_turns": [
+        "Anh gọi lại vụ máy lọc cho phòng hôm trước. Em xem máy đã có hàng lại chưa?",
+        "Nếu cần trao đổi thêm thì em hẹn gọi anh lúc 10 giờ sáng ngày 22/10/2026 nhé. Anh xác nhận giờ đó."
+      ],
+      "must_carry_over": [
+        "room_area_m2",
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "room_area_m2",
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "schedule.callback",
+        "args_match": {
+          "callback_at": "2026-10-22T10:00"
+        },
+        "must_not_call_tools": [
+          "order.create"
+        ]
+      },
+      "ground_truth_facts": {
+        "price_vnd": 7690000,
+        "in_stock": true
+      },
+      "expected_outcome": "hen_goi_lai"
+    },
+    "call_3": {
+      "channel": "hotline",
+      "channel_identity": "0986214735",
+      "call_date": "2026-10-22",
+      "customer_goal": "Nhận cuộc gọi đã hẹn, kiểm tra tồn và giá AirPure Pro tại thời điểm gọi lại, chưa đặt hàng.",
+      "customer_turns": [
+        "alo em, anh nghe lịch gọi lại lúc mười giờ về máy lọc air piu pro. giờ anh rảnh rồi, em xem giúp anh mẫu đó đã có hàng lại chưa.",
+        "phòng khách nhà anh khoảng ba mươi lăm mét vuông như lần trước. anh vẫn hỏi đúng air piu pro, chưa cần so lại mẫu khác.",
+        "nếu có hàng thì em báo giá hiện tại luôn giúp anh, mã giảm tháng mười hôm trước còn dùng được không?",
+        "nếu giá tăng so với lần trước thì anh cứ nghe thôi, chưa đặt. anh muốn bàn lại với vợ trước khi quyết định."
+      ],
+      "must_carry_over": [
+        "room_area_m2",
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "room_area_m2",
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "pricing.get_quote",
+        "args_match": {
+          "sku": "SKU-AP-PRO"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {
+        "in_stock": true,
+        "price_vnd": 7690000,
+        "promo_AIR-OCT_active": true
+      },
+      "expected_outcome": "tu_van_gia_ton",
+      "speech_dialogue_ref": "T09-S03"
+    }
+  }
+}

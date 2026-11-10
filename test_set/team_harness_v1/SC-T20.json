@@ -1,0 +1,75 @@
+{
+  "scenario_id": "SC-T20",
+  "level": "M1",
+  "persona": "Đổi áo Windbreak L be sang XL navy",
+  "hard_case": "doi_bien_the_het_hang",
+  "customer_phone": "0965218430",
+  "customer_name": "Khách thử T20",
+  "honorific": "chị",
+  "notes": "Nguồn speech T20. Phiên 2 hỏi lịch lấy áo sau yêu cầu đổi từ L be sang XL navy.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-28",
+      "customer_goal": "Đổi áo Windbreak L be sang XL navy",
+      "customer_turns": [
+        "hi em, chị mới nhận cái áo khoác Windbreak size l màu be, mặc hơi chật, muốn đổi size",
+        "mã đơn là OD752946",
+        "oh, vậy size ích eo còn màu nào em",
+        "ok, chị lấy màu navy, đổi có mất phí ship không em",
+        "ok, vậy chốt màu navy nha em, thanks em nhiều",
+        "Em làm giúp chị thủ tục đổi sang size XL màu navy nhé."
+      ],
+      "facts_established": {
+        "order_id": "OD752946",
+        "size": "XL",
+        "color": "navy"
+      },
+      "success_if": {
+        "tool_called": "order.update",
+        "args_match": {
+          "order_id": "OD752946",
+          "action": "exchange_size",
+          "new_variant_sku": "SKU-JK-WND-XL-NAVY"
+        }
+      },
+      "ground_truth_facts": {
+        "exchange_fee_vnd": 0
+      },
+      "channel_identity": "0965218430"
+    },
+    "call_2": {
+      "channel": "hotline",
+      "channel_identity": "0965218430",
+      "call_date": "2026-10-30",
+      "customer_turns": [
+        "Chị hỏi lại yêu cầu đổi áo hôm trước. Lịch lấy áo bên em thường mất bao lâu?",
+        "Chị giữ nguyên màu và size đã xác nhận hôm trước nhé. Cho chị biết cần giữ tem mác gì khi gửi lại."
+      ],
+      "must_carry_over": [
+        "color",
+        "size"
+      ],
+      "must_not_ask": [
+        "color",
+        "size"
+      ],
+      "success_if": {
+        "tool_called": null,
+        "must_say_any": [
+          "tem mác",
+          "tem, mác",
+          "tem và mác",
+          "tem nhãn"
+        ],
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {}
+    }
+  }
+}
