@@ -15,6 +15,66 @@ from app.infarstructure.llm import build_llm
 
 
 class BuildLLMTest(unittest.TestCase):
+    def test_local_profile_routes_tools_and_streaming_without_cloud_credentials(self) -> None:
+        settings = Settings(_env_file=None, llm_backend="local", llm_api_key="cloud-secret",
+                            llm_model="cloud-model", llm_base_url="https://cloud.example/v1",
+                            langmem_model="cloud-memory", llm_max_tokens=200)
+        llm = build_llm(settings)
+        requests = []
+
+        def send(client, request, **kwargs):
+            requests.append(request)
+            if json.loads(request.content).get("stream"):
+                chunks = [
+                    {"id": "local-stream", "object": "chat.completion.chunk", "created": 0,
+                     "model": "Qwen/Qwen2.5-3B-Instruct-AWQ", "choices": [{"index": 0,
+                         "delta": {"role": "assistant", "content": "Xin chào"},
+                         "finish_reason": None}]},
+                    {"id": "local-stream", "object": "chat.completion.chunk", "created": 0,
+                     "model": "Qwen/Qwen2.5-3B-Instruct-AWQ", "choices": [{"index": 0,
+                         "delta": {}, "finish_reason": "stop"}]},
+                ]
+                body = "".join(f"data: {json.dumps(chunk)}\n\n" for chunk in chunks)
+                return httpx.Response(200, request=request,
+                    headers={"content-type": "text/event-stream"}, text=body + "data: [DONE]\n\n")
+            return httpx.Response(200, request=request, json={
+                "id": "local-tool", "object": "chat.completion", "created": 0,
+                "model": "Qwen/Qwen2.5-3B-Instruct-AWQ", "choices": [{"index": 0,
+                    "message": {"role": "assistant", "content": None, "tool_calls": [{
+                        "id": "local-stock", "type": "function", "function": {
+                            "name": "check_stock", "arguments": '{"sku":"AC-01"}'}}]},
+                    "finish_reason": "tool_calls"}]})
+
+        async def async_send(client, request, **kwargs):
+            return send(client, request, **kwargs)
+
+        tool = {"type": "function", "function": {"name": "check_stock",
+            "description": "Check stock", "parameters": {"type": "object",
+                "properties": {"sku": {"type": "string"}}, "required": ["sku"]}}}
+
+        async def run_async():
+            reply = await llm.bind_tools([tool]).ainvoke("Kiểm tra AC-01")
+            chunks = [chunk.content async for chunk in llm.astream("Chào")]
+            return reply, "".join(chunks)
+
+        with patch.object(httpx.Client, "send", send):
+            reply = llm.bind_tools([tool]).invoke("Kiểm tra AC-01")
+        with patch.object(httpx.AsyncClient, "send", async_send):
+            async_reply, streamed = asyncio.run(run_async())
+        self.assertEqual(reply.tool_calls[0]["args"], {"sku": "AC-01"})
+        self.assertEqual(async_reply.tool_calls, reply.tool_calls)
+        self.assertEqual(streamed, "Xin chào")
+        self.assertEqual(len(requests), 3)
+        for request in requests:
+            self.assertEqual(str(request.url), "http://localhost:8081/v1/chat/completions")
+            self.assertEqual(request.headers["Authorization"], "Bearer local-vllm")
+            payload = json.loads(request.content)
+            self.assertEqual(payload["model"], "Qwen/Qwen2.5-3B-Instruct-AWQ")
+            self.assertEqual(payload["max_completion_tokens"], 200)
+            self.assertNotIn("reasoning_effort", payload)
+        for request in requests[:2]:
+            self.assertEqual(json.loads(request.content)["tools"][0]["function"]["name"], "check_stock")
+
     def test_builds_cloud_chat_model_from_settings(self) -> None:
         with patch.dict(
             os.environ,

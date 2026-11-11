@@ -39,6 +39,67 @@ The backend and speech services do not need model-specific changes. Offline
 request/tool tests do not verify Cloud credentials, model availability or latency;
 no live model evaluation is performed by this migration.
 
+### Switch between the API and a local model
+
+Keep the existing `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` and `LANGMEM_MODEL`
+in `ai-services/.env`. Add:
+
+```dotenv
+LLM_BACKEND=local
+LOCAL_LLM_BASE_URL=http://localhost:8081/v1
+LOCAL_LLM_MODEL=Qwen/Qwen2.5-3B-Instruct-AWQ
+LOCAL_LLM_API_KEY=local-vllm
+```
+
+`local-vllm` is a client placeholder for an unauthenticated local server; use its
+real key if authentication is enabled. Set `LLM_BACKEND=api` to switch back.
+Omitting the selector keeps the existing API behavior. Local mode resolves the
+active connection before building any models, and uses the local model for both
+the agent and LangMem, ignoring the API profile's `LANGMEM_MODEL`. Sampling,
+and token limits continue to use the common `LLM_*` settings. Local requests use
+`LOCAL_LLM_TIMEOUT_SECONDS` (default 120 seconds) to allow for GPU queueing.
+
+Set `LOCAL_LLM_CONTEXT_WINDOW=8192` to match vLLM's `--max-model-len` (change both
+if using another context size). For nonstreaming requests carrying tools, a
+`finish_reason=length` response is discarded and retried once with a larger
+output budget, capped at 4096 tokens and the remaining context reported by the
+server. Both attempts count toward token usage. A second truncated response,
+missing usage or insufficient context raises `local_tool_output_truncated`;
+partial tool output is never inserted into history. HTTP 400, normal responses,
+plain text requests, streaming and the API backend do not use this retry policy.
+Both local agent and LangMem tool bindings set `strict: true` on the initial
+request, including already formatted dictionary tools, while preserving tool
+choice and normal multi-call behavior. The local LangMem episode schema restricts
+topic `consultation` to null instead of exposing the canonical consultation/offer
+schemas to the model. Evidence, facts, topics and open/resolved items remain
+typed and admitted as before; the worker derives consultation deterministically.
+Cloud extraction continues to use its existing schema.
+Local nonstreaming tool requests also detect Hermes `<tool_call>` markup leaked
+as plain content and LangChain `invalid_tool_calls`, even with a `stop` finish
+reason. Recovery reuses the original messages without the malformed output,
+requires a tool call and disables parallel calls, preserving a named tool choice
+when specified. Syntax-only failures keep the original output budget. Truncation
+and parser recovery share one retry total; malformed or missing tool output on
+that retry raises `local_tool_output_invalid` instead of becoming ordinary text.
+This does not repair semantic schema validation errors or prompts exceeding the
+server's input context limit.
+
+After changing the selector, restart the host AI service and the memory worker.
+For the first deployment of this code, rebuild/recreate the worker from the repo
+root with `docker compose up -d --build langmem-worker`; later `.env` changes only
+need `docker compose restart langmem-worker` plus restarting the host AI process.
+The worker connects through `host.docker.internal:8081`, since its `localhost`
+belongs to the container. To change this address, set
+`LOCAL_LLM_CONTAINER_BASE_URL` in the root `.env` and recreate the worker with
+`docker compose up -d langmem-worker`. The model server must listen on an address
+reachable from Docker, rather than only host loopback.
+
+The local server must support Chat Completions, SSE streaming, `tools` and
+`tool_choice=auto` for the agent. A plain text curl response only verifies basic
+chat. Enable the server's automatic tool-choice support and a tool parser
+compatible with its model when needed. Offline tests cover request routing,
+tool responses and streaming; they do not evaluate this local model's quality.
+
 ## Runtime settings
 
 All settings below are validated in `app/configs.py`. Copy the grouped
@@ -49,6 +110,7 @@ settings needed for your run.
 |---|---|---|
 | API | `APP_NAME`, `APP_ENV`, `DEBUG`, `HOST`, `PORT`, `LOG_LEVEL`, `TIMEZONE` | API identity, environment label, debug flag, bind address, logging, callback timezone |
 | OpenAI-compatible API | `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, `LLM_TIMEOUT_SECONDS`, `LLM_TEMPERATURE`, `LLM_MAX_TOKENS`, `LLM_SEED` | Model, authentication, timeout, response budget and reproducible sampling |
+| LLM backend | `LLM_BACKEND`, `LOCAL_LLM_API_KEY`, `LOCAL_LLM_MODEL`, `LOCAL_LLM_BASE_URL` | Select `api` (default) or `local` without overwriting the saved API profile |
 | Harness | `AGENT_KIND`, `AGENT_MAX_TOOL_CALLS`, `AGENT_PROMPT_HISTORY_TURNS`, `AGENT_GUARDRAILS_ENABLED` | Select `deep` or `react`, set tool and context limits, and toggle answer checks |
 | Memory | `MEMORY_MAX_EPISODES`, `LANGMEM_MODEL` | Customer-scoped LangMem knowledge and a separate distillation model; LangMem is the only runtime memory path |
 | Langfuse | `LANGFUSE_ENABLED`, `LANGFUSE_PROMPTS_ENABLED`, `LANGFUSE_CAPTURE_CONTENT`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` | Optional tracing and production-labeled prompt management; content capture is opt-in for development/test |
@@ -101,9 +163,17 @@ The runtime consumes prepared reads once within 30 seconds, only for the same
 customer and business date. They are prior evidence, so a new quantity, product or
 address can require a new quote. A process restart or another AI worker falls back
 to the ordinary turn path; correctness does not depend on hitting a warm process.
-The actual first-turn brief is rebuilt from current memory and customer text using
+The brief on every returning-customer turn is rebuilt from current memory and customer text using
 the existing brief rules, including orders, open blockers, known slots and stale
 warnings. The preliminary prepare response is not spoken or substituted for it.
+
+`SessionState` keeps an owner/date/full-or-baseline scoped context view and the
+current consultation decision across turns. A fresh memory read replaces that
+view; failed reads invalidate it. Committed tool observations rebuild evidence
+after a process restart, including failed-read barriers that invalidate stale
+quotes. Prepared reads are attributed to their consuming turn when committed;
+voice offers still require delivered speech. Baseline retains only the current
+session context. Brief rendering alone does not refresh price or stock.
 
 Working memory is read synchronously from `runtime.turns` for every turn in
 the same session; recent customer and agent turns are passed to the model with

@@ -1,4 +1,5 @@
 """Cross-session use must have valid provenance and scope, not just a matching literal."""
+from eval_harness.test_support import VoiceLifecycleStub
 import pytest
 from eval_harness.reference_adapter import facts_used, _source_session_id
 
@@ -43,7 +44,7 @@ def test_harness_uses_call_start_snapshot_not_current_turn_memory():
     from types import SimpleNamespace
     from eval_harness.benchmark_runner import run_scenario_call
 
-    class Runtime:
+    class Runtime(VoiceLifecycleStub):
         count = 0
         async def run(self, request):
             self.count += 1
@@ -201,7 +202,7 @@ def test_runner_preserves_catalog_aliases_between_turns_without_recounting_new_f
     from types import SimpleNamespace
     from eval_harness.benchmark_runner import run_scenario_call
 
-    class Runtime:
+    class Runtime(VoiceLifecycleStub):
         count = 0
         async def run(self, request):
             self.count += 1

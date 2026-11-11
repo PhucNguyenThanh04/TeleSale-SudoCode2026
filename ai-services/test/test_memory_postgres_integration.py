@@ -1,6 +1,7 @@
 """Real PostgreSQL memory contract in an automatically removed test database."""
 
 import os
+import asyncio
 import json
 import unittest
 from datetime import date
@@ -45,15 +46,15 @@ class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
 
     async def test_runtime_migration_can_be_reapplied(self):
         migration_dir = Path(__file__).resolve().parents[1] / "migrations"
-        migrations = sorted(migration_dir.glob("*.sql"))
-        self.assertEqual([item.name for item in migrations],
-                         ["0001_current_memory_schema.sql"])
+        migrations = [migration_dir / name for name in (
+            '0001_current_memory_schema.sql', '0004_memory_job_order.sql')]
         async with self.repo.transaction() as conn:
             session = uuid4()
             await conn.execute("""INSERT INTO runtime.turns
                 (session_id,turn_no,customer_id,channel,on_date,customer_text,agent_text)
                 VALUES($1,1,NULL,'hotline','2026-10-15','Ẩn danh','Dạ')""", session)
-            await conn.execute(migrations[0].read_text())
+            for migration in migrations:
+                await conn.execute(migration.read_text())
             self.assertEqual(await conn.fetchval("""SELECT count(*)
                 FROM runtime.turns WHERE session_id=$1""", session), 1)
             self.assertEqual(await conn.fetchval("""SELECT count(*)
@@ -68,7 +69,13 @@ class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
             "customer_text": "Tôi thích màu xanh", "agent_text": "Dạ",
             "on": "2026-10-15", "channel": "hotline",
             "client_msg_id": pending_source})
-        await wait_for_distillation(self.dsn, str(uuid4()), timeout_seconds=0.05)
+        anonymous_source = str(uuid4())
+        await write(self.repo, 'commit_turn', None, str(uuid4()), {
+            'customer_text': 'Chào', 'agent_text': 'Dạ', 'on': '2026-10-15',
+            'channel': 'hotline', 'client_msg_id': anonymous_source})
+        await wait_for_distillation(self.dsn, anonymous_source, timeout_seconds=0.05)
+        with self.assertRaisesRegex(RuntimeError, 'missing turn'):
+            await wait_for_distillation(self.dsn, str(uuid4()), timeout_seconds=0.05)
         with self.assertRaises(TimeoutError):
             await wait_for_distillation(self.dsn, pending_source, timeout_seconds=0.05)
 
@@ -202,6 +209,98 @@ class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
                 VALUES($1,'C901',$2,1,'shadow')""", session, source)
             self.assertIsNone(await self.repo.claim_distillation(conn, 1))
 
+    async def test_crashed_final_attempt_does_not_block_later_customer_session(self):
+        first, second = uuid4(), uuid4()
+        async with self.repo.transaction() as conn:
+            exhausted = await conn.fetchval('''INSERT INTO runtime.langmem_distillation_jobs
+                (session_id,customer_id,source_turn_id,turn_no,mode,status,attempts,lease_until)
+                VALUES($1,'C901',$2,1,'enabled','leased',5,now()-interval '1 second') RETURNING job_id''',
+                first, uuid4())
+            following = await conn.fetchval('''INSERT INTO runtime.langmem_distillation_jobs
+                (session_id,customer_id,source_turn_id,turn_no,mode)
+                VALUES($1,'C901',$2,1,'enabled') RETURNING job_id''', second, uuid4())
+        async def unexpected_extraction(*args):
+            raise AssertionError('An exhausted job must not call the model again')
+        self.assertTrue(await process_one(self.repo, unexpected_extraction, None))
+        async with self.repo.transaction() as conn:
+            self.assertEqual(await conn.fetchval('''SELECT status FROM runtime.langmem_distillation_jobs
+                WHERE job_id=$1''', exhausted), 'failed')
+            next_job = await self.repo.claim_distillation(conn, 1)
+            self.assertEqual(next_job['job_id'], following)
+
+    async def test_claim_serializes_customer_sessions_but_allows_other_customers(self):
+        async with self.repo.transaction() as conn:
+            ids = []
+            for customer in ('C901', 'C901', 'C902'):
+                ids.append(await conn.fetchval('''INSERT INTO runtime.langmem_distillation_jobs
+                    (session_id,customer_id,source_turn_id,turn_no,mode)
+                    VALUES($1,$2,$3,1,'enabled') RETURNING job_id''', uuid4(), customer, uuid4()))
+        async with self.repo.transaction() as first_connection:
+            first = await self.repo.claim_distillation(first_connection, 1)
+            self.assertEqual(first['job_id'], ids[0])
+            async with self.repo.transaction() as other_connection:
+                concurrent = await self.repo.claim_distillation(other_connection, 1)
+                self.assertEqual(concurrent['job_id'], ids[2])
+            await self.repo.finish_distillation(first_connection, ids[0], 'completed')
+        async with self.repo.transaction() as conn:
+            following = await self.repo.claim_distillation(conn, 1)
+            self.assertEqual(following['job_id'], ids[1])
+            await conn.execute('''UPDATE runtime.langmem_distillation_jobs
+                SET lease_until=now()-interval '1 second' WHERE job_id=$1''', ids[1])
+            reclaimed = await self.repo.claim_distillation(conn, 1)
+            self.assertEqual(reclaimed['job_id'], ids[1])
+            self.assertFalse(await self.repo.distillation_claim_current(conn, ids[1], following['attempts']))
+            self.assertTrue(await self.repo.distillation_claim_current(conn, ids[1], reclaimed['attempts']))
+
+    async def test_basket_lines_and_promotion_are_transactional_in_postgres(self):
+        from dataloader_offline.postgres import import_release
+        from test_november_pricing import reference
+        from app.mcp_servers.mcp_catalog.repos.postgres import CatalogRepo
+        from app.mcp_servers.mcp_catalog.services.catalog import get_quote_order
+        from app.mcp_servers.mcp_order.repos.postgres import OrderRepo
+        from app.mcp_servers.mcp_order.services.order import invoke
+        data = reference.__wrapped__()
+        phone = '0900000000'
+        await import_release(self.dsn, {'products': {'products': data.PRODUCTS},
+            'promotions': {'promotions': data.PROMOS}, 'inventory': {'events': data.INV},
+            'crm': {'customers': [{'customer_id': 'C901', 'phone': phone, 'name': 'Offline buyer'}]},
+            'chunks': []})
+        sqlalchemy_dsn = self.dsn.replace('postgresql://', 'postgresql+asyncpg://', 1)
+        catalog, orders = CatalogRepo(sqlalchemy_dsn), OrderRepo(sqlalchemy_dsn)
+        payload = {'customer_phone': phone, 'source_channel': 'hotline', 'source_identity': phone,
+                   'on': '2026-10-15', 'lines': [{'sku': 'SKU-AP-PRO', 'qty': 2}], 'payment': 'bank'}
+        try:
+            async with catalog.transaction() as session:
+                quote = await get_quote_order(catalog, session, payload)
+            create_args = {**payload, 'lines': [{'sku': unit['sku'], 'qty': 1,
+                'price_vnd': unit['final_price_vnd']} for unit in quote['units']]}
+            results = await asyncio.gather(*(invoke(orders, 'order.create',
+                {**create_args, 'operation_key': key}) for key in ('basket-A', 'basket-B')))
+            self.assertEqual(sum(result.get('status') == 'created' for result in results), 1)
+            self.assertEqual(sum(result.get('error') == 'price_mismatch' for result in results), 1)
+            winner = next(index for index, result in enumerate(results) if result.get('status') == 'created')
+            replay = await invoke(orders, 'order.create', {**create_args,
+                'operation_key': ('basket-A', 'basket-B')[winner]})
+            self.assertEqual(replay, results[winner])
+            status = await invoke(orders, 'order.status', {
+                'source_channel': 'hotline', 'source_identity': phone, 'order_id': replay['order_id']})
+            self.assertEqual(status['orders'][0]['lines'], create_args['lines'])
+            async with self.repo.transaction() as conn:
+                self.assertEqual(await conn.fetchval('SELECT count(*) FROM runtime.tool_orders'), 1)
+                await conn.execute('''INSERT INTO runtime.tool_orders
+                    (order_id,customer_id,customer_phone,sku,qty,price_vnd,total_vnd,payment,created_on)
+                    VALUES('LEGACY','C901',$1,'SKU-AP-PRO',1,100,100,'bank','2026-10-14')''', phone)
+                await conn.execute((Path(__file__).resolve().parents[2] / 'backend/migrations/0006_order_lines.sql').read_text())
+                self.assertEqual(json.loads(await conn.fetchval(
+                    "SELECT lines FROM runtime.tool_orders WHERE order_id='LEGACY'")),
+                    [{'sku': 'SKU-AP-PRO', 'qty': 1, 'price_vnd': 100}])
+            async with catalog.transaction() as session:
+                refreshed = await get_quote_order(catalog, session, payload)
+            self.assertGreater(refreshed['total_vnd'], quote['total_vnd'])
+        finally:
+            await catalog.close()
+            await orders.close()
+
 
     async def test_request_key_rejects_changed_verification_evidence(self):
         key = str(uuid4())
@@ -273,6 +372,8 @@ class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
             migration_dir = Path(__file__).resolve().parents[1] / "migrations"
             await connection.execute((migration_dir /
                 "0001_current_memory_schema.sql").read_text())
+            await connection.execute((migration_dir /
+                "0004_memory_job_order.sql").read_text())
         finally:
             await connection.close()
         self.repo = MemoryRepo(self.dsn)

@@ -13,6 +13,11 @@ phục vụ trang và WebSocket cùng origin, token nội bộ chỉ nằm ở b
 
 ## Chạy
 
+Chat text M1 có tại `/chat` trên cùng gateway, không cần micro hoặc speech service.
+Nhập kênh/định danh/ngày rồi bắt đầu phiên; Call Brief được nạp trước tin nhắn đầu.
+Memory pending được theo dõi nền, kết thúc/mở phiên mới để thử khách quay lại.
+Quy trình nghiệm thu và bàn giao ASR: [M1 acceptance](../docs/m1-acceptance.md).
+
 Tại thư mục gốc, khởi động speech và AI harness theo cấu hình hiện tại. Cấu hình
 `backend/.env` theo `backend/.env.example`, đặc biệt URL và token AI phải khớp
 harness. Sau đó:
@@ -80,3 +85,57 @@ Mốc được xác nhận theo đồng hồ AudioContext, không theo lúc nh�
 Memory giọng nói chỉ lưu các câu đã xác nhận phát hết; phần câu bị ngắt giữa
 chừng được bỏ qua vì chưa có thời gian từng từ. Bật echo cancellation và nên
 kiểm tra trên thiết bị thật; test offline không đánh giá chất lượng chống vọng.
+
+## Duyệt Knowledge Gap
+
+Trang `/knowledge` trên cùng gateway dùng API Knowledge thật qua proxy server.
+Không cần build frontend. Trước khi mở trang:
+
+1. Trong `backend/.env`, đặt `KNOWLEDGE_REVIEW_TOKEN` thành mã quản trị riêng,
+   khác `AI_INTERNAL_TOKEN`, và `KNOWLEDGE_REVIEWER_ID` thành actor nội bộ
+   (ví dụ `local-reviewer`). Không đưa token nội bộ AI vào browser.
+2. Người quản trị cấp quyền cho đúng actor tại AI service (thao tác DB quản trị,
+   không phải lệnh frontend tự chạy):
+
+   ```bash
+   cd ai-services
+   .venv/bin/python -m app.knowledge.cli grant --actor local-reviewer
+   ```
+
+   CLI cần `KNOWLEDGE_ADMIN_DATABASE_URL` trỏ đúng DB knowledge; xem
+   [cấu trúc Knowledge](../ai-services/app/knowledge/README.md) và cấu hình mẫu trong `ai-services/.env.example`. Không cấp quyền qua trang.
+3. Khởi động/restart AI service có `KNOWLEDGE_DATABASE_URL` (schema/roles đã provision) và worker `python -m app.knowledge.worker` với `KNOWLEDGE_WORKER_DATABASE_URL` riêng. Bật `KNOWLEDGE_ENABLED=true` ở AI service nếu cần thu feedback runtime; sau đó chạy
+   gateway `app.voice_main:app` như hướng dẫn trên. Mở `http://127.0.0.1:8000/knowledge`,
+   nhập mã quản trị riêng. Mã chỉ giữ trong RAM của tab; đăng xuất xóa view và mã.
+   Không cấu hình đủ hai biến thì API trả 503; chưa được cấp quyền thì trả 403.
+
+Luồng sử dụng: chọn gap → đọc câu hỏi/câu trả lời và nguồn feedback → phân loại
+nguyên nhân → mở draft tự động nếu có hoặc tạo đề xuất → chọn nguồn public và
+đọc hiệu lực/nội dung → lưu → review regression test → nhập lý do, xác nhận đã
+review → duyệt hoặc từ chối. Sửa nội dung hoặc test tạo revision mới cần duyệt lại;
+chỉnh sửa chưa lưu không được dùng để duyệt bản cũ. Lỗi 409 yêu cầu làm mới và
+đọc lại, trang không tự retry ghi đè.
+
+Tab **Phát hành** chọn các bản approved → chuẩn bị release → mở manifest/checks
+→ xác nhận phát hành hoặc khôi phục release cũ. Chuẩn bị có thể build hybrid
+index tùy cấu hình AI service, nên không coi là thao tác chỉ đọc. Bản mới chỉ
+chứa các revision đã chọn; UI cảnh báo các revision active sẽ bị bỏ. Các gate
+source hash, approval/test, permission và CAS vẫn do AI service kiểm. Phát hành
+không tự đánh dấu gap resolved: cần bằng chứng eval trước/sau riêng. Kết quả
+retrieval offline không đồng nghĩa đã kiểm chất lượng LLM.
+
+Trang hiện phân biệt gap technical/generation/correct_refusal và chặn soạn nội
+dung cho các nhóm này. Nội dung được hiển thị bằng text, không render HTML từ
+feedback. HTTP review API cần Bearer access riêng, server cố định reviewer,
+không cache dữ liệu admin và chặn Origin khác khi ghi. Khi dùng ngoài localhost,
+đặt sau HTTPS và cơ chế truy cập quản trị của nhóm; đây chưa phải hệ thống tài
+khoản nhiều người dùng. Cả UI và backend không tự seed gap hoặc gọi eval để có
+số liệu demo. Chưa có gap thì chạy luồng feedback/worker hiện có từ dữ liệu thật.
+
+Kiểm thử focused, offline:
+
+```bash
+PYTHONPATH=backend:backend/test backend/.venv/bin/python -m pytest -q backend/test/test_knowledge_gateway.py backend/test/test_knowledge_browser.py -o asyncio_default_fixture_loop_scope=function
+```
+
+Browser test dùng Chrome thật, upstream giả và không có model/DB/phát hành thật.

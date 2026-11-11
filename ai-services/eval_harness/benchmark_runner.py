@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from app.agent.factory import build_runtime
 from app.configs import Settings
 from app.mcp_servers.mcp_shared.config import database_url
-from app.schemas.agent import TextTurnRequest
+from app.schemas.agent import PrepareSessionRequest, TextTurnRequest, VoicePlaybackRequest
 
 from eval_harness.memory_recall import evaluate_memory_recall
 from eval_harness.reference_adapter import (facts_used, public_memory_writes,
@@ -43,6 +43,31 @@ from eval_harness.scorer import (
 
 logger = logging.getLogger("eval_runner")
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s [%(levelname)s] %(message)s")
+
+# The BTC compatibility schema requires integer ttft_ms, even without token streaming.
+CONVERSATION_MEASUREMENT = {
+    "lifecycle": "prepare_session -> run(voice) -> record_playback; drain_enrichment_at_call_end",
+    "delivery_mode": "voice",
+    "playback": "simulated_full_reply",
+    "response_scope": "transcript_to_complete_reply",
+    "excluded": ["prepare", "memory_finalize", "asr", "tts", "playback_duration", "http_transport"],
+    "ttft_is_proxy": True,
+}
+
+
+def conversation_measurement(delivery_mode='voice'):
+    if delivery_mode == 'voice':
+        return deepcopy(CONVERSATION_MEASUREMENT)
+    if delivery_mode != 'text':
+        raise ValueError('unsupported_delivery_mode')
+    return {
+        'lifecycle': 'prepare_session -> run(text, including persistence); drain_enrichment_at_call_end',
+        'delivery_mode': 'text', 'playback': 'not_applicable',
+        'response_scope': 'chat_to_complete_reply',
+        'excluded': ['prepare', 'memory_worker_wait', 'asr', 'tts', 'http_transport'],
+        'ttft_is_proxy': False,
+        'ttft_basis': 'nonstreaming_total_btc_rule_7',
+    }
 
 
 async def run_scenario_call(
@@ -63,9 +88,10 @@ async def run_scenario_call(
     rows_out: list[dict[str, Any]] | None = None,
     customer_name: str | None = None,
     safety_issues: list | None = None,
-    on_turn=None, diagnostics=None,
+    on_turn=None, diagnostics=None, delivery_mode='voice',
 ) -> list[dict[str, Any]]:
     """Execute all turns of a single call in a scenario."""
+    conversation_measurement(delivery_mode)
     session_id = uuid4()
     days_later = call_spec.get("days_later", 0)
     call_date = call_date or base_date + timedelta(days=days_later)
@@ -78,6 +104,14 @@ async def run_scenario_call(
     source_ids: list[str] = []
     source_rows: list[dict] = []
     prior_snapshot = None
+    pending_decisions = []
+    prepare_ms = 0
+    prepared = None
+    if customer_turns:
+        prepare_started = time.perf_counter()
+        prepared = await runtime.prepare_session(PrepareSessionRequest(
+            session_id=session_id, channel=channel, channel_identity=channel_identity, on=call_date))
+        prepare_ms = round((time.perf_counter() - prepare_started) * 1000)
 
     for turn_idx, user_text in enumerate(customer_turns, start=1):
         turn_req = TextTurnRequest(
@@ -88,6 +122,7 @@ async def run_scenario_call(
             on=call_date,
             text=user_text,
             input_mode=input_mode,
+            delivery_mode=delivery_mode,
         )
 
         print(f"[eval] {config} {call_name} turn {turn_idx}: model", flush=True)
@@ -99,14 +134,34 @@ async def run_scenario_call(
         from app.agent.harness.observability import capture_diagnostic_events
         state, resp, runtime_error, runtime_events = {}, None, None, []
         decision_capture = None
+        latency_ms = None
+        memory_finalize_ms = 0
+        playback_error = None
+        essential_not_ready = False
         try:
             with (capture_decisions(aliases=diagnostics.decision_aliases) if diagnostics is not None and decision_enabled() else nullcontext(None)) as decision_capture, capture_diagnostic_events() as runtime_events:
                 decision_emit("provenance", provenance=True)
                 resp = await runtime.run(turn_req)
-            latency_ms = (time.perf_counter() - t_start) * 1000.0
+                latency_ms = (time.perf_counter() - t_start) * 1000.0
+                # The browser acknowledges delivered characters before the same
+                # runtime method commits memory. Transcript eval assumes full delivery.
+                memory_started = time.perf_counter()
+                commit_update = getattr(resp, 'memory_update', None)
+                if delivery_mode == 'voice':
+                    try:
+                        commit_update = await runtime.record_playback(VoicePlaybackRequest(
+                            session_id=session_id, client_msg_id=turn_req.client_msg_id,
+                            channel=channel, channel_identity=channel_identity, on=call_date,
+                            played_chars=len(resp.agent_text), interrupted=False))
+                    except Exception as exc:
+                        playback_error = type(exc).__name__
+                memory_finalize_ms = (time.perf_counter() - memory_started) * 1000.0
+                essential_not_ready = commit_update is not None and not commit_update.turn_saved
             state = runtime.state_for(turn_req)
             if state is None:
                 raise RuntimeError("missing_turn_state")
+            if delivery_mode == 'text':
+                memory_finalize_ms = state.get('memory_commit_ms', 0)
             customer_name = customer_name or state.get("customer_name")
             agent_text = resp.agent_text or ""
             tool_calls = state.get("tool_calls", [])
@@ -119,10 +174,12 @@ async def run_scenario_call(
                 current_session_id=str(session_id), customer_text=user_text,
                 catalog_calls=build_commerce_evidence(state))
             if turn_idx == 1 and call_name in {"call_2", "call_3"}:
-                call_brief_latency = (resp.call_brief or {}).get("latency_ms")
+                brief = getattr(prepared, "call_brief", None) or resp.call_brief
+                call_brief_latency = (brief or {}).get("latency_ms")
 
         except Exception as exc:
-            latency_ms = (time.perf_counter() - t_start) * 1000.0
+            if latency_ms is None:
+                latency_ms = (time.perf_counter() - t_start) * 1000.0
             runtime_error = type(exc).__name__
             agent_text = f"[ERROR: {type(exc).__name__}]"
             tool_calls = []
@@ -134,47 +191,28 @@ async def run_scenario_call(
                          facts_used_this_turn, latency_ms, call_brief_latency,
                          input_mode, customer_name=customer_name,
                          safety_issues=safety_issues, call_spec=call_spec)
+        row["latency"].update(response_ms=int(latency_ms),
+                              prepare_ms=prepare_ms if turn_idx == 1 else 0,
+                              ttft_is_proxy=delivery_mode != 'text')
+        if playback_error is not None:
+            row["memory_error"] = "playback_failed"
+        elif essential_not_ready:
+            row['memory_error'] = 'essential_state_not_ready'
         if diagnostics is not None:
             diagnostics.observe(turn_req, resp, state or {}, row, runtime_events, runtime_error=runtime_error)
         if on_turn is not None and not agent_text.startswith("[ERROR:"):
             on_turn(turn_req, resp, state, row)
         source_id = str(turn_req.client_msg_id)
-        if runtime_error is None:
+        if runtime_error is None and playback_error is None and not essential_not_ready:
             source_ids.append(source_id)
             source_rows.append(row)
-        if runtime_error is None and wait_for_jobs is not None:
-            print(f"[eval] {config} {call_name} turn {turn_idx}: waiting memory", flush=True)
-            try:
-                await wait_for_jobs(source_id)
-            except TimeoutError:
-                row["memory_error"] = "timeout"
-            except Exception as exc:
-                row["memory_error"] = "job_failed"
-                logger.warning("Distillation wait failed for %s: %s", source_id,
-                               type(exc).__name__)
-        if runtime_error is None and capture_writes is not None and "memory_error" not in row:
-            try:
-                writes = await capture_writes([source_id])
-                accepted = writes.get(source_id, [])
-                if decision_capture is not None:
-                    from app.mcp_servers.mcp_shared.decision_diagnostics import observe_job
-                    observe_job(decision_capture, getattr(writes, 'decision_jobs', {}).get(source_id, {}), state)
-                if safety_issues is not None:
-                    from eval_harness.trace_evidence import inspect_redaction
-                    safety_issues.extend(inspect_redaction(
-                        {**row, "memory_writes": accepted},
-                        {**row, "memory_writes": public_memory_writes(call_name, turn_idx, accepted, customer_name=customer_name)}, call_spec=call_spec))
-                row["memory_writes"] = public_memory_writes(call_name, turn_idx, accepted, customer_name=customer_name)
-            except Exception as exc:
-                row["memory_error"] = "capture_failed"
-                row["memory_writes"] = []
-                logger.warning("Distillation capture failed for %s: %s", source_id,
-                               type(exc).__name__)
+        row['latency'].update(essential_commit_ms=round(memory_finalize_ms),
+                              background_finalize_ms=0, memory_finalize_ms=round(memory_finalize_ms))
+        row['memory_enrichment_status'] = 'pending' if runtime_error is None and not row.get('memory_error') else 'unavailable'
         if diagnostics is not None and decision_enabled():
-            try:
+            pending_decisions.append((row, decision_capture, state, source_id))
+            if playback_error is not None or essential_not_ready:
                 diagnostics.observe_decisions(row, decision_capture)
-            except Exception:
-                diagnostics.observe_decisions(row, None)
         if capture_source_ids:
             row["_client_msg_id"] = source_id
         trace_rows.append(row)
@@ -182,15 +220,22 @@ async def run_scenario_call(
         print(f"[eval] {config} {call_name} turn {turn_idx}: {status}", flush=True)
         if on_row is not None:
             on_row(row)
+        if playback_error is not None:
+            # A following turn must never consume unconfirmed assistant history.
+            raise RuntimeError("playback_failed")
+        if essential_not_ready:
+            raise RuntimeError('essential_state_not_ready')
 
-    if capture_writes is not None and source_ids:
+    if (capture_writes is not None or wait_for_jobs is not None) and source_ids:
         ready = []
         for row, source_id in zip(source_rows, source_ids):
             if "memory_error" in row:
                 continue
+            background_started = time.perf_counter()
             try:
                 if wait_for_jobs is not None:
                     await wait_for_jobs(source_id)
+                row['memory_enrichment_status'] = 'completed' if wait_for_jobs is not None else 'pending'
                 ready.append((row, source_id))
             except TimeoutError:
                 row["memory_error"] = "timeout"
@@ -198,11 +243,22 @@ async def run_scenario_call(
                 row["memory_error"] = "job_failed"
                 logger.warning("Final distillation wait failed for %s: %s",
                                source_id, type(exc).__name__)
-        if ready:
+            finally:
+                elapsed = round((time.perf_counter() - background_started) * 1000)
+                row['latency']['background_finalize_ms'] = elapsed
+                row['latency']['memory_finalize_ms'] += elapsed
+                if 'memory_error' in row:
+                    row['memory_enrichment_status'] = 'failed'
+        if ready and capture_writes is not None:
             try:
                 final_writes = await capture_writes([sid for _, sid in ready])
                 for row, source_id in ready:
                     accepted = final_writes.get(source_id, [])
+                    if decision_enabled():
+                        from app.mcp_servers.mcp_shared.decision_diagnostics import observe_job
+                        captured = next((entry for entry in pending_decisions if entry[3] == source_id), None)
+                        if captured is not None:
+                            observe_job(captured[1], getattr(final_writes, 'decision_jobs', {}).get(source_id, {}), captured[2])
                     if safety_issues is not None:
                         from eval_harness.trace_evidence import inspect_redaction
                         safety_issues.extend(inspect_redaction(
@@ -212,8 +268,14 @@ async def run_scenario_call(
             except Exception as exc:
                 for row, _ in ready:
                     row["memory_error"] = "capture_failed"
+                    row['memory_enrichment_status'] = 'failed'
                 logger.warning("Final distillation attribution failed for %s: %s",
                                call_name, type(exc).__name__)
+    for row, captured, _, _ in pending_decisions:
+        try:
+            diagnostics.observe_decisions(row, captured)
+        except Exception:
+            diagnostics.observe_decisions(row, None)
 
     return trace_rows
 
@@ -294,7 +356,7 @@ async def run_scenario_stream(
     capture_writes=None,
     on_row=None,
     trace: dict[tuple[str, str], list[dict[str, Any]]] | None = None,
-    safety_issues: list | None = None, on_turn=None, diagnostics=None,
+    safety_issues: list | None = None, on_turn=None, diagnostics=None, delivery_mode='voice',
 ) -> dict[tuple[str, str], list[dict[str, Any]]]:
     """Run all scenarios through the harness runtime."""
     trace = trace if trace is not None else {}
@@ -334,6 +396,7 @@ async def run_scenario_stream(
                 capture_writes=capture_writes,
                 on_row=on_row,
                 rows_out=rows, safety_issues=safety_issues, on_turn=on_turn, diagnostics=diagnostics,
+                delivery_mode=delivery_mode,
             )
 
         sc_duration = time.perf_counter() - t_sc_start
@@ -432,7 +495,9 @@ async def warm_up_configuration(runtime, *, turns: int = 3) -> dict:
 
 async def run_configuration(*, scenarios: dict[str, dict], config: str, runtime,
                             run_id: str, out: Path, wait_for_jobs, capture_writes,
-                            on_row=None, on_turn=None, btc_root: Path | None = None, safety_issues: list | None = None) -> dict:
+                            on_row=None, on_turn=None, btc_root: Path | None = None, safety_issues: list | None = None,
+                            delivery_mode='voice') -> dict:
+    conversation_measurement(delivery_mode)
     from eval_harness.scenario_contract import dataset_coverage
     if config == "baseline":
         config = "baseline_no_memory"
@@ -470,7 +535,8 @@ async def run_configuration(*, scenarios: dict[str, dict], config: str, runtime,
             await run_scenario_stream(runtime, scenarios,
                 is_baseline=config == "baseline_no_memory", run_tag=run_id,
                 wait_for_jobs=wait_for_jobs, capture_writes=capture_writes,
-                on_row=append, trace=trace, safety_issues=safety_issues, on_turn=on_turn, diagnostics=diagnostics)
+                on_row=append, trace=trace, safety_issues=safety_issues, on_turn=on_turn, diagnostics=diagnostics,
+                delivery_mode=delivery_mode)
         finally:
             # Publish final attribution, including late identity backfill.
             write_jsonl(trace, out)
@@ -517,7 +583,7 @@ async def wait_for_distillation(dsn: str, source_turn_id: str,
             if not row["waiting"]:
                 return
             if time.monotonic() >= deadline:
-                raise TimeoutError("LangMem distillation did not finish before the next turn")
+                raise TimeoutError("LangMem distillation did not finish before call finalization")
             await asyncio.sleep(0.5)
     finally:
         await conn.close()
@@ -595,8 +661,9 @@ def print_cli_summary(agent_kind: str, results: dict[str, Any]) -> None:
 
 async def execute_configuration(*, settings, scenarios, config, run_id, out,
                                 btc_root, expected_database, release, runtime=None,
-                                worker_wait_seconds=180, on_turn=None):
+                                worker_wait_seconds=180, on_turn=None, delivery_mode='voice'):
     """One authorized live lifecycle, shared by both single-trace CLIs."""
+    measurement = conversation_measurement(delivery_mode)
     if any(path.exists() for path in (Path(out), Path(out).with_suffix('.report.json'),
             Path(out).with_suffix('.stages.json'), Path(out).with_suffix('.events.json'))):
         raise FileExistsError("output_exists_choose_new_path")
@@ -628,7 +695,8 @@ async def execute_configuration(*, settings, scenarios, config, run_id, out,
             result = await run_configuration(scenarios=scenarios, config=config, runtime=runtime,
                 run_id=run_id, out=out, btc_root=btc_root,
                 wait_for_jobs=lambda source: wait_for_distillation(database_url(settings), source, worker_wait_seconds),
-                capture_writes=lambda ids: read_distillation_writes(database_url(settings), ids), on_turn=on_turn, safety_issues=issues)
+                capture_writes=lambda ids: read_distillation_writes(database_url(settings), ids), on_turn=on_turn,
+                safety_issues=issues, delivery_mode=delivery_mode)
     except Exception as exc:
         from eval_harness.turn_diagnostics import verify_turn_diagnostics
         diagnostic_refs = {}
@@ -653,7 +721,10 @@ async def execute_configuration(*, settings, scenarios, config, run_id, out,
                for sid,sc in scenarios.items() for call,spec in sc['calls'].items()
                for h in spec.get('seed_history',[])]
     report.update(run_id=run_id, config=config, knowledge_release_id=release["release_id"], seed_history=history,
-                  knowledge_release=release, warmup_turns=3, streaming=False)
+                  knowledge_release=release, warmup_turns=3, streaming=False,
+                  conversation_measurement=measurement)
+    from eval_harness.btc_release import release_metadata
+    report['btc_contract'] = release_metadata(btc_root)
     atomic_json(Path(out).with_suffix(".report.json"), report)
     return result
 
@@ -666,6 +737,7 @@ async def main() -> None:
     parser.add_argument("--config", choices=["full", "baseline", "baseline_no_memory", "both"], default="full")
     parser.add_argument("--variant", choices=["enabled"], default="enabled")
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument('--delivery-mode', choices=('text', 'voice'), default='voice')
     parser.add_argument("--worker-wait-seconds", type=float, default=180)
     parser.add_argument("--scenarios", required=True, type=Path)
     parser.add_argument("--btc-root", required=True, type=Path)
@@ -679,6 +751,8 @@ async def main() -> None:
         parser.error("--dry-run retired; use preflight --offline-check or --limit-scenarios for LIVE smoke")
     if not args.expected_database:
         parser.error("--expected-database or EVAL_EXPECTED_DATABASE is required")
+    from eval_harness.btc_release import prepare_btc_release
+    args.btc_root = prepare_btc_release(args.btc_root, args.out.with_suffix('.btc-release'))
     scenarios = checked_load(args.scenarios, btc_root=args.btc_root)
     if args.limit_scenarios is not None:
         if args.limit_scenarios < 1:
@@ -698,7 +772,7 @@ async def main() -> None:
             result = await execute_configuration(settings=settings, scenarios=scenarios, config=config,
                 run_id=(args.run_id or str(uuid4())) + "-" + suffix, out=trace,
                 btc_root=args.btc_root, expected_database=args.expected_database, release=release,
-                worker_wait_seconds=args.worker_wait_seconds)
+                worker_wait_seconds=args.worker_wait_seconds, delivery_mode=args.delivery_mode)
             if result["status"] != "completed":
                 raise RuntimeError("redaction_affects_scoring")
         except Exception as exc:

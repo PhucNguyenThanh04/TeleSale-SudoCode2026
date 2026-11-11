@@ -1,5 +1,6 @@
 """Incomplete benchmark traces must remain diagnostic artifacts, not scores."""
 
+from eval_harness.test_support import VoiceLifecycleStub
 import json
 import os
 import sys
@@ -73,7 +74,7 @@ class RunnerFailureTests(unittest.IsolatedAsyncioTestCase):
     async def test_failed_turn_keeps_trace_but_does_not_publish_score(self):
         from eval_harness.benchmark_runner import main
 
-        class Runtime:
+        class Runtime(VoiceLifecycleStub):
             tools = SimpleNamespace()
             memory = SimpleNamespace(include_prior=True, namespace="")
 

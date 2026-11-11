@@ -14,11 +14,11 @@ from app.agent.harness.state import TurnState
 
 
 ALLOWED_TOOLS = {
-    "catalog.search", "inventory.check", "pricing.get_quote", "order.create",
+    "catalog.search", "inventory.check", "pricing.get_quote", "pricing.quote_order", "order.create",
     "order.update", "order.status", "schedule.callback", "handoff.transfer",
     "policy.search",
 }
-DATED_TOOLS = {"inventory.check", "pricing.get_quote", "order.create", "order.update",
+DATED_TOOLS = {"inventory.check", "pricing.get_quote", "pricing.quote_order", "order.create", "order.update",
                "policy.search"}
 PHONE_REQUIRED_TOOLS = {"order.create", "schedule.callback"}
 _READ_TOOL_ARGS = {
@@ -26,6 +26,7 @@ _READ_TOOL_ARGS = {
                        "min_room_area_m2", "include_discontinued"},
     "inventory.check": {"sku", "on"},
     "pricing.get_quote": {"sku", "on", "qty", "customer_phone", "address", "basket_skus"},
+    "pricing.quote_order": {"lines", "on", "customer_phone", "address"},
     "policy.search": {"query", "on", "order_id", "order_date", "customer_reported_order_date", "top_k"},
 }
 def _single_catalog_sku(state: TurnState) -> str | None:
@@ -145,7 +146,8 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
         sku = _single_catalog_sku(state)
         if sku:
             args["sku"] = sku
-    if name in {"inventory.check", "pricing.get_quote", "order.create"}:
+    basket_order = name == 'order.create' and args.get('lines') is not None
+    if name in {"inventory.check", "pricing.get_quote", "order.create"} and not basket_order:
         selected = catalog_variant(state, args)
         if selected is None and name != "order.create" and args.get("size") is None and args.get("color") is None:
             selected = args.get("sku")
@@ -177,7 +179,7 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
             if not created:
                 return None
             args["order_date"] = str(created)[:10]
-    if name == "pricing.get_quote":
+    if name in {"pricing.get_quote", "pricing.quote_order"}:
         args.pop("customer_phone", None)
         if state.get("customer_phone"):
             args["customer_phone"] = state["customer_phone"]
@@ -210,6 +212,14 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
     if name == "order.create":
         if state.get("identity_status") != "known":
             return None
+        if basket_order:
+            from app.mcp_servers.mcp_order.schemas import CreateInput
+            from app.mcp_servers.mcp_shared.basket import basket_block_reason
+            try:
+                args = CreateInput.model_validate(args).model_dump(mode='json', exclude_none=True)
+            except ValueError:
+                return None
+            return (name, args) if basket_block_reason(state, args) is None else None
         sku = args.get("sku")
         observations = build_commerce_evidence(state, args=args)
         on = request.on.isoformat()

@@ -379,3 +379,27 @@ def test_browser_shows_returning_call_brief_once_without_raw_trace(site, browser
     assert '0901234567' not in text and 'private-langmem-source' not in text
     assert 'đã giải quyết' not in text
     assert js("document.querySelectorAll('.call-brief img').length") == 0
+
+
+@pytest.mark.parametrize('selected', [None, 'SKU-AP-Y'])
+def test_brief_distinguishes_discussed_recommended_and_customer_selected_products(site, browser, selected):
+    url, requests, speech, options = site
+    options['call_brief'] = {
+        'is_returning': True, 'n_previous_sessions': 2,
+        'last_session': {'date': '2026-11-08', 'outcome': 'hen_goi_lai'},
+        'products_advised': [{'sku': 'SKU-AP-X'}, {'sku': 'SKU-AP-Y'}],
+        'recommended_sku': 'SKU-AP-Y', 'selected_sku': selected,
+        'open_blockers': ['cần hỏi chồng'],
+    }
+    js = open_site(browser, url)
+    assert js("""(async () => {
+      document.querySelector('#start-call').click();
+      await waitFor(() => document.querySelector('.call-brief'));
+      document.querySelector('#end-call').click();
+      return true;
+    })()""")
+    text = js("document.querySelector('.call-brief').textContent")
+    assert 'Đã trao đổi: SKU-AP-X' in text and 'Đã trao đổi: SKU-AP-Y' in text
+    assert 'Đề xuất gần nhất: SKU-AP-Y' in text
+    assert ('Khách đã chọn: ' + (selected or 'Chưa xác nhận')) in text
+    assert 'cần hỏi chồng' in text

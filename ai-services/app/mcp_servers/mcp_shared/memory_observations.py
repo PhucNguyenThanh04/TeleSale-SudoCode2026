@@ -13,9 +13,11 @@ _FIELDS = {
                                       "restock_expected", "discontinued", "successor_sku"}),
     "pricing.get_quote": ({"sku", "on", "qty"}, {"sku", "list_price_vnd",
         "final_price_vnd", "applied_promos", "expired_promos", "freeship"}),
-    "order.create": ({"sku", "qty", "price_vnd", "promo_code", "payment", "on"},
+    "pricing.quote_order": ({'lines', 'on'}, {'units', 'lines', 'total_vnd', 'order_promos', 'freeship'}),
+    "order.create": ({"sku", "qty", "price_vnd", "promo_code", "payment", "on", 'lines'},
                      {"order_id", "status", "total_vnd"}),
-    "schedule.callback": ({"window", "reason", "on"}, {"callback_id", "status", "window"}),
+    "schedule.callback": ({"window", "reason", "on", 'callback_at'},
+                          {"callback_id", "status", "window", 'callback_at', 'moved_from'}),
     "handoff.transfer": ({"reason"}, {"ticket_id", "status"}),
 }
 _PRODUCT_FIELDS = {"sku", "name", "category", "attributes", "variants"}
@@ -49,11 +51,29 @@ def memory_observations(calls: list[dict]) -> list[dict]:
         name = call.get("name")
         if name not in _FIELDS or not isinstance(call.get("result"), dict):
             continue
-        if "error" in call["result"]:
+        failed = ('error' in call['result'] or call['result'].get('ok') is False
+                  or call['result'].get('success') is False)
+        if failed and name not in {'catalog.search', 'inventory.check', 'pricing.get_quote', 'pricing.quote_order'}:
             continue
         args_fields, result_fields = _FIELDS[name]
         args = _pick(call.get("args"), args_fields)
-        result = _pick(call["result"], result_fields)
+        result = {'error': 'read_failed'} if failed else _pick(call["result"], result_fields)
+        if name in {'pricing.quote_order', 'order.create'} and isinstance(args.get('lines'), list):
+            args['lines'] = [_pick(line, {'sku', 'qty', 'price_vnd'}) for line in args['lines'] if isinstance(line, dict)]
+        if name == 'pricing.quote_order':
+            units = []
+            for raw in result.get('units', []) or []:
+                if not isinstance(raw, dict):
+                    continue
+                unit = _pick(raw, {'unit', 'line', 'sku', 'list_price_vnd', 'final_price_vnd'})
+                unit['applied_promos'] = [_pick(promo, _PROMO_FIELDS) for promo in raw.get('applied_promos', []) or []
+                                          if isinstance(promo, dict)]
+                units.append(unit)
+            result['units'] = units
+            result['lines'] = [_pick(line, {'sku', 'qty', 'unit_prices_vnd', 'line_total_vnd'})
+                               for line in result.get('lines', []) or [] if isinstance(line, dict)]
+            result['order_promos'] = [_pick(promo, _PROMO_FIELDS) for promo in result.get('order_promos', []) or []
+                                      if isinstance(promo, dict)]
         if name == "catalog.search":
             items = []
             raw_items = call["result"].get("items")

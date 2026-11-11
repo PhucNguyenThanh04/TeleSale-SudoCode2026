@@ -25,6 +25,7 @@ from app.constants import (PROFILE_SLOT_KEYS,
 from app.schemas.brief import CallBrief
 from app.mcp_servers.mcp_memory.schemas import validate_read_response
 from app.mcp_servers.mcp_shared.memory_retrieval import rank_episodes
+from app.mcp_servers.mcp_shared.commerce_evidence import build_commerce_evidence
 
 
 def _build_brief_orders(state: TurnState, remembered_order_ids: list[str] | None = None,
@@ -90,7 +91,6 @@ def prompt_context(state: TurnState, history_turns: int) -> dict[str, Any]:
         sales_history["orders"] = orders
     if state.get("remembered_order_ids"):
         sales_history["remembered_order_ids"] = list(state["remembered_order_ids"])
-    from app.mcp_servers.mcp_shared.commerce_evidence import build_commerce_evidence
     observations = [
         {'name': call['name'], 'args': safe_tool_result(call.get('args', {})),
          'result': safe_tool_result(call['result']),
@@ -264,7 +264,8 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
         return result
 
     def failed(operation, reason=None):
-        return {"history": [], "profile": {}, "episodes": [], "current_episode": None,
+        return {"history": [], "profile": {}, "scoped_facts": {'product': {}, 'room': {}},
+                "episodes": [], "current_episode": None,
                 "call_brief": None,
                 "remembered_order_ids": [], "turn_no": 1, "tool_failed": True,
                 "memory_failure": operation,
@@ -276,6 +277,12 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
         memory.read_context(session_id, customer_id, **read_kwargs)))
     if "error" in context:
         return failed("memory.read", context.get("error"))
+    # Prefer richer in-process observations; recover missing committed reads after a restart.
+    session_calls = list(state.get('session_tool_calls', []))
+    existing = {str(call['source_turn_id']) for call in session_calls if call.get('source_turn_id')}
+    session_calls.extend(call for call in context.get('session_tool_calls', [])
+                         if str(call.get('source_turn_id')) not in existing)
+    state['session_tool_calls'] = session_calls
     context_checkpoint("context_loaded", state, context)
     history = _mask_context(context.get("history", []), ("history",))
     profile = context.get("profile", {})
@@ -322,7 +329,7 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
     prior_ids.discard(session_id)
     first_turn = (context.get("turn_count", 0) == 0 or
                   ("current_episode" in context and context["current_episode"] is None))
-    create_brief = (first_turn and bool(episodes) and bool(state.get("customer_phone"))
+    create_brief = (bool(episodes) and bool(state.get("customer_phone"))
                     and state.get("identity_status") == "known")
     fresh_calls = []
     warnings = []
@@ -352,11 +359,15 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
     # handled by BusinessTools within its budget, never a memory-list position.
     refresh_skus = [focused] if focused else candidate_skus if len(candidate_skus) == 1 else []
     skipped_skus = [sku for sku in candidate_skus if sku not in refresh_skus]
-    quotes_by_sku = {}
+    quotes_by_sku = {call['args']['sku']: call['result']
+        for call in build_commerce_evidence(state)
+        if call.get('name') == 'pricing.get_quote' and isinstance(call.get('args', {}).get('sku'), str)
+        and type(call['result'].get('final_price_vnd')) is int
+        and isinstance(call['result'].get('applied_promos'), list)}
     freshness_request = bool(re.search(
         r"(?i)giá|khuyến mãi|tồn kho|còn hàng|bao nhiêu|giảm giá|ưu đãi",
         state.get("safe_text") or state["request"].text))
-    should_refresh = create_brief or (episodes and freshness_request)
+    should_refresh = (create_brief and first_turn) or (episodes and freshness_request)
 
     async def _invoke_refresh(name: str, args: dict[str, Any]) -> dict[str, Any]:
         log_event(state, "retrieve_context", "refresh_invoking", tool=name)
@@ -537,7 +548,7 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
             latency_ms=int((time.perf_counter() - state["received_at_monotonic"]) * 1000),
             profile_facts={**{key: value["value"] for key, value in safe_customer.items()},
                 "rooms": scoped_facts["room"], "products": scoped_facts["product"]},
-            stale_warnings=warnings, precomputed_parts=["episode_summary"],
+            stale_warnings=warnings, precomputed_parts=[] if last.get('operational_only') else ["episode_summary"],
         ).model_dump(mode="json")
         for product in brief["products_advised"]:
             for optional in ("quoted_on", Slot.PRICE_QUOTED_VND):
@@ -547,6 +558,7 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
             if order_entry.get("variant_sku") is None:
                 order_entry.pop("variant_sku", None)
     return {"history": history, "profile": profile,
+            'session_tool_calls': session_calls,
             "scoped_facts": scoped_facts,
             "episodes": episodes, "current_episode": current_episode,
             "call_brief": brief,

@@ -1,12 +1,19 @@
 """Read-only PostgreSQL queries for customer, products, stock and promotions."""
 
 import json
+from datetime import date
 
 from sqlalchemy import text
 from app.mcp_servers.mcp_shared.database import Database
 
 
 class CatalogRepo(Database):
+    async def same_day_orders(self, session, phone: str, on: str) -> list[dict]:
+        result = await session.execute(text('''SELECT promos FROM runtime.tool_orders
+            WHERE customer_phone=:phone AND created_on=:on'''),
+            {'phone': phone, 'on': date.fromisoformat(on)})
+        return [{'promos': row[0] if isinstance(row[0], list) else json.loads(row[0])} for row in result]
+
     async def rows(self, session, table: str) -> list[dict]:
         if table not in {"products", "inventory_events", "promotions", "customers"}:
             raise ValueError("Unsupported BTC table")
@@ -23,7 +30,7 @@ class CatalogRepo(Database):
         return [dict(row._mapping) for row in result]
 
     async def runtime_orders(self, session, customer_id: str) -> list[dict]:
-        result = await session.execute(text("""SELECT order_id,sku,qty,price_vnd,total_vnd,
+        result = await session.execute(text("""SELECT order_id,sku,qty,price_vnd,total_vnd,lines,
             created_on,status FROM runtime.tool_orders WHERE customer_id=:id"""), {"id": customer_id})
         return [dict(row._mapping) for row in result]
 

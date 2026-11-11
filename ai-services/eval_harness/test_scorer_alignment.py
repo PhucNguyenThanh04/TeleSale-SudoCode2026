@@ -15,6 +15,19 @@ def btc_scorer():
     return module
 
 
+def test_quote_confirmation_is_allowed_once_but_repetition_is_redundant():
+    from eval_harness.extractor import extract_questions
+    questions = extract_questions('Mình đồng ý báo giá này để em lên đơn không ạ?')
+    scenarios = {'CASE': {'calls': {'call_2': {'must_not_ask': ['price_quoted_vnd']}}}}
+    scorer = btc_scorer()
+    one = {('CASE', 'call_2'): [{'turn': 1, 'questions': questions}]}
+    assert scorer.repeat_question_rate(scenarios, one)['redundant'] == 0
+    two = {('CASE', 'call_2'): [{'turn': turn, 'questions': questions} for turn in (1, 2)]}
+    result = scorer.repeat_question_rate(scenarios, two)
+    assert result['redundant'] == 1
+    assert result['total_questions'] == 2
+
+
 @pytest.mark.parametrize("origin,action,passed", [
     ("earlier", "exchange_size", True),
     ("other_scenario", "exchange_size", False),

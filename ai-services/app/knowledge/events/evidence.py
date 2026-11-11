@@ -39,6 +39,10 @@ def snapshot(event):
     allowed = {'source', 'actor_id', 'customer_id', 'session_id', 'message_id',
                'run_id', 'scenario_id', 'call', 'turn', 'signal', 'on', 'release_id', 'agent_version'}
     out = {k: str(v)[:200] for k, v in event.items() if k in allowed and v is not None}
+    if 'score_sha256' in event:
+        if not isinstance(event['score_sha256'], str) or not re.fullmatch(r'[a-f0-9]{64}', event['score_sha256']):
+            raise KnowledgeError('Invalid score provenance hash')
+        out['score_sha256'] = event['score_sha256']
     if 'rating' in event:
         if type(event['rating']) is not bool:
             raise KnowledgeError('Rating must be boolean')

@@ -236,3 +236,19 @@ connection cleanup and failure paths. They do not call
 models, speech inference, databases or the public deployment. Browser integration is covered separately by `test_voice_browser.py` with real
 Chrome and AudioWorklet against fake speech/agent transports; see the frontend
 README. Live model/service integration is not established by these offline tests.
+
+## Product state in the returning Call Brief
+
+`products_advised` retains historical discussed products. Optional nullable
+`recommended_sku` identifies the provenance-backed latest agent recommendation;
+`selected_sku` identifies the customer's explicit selection and is not purchase
+consent. The browser labels these separately as “Đã trao đổi”, “Đề xuất gần nhất”
+and “Khách đã chọn” (or “Chưa xác nhận”). Legacy briefs without these fields still
+render normally.
+
+The brief reuses the consultation snapshot already computed during context
+loading. A later recommendation remains visible even when the independent
+`product_advised` fact projection has not caught up. Historical X prices/promos
+are never copied onto Y, and generated-but-unplayed voice text cannot create a
+new recommendation in committed history. This reconciliation adds no memory
+read, model invocation or refresh call; it does not rewrite stored facts.

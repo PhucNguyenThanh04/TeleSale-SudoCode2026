@@ -4,3 +4,5 @@
 .memory-update{margin-top:9px;padding:11px 13px;border:1px solid #dce5df;border-radius:10px;font-size:11px;line-height:1.7;background:#f8faf6;overflow-wrap:anywhere}.memory-update strong{font-size:10px;color:#426b55}.memory-note{color:#718273;margin-top:3px}.memory-update ul{margin:7px 0 0;padding-left:17px}.memory-update li+li{margin-top:5px}.memory-update[data-status=failed],.memory-update[data-status=unavailable]{border-color:#e5d6c1;background:#fffaf2}
 
 .call-brief{max-width:none;margin:0 0 22px;padding:14px 16px;border:1px solid #c9dcc8;border-radius:12px;background:#f4f8f0;color:#365b48;text-align:left;font-size:11px;line-height:1.75;overflow-wrap:anywhere}.call-brief summary{font-weight:700;font-size:12px}.brief-row,.brief-warning{margin-top:7px}.brief-warning{padding:6px 8px;border-radius:6px;background:#fff3dc;color:#82591f}.call-brief strong{font-weight:600}
+
+#chat-form{display:grid;gap:12px;margin-top:20px;text-align:left}#chat-form textarea{width:100%;padding:12px;border:1px solid #c9dcc8;border-radius:8px;font:inherit;resize:vertical}#chat-form button{justify-self:end}#chat-form textarea:focus{outline:2px solid #426b55;outline-offset:2px}

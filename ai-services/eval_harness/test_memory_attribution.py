@@ -6,6 +6,11 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import TypeAdapter
 from eval_harness.benchmark_runner import run_scenario_call, assert_trace_ready
+from eval_harness.test_support import VoiceLifecycleStub
+
+
+class Runtime(VoiceLifecycleStub, SimpleNamespace):
+    pass
 
 
 def test_runtime_failure_never_waits_for_nonexistent_memory_job():
@@ -17,7 +22,7 @@ def test_runtime_failure_never_waits_for_nonexistent_memory_job():
             TypeAdapter(int).validate_python(None)
         committed.append(str(request.client_msg_id))
         return SimpleNamespace(agent_text='Dạ.', call_brief=None)
-    runtime = SimpleNamespace(run=respond, state_for=lambda req: {
+    runtime = Runtime(run=respond, state_for=lambda req: {
         'profile': {}, 'scoped_facts': {}, 'tool_calls': [], 'memory_writes': []})
     async def wait(source):
         if source not in committed:
@@ -49,12 +54,12 @@ def test_final_wait_failure_is_scoped_to_its_source_turn():
     async def respond(request):
         requests.append(str(request.client_msg_id))
         return SimpleNamespace(agent_text='Dạ.', call_brief=None)
-    runtime = SimpleNamespace(run=respond, state_for=lambda req: {
+    runtime = Runtime(run=respond, state_for=lambda req: {
         'profile': {}, 'tool_calls': [], 'memory_writes': []})
     counts = {}
     async def wait(source):
         counts[source] = counts.get(source, 0) + 1
-        if source == requests[0] and counts[source] == 2:
+        if source == requests[0]:
             raise TimeoutError('backfill timeout')
     async def capture(sources):
         return {source: [] for source in sources}
@@ -63,6 +68,7 @@ def test_final_wait_failure_is_scoped_to_its_source_turn():
         wait_for_jobs=wait, capture_writes=capture))
     assert rows[0]['memory_error'] == 'timeout'
     assert 'memory_error' not in rows[1]
+    assert counts == {source: 1 for source in requests}
 
 
 @pytest.mark.parametrize('failure', ['timeout', 'job_failed', 'capture_failed'])
@@ -71,7 +77,7 @@ def test_real_memory_errors_are_preserved_and_still_block_scoring(failure):
     async def respond(request):
         sources.append(str(request.client_msg_id))
         return SimpleNamespace(agent_text='Dạ.', call_brief=None)
-    runtime = SimpleNamespace(run=respond, state_for=lambda req: {
+    runtime = Runtime(run=respond, state_for=lambda req: {
         'profile': {}, 'tool_calls': [], 'memory_writes': []})
     async def wait(source):
         if source == sources[0] and failure != 'capture_failed':
@@ -79,7 +85,8 @@ def test_real_memory_errors_are_preserved_and_still_block_scoring(failure):
                 raise TimeoutError('worker timeout')
             raise RuntimeError('worker failed')
     async def capture(ids):
-        if ids == [sources[0]] and failure == 'capture_failed':
+        if failure == 'capture_failed':
+            assert ids == sources
             raise RuntimeError('capture failed')
         assert sources[0] not in ids
         return {source: [] for source in ids}
@@ -87,14 +94,18 @@ def test_real_memory_errors_are_preserved_and_still_block_scoring(failure):
         {'customer_turns': ['Chào', 'Xác minh']}, date(2026, 11, 5), '0900000000',
         wait_for_jobs=wait, capture_writes=capture))
     assert rows[0]['memory_error'] == failure
-    assert 'memory_error' not in rows[1]
+    if failure == 'capture_failed':
+        # One failed batch readback leaves every source in that batch unverified.
+        assert rows[1]['memory_error'] == 'capture_failed'
+    else:
+        assert 'memory_error' not in rows[1]
     with pytest.raises(RuntimeError, match='memory job failed'):
         assert_trace_ready({'LOCAL': {'calls': {'call_1': {'customer_turns': ['a','b']}}}},
                            {('LOCAL','call_1'): rows})
 
 
 def test_all_runtime_failures_never_attempt_memory_capture():
-    runtime = SimpleNamespace(run=AsyncMock(side_effect=ValueError('runtime error')))
+    runtime = Runtime(run=AsyncMock(side_effect=ValueError('runtime error')))
     wait, capture = AsyncMock(), AsyncMock()
     rows = asyncio.run(run_scenario_call(runtime, 'LOCAL', 'call_1',
         {'customer_turns': ['Chào', 'Có giảm không?']}, date(2026, 11, 5), '0900000000',

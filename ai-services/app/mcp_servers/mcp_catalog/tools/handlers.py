@@ -5,7 +5,7 @@ from fastmcp.server.auth import StaticTokenVerifier
 from pydantic import ValidationError
 
 from app.mcp_servers.mcp_catalog.schemas import (
-    CRMInput, InventoryInput, QuoteInput, SearchInput,
+    CRMInput, InventoryInput, QuoteInput, SearchInput, OrderQuoteInput, QuoteLine,
 )
 from app.mcp_servers.mcp_catalog.services import catalog as service
 from app.mcp_servers.mcp_shared.observability import (
@@ -19,9 +19,11 @@ async def invoke(repo, name: str, args: dict) -> dict:
 
 async def _invoke(repo, name: str, args: dict) -> dict:
     models = {"crm.get_customer": CRMInput, "catalog.search": SearchInput,
-              "inventory.check": InventoryInput, "pricing.get_quote": QuoteInput}
+              "inventory.check": InventoryInput, "pricing.get_quote": QuoteInput,
+              "pricing.quote_order": OrderQuoteInput}
     functions = {"crm.get_customer": service.get_customer, "catalog.search": service.search,
-                 "inventory.check": service.inventory, "pricing.get_quote": service.get_quote}
+                 "inventory.check": service.inventory, "pricing.get_quote": service.get_quote,
+                 "pricing.quote_order": service.get_quote_order}
     if name not in models:
         return {"error": "unknown_tool"}
     try:
@@ -68,5 +70,13 @@ def create_server(repo, token: str | None = None) -> FastMCP:
                                 source_channel: str | None = None,
                                 source_identity: str | None = None) -> dict:
         return await invoke(repo, "pricing.get_quote", locals())
+
+    @mcp.tool(name="pricing.quote_order")
+    async def pricing_quote_order(lines: list[QuoteLine], on: str,
+                                  customer_phone: str | None = None, address: str | None = None,
+                                  source_channel: str | None = None,
+                                  source_identity: str | None = None) -> dict:
+        return await invoke(repo, "pricing.quote_order", {
+            **locals(), 'lines': [line.model_dump() for line in lines]})
 
     return mcp

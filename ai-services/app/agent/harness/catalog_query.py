@@ -5,6 +5,30 @@ import re
 from app.mcp_servers.mcp_shared.commerce_rules import _search_text
 
 
+_EXPLICIT_MODEL = re.compile(
+    r'\b(?:(?i:sku-[a-z0-9-]+)|[A-Z][a-z]+[A-Z][A-Za-z0-9]*|'
+    r'[A-Za-z][A-Za-z-]*\d+[A-Za-z0-9-]*|[A-Z][a-z]{2,}(?=\s+\d+\b))'
+    r'(?:\s+(?:[A-Z][A-Za-z0-9-]*|\d+|(?i:pro|lite|mini|max|plus|ultra))){0,3}(?![\w-])')
+
+
+def explicit_product_queries(text: str) -> list[str]:
+    """A literal model identifier can seed a read, never establish purchase consent."""
+    candidates = {}
+    for match in _EXPLICIT_MODEL.finditer(text):
+        if re.match(r'\s*(?:trieu|nghin|ngan|dong|m2|met vuong)\b', _search_text(text[match.end():])):
+            continue
+        query = ' '.join(match[0].split())
+        if re.fullmatch(r'(?i)(?:(?:m|cm|mm|km)[23]|(?:size|co)\d+)', query):
+            continue
+        candidates.setdefault(query.casefold(), query)
+    return list(candidates.values())
+
+
+def explicit_product_query(text: str) -> str | None:
+    queries = explicit_product_queries(text)
+    return queries[0] if len(queries) == 1 else None
+
+
 def canonical_catalog_category(category: str) -> str:
     """Translate customer labels at the agent boundary, retaining unknown filters."""
     aliases = {

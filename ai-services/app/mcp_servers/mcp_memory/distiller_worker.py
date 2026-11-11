@@ -4,6 +4,7 @@ from app.mcp_servers.mcp_shared.decision_diagnostics import worker_boundary, wor
 
 
 import asyncio
+import inspect
 import json
 import logging
 import re
@@ -100,6 +101,12 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
     try:
         async with repo.transaction() as conn:
             await repo.lock_key(conn, f"erasure:{customer_id}")
+            if hasattr(repo, 'distillation_claim_current') and not await repo.distillation_claim_current(conn, job_id, job['attempts']):
+                return True
+            # Reclaim a crashed final attempt so it cannot block this customer's queue forever.
+            if job.get('attempts', 0) > 5:
+                await repo.finish_distillation(conn, job_id, 'failed', 'lease_attempts_exhausted')
+                return True
             if await repo.is_erasure_blocked(conn, customer_id):
                 await repo.finish_distillation(conn, job_id, "completed", "erasure_blocked")
                 return True
@@ -155,13 +162,23 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
             ep_versions = await projector.list_episode_versions(customer_id) if projector is not None else []
             completed_eps = await completed_revisions(repo, customer_id, ep_versions)
             prior_episodes = select_episodes(ep_versions, completed_eps)
-            prior_open_list = collect_prior_open_items(prior_episodes, session_id)
+            prior_open_list = collect_prior_open_items(prior_episodes, '')
             prior_open_map = {item["item_id"]: (item["scope_type"], item["scope_id"])
                               for item in prior_open_list}
+            # Each job owns one unseen source turn. Previous speech is reference
+            # context, not another turn to extract again on every job.
+            latest = json.loads(messages[-1]['content'])
+            previous = json.loads(messages[-2]['content']) if len(messages) > 1 else {}
+            latest['reference_context'] = {'previous_agent_text': previous.get('agent_text', '')}
+            extraction_messages = [{'role': 'user', 'content': json.dumps(latest, ensure_ascii=False)}]
+            arguments = (extraction_messages, existing, prior_open_list)
+            signature = inspect.signature(extractor)
             try:
-                facts, episode = await extractor(messages, existing, prior_open_list)
+                signature.bind(*arguments)
             except TypeError:
-                facts, episode = await extractor(messages, existing)
+                arguments = arguments[:2]
+                signature.bind(*arguments)
+            facts, episode = await extractor(*arguments)
             facts = [fact for fact in facts if fact.source_kind == "customer"]
             facts.extend(verified_tool_candidates(turn["agent_text"], calls,
                                                   source_turn_id, on))
@@ -262,6 +279,8 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
             if envelope is not None:
                 stored['_decision_diagnostics'] = envelope
             async with repo.transaction() as conn:
+                if hasattr(repo, 'distillation_claim_current') and not await repo.distillation_claim_current(conn, job_id, job['attempts']):
+                    return True
                 await repo.save_distillation_proposals(conn, job_id, stored)
         else:
             accepted = stored.get("facts", [])
@@ -280,6 +299,8 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
         async with repo.transaction() as conn:
             await repo.lock_key(conn, f"erasure:{customer_id}")
             await repo.lock_key(conn, f"langmem:{customer_id}")
+            if hasattr(repo, 'distillation_claim_current') and not await repo.distillation_claim_current(conn, job_id, job['attempts']):
+                return True
             if await repo.is_erasure_blocked(conn, customer_id):
                 await repo.finish_distillation(conn, job_id, "completed", "erasure_blocked")
                 return True
@@ -361,6 +382,8 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
         logger.warning("LangMem job %d failed: %s", job_id, code)
         status = "failed" if job.get("attempts", 0) >= 5 else "pending"
         async with repo.transaction() as conn:
+            if hasattr(repo, 'distillation_claim_current') and not await repo.distillation_claim_current(conn, job_id, job['attempts']):
+                return True
             await repo.finish_distillation(conn, job_id, status, code)
     return True
 

@@ -202,7 +202,7 @@ class MemoryUpdateContract(unittest.IsolatedAsyncioTestCase):
             async def recent_session_turns(self, _conn, session_id, _customer_id,
                                            through_turn_no, limit=5):
                 return [r for r in self.rows.get(session_id, [])
-                        if r["turn_no"] <= through_turn_no][-limit:]
+                        if r["turn_no"] <= through_turn_no][-limit if limit else 0:]
 
             async def save_distillation_proposals(self, _conn, _job_id, _stored):
                 pass

@@ -18,6 +18,23 @@ def test_annotated_questions_match_slot_and_type():
         assert actual == case["expected"], case["text"]
 
 
+def test_product_selection_question_is_not_a_blocker_due_to_conversation_wording():
+    questions = extract_questions(
+        'Mình muốn lấy mẫu nào trong các mẫu đang trao đổi để em kiểm tra và lên đơn ạ?')
+    assert [q['slot'] for q in questions] == ['product_advised']
+
+
+def test_accepting_a_quote_is_price_confirmation_not_a_personal_blocker():
+    for text in (
+            'Mình đồng ý báo giá này để em lên đơn không ạ?',
+            'Anh có đồng ý với giá hiện tại không ạ?',
+            'Chị xác nhận báo giá mới này nhé?'):
+        assert [(q['slot'], q['type']) for q in extract_questions(text)] == [
+            ('price_quoted_vnd', 'confirm')]
+    assert [(q['slot'], q['type']) for q in extract_questions(
+        'Chị đã trao đổi với chồng và đồng ý mua chưa ạ?')] == [('blocker', 'open')]
+
+
 def test_annotated_claims_exclude_customer_budget():
     for case in LABELS["claims"]:
         actual = [{"field": item["field"], "value": item["value"]}

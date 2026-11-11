@@ -2,7 +2,8 @@
 
 from datetime import date, datetime
 from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+from app.mcp_servers.mcp_catalog.schemas import QuoteLine
 
 
 class Context(BaseModel):
@@ -11,16 +12,30 @@ class Context(BaseModel):
     operation_key: str | None = None
 
 
+class OrderLine(QuoteLine):
+    price_vnd: int = Field(ge=0, strict=True)
+
+
 class CreateInput(Context):
     customer_phone: str
-    sku: str = Field(min_length=1)
-    qty: int = Field(ge=1)
-    price_vnd: int = Field(ge=0)
+    sku: str | None = Field(default=None, min_length=1)
+    qty: int = Field(default=1, ge=1, strict=True)
+    price_vnd: int | None = Field(default=None, ge=0, strict=True)
+    lines: list[OrderLine] | None = Field(default=None, min_length=1)
     payment: Literal["COD", "bank", "momo", "zalopay"]
     on: date
     promo_code: str | None = None
     address: str | None = None
     basket_skus: list[str] | None = None
+
+    @model_validator(mode='after')
+    def require_one_order_form(self):
+        if self.lines is not None:
+            if self.sku is not None or self.price_vnd is not None or self.basket_skus or self.qty != 1:
+                raise ValueError('Use either single SKU or lines')
+        elif self.sku is None or self.price_vnd is None:
+            raise ValueError('Single SKU requires price_vnd')
+        return self
 
 
 class StatusInput(Context):

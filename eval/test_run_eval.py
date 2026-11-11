@@ -1,5 +1,6 @@
 """The runner must trace harness output without feeding answer labels to it."""
 
+from eval_harness.test_support import VoiceLifecycleStub
 import asyncio
 import json
 import runpy
@@ -19,7 +20,7 @@ class _Memory:
     include_prior = True
 
 
-class _Runtime:
+class _Runtime(VoiceLifecycleStub):
     def __init__(self, database="telesale_eval"):
         self.memory = _Memory()
         self.tools = self
@@ -103,6 +104,10 @@ class EvalRunnerTest(unittest.TestCase):
                 encoding="utf-8"))
         self.assertEqual(count, len(rows))
         self.assertEqual(report["catalog_search"]["turns"], count)
+        self.assertEqual(report['btc_contract']['version'], 'BTC-11-2026')
+        self.assertEqual(report['conversation_measurement']['delivery_mode'], 'voice')
+        self.assertTrue(report['conversation_measurement']['ttft_is_proxy'])
+        self.assertTrue(all(request.delivery_mode == 'voice' for request in runtime.requests))
         self.assertEqual(report["catalog_search"]["total_calls"], 0)
         self.assertEqual(report["database_identity"], {
             "database": "telesale_eval", "host": "eval-postgres", "port": 5432, "server_started_at":"start"})

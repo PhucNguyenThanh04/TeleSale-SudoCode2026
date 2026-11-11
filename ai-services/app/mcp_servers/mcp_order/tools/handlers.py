@@ -5,7 +5,7 @@ from fastmcp.server.auth import StaticTokenVerifier
 from pydantic import ValidationError
 
 from app.configs import get_settings
-from app.mcp_servers.mcp_order.schemas import CallbackInput, CreateInput, HandoffInput, StatusInput, UpdateInput
+from app.mcp_servers.mcp_order.schemas import CallbackInput, CreateInput, HandoffInput, StatusInput, UpdateInput, OrderLine
 from app.mcp_servers.mcp_order.services.order import invoke as service_invoke
 from app.mcp_servers.mcp_shared.observability import (
     log_mcp_exception, log_mcp_validation, trace_mcp_call,
@@ -44,12 +44,16 @@ def create_server(repo, token: str | None = None) -> FastMCP:
         return await repo.database_identity()
 
     @mcp.tool(name="order.create")
-    async def order_create(customer_phone: str, sku: str, qty: int, price_vnd: int,
-                           payment: str, on: str, promo_code: str | None = None,
+    async def order_create(customer_phone: str, payment: str, on: str,
+                           sku: str | None = None, qty: int = 1, price_vnd: int | None = None,
+                           lines: list[OrderLine] | None = None, promo_code: str | None = None,
                            address: str | None = None, basket_skus: list[str] | None = None,
                            source_channel: str | None = None, source_identity: str | None = None,
                            operation_key: str | None = None) -> dict:
-        return await invoke(repo, "order.create", locals())
+        payload = dict(locals())
+        if lines is not None:
+            payload['lines'] = [line.model_dump() for line in lines]
+        return await invoke(repo, "order.create", payload)
 
     @mcp.tool(name="order.status")
     async def order_status(order_id: str | None = None, customer_phone: str | None = None,

@@ -1,5 +1,5 @@
 """Catalog business rules independent of FastMCP and SQL transport."""
-from app.mcp_servers.mcp_shared.commerce_rules import _catalog, _inventory, _delivery, quote
+from app.mcp_servers.mcp_shared.commerce_rules import _catalog, _inventory, _delivery, quote, quote_order
 
 
 async def get_customer(repo, session, args: dict) -> dict:
@@ -35,7 +35,7 @@ async def inventory(repo, session, args: dict) -> dict:
     return _inventory(products, events, args["sku"], args["on"])
 
 
-async def get_quote(repo, session, args: dict) -> dict:
+async def _pricing_context(repo, session, args: dict):
     payload = dict(args)
     matches = await repo.identity_matches(session, args.get("source_channel"), args.get("source_identity"))
     if len(matches) != 1 or payload.get("customer_phone") != matches[0]["phone"]:
@@ -46,6 +46,20 @@ async def get_quote(repo, session, args: dict) -> dict:
         customer = next((c for c in customers if c["customer_id"] == matches[0]["customer_id"]), None)
         if customer:
             owned = {o["sku"] for o in customer.get("orders", []) if o.get("status") == "delivered"}
+    return payload, owned
+
+
+async def get_quote_order(repo, session, args: dict) -> dict:
+    payload, owned = await _pricing_context(repo, session, args)
+    same_day = (await repo.same_day_orders(session, payload['customer_phone'], payload['on'])
+                if payload.get('customer_phone') else [])
+    return quote_order(await repo.rows(session, 'products'), await repo.rows(session, 'promotions'),
+                       payload, owned, await repo.used_promos(session),
+                       second_item_used=any('AIR-2ND-50' in order['promos'] for order in same_day))
+
+
+async def get_quote(repo, session, args: dict) -> dict:
+    payload, owned = await _pricing_context(repo, session, args)
     promotions = await repo.rows(session, "promotions")
     products = await repo.rows(session, "products")
     result = quote(products, promotions,

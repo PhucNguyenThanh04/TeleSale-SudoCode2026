@@ -194,7 +194,7 @@ def _requirement_changes(text):
     changes={}
     areas=re.findall(r'(?<![\d.])(\d+(?:[.,]\d+)?)\s*(?:m2|m²|met vuong)(?!\w)',folded)
     if len(set(areas))==1:changes['room_area_m2']=float(areas[0].replace(',','.'))
-    if re.search(r'(?:bat buoc|can co|phai co).{0,25}khoa tre em',folded):changes['child_lock_required']=True
+    if re.search(r'(?:bat buoc|can(?: co)?|phai co).{0,25}khoa tre em',folded):changes['child_lock_required']=True
     if re.search(r'khong can.{0,20}khoa tre em|bo yeu cau.{0,20}khoa tre em',folded):changes['child_lock_required']=False
     if re.search(r'khong can (?:giao|dung ma)|bo (?:yeu cau|dieu kien) giao', folded):
         if 'giao' in folded:changes['delivery_condition'] = None
@@ -244,6 +244,14 @@ def _apply_customer(snap,text,items,focus,visible,ref,state,*,approval=False):
         snap.source_refs['delegation']=ref
     mentioned=_mentions(text,items)
     wants_choice=approval or _buy(text) or (not _negated(text) and bool(re.search(r'\b(?:chon|lay|mua|doi sang|chot)\b',folded)) and not re.search(r'xem them|can nhac',folded))
+    from app.agent.harness.catalog_query import explicit_product_queries
+    named = [_mentions(query, items) for query in explicit_product_queries(text)]
+    if wants_choice and named and (any(len(matches) != 1 for matches in named)
+                                  or any(matches != named[0] for matches in named)):
+        snap.selected_sku = None
+        snap.accepted_offer = None
+        snap.source_refs['selected_sku'] = snap.source_refs['accepted_offer'] = ref
+        return None
     candidate=next(iter(mentioned)) if len(mentioned)==1 else focus if not mentioned and (_buy(text) or re.search(r'mau (?:nay|do|hom truoc)|may (?:nay|do)|san pham (?:nay|do)|cai (?:nay|do)',folded)) else None
     if approval:candidate=focus
     if wants_choice and candidate:

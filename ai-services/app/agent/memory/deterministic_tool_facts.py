@@ -133,9 +133,11 @@ def deterministic_episode_tools(calls: list[dict], on: str) -> tuple[list[dict],
             if isinstance(order_id, str) and order_id:
                 actions.append({"action": "order.create", "order_id": order_id,
                                 "sku": sku if isinstance(sku, str) else ""})
-        elif name == "schedule.callback" and result.get("status") in {"scheduled", "ok", "created"}:
+        elif (name == "schedule.callback" and isinstance(result.get('callback_id'), str)
+              and result['callback_id'] and result.get("status") in {None, "scheduled", "ok", "created"}):
             actions.append({"action": "schedule.callback",
-                            "callback_id": str(result.get("callback_id", ""))})
+                            "callback_id": str(result.get("callback_id", "")),
+                            **({'callback_at': result['callback_at']} if result.get('callback_at') else {})})
         elif name == "handoff.transfer" and result.get("status") in {"queued", "transferred", "ok"}:
             actions.append({"action": "handoff.transfer",
                             "ticket_id": str(result.get("ticket_id", ""))})

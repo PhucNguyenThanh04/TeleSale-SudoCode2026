@@ -41,7 +41,6 @@ async def run(args, runtime=None) -> int:
     btc_root = getattr(args,'btc_root',None)
     if btc_root is None:
         raise ValueError('--btc-root is required')
-    scenarios = load_scenarios(args.scenarios, btc_root=btc_root)
     if not args.isolated_db:
         raise ValueError('--isolated-db is required')
     target = getattr(args,'expected_database',None) or os.getenv('EVAL_EXPECTED_DATABASE')
@@ -49,6 +48,9 @@ async def run(args, runtime=None) -> int:
         raise ValueError('--expected-database is required')
     if args.out.exists() or args.out.with_suffix('.report.json').exists():
         raise FileExistsError('output_exists_choose_new_path')
+    from eval_harness.btc_release import prepare_btc_release
+    btc_root = prepare_btc_release(btc_root, args.out.with_suffix('.btc-release'))
+    scenarios = load_scenarios(args.scenarios, btc_root=btc_root)
     settings = get_settings()
     settings = settings.model_copy(update={'llm_seed':getattr(args,'seed',7)})
     release = await capture_release(database_url(settings))
@@ -56,7 +58,7 @@ async def run(args, runtime=None) -> int:
     try:
         result = await runner.execute_configuration(settings=settings, scenarios=scenarios,config=args.config,
             runtime=runtime,run_id=str(uuid4()),out=args.out,btc_root=btc_root,
-            expected_database=target,release=release)
+            expected_database=target,release=release,delivery_mode=getattr(args,'delivery_mode','voice'))
         rows = [r for rs in result['trace'].values() for r in rs]
         report_path=args.out.with_suffix('.report.json')
         report=json.loads(report_path.read_text())
@@ -87,6 +89,7 @@ def main():
     parser.add_argument('--isolated-db',action='store_true')
     parser.add_argument('--expected-database',default=os.getenv('EVAL_EXPECTED_DATABASE'))
     parser.add_argument('--seed',type=int,default=7)
+    parser.add_argument('--delivery-mode',choices=('text','voice'),default='voice')
     args=parser.parse_args()
     try:
         count=asyncio.run(run(args))

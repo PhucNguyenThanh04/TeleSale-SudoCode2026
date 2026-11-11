@@ -22,6 +22,43 @@ def test_report_uses_saved_score_and_marks_unmeasured_fields(tmp_path):
     assert 'CHƯA ĐẠT' in result
 
 
+def test_voice_report_labels_response_and_ttft_proxy(tmp_path):
+    from eval_harness.report_metrics import render_run
+    (tmp_path / 'run.json').write_text(json.dumps({'status': 'validated', 'score': 'btc_score.json',
+        'conversation_measurement': {'delivery_mode': 'voice', 'ttft_is_proxy': True}}))
+    metric = {'latency': {'ttft': {'p50_ms': 125}, 'total': {'p50_ms': 125}}}
+    (tmp_path / 'btc_score.json').write_text(json.dumps({'system': metric, 'baseline': metric}))
+    output = render_run(tmp_path)
+    assert 'Response p50 (ms)' in output
+    assert 'TTFT proxy' in output
+    assert 'ASR/TTS' in output
+
+
+def test_text_report_does_not_relabel_completion_proxy_as_measured_ttft(tmp_path):
+    from eval_harness.report_metrics import render_run
+    (tmp_path / 'run.json').write_text(json.dumps({'status': 'validated', 'score': 'btc_score.json',
+        'conversation_measurement': {'delivery_mode': 'text', 'ttft_is_proxy': True}}))
+    metric = {'latency': {'ttft': {'p50_ms': 250}, 'total': {'p50_ms': 250}}}
+    (tmp_path / 'btc_score.json').write_text(json.dumps({'system': metric, 'baseline': metric}))
+    output = render_run(tmp_path)
+    assert 'TTFT proxy' in output
+    assert 'chưa đo token đầu tiên' in output
+    assert 'Total p50 (ms)' in output
+
+
+def test_nonstreaming_text_report_explains_btc_rule_7(tmp_path):
+    from eval_harness.report_metrics import render_run
+    from eval_harness.benchmark_runner import conversation_measurement
+    (tmp_path / 'run.json').write_text(json.dumps({'status': 'validated', 'score': 'btc_score.json',
+        'conversation_measurement': conversation_measurement('text')}))
+    metric = {'latency': {'ttft': {'p50_ms': 250}, 'total': {'p50_ms': 250}}}
+    (tmp_path / 'btc_score.json').write_text(json.dumps({'system': metric, 'baseline': metric}))
+    output = render_run(tmp_path)
+    assert '| TTFT p50 (ms)' in output
+    assert 'quy tắc 7' in output
+    assert 'TTFT proxy' not in output
+
+
 @pytest.mark.parametrize('status', ['failed', 'running', 'invalid'])
 def test_no_quality_table_for_incomplete_run(tmp_path, status):
     from eval_harness.report_metrics import render_run

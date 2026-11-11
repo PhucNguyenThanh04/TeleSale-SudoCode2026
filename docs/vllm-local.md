@@ -61,15 +61,22 @@ curl --fail http://127.0.0.1:8002/v1/chat/completions \
 Set these values in the AI service's local environment, then restart that service:
 
 ```dotenv
-LLM_BASE_URL=http://127.0.0.1:8002/v1
-LLM_MODEL=Qwen/Qwen3-0.6B
-LLM_API_KEY=local-vllm
-LANGMEM_MODEL=Qwen/Qwen3-0.6B
+LLM_BACKEND=local
+LOCAL_LLM_BASE_URL=http://127.0.0.1:8002/v1
+LOCAL_LLM_MODEL=Qwen/Qwen3-0.6B
+LOCAL_LLM_API_KEY=local-vllm
 ```
 
 `local-vllm` is a placeholder required by the client, not a server credential.
 Existing application credentials and model settings are not changed by the
 launcher. Long agent prompts must fit the server's 4096-token context window.
+Set `LLM_BACKEND=api` to return to the saved API profile. For the separately
+served `Qwen/Qwen2.5-3B-Instruct-AWQ` at port 8081, use that model ID and
+`LOCAL_LLM_BASE_URL=http://localhost:8081/v1` instead. See
+[the AI service switching instructions](../ai-services/README.md#switch-between-the-api-and-a-local-model)
+for the Docker memory-worker address and restart steps. This launcher's
+loopback-only bind is suitable for host clients; a Docker worker also needs a
+server bind address it can reach.
 
 References: [model card](https://huggingface.co/Qwen/Qwen3-0.6B),
 [vLLM installation](https://docs.vllm.ai/en/latest/getting_started/installation/gpu/),

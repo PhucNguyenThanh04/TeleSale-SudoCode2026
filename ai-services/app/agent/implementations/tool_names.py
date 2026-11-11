@@ -5,6 +5,7 @@ import re
 MODEL_TOOL_NAMES = {
     'catalog.search': 'catalog_search', 'inventory.check': 'inventory_check',
     'pricing.get_quote': 'pricing_get_quote', 'order.create': 'order_create',
+    'pricing.quote_order': 'pricing_quote_order',
     'order.update': 'order_update', 'order.status': 'order_status',
     'schedule.callback': 'schedule_callback', 'handoff.transfer': 'handoff_transfer',
     'policy.search': 'policy_search',

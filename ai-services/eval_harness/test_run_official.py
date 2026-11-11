@@ -25,6 +25,8 @@ def test_conversation_run_does_not_execute_retired_rag(tmp_path, failure):
     identity = {"database": "telesale_eval_test"}
 
     def fake_run(config, scenarios, agent, seed, run_id, out, **kwargs):
+        assert (kwargs['btc_root'] / 'btc_release.json').is_file()
+        assert 'pricing.quote_order' in (kwargs['btc_root'] / 'schemas/tools.schema.json').read_text()
         trace = out / f"{config}.jsonl"
         from eval_harness.extractor import extract_detailed
         from eval_harness.extraction_report import write_extraction_sidecar
@@ -42,6 +44,9 @@ def test_conversation_run_does_not_execute_retired_rag(tmp_path, failure):
 
     def fake_publish(scenarios, full, baseline, score, metadata, **kwargs):
         from eval_harness.extraction_report import summarize_extraction, sha256
+        measurement = metadata['model_params']['conversation_measurement']
+        assert measurement['delivery_mode'] == 'voice'
+        assert measurement['ttft_is_proxy'] is True
         if failure == 'publish':
             raise OSError('synthetic publication failure')
         result = {'status': 'validated', 'manifests': {'full': {}, 'baseline_no_memory': {}}}
@@ -79,6 +84,7 @@ def test_conversation_run_does_not_execute_retired_rag(tmp_path, failure):
 
     run = json.loads((out / "run.json").read_text(encoding="utf-8"))
     assert run["status"] == ("failed" if failure else "validated")
+    assert run['conversation_measurement']['response_scope'] == 'transcript_to_complete_reply'
     assert "rag_summary" not in run
     assert not (out / "rag_retrieval.json").exists()
 

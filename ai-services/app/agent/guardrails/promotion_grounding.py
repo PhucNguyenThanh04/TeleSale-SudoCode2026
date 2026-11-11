@@ -57,6 +57,26 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
                  if not code.startswith(("SKU-", "OD-"))}
         if not codes and not re.search(r"\b(?:khuyen mai|uu dai|giam|tang|bieu|freeship|mien phi (?:ship|van chuyen))\b", commercial):
             continue
+        if any(call.get('name') == 'pricing.quote_order' for call in successful):
+            from app.mcp_servers.mcp_shared.basket import basket_unit_quote
+            unit = basket_unit_quote(clause, successful)
+            baskets = [call for call in successful if call.get('name') == 'pricing.quote_order']
+            if (unit is None and len(baskets) == 1
+                    and re.search(r'freeship|mien phi (?:ship|van chuyen)', folded)
+                    and not re.search(r'\b(?:giam|tang|bieu)\b|%', commercial)):
+                basket = baskets[0]
+                # Shipping belongs to the order; it does not grant a unit discount.
+                unit = {'name': 'pricing.get_quote', 'args': {'on': basket.get('args', {}).get('on')},
+                        'result': {'applied_promos': basket['result'].get('order_promos', []),
+                                   'freeship': basket['result'].get('freeship', False)}}
+            if unit is None:
+                return 'promotion_quote_missing'
+            reason = check_promotion_grounding(clause,
+                [call for call in successful if call.get('name') not in {'pricing.get_quote', 'pricing.quote_order'}] + [unit],
+                focus_sku=focus_sku)
+            if reason:
+                return reason
+            continue
         from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
         mentioned = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
         selected = [c for c in quotes if not mentioned or c.get('args', {}).get('sku') in mentioned]

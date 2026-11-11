@@ -480,6 +480,25 @@ def _quote_money_values(result: dict[str, Any]) -> set[int]:
 
 
 def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *, focus_sku: str | None = None) -> bool:
+    from app.mcp_servers.mcp_shared.basket import basket_money_evidenced
+    from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
+    baskets = [call for call in successful if call.get('name') == 'pricing.quote_order']
+    if baskets:
+        basket_skus = {unit['sku'] for call in baskets for unit in call['result'].get('units', [])}
+        remaining = []
+        for clause in re.split(r'[;!?\n]|\.(?!\d)', candidate):
+            if not _money_claims(clause):
+                continue
+            bound = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
+            if not bound or bound & basket_skus or re.search(r'\btong\b|ca don|ca gio', _fold_text(clause)):
+                # A scalar quote cannot override the basket's physical-unit prices.
+                if not basket_money_evidenced(clause, successful):
+                    return False
+            else:
+                remaining.append(clause)
+        if not remaining:
+            return True
+        candidate = '; '.join(remaining)
     quotes: dict[str, dict[str, Any]] = {}
     for call in successful:
         if call.get("name") != "pricing.get_quote":
@@ -494,7 +513,6 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *, focus_
         quotes[sku] = result
     if not quotes:
         return False
-    from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
     for clause in re.split(r"[;!?\n]|\.(?!\d)", candidate):
         claims = _money_claims(clause)
         if not claims:
@@ -512,7 +530,17 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *, focus_
         if len(mentioned) != 1 or not mentioned <= quotes.keys():
             return False
         quote = quotes[next(iter(mentioned))]
-        allowed = _quote_money_values(quote)
+        prices = {quote.get(key) for key in ('final_price_vnd', 'list_price_vnd')
+                  if type(quote.get(key)) is int}
+        actual_discount = (quote['list_price_vnd'] - quote['final_price_vnd']
+                           if all(type(quote.get(key)) is int for key in
+                                  ('list_price_vnd', 'final_price_vnd')) else None)
+        promos = quote.get('applied_promos')
+        discounts = {promo.get('discount_vnd') for promo in promos
+                     if isinstance(promo, dict) and type(promo.get('discount_vnd')) is int} \
+                    if isinstance(promos, list) else set()
+        if actual_discount is not None and actual_discount >= 0:
+            discounts.add(actual_discount)
         if re.search(r'\btong\b|ca don', _fold_text(clause)):
             selected_call = next(c for c in successful if c.get('name') == 'pricing.get_quote'
                                  and c.get('args', {}).get('sku') == next(iter(mentioned)))
@@ -521,15 +549,12 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *, focus_
                             if type(quote.get(k)) is int and type(qty) is int}
             if any(kind == 'price' and amount not in total_values for amount, kind, _ in claims):
                 return False
-            allowed |= total_values
-        if any(amount not in allowed for amount, _, _ in claims):
+            prices |= total_values
+        if any(amount not in (discounts if kind == 'discount' else prices)
+               for amount, kind, _ in claims):
             return False
-        actual_discount = quote.get("list_price_vnd", 0) - quote.get("final_price_vnd", 0)
-        promos = quote.get("applied_promos")
-        applied = {promo.get("discount_vnd") for promo in promos if isinstance(promo, dict)} \
-            if isinstance(promos, list) else set()
         if any(kind == "discount" and negative and amount > 0
-               and amount in applied | {actual_discount}
+               and amount in discounts
                for amount, kind, negative in claims):
             return False
     return True

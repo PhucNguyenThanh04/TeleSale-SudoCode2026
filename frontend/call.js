@@ -119,13 +119,15 @@ function renderCallBrief(brief) {
     + (brief.last_session?.date ? ` · Gần nhất ${brief.last_session.date}` : ''));
   row('Kết quả phiên gần nhất', outcomes[brief.last_session?.outcome]);
   for (const product of brief.products_advised || []) {
-    row('Đã tư vấn', product.sku);
+    row('Đã trao đổi', product.sku);
     if (typeof product.price_quoted_vnd === 'number') {
       row('Giá đã báo', `${product.price_quoted_vnd.toLocaleString('vi-VN')} đồng`
         + (product.quoted_on ? ` (${product.quoted_on})` : '') + ' · Giá lịch sử');
     }
     row('Ưu đãi đã trao đổi', product.promo_code);
   }
+  row('Đề xuất gần nhất', brief.recommended_sku);
+  if ('selected_sku' in brief) row('Khách đã chọn', brief.selected_sku || 'Chưa xác nhận');
   const orderStates = { created: 'Đã tạo', delivered: 'Đã giao', cancelled: 'Đã hủy',
     shipping: 'Đang giao' };
   for (const order of brief.orders || []) {

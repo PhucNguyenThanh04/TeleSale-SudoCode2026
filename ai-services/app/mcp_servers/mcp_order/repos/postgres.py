@@ -8,6 +8,16 @@ from app.mcp_servers.mcp_shared.database import Database
 
 
 class OrderRepo(Database):
+    async def lock_customer(self, session, phone: str) -> None:
+        await session.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))'),
+                              {'key': 'order:' + phone})
+
+    async def same_day_orders(self, session, phone: str, on: str) -> list[dict]:
+        result = await session.execute(text('''SELECT promos FROM runtime.tool_orders
+            WHERE customer_phone=:phone AND created_on=:on'''),
+            {'phone': phone, 'on': date.fromisoformat(on)})
+        return [{'promos': row[0] if isinstance(row[0], list) else json.loads(row[0])} for row in result]
+
     async def rows(self, session, table: str) -> list[dict]:
         if table not in {"products", "inventory_events", "promotions", "customers"}:
             raise ValueError("Unsupported BTC table")
@@ -41,7 +51,7 @@ class OrderRepo(Database):
         return any(row[0] == customer_id for row in result)
 
     async def runtime_orders(self, session, customer_id: str, order_id: str | None) -> list[dict]:
-        result = await session.execute(text("""SELECT order_id,customer_phone,sku,qty,price_vnd,total_vnd,
+        result = await session.execute(text("""SELECT order_id,customer_phone,sku,qty,price_vnd,total_vnd,lines,
             created_on,status FROM runtime.tool_orders WHERE customer_id=:customer_id
             AND (CAST(:order_id AS text) IS NULL OR order_id=CAST(:order_id AS text))"""),
             {"customer_id": customer_id, "order_id": order_id})
@@ -58,12 +68,14 @@ class OrderRepo(Database):
     async def insert_order(self, session, order_id: str, customer_id: str, args: dict,
                            price: int, total: int, codes: list[str]) -> None:
         await session.execute(text("""INSERT INTO runtime.tool_orders
-            (order_id,customer_id,customer_phone,sku,qty,price_vnd,total_vnd,payment,address,promos,created_on)
-            VALUES (:order_id,:customer_id,:phone,:sku,:qty,:price,:total,:payment,:address,CAST(:promos AS jsonb),:on)"""),
+            (order_id,customer_id,customer_phone,sku,qty,price_vnd,total_vnd,payment,address,promos,created_on,lines)
+            VALUES (:order_id,:customer_id,:phone,:sku,:qty,:price,:total,:payment,:address,CAST(:promos AS jsonb),:on,CAST(:lines AS jsonb))"""),
             {"order_id": order_id, "customer_id": customer_id, "phone": args["customer_phone"],
              "sku": args["sku"], "qty": args["qty"], "price": price, "total": total,
              "payment": args["payment"], "address": args.get("address"),
-             "promos": json.dumps(codes), "on": date.fromisoformat(args["on"])})
+             "promos": json.dumps(codes), "on": date.fromisoformat(args["on"]),
+             'lines': json.dumps(args.get('lines') or [
+                 {'sku': args['sku'], 'qty': args['qty'], 'price_vnd': price}])})
 
     async def use_promo(self, session, phone: str, code: str) -> None:
         await session.execute(text("""INSERT INTO runtime.promo_uses(customer_phone,promo_code)

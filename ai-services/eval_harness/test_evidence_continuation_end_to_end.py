@@ -1,4 +1,5 @@
 """Real AgentNodes/BusinessTools/admission/JSON/runner; model deliberately never orders."""
+from eval_harness.test_support import VoiceLifecycleStub
 import asyncio
 from contextlib import asynccontextmanager
 from copy import deepcopy
@@ -20,7 +21,7 @@ from eval_harness.benchmark_runner import run_configuration
 from eval_harness.turn_diagnostics import verify_turn_diagnostics
 
 
-class Runtime:
+class Runtime(VoiceLifecycleStub):
     def __init__(self,sku,name,price,new_price=None,*,service_memory=False,delayed_worker=False,known_session=True,promos=None,new_promos=None):
         self.sku,self.name,self.price,self.new_price=sku,name,price,new_price
         self.memory=SimpleNamespace(include_prior=True,namespace='')
@@ -126,7 +127,7 @@ class CommittedRepo:
         assert cid=='C-INTEGRATION'
         return [{**t,'client_msg_id':t['turn_id'],'on_date':t['on'],
                  'tool_observations':self.observed.get(t['turn_id'],[])}
-                for t in self.runtime.sessions[sid]['turns'][:through_turn_no][-limit:]]
+                for t in self.runtime.sessions[sid]['turns'][:through_turn_no][-limit if limit else 0:]]
     async def order_links(self,*args):return []
     async def list_fact_versions(self,*args):return []
     async def list_episode_versions(self,*args):return deepcopy(list(self.runtime.episodes.values()))

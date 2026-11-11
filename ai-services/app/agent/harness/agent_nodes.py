@@ -4,6 +4,7 @@ from app.mcp_servers.mcp_shared.decision_diagnostics import emit as diagnostic_e
 
 
 import logging
+import time
 import json
 import re
 from app.mcp_servers.mcp_shared.commerce_rules import _search_text
@@ -422,7 +423,7 @@ class AgentNodes(SessionNodes):
             return {"memory_writes": []}
         request = state["request"]
         diagnostic_emit("final_verified", state=state, status="success")
-        tool_calls = state.get("tool_calls", [])
+        tool_calls = [*state.get('prepared_tool_calls', []), *state.get("tool_calls", [])]
         knowledge_kwargs = {}
         from app.knowledge.config import enabled
         if enabled() and getattr(self.memory, 'supports_knowledge_signals', False):
@@ -440,6 +441,7 @@ class AgentNodes(SessionNodes):
                 'signal': signal, 'tool_calls': safe_tools(tool_calls),
                 'retrieved_ids': [chunk['chunk_id'] for c in policy_calls
                     for chunk in c.get('result', {}).get('evidence', []) if 'chunk_id' in chunk]}
+        commit_started = time.perf_counter()
         try:
             result = await self.memory.commit_turn(
                 str(request.session_id), state.get("customer_id"),
@@ -465,4 +467,5 @@ class AgentNodes(SessionNodes):
         diagnostic_emit("final_commit", state=state, status="success", turn_count=result["turn_no"])
         log_event(state, "persist", "memory_recorded", turn_no=result["turn_no"],
                   accepted_facts=0)
-        return {"memory_writes": result["memory_writes"]}
+        return {"memory_writes": result["memory_writes"],
+                'memory_commit_ms': (time.perf_counter() - commit_started) * 1000}

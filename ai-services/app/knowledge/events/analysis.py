@@ -11,7 +11,7 @@ async def analyze_event(evidence, source_catalog, model=None):
     matches = [s for s in ranked if len(words & set(re.findall(r'\w+',
                        (s.get('title', '')+' '+s.get('body', '')).lower()))) >= 2][:5]
     signal = evidence.get('signal', '')
-    category = 'technical' if signal in {'tool_timeout', 'degraded_lexical', 'mcp_unavailable'} else 'insufficient_evidence'
+    category = 'technical' if signal in {'tool_timeout', 'degraded_lexical', 'mcp_unavailable', 'execution_unverified'} else 'insufficient_evidence'
     if signal == 'no_evidence' and matches:
         category = 'retrieval'
     if signal == 'correct_refusal':

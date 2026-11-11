@@ -9,6 +9,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.voice import router
+from app.api.text import router as text_router
+from app.api.knowledge import router as knowledge_router
 from app.configs import VoiceSettings
 from app.services.voice_speech import SpeechClient
 
@@ -42,12 +44,22 @@ def create_app(settings: VoiceSettings | None = None) -> FastAPI:
 
     app = FastAPI(title="TeleSale Voice Demo Gateway", version="0.1.0", lifespan=lifespan)
     app.include_router(router)
+    app.include_router(text_router)
+    app.include_router(knowledge_router)
     frontend = Path(__file__).resolve().parents[2] / "frontend"
     app.mount("/assets", StaticFiles(directory=frontend), name="voice-assets")
 
     @app.get("/", include_in_schema=False)
     async def voice_site():
         return FileResponse(frontend / "index.html")
+
+    @app.get('/chat', include_in_schema=False)
+    async def text_site():
+        return FileResponse(frontend / 'chat.html')
+
+    @app.get('/knowledge', include_in_schema=False)
+    async def knowledge_site():
+        return FileResponse(frontend / 'knowledge.html')
 
     return app
 

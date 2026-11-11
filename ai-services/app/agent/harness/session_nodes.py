@@ -165,6 +165,47 @@ def safe_transaction_reply(state: TurnState) -> str | None:
     return mask_pii(answer)
 
 
+def safe_basket_reply(state: TurnState) -> str | None:
+    from app.mcp_servers.mcp_shared.basket import current_basket_quote, basket_purchase_arguments, basket_block_reason
+    from app.mcp_servers.mcp_shared.consultation import catalog_items, derive_consultation
+    if any(call.get('name') == 'order.create' for call in state.get('tool_calls', [])):
+        return None
+    quote = current_basket_quote(state)
+    if quote is None:
+        return None
+    units, total = quote['result'].get('units', []), quote['result'].get('total_vnd')
+    if not units or type(total) is not int:
+        return None
+    items = catalog_items(state)
+    labels = []
+    for unit in units:
+        item = items.get(unit['sku']) or next((item for item in items.values()
+            if any(variant.get('variant_sku') == unit['sku'] for variant in item.get('variants', []))), None)
+        if item is None or not item.get('name'):
+            return None
+        variant = next((variant for variant in item.get('variants', [])
+                        if variant.get('variant_sku') == unit['sku']), {})
+        label = item['name'] + ''.join(f' {cue} {variant[key]}'
+            for key, cue in (('size', 'size'), ('color', 'màu')) if variant.get(key) is not None)
+        if label not in labels:
+            labels.append(label)
+    args = basket_purchase_arguments(state)
+    reason = basket_block_reason(state, args, require_stock=False) if args else None
+    if reason in {'quantity_mismatch', 'selection_mismatch', 'current_quote_required', 'price_mismatch'}:
+        return 'Em cần kiểm tra lại báo giá theo lựa chọn mới của mình trước khi tạo đơn ạ.'
+    if reason == 'product_requirements_not_met':
+        return 'Giỏ hàng hiện tại chưa đáp ứng đủ yêu cầu của mình nên em chưa thể tạo đơn ạ.'
+    if reason == 'delivery_confirmation_required':
+        return 'Em chưa xác minh được khả năng đáp ứng thời hạn giao hàng mình yêu cầu ạ.'
+    if reason == 'budget_basis_required':
+        return 'Mức ngân sách mình nêu là cho mỗi sản phẩm hay tổng cả đơn ạ?'
+    answer = f"{len(units)} sản phẩm {', '.join(labels)} có tổng giá {total:,}đ.".replace(',', '.')
+    if derive_consultation(state).purchase_intent:
+        answer += (' Mình muốn thanh toán bằng phương thức nào ạ?' if args is None else
+                   ' Mình đồng ý báo giá này để em lên đơn không ạ?')
+    return mask_pii(answer)
+
+
 def safe_quote_reply(state: TurnState) -> str | None:
     if any(c.get("name") == "order.create" for c in state.get("tool_calls", [])):
         return None
@@ -218,11 +259,22 @@ def safe_consultation_reply(state: TurnState) -> str | None:
     decision = derive_consultation(state)
     if decision.next_action == 'pause':
         return 'Dạ, em ghi nhận mình chưa mua lúc này. Khi cần mình liên hệ lại nhé.'
+    basket_reply = safe_basket_reply(state)
+    if basket_reply:
+        return basket_reply
     if decision.purchase_intent:
         missing = consultation_missing_fields(state)
         if not missing:
             return None  # Orchestration must complete the purchase, never pretend here.
         if 'selection' in missing:
+            from app.agent.harness.catalog_query import explicit_product_query
+            query = explicit_product_query(state.get('safe_text', ''))
+            if query:
+                lookups = [call for call in state.get('tool_calls', [])
+                           if call.get('name') == 'catalog.search'
+                           and _search_text(call.get('args', {}).get('query', '')) == _search_text(query)]
+                if lookups and not lookups[-1].get('result', {}).get('items'):
+                    return 'Em chưa tra cứu được đúng mẫu mình vừa nêu nên chưa thể xác nhận giá hoặc tạo đơn ạ.'
             return 'Mình muốn lấy mẫu nào trong các mẫu đang trao đổi để em kiểm tra và lên đơn ạ?'
         if any(field in missing for field in ('size', 'color')):
             fields = [label for key, label in (('size','size'),('color','màu')) if key in missing]

@@ -35,11 +35,13 @@ class TurnState(TypedDict, total=False):
     turn_no: int
     decision: Decision
     session_tool_calls: list[dict[str, Any]]
+    prepared_tool_calls: list[dict[str, Any]]
     tool_calls: list[dict[str, Any]]
     tool_count: int
     tool_failed: bool
     memory_failure: str
     memory_blocked: bool
+    memory_include_prior: bool
     agent_text: str
     agent_draft: str
     verifier_events: list[dict[str, Any]]
@@ -50,3 +52,4 @@ class TurnState(TypedDict, total=False):
     needs_handoff: bool
     handoff_ticket_id: str | None
     memory_writes: list[dict[str, Any]]
+    memory_commit_ms: float

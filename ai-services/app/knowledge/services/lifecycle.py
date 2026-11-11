@@ -9,7 +9,7 @@ from app.knowledge.services.releases import prepare_release, activate_release, r
 RESOURCES = {'events', 'gaps', 'revisions', 'regression_cases', 'releases', 'jobs', 'audit', 'verification_runs', 'sources', 'backend_outbox'}
 
 
-async def query(repo, actor_id, resource, offset=0, limit=30, status=None, source=None, item_id=None):
+async def query(repo, actor_id, resource, offset=0, limit=30, status=None, source=None, item_id=None, gap_id=None):
     if resource not in RESOURCES or offset < 0 or not 1 <= limit <= 100:
         raise KnowledgeError('Invalid query')
     async with repo.transaction() as tx:
@@ -22,6 +22,8 @@ async def query(repo, actor_id, resource, offset=0, limit=30, status=None, sourc
             rows = [r for r in rows if r.get('status') == status]
         if source:
             rows = [r for r in rows if r.get('source') == source]
+        if gap_id:
+            rows = [r for r in rows if r.get('gap_id') == gap_id]
         rows.sort(key=lambda r: (r.get('created_at', ''), r['id']), reverse=True)
         if resource == 'regression_cases':
             rows = [dict(r, record_hash=digest(r)) for r in rows]

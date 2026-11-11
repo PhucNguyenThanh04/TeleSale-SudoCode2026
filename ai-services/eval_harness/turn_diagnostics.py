@@ -14,7 +14,7 @@ IDENTITY = ('run_id', 'config', 'scenario_id', 'call', 'turn')
 DECISION_CHECKPOINTS = frozenset({'context_loaded', 'context_masked', 'consultation_before',
     'continuation', 'final_verified', 'final_commit', 'memory_read', 'memory_commit',
     'worker_admission', 'worker_projection'})
-TOOLS = frozenset({'crm.get_customer','catalog.search','inventory.check','pricing.get_quote',
+TOOLS = frozenset({'crm.get_customer','catalog.search','inventory.check','pricing.get_quote','pricing.quote_order',
     'order.create','order.update','order.status','policy.search','handoff.transfer','schedule.callback'})
 TOOL_ERRORS = frozenset({'tool_error','unknown_sku','invalid_tool_result','precondition_or_arguments',
     'knowledge_unavailable','timeout','unavailable','overloaded','other_error'})
@@ -44,7 +44,9 @@ def _classify(events, checks):
     outcomes = [e['event'] for e in events if e['event'] in {'recovery_succeeded','recovery_exhausted'}]
     return {
         'model': {'status':('failed' if models else 'succeeded' if invocations and all(e.get('status') == 'succeeded' for e in invocations) else 'not_attempted' if invocations and all(e.get('status') == 'not_attempted' for e in invocations) else 'unknown'),
-                  **({'error_type':models[-1].get('error_type','other_error')} if models else {})},
+                  **({'error_type':models[-1].get('error_type','other_error')} if models else {}),
+                  **({'error_code': models[-1]['error_code']} if models and models[-1].get('error_code')
+                     not in {None, 'unknown'} else {})},
         'grounding': {'status':('accepted' if grounding[-1]['accepted'] else 'rejected') if grounding else 'unknown',
                       **({'reason':grounding[-1]['reason']} if grounding and 'reason' in grounding[-1] else {})},
         'verifier_rejected': bool(checks),

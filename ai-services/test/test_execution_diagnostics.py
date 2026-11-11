@@ -8,6 +8,53 @@ import pytest
 from app.agent.harness.observability import capture_diagnostic_events
 
 
+def test_schema_failure_retains_safe_code_through_turn_diagnostics():
+    from pydantic import BaseModel, ValidationError
+    from app.agent.harness.execution_diagnostics import safe_execution_error
+    from app.agent.harness.observability import safe_diagnostic_event
+    from eval_harness.turn_diagnostics import _classify
+    class Args(BaseModel):
+        qty: int
+    try:
+        Args(qty='private-0912345678')
+    except ValidationError as exc:
+        event = safe_diagnostic_event('execution', 'phase_result',
+            safe_execution_error(exc, phase='model_invocation', invocation='initial'))
+    assert event['error_type'] == 'ValidationError'
+    assert event['error_code'] == 'schema_validation_failed'
+    summary = _classify([event], [])
+    assert summary['model']['error_code'] == 'schema_validation_failed'
+    assert '0912345678' not in json.dumps([event, summary])
+
+
+def test_local_tool_failure_code_is_not_lost_in_normalization():
+    from app.infarstructure.local_llm import LocalToolOutputError
+    from app.agent.harness.execution_diagnostics import safe_execution_error
+    error = LocalToolOutputError('local_tool_output_invalid', 'private-0912345678')
+    result = safe_execution_error(error, phase='model_invocation')
+    assert result['error_type'] == 'LocalToolOutputError'
+    assert result['error_code'] == 'local_tool_output_invalid'
+    assert '0912345678' not in json.dumps(result)
+
+
+@pytest.mark.parametrize('kind', ['parser', 'context'])
+def test_parser_and_context_errors_keep_safe_codes_through_summary(kind):
+    from langchain_core.exceptions import OutputParserException
+    from app.agent.harness.execution_diagnostics import safe_execution_error
+    from app.agent.harness.observability import safe_diagnostic_event
+    from eval_harness.turn_diagnostics import _classify
+    error = (OutputParserException('private-0912345678') if kind == 'parser' else
+             openai.BadRequestError('private-0912345678', response=httpx.Response(400,
+                 request=httpx.Request('POST', 'https://offline.invalid')), body={
+                     'error': {'code': 'context_length_exceeded', 'message': 'private-0912345678'}}))
+    event = safe_diagnostic_event('execution', 'phase_result',
+        safe_execution_error(error, phase='model_invocation', invocation='initial'))
+    summary = _classify([event], [])
+    assert summary['model']['error_code'] == (
+        'output_parse_failed' if kind == 'parser' else 'context_length_exceeded')
+    assert '0912345678' not in json.dumps([event, summary])
+
+
 def test_safe_api_error_preserves_contract_without_body():
     from app.agent.harness.execution_diagnostics import safe_execution_error
     error = openai.BadRequestError('secret 0912345678', response=httpx.Response(400,
