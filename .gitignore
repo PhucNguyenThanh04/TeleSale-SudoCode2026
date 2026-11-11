@@ -47,6 +47,7 @@ node_modules/
 .turbo/
 *.tsbuildinfo
 coverage/
+/BTC-cap-nhat-11-2026/
 
 # Local runtime output
 /postgres_data/
