@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TeleSale · Duyệt tri thức</title>
+  <link rel="stylesheet" href="/assets/style.css"><link rel="stylesheet" href="/assets/knowledge.css">
+  <script type="module" src="/assets/knowledge.js"></script>
+</head>
+<body class="knowledge-page">
+  <header><a class="brand" href="/">tele<span>sale</span></a><nav aria-label="Điều hướng"><a href="/chat">Trò chuyện</a><span aria-current="page">Duyệt tri thức</span></nav></header>
+  <main>
+    <div class="page-heading"><div><p class="eyebrow">KNOWLEDGE GAP LOOP</p><h1>Từ phản hồi đến tri thức tốt hơn.</h1><p class="intro">Đối chiếu bằng chứng, duyệt nội dung có nguồn, rồi phát hành riêng.</p></div><button id="logout" hidden>Đăng xuất</button></div>
+    <p id="notice" role="status" aria-live="polite"></p><p id="error" role="alert" class="error" hidden></p>
+    <section id="access" class="panel access"><h2>Truy cập dành cho người duyệt</h2><p>Mã truy cập quản trị chỉ được giữ trong tab này.</p><form id="access-form"><label>Mã truy cập<input id="access-token" type="password" required autocomplete="off"></label><button type="submit" disabled>Kết nối</button></form></section>
+    <section id="workspace" hidden>
+      <div class="toolbar"><div role="tablist" aria-label="Khu vực duyệt"><button id="gaps-tab" role="tab" aria-selected="true" aria-controls="gaps-view">01 · Duyệt gap</button><button id="releases-tab" role="tab" aria-selected="false" aria-controls="releases-view">02 · Phát hành</button></div><button id="refresh" class="secondary">Làm mới</button></div>
+      <div id="gaps-view" role="tabpanel" aria-labelledby="gaps-tab" class="review-grid">
+        <aside class="panel"><div class="panel-head"><h2>Hàng đợi cần xem</h2><span id="gap-count" class="muted"></span></div><label class="filter">Trạng thái<select id="status-filter"><option value="">Tất cả trạng thái</option><option value="new">Mới phát hiện</option><option value="triaged">Đã phân loại</option><option value="waiting_for_source">Chờ nguồn</option><option value="technical_followup">Cần xử lý kỹ thuật</option><option value="awaiting_verification">Chờ kiểm chứng</option><option value="resolved">Đã giải quyết</option><option value="closed_correct_refusal">Từ chối đúng</option></select></label><div id="gap-list"></div><div class="pagination"><button id="previous" class="secondary">Trước</button><span id="page-number"></span><button id="next" class="secondary">Sau</button></div></aside>
+        <section id="detail" class="panel detail" aria-label="Chi tiết gap"><p class="empty">Chọn một gap để xem bằng chứng và bản đề xuất.</p></section>
+      </div>
+      <section id="releases-view" role="tabpanel" aria-labelledby="releases-tab" hidden class="panel detail"></section>
+    </section>
+  </main>
+</body>
+</html>

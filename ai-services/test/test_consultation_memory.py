@@ -78,6 +78,13 @@ def test_worker_derives_and_persists_selection_without_llm_snapshot():
     projection=AsyncMock();projection.list_fact_versions.return_value=[];projection.list_episode_versions.return_value=[]
     extractor=AsyncMock(return_value=([],None))
     assert asyncio.run(process_one(repo,extractor,projection)) is True
+    import json
+    messages = extractor.await_args.args[0]
+    assert len(messages) == 1
+    payload = json.loads(messages[0]['content'])
+    assert payload['turn_id'] == current
+    assert payload['customer_text'] == 'Tôi chọn Aster để xem giá.'
+    assert payload['reference_context']['previous_agent_text'] == 'Em đề xuất Aster.'
     topic=projection.put_episode.await_args.args[2]['topics'][0]
     assert topic['consultation']['selected_sku']=='SKU-ASTER'
     assert topic['consultation']['source_refs']['selected_sku']['source_turn_id']==current

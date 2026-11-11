@@ -76,7 +76,7 @@ def _valid_fact(fact: dict) -> bool:
                     and mask_pii(value) == value)))))
 
 
-async def _committed_episode_view(repo, conn, customer_id, session_id, previous, prior_episodes=None):
+async def _committed_episode_view(repo, conn, customer_id, session_id, previous, prior_episodes=None, *, rows_cache=None):
     """Read-your-committed-turns without waiting for or writing the projection."""
     from app.mcp_servers.mcp_shared.consultation import committed_consultation, admit_consultation
     from app.mcp_servers.mcp_memory.services.episode_state import apply_episode_delta
@@ -84,12 +84,17 @@ async def _committed_episode_view(repo, conn, customer_id, session_id, previous,
         return previous
     if await repo.owner(conn, session_id) != customer_id:
         return previous
-    count = await repo.turn_count(conn, session_id)
-    if type(count) is not int:
-        return previous
-    rows = await repo.recent_session_turns(conn, session_id, customer_id, count, limit=12)
+    if rows_cache is not None and session_id in rows_cache:
+        rows = rows_cache[session_id]
+    else:
+        count = await repo.turn_count(conn, session_id)
+        if type(count) is not int:
+            return previous
+        rows = await repo.recent_session_turns(conn, session_id, customer_id, count, limit=None)
     if not isinstance(rows, list):
         return previous
+    if rows_cache is not None:
+        rows_cache[session_id] = rows
     turns, calls = [], []
     view = previous
     for row in rows:
@@ -119,13 +124,78 @@ async def _committed_episode_view(repo, conn, customer_id, session_id, previous,
             view = {**old, **apply_episode_delta(old, {'topic_updates': [
                 {'scope_type': 'global', 'scope_id': '', 'consultation': admitted}]},
                 source_turn_id=tid, customer_text=turn['customer_text'], agent_text=turn['agent_text'])}
+    if turns:
+        from app.agent.memory.deterministic_tool_facts import deterministic_episode_tools
+        from app.mcp_servers.mcp_shared.basket import presented_basket_offers
+        actions, quotes = deterministic_episode_tools(calls, turns[-1]['on'])
+        baskets = presented_basket_offers(customer_id=customer_id, session_id=session_id,
+                                          committed_turns=turns, tool_calls=calls)
+        if actions or quotes or baskets:
+            view = view or {'schema_version': 1, 'customer_id': customer_id, 'session_id': session_id,
+                            'on_date': turns[-1]['on'], 'status': 'active', 'topics': []}
+            view = {**view, 'actions_completed': actions, 'quoted_prices': quotes}
+            if baskets:
+                view['basket_offers'] = baskets
     if view and turns:
         from app.mcp_servers.mcp_shared.presented_offers import derive_presented_offers
+        from app.mcp_servers.mcp_memory.services.episode_summary import build_episode_summary
+        from app.agent.memory.episode_candidates import outcome_from_tool_calls
+        view = {**view, 'on': turns[-1]['on'],
+                'summary': view.get('summary') or build_episode_summary([], [], 800, episode_state=view),
+                'outcome': view.get('outcome') or outcome_from_tool_calls(calls)}
+        if rows[-1].get('channel'):
+            view['channel'] = rows[-1]['channel']
         # A bounded read view of existing committed evidence, not another persisted history.
         view = {**view, 'offer_candidates': [o.model_dump(mode='json') for o in
             derive_presented_offers(customer_id=customer_id, session_id=session_id,
                                     committed_turns=turns, tool_calls=calls)]}
     return view
+
+
+async def _operational_facts(repo, conn, customer_id, sessions, facts, rows_cache, revision_barriers):
+    """Admit only new committed evidence; the background projection is enrichment."""
+    from app.agent.memory.customer_facts import _supplement_customer_facts
+    from app.agent.memory.deterministic_tool_facts import verified_tool_candidates
+    from app.agent.memory.episode_candidates import blocker_resolution
+    from app.mcp_servers.mcp_memory.services.langmem_admission import admit_profile_candidates
+    indexed = {(fact.get('scope_type', 'global'), fact.get('scope_id', ''), fact.get('key')): fact
+               for fact in facts if isinstance(fact, dict)}
+    for session_id in sessions:
+        if await repo.owner(conn, session_id) != customer_id:
+            continue
+        count = await repo.turn_count(conn, session_id)
+        rows = await repo.recent_session_turns(conn, session_id, customer_id, count, limit=None)
+        rows_cache[session_id] = rows
+        for row in rows:
+            blocker = indexed.get(('global', '', 'blocker'))
+            newer = not (type(row.get('job_id')) is int and type((blocker or {}).get('revision')) is int
+                         and row['job_id'] <= blocker['revision'])
+            if blocker and newer and blocker_resolution(row['customer_text'], {'blocker': blocker})[0]:
+                indexed.pop(('global', '', 'blocker'))
+            if row.get('memory_status') == 'completed':
+                continue
+            tid = str(row['client_msg_id'])
+            on = str(row['on_date'])
+            turn = {'customer_id': customer_id, 'session_id': session_id, 'turn_id': tid,
+                    'on': on, 'customer_text': row['customer_text'], 'agent_text': row['agent_text']}
+            observed = row.get('tool_observations') or []
+            observed = json.loads(observed) if isinstance(observed, str) else observed
+            calls = [{**call, 'source_turn_id': tid} for call in observed if isinstance(call, dict)]
+            candidates = _supplement_customer_facts({'content': json.dumps(turn, ensure_ascii=False)}, [])
+            candidates.extend(verified_tool_candidates(turn['agent_text'], calls, tid, on))
+            accepted, _ = admit_profile_candidates(customer_id, session_id, candidates, [turn], calls)
+            for fact in accepted:
+                key = (fact.get('scope_type', 'global'), fact.get('scope_id', ''), fact['key'])
+                old = indexed.get(key, {})
+                # A slower job from an older session cannot replace a newer projection.
+                old_revision = old.get('revision')
+                barrier = max(revision_barriers.get(key, -1), old_revision if type(old_revision) is int else -1)
+                if type(row.get('job_id')) is int and row['job_id'] <= barrier:
+                    continue
+                indexed[key] = {**fact, 'schema_version': 1, 'session_id': session_id,
+                                'source': f'langmem:{session_id}:{tid}', 'on': on,
+                                'revision': row['job_id'] if type(row.get('job_id')) is int else 0}
+    return list(indexed.values())
 
 
 from app.mcp_servers.mcp_shared.decision_diagnostics import memory_boundary, active as diagnostic_active, emit as diagnostic_emit
@@ -171,7 +241,37 @@ async def read(repo, customer_id: str | None, session_id: str,
                     conn, customer_id, sorted(revisions))
                     if hasattr(repo, "completed_job_revisions") else revisions)
                 facts = select_facts(fact_versions, completed)
+                revision_barriers = {}
+                for version in fact_versions:
+                    if not isinstance(version, dict) or type(version.get('revision')) is not int:
+                        continue
+                    revision = version['revision']
+                    if revision > 0 and revision not in completed:
+                        continue
+                    key = (version.get('scope_type', 'global'), version.get('scope_id', ''), version.get('key'))
+                    revision_barriers[key] = max(revision_barriers.get(key, -1), revision)
                 all_episodes = select_episodes(episode_versions, completed)
+                operational_sessions = []
+                rows_cache = {}
+                if hasattr(repo, 'recent_customer_sessions'):
+                    recent = await repo.recent_customer_sessions(conn, customer_id, max_episodes + 1)
+                    for session in reversed(recent):
+                        sid = str(session['session_id'])
+                        if sid == session_id or include_prior:
+                            operational_sessions.append(sid)
+                        if include_prior and sid != session_id and not any(
+                                str(episode.get('session_id')) == sid for episode in all_episodes):
+                            all_episodes.append({'schema_version': 1, 'customer_id': customer_id,
+                                'session_id': sid, 'on_date': str(session['on_date']),
+                                'on': str(session['on_date']), 'channel': session['channel'],
+                                'summary': 'Chưa có diễn biến riêng được xác minh.', 'outcome': 'khac',
+                                'status': 'active', 'topics': [], 'operational_only': True})
+                    if session_id not in operational_sessions:
+                        operational_sessions.append(session_id)
+                    facts = await _operational_facts(repo, conn, customer_id, operational_sessions, facts, rows_cache, revision_barriers)
+                    recency = {str(item['session_id']): len(recent) - index for index, item in enumerate(recent)}
+                    all_episodes.sort(key=lambda item: (str(item.get('on', item.get('on_date', ''))),
+                        recency.get(str(item.get('session_id')), 0)), reverse=True)
                 if diagnostic_active():
                     from types import SimpleNamespace
                     diagnostic_state = {'customer_id': customer_id, 'history': result['history'],
@@ -194,10 +294,18 @@ async def read(repo, customer_id: str | None, session_id: str,
                         prior_id = str(episode.get('session_id', ''))
                         if prior_id and prior_id != session_id:
                             episodes[index] = await _committed_episode_view(
-                                repo, conn, customer_id, prior_id, episode)
+                                repo, conn, customer_id, prior_id, episode, rows_cache=rows_cache)
                 refreshed = {ep['session_id']: ep for ep in episodes}
                 current = await _committed_episode_view(repo, conn, customer_id, session_id, current,
-                    [refreshed.get(item['session_id'], item) for item in prior_episodes])
+                    [refreshed.get(item['session_id'], item) for item in prior_episodes], rows_cache=rows_cache)
+                session_calls = []
+                for row in rows_cache.get(session_id, []):
+                    observed = row.get('tool_observations') or []
+                    observed = json.loads(observed) if isinstance(observed, str) else observed
+                    session_calls.extend({**call, 'source_turn_id': str(row['client_msg_id']),
+                        'customer_id': customer_id, 'session_id': session_id}
+                        for call in observed if isinstance(call, dict))
+                result['session_tool_calls'] = session_calls
                 episodes = resolved_episode_view(episodes, [*all_episodes, *([current] if current else [])])
         except Exception as exc:
             logging.getLogger(__name__).warning(

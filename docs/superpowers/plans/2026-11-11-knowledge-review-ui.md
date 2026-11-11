@@ -1,0 +1,26 @@
+# Knowledge Review UI Plan
+
+**Goal:** Frontend duyệt gap nối workflow thật, release tách approval.
+**Spec:** ../specs/2026-11-11-knowledge-review-ui-design.md
+**Architecture:** Existing static ES modules → authenticated FastAPI gateway → internal Knowledge API; server binds reviewer.
+
+- [x] Gateway/auth + gap_id revision filter: RED focused tests, implement, GREEN.
+- [x] /knowledge HTML/CSS/JS: list/detail/evidence/sources, classify, create/edit revision + regression, approve/reject; loading/empty/errors, stale responses và hash conflicts.
+- [x] Release tab: selected approved revisions → prepare/checks → explicit activate/rollback; show current active/verification, no auto resolve.
+- [x] Real Chrome offline workflow/security/responsive tests; fix failures; focused existing gateway regressions.
+- [x] Docs/env + self review/spec audit; report only verified behavior, no live model/DB/publish.
+
+Constraints: no dependencies/subagents/worktrees/auto-commit; preserve user changes; no live eval/reset/activation. User explicitly delegates design/execution; no approval pause. Skills brainstorming/writing-plans/executing-plans/TDD/verification adapted to those constraints. No independent agent review per user.
+
+## Execution / completion audit
+
+- Gateway RED: 3 tests failed because review routes did not exist. Added restricted proxy with independent Bearer access, fixed reviewer from VoiceSettings, action/resource allowlists, same-origin mutation check, no-store responses and sanitized upstream failures. Separate-secret RED reproduced accidental reuse of internal token; guard now rejects that configuration. Final gateway group: **5 passed**, `/tmp/gap-gateway-final.log`.
+- Added gap_id filter before pagination in Knowledge lifecycle/query API so detail page lists revisions belonging to its gap. API/approval/release focused group: **13 passed** in a test process with `get_settings().knowledge_policy_config_file=None` (lexical fixture path). Initial runs inherited local .env hybrid config and failed source-hash validation against synthetic DT-01; no network/model call occurred before failure. Did not change production config or loosen source checks. Strengthened new filter test to use real HTTP route: **1 passed**, `/tmp/gap-query-http.log`.
+- Static `/knowledge` uses existing design/ES modules. Authentication input disabled until module handlers load (browser test caught premature native form navigation). All server text uses textContent; token lives in closure RAM, logout clears views; source/public evidence and regression expected input displayed. Personal-source/technical categories retain triage and cannot draft content. No stub data in shipped frontend.
+- Revision create/edit/test edit retain exact content_hash/test record_hash; edits make new draft. Approve requires stored content/test unchanged, reason and explicit test review. Reject has independent reason, no auto prepare/activate. Backend still validates permissions/source/immutable prepared revisions.
+- Release tab lists all approved/ready records via paginated API, maintains selection, prepare uses expected_active_id. Manifest/checks expand for review; warns removed active revisions. Activate/rollback are separate explicit confirmation actions with CAS; gap resolution not fabricated. Existing verification record displayed only if linked. Lexical tests expressly not LLM quality.
+- Browser synthetic API tests initially failed due module-readiness/native submit, click sequencing while UI busy and assertions reading closed details/textarea through innerText; fixed actual readiness and made tests interact with visible/open controls. Final **4 real Chrome tests passed**, `/tmp/gap-browser-final.log`: full create/approve/prepare/activate/rollback/logout; unsaved/unchecked approval and conflict; technical gap gating; test edit/new draft; revision edit/reject; list pagination; mobile 390px/no horizontal overflow; feedback HTML text safety/no JS errors/no browser storage.
+- Existing voice site and text gateway regressions: **7 passed** in `/tmp/gap-frontend-final.log` (that intermediate group had 1 admin-browser assertion failure subsequently fixed and covered by final 4-browser green run). No need to rerun successful unrelated checks. No full suite.
+- Visually inspected real browser screenshots `/tmp/knowledge-review-desktop.png` and `/tmp/knowledge-review-mobile.png`. Updated frontend README and backend/.env.example for two admin settings, reviewer grant and startup. Removed newly added link to missing runbook; all new source-doc links point to existing files.
+- Source/self review: gateway never forwards browser Authorization or accepts actor_id; no permission granting endpoint, erasure or arbitrary proxy commands; admin page has no internal token; old voice/text routes preserved. `git diff --check` clean. No subagents/worktrees/dependencies/auto-commit.
+- All spec deliverables implemented and verified within authorized scope. No live model/eval/DB mutation/grant/prepare/activation/deployment. Real infrastructure needs configured Knowledge DB/roles/worker and separate review key/actor before use; tests replace upstream/storage and do not prove live hybrid indexing or Knowledge Gap quality improvements.

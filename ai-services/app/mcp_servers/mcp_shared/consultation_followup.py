@@ -113,8 +113,11 @@ def _policy_question(text):
         return None
     # Keep the actual question and remove a trailing sales pause rather than dropping the question.
     clauses = re.split(r'[?;\n]', text)
-    clause = next((c for c in clauses if re.search(r'bao hanh|chinh sach|doi tra|tra hang|hoan tien|doi size|phi', _search_text(c))), text)
-    return clause.strip()[:400]
+    index = next((i for i, c in enumerate(clauses) if re.search(
+        r'bao hanh|chinh sach|doi tra|tra hang|hoan tien|doi size|phi', _search_text(c))), None)
+    # A fee question can depend on the preceding question (e.g. changing size).
+    # Keep that context instead of retrieving generic shipping fees in isolation.
+    return ('? '.join(clauses[:index + 1]) if index is not None else text).strip()[:400]
 
 
 def followup_task(state: dict) -> FollowupTask:

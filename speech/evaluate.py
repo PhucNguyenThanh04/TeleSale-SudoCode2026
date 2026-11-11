@@ -10,6 +10,7 @@ Script BTC bỏ qua hội thoại không có trong ``hypotheses.json`` (điểm 
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 import shutil
 import tempfile
 from datetime import date
@@ -104,18 +105,39 @@ def score_run(dataset_dir: Path, run_dir: Path, ref_eval: ModuleType, catalog: t
            for key, h in hypotheses.items()}
     raw_scores = _wer_cer(ref_eval, ground_truth, raw)
     per_dialogue = official.pop("per_dialogue", {})
+    entity_types = {key: {'correct': 0, 'total': 0} for key in ('money', 'phone')}
     for dialogue in ground_truth["dialogues"]:
         hyp = hypotheses.get(dialogue["id"])
         if hyp is None or dialogue["id"] not in per_dialogue:
             continue
         gold = dialogue.get("entities", {})
+        for key, value in gold.items():
+            kind = 'money' if key.endswith('_vnd') else 'phone' if key == 'phone' else None
+            if kind:
+                values = value if isinstance(value, list) else [value]
+                entity_types[kind]['total'] += 1
+                entity_types[kind]['correct'] += int(any(
+                    str(hyp.get('entities', {}).get(key)) == str(v) for v in values))
         hits = sum(str(hyp.get("entities", {}).get(k)) == str(v) for k, v in gold.items())
         per_dialogue[dialogue["id"]]["entity"] = f"{hits}/{len(gold)}"
         per_dialogue[dialogue["id"]]["wer_raw"] = raw_scores["per_dialogue"].get(dialogue["id"], {}).get("wer")
         per_dialogue[dialogue["id"]]["rtf"] = hyp.get("meta", {}).get("rtf")
     run_info = read_json(run_dir / "run.json") if (run_dir / "run.json").exists() else {}
     current = rules_fingerprint()
+    for counts_by_type in entity_types.values():
+        counts_by_type['value'] = (round(100 * counts_by_type['correct'] / counts_by_type['total'], 1)
+                                   if counts_by_type['total'] else None)
+    inputs = {'ground_truth': dataset_dir / 'ground_truth.json',
+              'hypotheses': run_dir / 'hypotheses.json', 'run_metadata': run_dir / 'run.json'}
+    scorer_path = getattr(ref_eval, '__file__', None)
     report = {"run": run_dir.name, "dataset": dataset_dir.name, "model": run_info.get("model"),
+              'input_sha256': {key: sha256(path.read_bytes()).hexdigest()
+                               for key, path in inputs.items() if path.is_file()},
+              'audio_sha256': {d['id']: sha256(path.read_bytes()).hexdigest()
+                               for d in ground_truth['dialogues']
+                               if (path := dataset_dir / 'audio' / (d['id'] + '.wav')).is_file()},
+              'scorer_sha256': sha256(Path(scorer_path).read_bytes()).hexdigest() if scorer_path else None,
+              'entity_accuracy_by_type': entity_types,
               "device": run_info.get("device"), "compute_type": run_info.get("compute_type"),
               "decode": run_info.get("decode"), "rtf": run_info.get("rtf"),
               "lexicon_sha256": run_info.get("lexicon_sha256"), "rules_sha256": run_info.get("rules_sha256"),

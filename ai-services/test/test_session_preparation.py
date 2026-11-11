@@ -28,7 +28,7 @@ class ReturningMemory(FakeMemory):
             return {"error": "customer_erasure_in_progress"}
         result = await super().read_context(session_id, customer_id)
         result.update(turn_count=len(self.turns.get(session_id, [])),
-            current_episode={} if self.turns.get(session_id) else None,
+            current_episode={'session_id': session_id} if self.turns.get(session_id) else None,
             episodes=[{"session_id": "previous-call", "channel": "hotline",
                 "on": "2026-01-01", "summary": "Đã tư vấn máy lọc", "outcome": "khac"}])
         return result
@@ -88,8 +88,77 @@ class SessionPreparationTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('"customer": ""', self.model.seen[0])
         second = turn("Tôi muốn hỏi tiếp", self.request.session_id)
         next_response = await self.runtime.run(second)
-        self.assertIsNone(next_response.call_brief)
+        self.assertIsNotNone(next_response.call_brief)
+        self.assertEqual([name for name, _ in self.gateway.calls].count('pricing.get_quote'), 1)
         self.assertIn("Alo", self.model.seen[-1])
+
+    async def test_later_brief_uses_updated_facts_without_repricing_every_turn(self):
+        self.memory.profile.update({
+            'budget_vnd': {'value': 5000000, 'source_kind': 'customer'},
+            'blocker': {'value': 'cần hỏi chồng', 'source_kind': 'customer'}})
+        await self.prepare()
+        first = await self.runtime.run(self.request)
+        self.assertEqual(first.call_brief['profile_facts']['budget_vnd'], 5000000)
+        self.memory.profile['budget_vnd']['value'] = 4000000
+        self.memory.profile.pop('blocker')
+        second = await self.runtime.run(turn('Ông xã đồng ý rồi, em nói tiếp nhé.', self.request.session_id))
+        self.assertIsNotNone(second.call_brief)
+        self.assertEqual(second.call_brief['profile_facts']['budget_vnd'], 4000000)
+        self.assertEqual(second.call_brief['open_blockers'], [])
+        self.assertEqual([name for name, _ in self.gateway.calls].count('pricing.get_quote'), 1)
+        third = await self.runtime.run(turn('Tôi nghe đây.', self.request.session_id))
+        self.assertEqual(third.call_brief['profile_facts']['budget_vnd'], 4000000)
+        self.assertIn('4000000', self.model.seen[-1])
+
+    async def test_erasure_after_first_response_never_reuses_the_old_brief(self):
+        await self.prepare()
+        await self.runtime.run(self.request)
+        calls_before = len(self.model.seen)
+        self.memory.blocked = True
+        response = await self.runtime.run(turn('Em nói tiếp nhé.', self.request.session_id))
+        self.assertIsNone(response.call_brief)
+        self.assertEqual(len(self.model.seen), calls_before)
+
+    async def test_cached_retry_rechecks_erasure_without_rerunning_model(self):
+        await self.prepare()
+        first = await self.runtime.run(self.request)
+        calls_before = len(self.model.seen)
+        retry = await self.runtime.run(self.request)
+        self.assertEqual(retry, first)
+        self.assertEqual(len(self.memory.turns[str(self.request.session_id)]), 1)
+        self.memory.blocked = True
+        denied = await self.runtime.run(self.request)
+        self.assertIsNone(denied.call_brief)
+        self.assertEqual(denied.memory_update.status, 'unavailable')
+        self.assertEqual(len(self.model.seen), calls_before)
+        self.assertFalse(self.runtime._session_states.get(str(self.request.session_id)))
+
+    async def test_retry_cannot_change_the_original_turn_date_or_text(self):
+        await self.runtime.run(self.request)
+        for update in ({'text': 'Mua mẫu khác.'}, {'on': self.request.on + timedelta(days=1)}):
+            with self.assertRaisesRegex(ValueError, 'Conflicting turn retry'):
+                await self.runtime.run(self.request.model_copy(update=update))
+
+    async def test_memory_outage_invalidates_session_view_until_fresh_recovery(self):
+        from unittest.mock import AsyncMock
+        await self.runtime.run(self.request)
+        calls_before = len(self.model.seen)
+        with patch.object(self.memory, 'read_context', AsyncMock(side_effect=ConnectionError('private'))):
+            response = await self.runtime.run(turn('Em nói tiếp nhé.', self.request.session_id))
+        self.assertIsNone(response.call_brief)
+        self.assertEqual(len(self.model.seen), calls_before)
+        session = self.runtime._session_states[str(self.request.session_id)]
+        self.assertEqual(session.context, {})
+        self.assertEqual(session.decision, {})
+        self.memory.profile['preferred_color']['value'] = 'đen'
+        recovered = await self.runtime.run(turn('Tôi nghe đây.', self.request.session_id))
+        self.assertEqual(recovered.call_brief['profile_facts']['preferred_color'], 'đen')
+
+    async def test_cached_full_response_cannot_be_retried_in_baseline_mode(self):
+        await self.runtime.run(self.request)
+        self.memory.include_prior = False
+        with self.assertRaisesRegex(ValueError, 'Conflicting turn retry'):
+            await self.runtime.run(self.request)
 
     async def test_memory_erasure_after_prepare_blocks_model_and_cached_profile(self):
         await self.prepare()

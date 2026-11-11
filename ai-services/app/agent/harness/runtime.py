@@ -14,13 +14,14 @@ from uuid import uuid4
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from app.agent.graph import build_graph
-from app.agent.harness.agent_nodes import AgentNodes
+from app.agent.harness.agent_nodes import AgentNodes, MEMORY_UNAVAILABLE
 from app.agent.implementations import AgentKind
 from app.agent.memory.store import MemoryStore
 from app.agent.harness.observability import log_event
 from app.agent.harness.context import load_context
 from app.agent.harness.session_identity import identity_fingerprint, initialize_identity
 from app.agent.harness.state import TurnState
+from app.agent.harness.session_state import SessionState
 from app.agent.harness.tracing import LangfuseTracing
 from app.agent.mcp.gateway import ToolGateway
 from app.constants import DEFAULT_MAX_TOOL_CALLS, DEFAULT_PROMPT_HISTORY_TURNS
@@ -53,6 +54,7 @@ class AgentHarnessRuntime:
         self._locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._responses: dict[tuple[str, str], TextTurnResponse] = {}
         self._states: dict[tuple[str, str], TurnState] = {}
+        self._session_states: dict[str, SessionState] = {}
         self._session_identities: dict[str, tuple[str, dict]] = {}
         self._session_tool_calls: dict[str, list[dict]] = defaultdict(list)
         self._preparations: dict[str, tuple[date, float, str | None, list[dict]]] = {}
@@ -143,11 +145,15 @@ class AgentHarnessRuntime:
         async with self._locks[session_id]:
             self._preparations.pop(session_id, None)
             identity, calls = await self._identity_for(turn)
-            state = {"request": turn, **deepcopy(identity), "safe_text": "",
+            session = self._session_states.setdefault(session_id, SessionState(
+                identity.get('customer_id'), request.on, getattr(self.memory, 'include_prior', True)))
+            seed = session.resume(identity.get('customer_id'), request, getattr(self.memory, 'include_prior', True))
+            state = {**seed, "request": turn, **deepcopy(identity), "safe_text": "",
                      "received_at_monotonic": started, "tool_calls": calls,
                      "session_tool_calls": deepcopy(self._session_tool_calls[session_id])}
             context = await load_context(state, self.memory, self.tools,
                 self._clock or (lambda: datetime.now(timezone.utc)))
+            session.update(context)
             if context.get("tool_failed"):
                 raise RuntimeError("session_preparation_failed")
             # Retain only reads, not profile snapshots: every real turn still
@@ -211,6 +217,24 @@ class AgentHarnessRuntime:
             if bound is not None and bound[0] != fingerprint:
                 raise ValueError("Session channel identity mismatch")
             if key in self._responses:
+                original = self._states[key]['request']
+                if (self._states[key]['memory_include_prior'] != getattr(self.memory, 'include_prior', True)
+                        or any(getattr(original, field) != getattr(turn, field)
+                       for field in ('text', 'on', 'delivery_mode', 'verified_customer_id', 'verified_phone'))):
+                    raise ValueError('Conflicting turn retry')
+                from app.mcp_servers.mcp_memory.schemas import validate_read_response
+                try:
+                    context = validate_read_response(await self.memory.read_context(
+                        session_id, bound[1].get('customer_id') if bound else None))
+                except Exception:
+                    context = {'error': 'memory_exception'}
+                if 'error' in context:
+                    self._session_states.pop(session_id, None)
+                    self._session_tool_calls.pop(session_id, None)
+                    self._preparations.pop(session_id, None)
+                    return TextTurnResponse(client_msg_id=turn.client_msg_id, session_id=turn.session_id,
+                        agent_text=MEMORY_UNAVAILABLE,
+                        memory_update=MemoryUpdate(status='unavailable'))
                 log_event(turn, "chat", "cache_hit",
                           duration_ms=round((time.perf_counter() - started) * 1000))
                 return self._responses[key]
@@ -221,6 +245,9 @@ class AgentHarnessRuntime:
             try:
                 with (self.tracing.turn(turn) if self.tracing else nullcontext(None)) as trace:
                     identity, initial_calls = await self._identity_for(turn)
+                    session = self._session_states.setdefault(session_id, SessionState(
+                        identity.get('customer_id'), turn.on, getattr(self.memory, 'include_prior', True)))
+                    seed = session.resume(identity.get('customer_id'), turn, getattr(self.memory, 'include_prior', True))
                     prepared = self._preparations.pop(session_id, None)
                     prepared_calls = []
                     if prepared:
@@ -228,6 +255,11 @@ class AgentHarnessRuntime:
                         if (prepared_on == turn.on and time.perf_counter() - prepared_at <= 30
                                 and prepared_customer == identity.get("customer_id")):
                             prepared_calls = reads
+                    # Attribute prepared evidence to its first real consumer, without
+                    # adding another tool attempt or inventing a preparation turn.
+                    prepared_calls = [{**call, 'customer_id': identity.get('customer_id'),
+                        'session_id': session_id, 'source_turn_id': str(turn.client_msg_id)}
+                        for call in prepared_calls]
                     config = {"configurable": {"thread_id": session_id},
                               "run_name": "process-chat-turn"}
                     if trace:
@@ -237,11 +269,13 @@ class AgentHarnessRuntime:
                     prior_session_calls = deepcopy([
                         *self._session_tool_calls[session_id], *prepared_calls])
                     state: TurnState = await self.graph.ainvoke(
-                        {"request": turn, **deepcopy(identity),
+                        {**seed, "request": turn, **deepcopy(identity),
                          "received_at_monotonic": started,
+                         'prepared_tool_calls': prepared_calls,
                          "session_tool_calls": prior_session_calls,
                          "tool_calls": initial_calls}, config=config,
                     )
+                    session.update(state)
                     if not state.get("tool_failed"):
                         self._session_tool_calls[session_id].extend(prepared_calls)
                     self._session_tool_calls[session_id].extend(
@@ -273,6 +307,7 @@ class AgentHarnessRuntime:
                             "pending" if state.get("customer_id") else "not_applicable")),
             )
             self._responses[key] = response
+            state['memory_include_prior'] = getattr(self.memory, 'include_prior', True)
             self._states[key] = state
             if turn.delivery_mode == "voice":
                 self._playback_tasks[key] = asyncio.create_task(self._expire_playback(key))

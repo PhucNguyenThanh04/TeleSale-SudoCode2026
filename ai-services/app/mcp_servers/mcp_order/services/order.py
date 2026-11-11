@@ -5,7 +5,7 @@ import json
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from app.mcp_servers.mcp_shared.commerce_rules import HOLIDAYS, _delivery, _inventory, _parent, quote
+from app.mcp_servers.mcp_shared.commerce_rules import HOLIDAYS, _delivery, _inventory, _parent, quote, quote_order
 
 
 async def _identity(repo, session, args: dict) -> tuple[str | None, str | None]:
@@ -44,28 +44,51 @@ async def create(repo, session, args: dict, customer_id: str, phone: str) -> dic
         return {"error": "identity_required"}
     if args.get("payment") not in {"COD", "bank", "momo", "zalopay"}:
         return {"error": "invalid_payment"}
-    if not isinstance(args.get("qty"), int) or args["qty"] < 1:
-        return {"error": "invalid_qty"}
+    lines = args.get('lines') or [{'sku': args['sku'], 'qty': args['qty'], 'price_vnd': args.get('price_vnd')}]
     products = await repo.rows(session, "products")
-    product, variant = _parent(products, args["sku"])
-    if product is not None and product.get("variants") and variant is None:
-        return {"error": "variant_selection_required"}
-    inv = _inventory(products, await repo.rows(session, "inventory_events"),
-                     args["sku"], args["on"])
-    if not inv.get("in_stock") or inv["qty"] < args["qty"]:
-        return {"error": "out_of_stock", **inv}
-    quoted = await _quote(repo, session, args, customer_id)
-    if "error" in quoted:
+    events = await repo.rows(session, 'inventory_events')
+    quantities = {}
+    for line in lines:
+        quantity = line.get('qty', 1)
+        if type(quantity) is not int or quantity < 1:
+            return {'error': 'invalid_qty'}
+        quantities[line['sku']] = quantities.get(line['sku'], 0) + quantity
+    for sku, quantity in quantities.items():
+        product, variant = _parent(products, sku)
+        if product is not None and product.get('variants') and variant is None:
+            return {'error': 'variant_selection_required'}
+        inv = _inventory(products, events, sku, args['on'])
+        if not inv.get('in_stock') or inv.get('qty', 0) < quantity:
+            return {'error': 'out_of_stock', **inv}
+    same_day = await repo.same_day_orders(session, phone, args['on'])
+    used_today = any('AIR-2ND-50' in order['promos'] for order in same_day)
+    extra = [{'sku': sku, 'qty': 1} for sku in args.get('basket_skus') or []] if not args.get('lines') else []
+    customers = await repo.rows(session, 'customers')
+    customer = next((c for c in customers if c['customer_id'] == customer_id), None)
+    owned = {o['sku'] for o in customer.get('orders', []) if o.get('status') == 'delivered'} if customer else set()
+    quoted = quote_order(products, await repo.rows(session, 'promotions'),
+                         {**args, 'lines': lines + extra}, owned, await repo.used_promos(session),
+                         second_item_used=used_today, tie_prefer_first=bool(extra) and bool(same_day))
+    if 'error' in quoted:
         return quoted
-    if args["price_vnd"] != quoted["final_price_vnd"]:
-        return {"error": "price_mismatch", "expected_price_vnd": quoted["final_price_vnd"],
-                "given": args["price_vnd"]}
-    total = quoted["final_price_vnd"] * args["qty"]
-    if args["payment"] == "COD" and total > 10_000_000:
-        return {"error": "cod_limit_exceeded", "limit_vnd": 10_000_000, "total_vnd": total}
+    mine = [unit for unit in quoted['units'] if unit['line'] < len(lines)]
+    want = sorted((line['sku'], line['price_vnd']) for line in lines for _ in range(line.get('qty', 1)))
+    have = sorted((unit['sku'], unit['final_price_vnd']) for unit in mine)
+    if want != have:
+        error = {'error': 'price_mismatch',
+                 'expected_units': [{'sku': unit['sku'], 'price_vnd': unit['final_price_vnd']} for unit in mine],
+                 'given': [{'sku': sku, 'price_vnd': price} for sku, price in want]}
+        if not args.get('lines') and len(mine) == 1:
+            error.update(expected_price_vnd=mine[0]['final_price_vnd'], given=args['price_vnd'])
+        return error
+    total = sum(unit['final_price_vnd'] for unit in mine)
+    if args['payment'] == 'COD' and total > 10_000_000:
+        return {'error': 'cod_limit_exceeded', 'limit_vnd': 10_000_000, 'total_vnd': total}
     order_id = await repo.next_order_id(session)
-    codes = [promo["promo_code"] for promo in quoted["applied_promos"]]
-    await repo.insert_order(session, order_id, customer_id, args, quoted["final_price_vnd"], total, codes)
+    codes = sorted({promo['promo_code'] for unit in mine for promo in unit['applied_promos']}
+                   | {promo['promo_code'] for promo in quoted['order_promos']})
+    stored_args = {**args, 'sku': lines[0]['sku'], 'qty': len(mine), 'lines': lines}
+    await repo.insert_order(session, order_id, customer_id, stored_args, mine[0]['final_price_vnd'], total, codes)
     for code in codes:
         await repo.use_promo(session, phone, code)
     return {"order_id": order_id, "status": "created", "total_vnd": total,
@@ -172,6 +195,8 @@ async def invoke(repo, name: str, args: dict,
         customer_id, phone = await _identity(repo, session, args)
         if name != "handoff.transfer" and not customer_id:
             return {"error": "identity_required"}
+        if name == "order.create":
+            await repo.lock_customer(session, phone)
         if key and name != "order.status":
             previous = await repo.claim_operation(session, key, name, digest)
             if previous is not None:

@@ -58,6 +58,7 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
                      "distillation_turn", "finish_distillation"):
             setattr(repo, name, AsyncMock())
         repo.attribute_anonymous_turns.return_value = []
+        repo.distillation_claim_current = AsyncMock(return_value=True)
         return repo
 
     async def test_commit_queues_distillation(self):
@@ -89,3 +90,72 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(await process_one(repo, extractor, None))
         repo.finish_distillation.assert_awaited_once()
         self.assertEqual(repo.finish_distillation.await_args.args[2], "pending")
+
+    async def test_extractor_internal_type_error_does_not_invoke_it_twice(self):
+        repo = self.repo()
+        repo.claim_distillation.return_value = {'job_id': 1, 'customer_id': 'C1',
+            'session_id': str(uuid4()), 'source_turn_id': str(uuid4()), 'attempts': 1}
+        repo.distillation_turn.return_value = {'customer_text': 'Tôi thích màu xanh',
+            'agent_text': 'Dạ', 'on_date': '2026-10-15', 'channel': 'hotline'}
+        repo.is_erasure_blocked.return_value = False
+        extractor = AsyncMock(side_effect=TypeError('internal extraction failure'))
+        await process_one(repo, extractor, None)
+        assert extractor.await_count == 1
+        assert repo.finish_distillation.await_args.args[2:] == ('pending', 'TypeError')
+
+    async def test_expired_claim_cannot_extract_or_change_new_claim(self):
+        repo = self.repo()
+        repo.claim_distillation.return_value = {'job_id': 1, 'customer_id': 'C1',
+            'session_id': str(uuid4()), 'source_turn_id': str(uuid4()), 'attempts': 1}
+        repo.is_erasure_blocked.return_value = False
+        repo.distillation_claim_current = AsyncMock(return_value=False)
+        extractor = AsyncMock(return_value=([], None))
+        await process_one(repo, extractor, AsyncMock())
+        extractor.assert_not_awaited()
+        repo.finish_distillation.assert_not_awaited()
+
+    async def test_projection_retry_reuses_saved_proposals_without_model_call(self):
+        repo = self.repo()
+        repo.claim_distillation.return_value = {'job_id': 1, 'customer_id': 'C1',
+            'session_id': str(uuid4()), 'source_turn_id': str(uuid4()), 'attempts': 2,
+            'accepted_proposals': {'facts': [], 'delta': None, 'outcome': 'khac'}}
+        repo.distillation_turn.return_value = {'customer_text': 'Chào',
+            'agent_text': 'Dạ', 'on_date': '2026-10-15', 'channel': 'hotline'}
+        repo.is_erasure_blocked.return_value = False
+        extractor, projector = AsyncMock(), AsyncMock()
+        projector.list_fact_versions.return_value = []
+        projector.put_facts.return_value = []
+        await process_one(repo, extractor, projector)
+        extractor.assert_not_awaited()
+        projector.put_facts.assert_awaited_once()
+        assert repo.finish_distillation.await_args.args[2] == 'completed'
+
+    async def test_lost_claim_before_projection_cannot_publish_saved_proposals(self):
+        repo = self.repo()
+        repo.claim_distillation.return_value = {'job_id': 1, 'customer_id': 'C1',
+            'session_id': str(uuid4()), 'source_turn_id': str(uuid4()), 'attempts': 2,
+            'accepted_proposals': {'facts': [], 'delta': None, 'outcome': 'khac'}}
+        repo.distillation_turn.return_value = {'customer_text': 'Chào',
+            'agent_text': 'Dạ', 'on_date': '2026-10-15', 'channel': 'hotline'}
+        repo.is_erasure_blocked.return_value = False
+        repo.distillation_claim_current.side_effect = [True, False]
+        extractor, projector = AsyncMock(), AsyncMock()
+        await process_one(repo, extractor, projector)
+        extractor.assert_not_awaited()
+        projector.put_facts.assert_not_awaited()
+        repo.finish_distillation.assert_not_awaited()
+
+    async def test_reclaimed_exhausted_lease_fails_without_another_extraction(self):
+        repo = self.repo()
+        repo.claim_distillation.return_value = {'job_id': 1, 'customer_id': 'C1',
+            'session_id': str(uuid4()), 'source_turn_id': str(uuid4()), 'attempts': 6}
+        repo.is_erasure_blocked.return_value = False
+        repo.distillation_turn.return_value = {'customer_text': 'Chào',
+            'agent_text': 'Dạ', 'on_date': '2026-10-15', 'channel': 'hotline'}
+        extractor, projector = AsyncMock(return_value=([], None)), AsyncMock()
+        projector.list_fact_versions.return_value = []
+        projector.list_episode_versions.return_value = []
+        await process_one(repo, extractor, projector)
+        extractor.assert_not_awaited()
+        projector.put_facts.assert_not_awaited()
+        assert repo.finish_distillation.await_args.args[2:] == ('failed', 'lease_attempts_exhausted')

@@ -123,7 +123,12 @@ def _question_candidates(agent_text: str) -> list[dict]:
         matches = [(m.start(), slot) for slot, pat in SLOT_QUESTION_PATTERNS if (m := pat.search(asked))]
         if re.search(r"\bmàu\b", asked, re.I) and not any(slot == "preferred_color" for _, slot in matches):
             matches.append((re.search(r"\bmàu\b", asked, re.I).start(), "preferred_color"))
-        if blocker:
+        quote_confirmation = re.search(
+            r"(?:đồng ý(?:\s+với)?|xác nhận(?:\s+lại)?)\s+(?:mức\s+)?(?:báo\s+)?giá\b", asked, re.I)
+        if quote_confirmation:
+            matches.append((quote_confirmation.start(), 'price_quoted_vnd'))
+            confirm = True
+        elif blocker and not any(slot == 'product_advised' for _, slot in matches):
             matches = [(blocker.start(), "blocker")]
         generic = bool(re.search(r"(?:hỗ trợ|giúp|cần|thắc mắc).*(?:gì|không)|có (?:câu hỏi|thắc mắc)", asked, re.I))
         if not matches:

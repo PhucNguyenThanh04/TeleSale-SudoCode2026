@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     timezone: str = "Asia/Ho_Chi_Minh"
 
+    llm_backend: Literal["api", "local"] = "api"
+    local_llm_api_key: SecretStr = Field(default="local-vllm", min_length=1)
+    local_llm_model: str = Field(default="Qwen/Qwen2.5-3B-Instruct-AWQ", min_length=1)
+    local_llm_base_url: AnyHttpUrl = "http://localhost:8081/v1"
+    local_llm_context_window: int = Field(default=8192, ge=256)
+    local_llm_timeout_seconds: float = Field(default=120, gt=0)
     llm_api_key: SecretStr = Field(min_length=1)
     llm_model: str = Field(min_length=1)
     llm_base_url: AnyHttpUrl = "https://api.openai.com/v1"
@@ -83,6 +89,19 @@ class Settings(BaseSettings):
     db_max_overflow: int = Field(default=0, ge=0, le=50)
     memory_db_pool_min_size: int = Field(default=1, ge=1, le=50)
     memory_db_pool_max_size: int = Field(default=5, ge=1, le=50)
+
+    @model_validator(mode="before")
+    @classmethod
+    def select_llm_backend(cls, values):
+        """Resolve the active connection without editing the API profile on disk."""
+        if isinstance(values, dict) and values.get("llm_backend") == "local":
+            values = dict(values)
+            for field in ("llm_api_key", "llm_model", "llm_base_url"):
+                local_field = f"local_{field}"
+                values[field] = values.get(local_field, cls.model_fields[local_field].default)
+            # A cloud-only LANGMEM_MODEL must never be sent to the local server.
+            values["langmem_model"] = values["llm_model"]
+        return values
 
     @field_validator("langfuse_base_url", mode="before")
     @classmethod

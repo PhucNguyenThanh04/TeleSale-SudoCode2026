@@ -52,6 +52,22 @@ def test_publish_pair_matches_btc_and_writes_manifests(tmp_path):
     assert (tmp_path / "baseline_no_memory.manifest.json").is_file()
 
 
+def test_voice_latency_fields_and_metadata_preserve_btc_compatibility(tmp_path):
+    from eval_harness.benchmark_runner import CONVERSATION_MEASUREMENT
+    scenarios, paths, metadata = _case(tmp_path)
+    metadata['model_params']['conversation_measurement'] = CONVERSATION_MEASUREMENT
+    for path in paths.values():
+        row = json.loads(path.read_text())
+        row['latency'].update(response_ms=4, prepare_ms=2, memory_finalize_ms=7, ttft_is_proxy=True)
+        path.write_text(json.dumps(row) + '\n')
+    result = publish_pair(scenarios, paths['full'], paths['baseline_no_memory'],
+                          tmp_path / 'score.json', metadata, btc_root=BTC)
+    assert result['status'] == 'validated'
+    for manifest in result['manifests'].values():
+        assert manifest['model_params']['conversation_measurement'] == CONVERSATION_MEASUREMENT
+    assert result['score']['system']['latency']['total']['p50_ms'] == 4
+
+
 def test_published_score_bytes_match_provenance(tmp_path):
     scenarios, paths, metadata = _case(tmp_path)
     score = tmp_path / 'score.json'

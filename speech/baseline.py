@@ -68,7 +68,7 @@ def dataset_inputs(datasets: list[Path]) -> tuple[dict, list[dict]]:
             if not isinstance(dialogue, dict) or "id" not in dialogue:
                 raise ValueError("Invalid ground truth dialogue")
             key = dialogue["id"]
-            if not isinstance(key, str) or not key or Path(key).name != key or key in seen:
+            if not isinstance(key, str) or not key or Path(key).name != key or '\\' in key or key in seen:
                 raise ValueError("Invalid or duplicate dialogue ID")
             seen.add(key)
             audio_path = dataset / "audio" / f"{key}.wav"

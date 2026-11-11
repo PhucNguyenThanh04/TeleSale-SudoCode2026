@@ -40,9 +40,9 @@ class Event(BaseModel):
 @router.get('/{resource}')
 async def list_resource(resource: str, actor_id: str, offset: int = 0, limit: int = 30,
                         status: str | None = None, source: str | None = None, item_id: str | None = None,
-                        repo=Depends(get_knowledge_repo)):
+                        gap_id: str | None = None, repo=Depends(get_knowledge_repo)):
     try:
-        return await query(repo, actor_id, resource, offset, limit, status, source, item_id)
+        return await query(repo, actor_id, resource, offset, limit, status, source, item_id, gap_id)
     except KnowledgeError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
 

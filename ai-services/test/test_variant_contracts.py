@@ -161,7 +161,7 @@ def test_unknown_identity_does_not_hydrate_or_create_order():
     ('R',550000,None), ('R',495000,'price_mismatch'), ('B',450000,None), (None,450000,None)])
 def test_mcp_reprices_variant_surcharge_and_size_exclusion(variant, price, expected_error):
     async def run():
-        product = {'sku':'SKU-SYNTHETIC','list_price_vnd':500000,'stock':10,'attributes':{},'variants':[
+        product = {'sku':'SKU-SYNTHETIC','category':'thoi-trang/giay','list_price_vnd':500000,'stock':10,'attributes':{},'variants':[
             {'variant_sku':'SKU-SYNTHETIC-R','size':37,'color':'do','stock':2,'price_delta_vnd':50000},
             {'variant_sku':'SKU-SYNTHETIC-B','size':38,'color':'xanh','stock':2,'price_delta_vnd':0}] if variant else []}
         promo = {'promo_code':'LOCAL-PERCENT','start':'2026-01-01','end':'2026-12-31',
@@ -172,6 +172,7 @@ def test_mcp_reprices_variant_surcharge_and_size_exclusion(variant, price, expec
             return {'products':[product],'promotions':[promo],'inventory_events':[],'customers':[]}[table]
         repo.rows.side_effect = rows
         repo.used_promos.return_value = set()
+        repo.same_day_orders.return_value = []
         repo.next_order_id.return_value = 'ODLOCAL88'
         sku = 'SKU-SYNTHETIC' + ('-'+variant if variant else '')
         result = await create(repo,object(),{'sku':sku,'qty':1,'payment':'COD','price_vnd':price,

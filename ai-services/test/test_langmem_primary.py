@@ -55,7 +55,9 @@ class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
         result = await nodes.persist_agent({"request": request,
             "safe_text": "Tôi thích màu xanh", "agent_text": "Dạ",
             "customer_id": "C1", "tool_calls": []})
-        self.assertEqual(result, {"memory_writes": []})
+        self.assertEqual(result['memory_writes'], [])
+        self.assertGreaterEqual(result['memory_commit_ms'], 0)
+        self.assertEqual(set(result), {'memory_writes', 'memory_commit_ms'})
         self.assertEqual(len(memory.commit_turn.await_args.args), 7)
 
     async def test_read_uses_store_without_legacy_fact_or_episode_queries(self):
@@ -298,7 +300,7 @@ class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
                          {"variant_sku": "SKU-SN-CAS-39-DEN", "size": 39,
                           "color": "den", "payment": "COD"})
 
-    async def test_distiller_sees_recent_turns_from_same_verified_session(self):
+    async def test_distiller_extracts_only_current_turn_with_previous_speech_context(self):
         from contextlib import asynccontextmanager
         import json
         repo = AsyncMock()
@@ -314,7 +316,7 @@ class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
             "agent_text": "Dạ", "on_date": "2026-10-15", "channel": "hotline"}
         repo.recent_session_turns.return_value = [
             {"client_msg_id": earlier, "customer_text": "Size 39",
-             "agent_text": "Dạ", "on_date": "2026-10-15", "channel": "hotline"},
+             "agent_text": "Mình muốn màu nào?", "on_date": "2026-10-15", "channel": "hotline"},
             {"client_msg_id": current, "customer_text": "Màu đen",
              "agent_text": "Dạ", "on_date": "2026-10-15", "channel": "hotline"}]
         repo.is_erasure_blocked.return_value = False
@@ -325,4 +327,7 @@ class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
         await process_one(repo, extractor, projection)
         messages = extractor.await_args.args[0]
         self.assertEqual([json.loads(message["content"])["turn_id"]
-                          for message in messages], [earlier, current])
+                          for message in messages], [current])
+        payload = json.loads(messages[0]['content'])
+        self.assertEqual(payload['reference_context']['previous_agent_text'], 'Mình muốn màu nào?')
+        self.assertEqual(payload['customer_text'], 'Màu đen')

@@ -91,7 +91,11 @@ def render_run(directory: Path) -> str:
     fields = [('Số lượt TB/cuộc', 'avg_turns_per_call'),
               ('Calls-to-close', 'calls_to_close.value'),
               ('Guardrail violations', 'guardrail_violations.total')]
-    for field, title in [('ttft', 'TTFT'), ('total', 'Total'), ('call_brief', 'Call Brief')]:
+    voice_measurement = run.get('conversation_measurement', {}).get('delivery_mode') == 'voice'
+    proxy_ttft = voice_measurement or run.get('conversation_measurement', {}).get('ttft_is_proxy') is True
+    for field, title in [('ttft', 'TTFT proxy' if proxy_ttft else 'TTFT'),
+                         ('total', 'Response' if voice_measurement else 'Total'),
+                         ('call_brief', 'Call Brief')]:
         fields += [(f'{title} {pct} (ms)', f'latency.{field}.{pct}_ms') for pct in ('p50', 'p95')]
     for label, path in fields:
         cells = [_value(m, path) for m in (full, baseline)]
@@ -99,6 +103,17 @@ def render_run(directory: Path) -> str:
         lines.append(f'| {label} | {cells[0]} | {cells[1]} |')
     lines.append(f'| WER/CER, entity accuracy ASR | {MISSING} trong eval text | {MISSING} trong eval text |')
     lines.append('')
+    if voice_measurement:
+        lines.append('Response đo từ transcript đến câu trả lời đầy đủ; không gồm prepare, lưu memory, '
+                     'ASR/TTS, thời gian phát tiếng hoặc HTTP. TTFT proxy = Response để tương thích '
+                     'schema BTC; chưa đo token đầu tiên.')
+    elif proxy_ttft:
+        lines.append('Chat đo đến câu trả lời đầy đủ, gồm persistence của runtime; '
+                     'không gồm prepare, chờ memory worker, ASR/TTS hoặc HTTP. '
+                     'TTFT proxy = Total; chưa đo token đầu tiên.')
+    elif run.get('conversation_measurement', {}).get('ttft_basis') == 'nonstreaming_total_btc_rule_7':
+        lines.append('Chat không streaming: TTFT = Total theo quy tắc 7 trong hướng dẫn latency BTC. '
+                     'Response gồm persistence của runtime; prepare và chờ worker được đo riêng.')
     for label, key in [('RQR giảm ≥40%', 'meets_rqr_threshold_40pct'),
                        ('TSR ≥70%', 'meets_tsr_70pct'), ('HR giá/KM ≤5%', 'meets_hr_price_5pct')]:
         value = score.get('comparison', {}).get(key)

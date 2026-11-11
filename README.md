@@ -1,5 +1,9 @@
 # TeleSale SudoCode 2026
 
+Quy trình chạy chat M1, nhận replay ASR, kiểm bằng chứng và so sánh hai vòng cải
+tiến: [M1 acceptance](docs/m1-acceptance.md). Chat demo hiện nằm tại `/chat` trên
+gateway `app.voice_main:app`; entrypoint backend cũ không phải đường chạy demo.
+
 The text harness runs through `backend` → `ai-services` → four MCP
 servers. Import BTC data with `dataloader_offline` and apply the SQL migrations
 listed in [ai-services/README.md](ai-services/README.md). Configure the private

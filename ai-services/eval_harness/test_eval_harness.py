@@ -1,5 +1,6 @@
 """Unit tests for Eval Harness Scorer and Extractor."""
 
+from eval_harness.test_support import VoiceLifecycleStub
 import unittest
 from datetime import date
 from eval_harness.extractor import extract_questions, extract_claims
@@ -127,7 +128,7 @@ class TestScenarioInput(unittest.IsolatedAsyncioTestCase):
     async def test_runtime_error_text_is_not_copied_into_public_trace(self):
         from eval_harness.benchmark_runner import run_scenario_call
 
-        class Runtime:
+        class Runtime(VoiceLifecycleStub):
             async def run(self, request):
                 raise RuntimeError("private customer detail")
 
@@ -136,16 +137,16 @@ class TestScenarioInput(unittest.IsolatedAsyncioTestCase):
         self.assertIn("RuntimeError", rows[0]["agent_text"])
         self.assertNotIn("private customer detail", rows[0]["agent_text"])
 
-    async def test_worker_finishes_before_next_turn_in_same_call(self):
+    async def test_worker_drains_at_call_end_without_blocking_next_turn(self):
         from types import SimpleNamespace
         from eval_harness.benchmark_runner import run_scenario_stream
 
         completed = []
 
-        class Runtime:
+        class Runtime(VoiceLifecycleStub):
             async def run(self, request):
                 if request.text == "Lượt hai":
-                    self_assert.assertEqual(len(completed), 1)
+                    self_assert.assertEqual(len(completed), 0)
                 return SimpleNamespace(agent_text="Dạ.", call_brief=None)
 
             def state_for(self, request):
@@ -165,7 +166,7 @@ class TestScenarioInput(unittest.IsolatedAsyncioTestCase):
     async def test_background_writes_are_attributed_to_source_turn(self):
         from types import SimpleNamespace
         from eval_harness.benchmark_runner import run_scenario_stream
-        class Runtime:
+        class Runtime(VoiceLifecycleStub):
             memory = SimpleNamespace()
             async def run(self, request):
                 return SimpleNamespace(agent_text="Dạ em ghi nhận.", call_brief=None)
@@ -188,7 +189,7 @@ class TestScenarioInput(unittest.IsolatedAsyncioTestCase):
         from types import SimpleNamespace
         from eval_harness.benchmark_runner import run_scenario_stream
 
-        class Runtime:
+        class Runtime(VoiceLifecycleStub):
             memory = SimpleNamespace()
 
             async def run(self, request):
@@ -233,7 +234,7 @@ class TestScenarioInput(unittest.IsolatedAsyncioTestCase):
         from types import SimpleNamespace
         from eval_harness.benchmark_runner import run_scenario_stream
 
-        class Runtime:
+        class Runtime(VoiceLifecycleStub):
             memory = SimpleNamespace()
 
             async def run(self, request):
@@ -262,7 +263,7 @@ class TestScenarioInput(unittest.IsolatedAsyncioTestCase):
         from types import SimpleNamespace
         from eval_harness.benchmark_runner import run_scenario_stream
 
-        class Runtime:
+        class Runtime(VoiceLifecycleStub):
             memory = SimpleNamespace()
 
             async def run(self, request):
@@ -294,7 +295,7 @@ class TestScenarioInput(unittest.IsolatedAsyncioTestCase):
         from types import SimpleNamespace
         from eval_harness.benchmark_runner import run_scenario_call
 
-        class Runtime:
+        class Runtime(VoiceLifecycleStub):
             requests = []
 
             async def run(self, request):

@@ -73,6 +73,26 @@ class GroundTruthCheckTests(unittest.TestCase):
 
 @unittest.skipUnless(BTC_DIR, "cần dữ liệu BTC (BTC_DATA_DIR)")
 class ScoreRunTests(unittest.TestCase):
+    def test_saved_score_binds_inputs_and_reports_money_phone_accuracy(self):
+        from hashlib import sha256
+        spoken = 'giá năm triệu hai trăm nghìn'
+        gt = {'reference_date': '2026-10-15', 'dialogues': [{
+            'id': 'X1', 'full_text': spoken, 'entities': {
+                'price_vnd': [5200000, 5300000], 'phone': '0900000000'},
+            'turns': [{'idx': 1, 'speaker': 'C', 'text': spoken}]}]}
+        hypotheses = {'X1': {'text': spoken, 'entities': {'price_vnd': 5300000, 'phone': 'wrong'}}}
+        with tempfile.TemporaryDirectory() as tmp:
+            dataset, run = Path(tmp) / 'dataset', Path(tmp) / 'run'
+            write(dataset / 'ground_truth.json', gt)
+            write(run / 'hypotheses.json', hypotheses)
+            write(run / 'run.json', {**rules_fingerprint(),
+                'ground_truth_sha256': text_sha256(dataset / 'ground_truth.json')})
+            report = score_run(dataset, run, load_reference_eval(BTC_DIR), catalog=())
+            self.assertEqual(report['input_sha256']['hypotheses'], sha256((run / 'hypotheses.json').read_bytes()).hexdigest())
+            self.assertEqual(report['input_sha256']['ground_truth'], sha256((dataset / 'ground_truth.json').read_bytes()).hexdigest())
+            self.assertEqual(report['entity_accuracy_by_type']['money'], {'correct': 1, 'total': 1, 'value': 100.0})
+            self.assertEqual(report['entity_accuracy_by_type']['phone'], {'correct': 0, 'total': 1, 'value': 0.0})
+
     def test_official_scores_raw_wer_and_per_dialogue_details(self):
         spoken = "dạ máy này giá năm triệu hai trăm nghìn anh chốt cê ô đê nha"
         ground_truth = {"reference_date": "2026-10-15", "dialogues": [{

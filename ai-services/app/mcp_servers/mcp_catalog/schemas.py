@@ -30,3 +30,17 @@ class QuoteInput(InventoryInput):
     basket_skus: list[str] | None = None
     source_channel: str | None = None
     source_identity: str | None = None
+
+
+class QuoteLine(BaseModel):
+    sku: str = Field(min_length=1)
+    qty: int = Field(default=1, ge=1, strict=True)
+
+
+class OrderQuoteInput(BaseModel):
+    lines: list[QuoteLine] = Field(min_length=1)
+    on: date
+    customer_phone: str | None = None
+    address: str | None = None
+    source_channel: str | None = None
+    source_identity: str | None = None

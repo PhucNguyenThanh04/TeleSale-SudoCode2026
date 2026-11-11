@@ -70,6 +70,14 @@ def test_policy_question_has_priority_over_pause_and_does_not_require_order():
     assert not any(c['name'].startswith('order.') for c in s['tool_calls'])
 
 
+def test_exchange_fee_lookup_keeps_the_exchange_question_context():
+    s = consultation_state('Đổi lên size 40 được không em? Mất phí gì không?')
+    t = task(s)
+    assert t.kind == 'policy'
+    assert 'Đổi lên size 40' in t.policy_query
+    assert 'Mất phí' in t.policy_query
+
+
 def test_price_objection_needs_benefits_not_just_repeat_price():
     from app.agent.harness.agent_nodes import _task_answer_complete
     from app.agent.harness.session_nodes import safe_followup_reply

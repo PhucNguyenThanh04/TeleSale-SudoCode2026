@@ -109,8 +109,7 @@ class MemoryIdentityContract(unittest.IsolatedAsyncioTestCase):
                 return {"error": "unavailable"}
 
         model = ContractToolModel(replies=[
-            AIMessage(content='{"answer":"Dạ, em ghi nhận ạ.","fact_candidates":'
-                              '[{"key":"room_area_m2","value":12,"source":"customer"}]}'),
+            AIMessage(content='Dạ, em ghi nhận ạ.'),
             AIMessage(content="Dạ, em tư vấn tiếp ạ."),
             AIMessage(content="Dạ, em nghe ạ.")])
         memory = ContractMemory(model)
@@ -118,6 +117,21 @@ class MemoryIdentityContract(unittest.IsolatedAsyncioTestCase):
         first = turn(case["calls"][0]["turns"][0]["text"]).model_copy(update={
             "channel": "chat_fanpage", "channel_identity": "fb.synthetic.104"})
         await runtime.run(first)
+        # Facts are admitted by the asynchronous worker, never by JSON embedded
+        # in the sales reply. Exercise its real evidence boundary before projecting
+        # the completed result into this identity test's in-memory store.
+        from app.schemas.langmem import ProfileFactCandidate
+        from app.mcp_servers.mcp_memory.services.langmem_admission import admit_profile_candidates
+        sid, tid = str(first.session_id), str(first.client_msg_id)
+        accepted, rejected = admit_profile_candidates('C104', sid, [ProfileFactCandidate(
+            key='room_area_m2', value=12, source_kind='customer', source_turn_id=tid,
+            evidence_quote='Phòng tôi 12 m²', observed_on=first.on)],
+            [{'turn_id': tid, 'customer_id': 'C104', 'session_id': sid,
+              'customer_text': first.text, 'agent_text': 'Dạ, em ghi nhận ạ.'}], [])
+        self.assertEqual(rejected, [])
+        self.assertEqual(len(accepted), 1)
+        memory.profile.update({fact['key']: {**fact, 'status': 'active',
+            'source': f'langmem:{sid}:{tid}'} for fact in accepted})
         first_actual = {"customer_id": runtime.state_for(first).get("customer_id"),
                         "profile": memory.profile}
         self.assertEqual(check_snapshot(case["calls"][0]["turns"][0]

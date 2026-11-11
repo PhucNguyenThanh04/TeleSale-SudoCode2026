@@ -3,6 +3,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 import math
 import re
+from uuid import UUID
 
 from app.mcp_servers.mcp_shared.commerce_rules import _search_text
 from app.mcp_servers.mcp_shared.commerce_evidence import build_commerce_evidence
@@ -81,6 +82,25 @@ def consultation_scope(state: dict) -> dict:
         if found and (category or args.get('sku') or args.get('min_room_area_m2') is not None
                       or args.get('max_price_vnd') is not None or _specific_query(args.get('query'))):
             return {'skus': sorted(i['sku'] for i in found), 'category': category, 'known': True}
+    # Historical advice can bound a metadata read, never establish selection or
+    # turn an old price into current evidence. The store binds facts to the owner.
+    if state.get('identity_status') == 'known' and state.get('customer_id'):
+        remembered = []
+        for sku, facts in state.get('scoped_facts', {}).get('product', {}).items():
+            fact = facts.get('product_advised', {})
+            source = fact.get('source', '')
+            if (fact.get('status', 'active') != 'active' or fact.get('value') != sku
+                    or not isinstance(source, str) or not source.startswith('langmem:')):
+                continue
+            try:
+                session, turn = source.split(':')[-2:]
+                UUID(session)
+                UUID(turn)
+            except (ValueError, TypeError):
+                continue
+            remembered.append(sku)
+        if len(remembered) == 1:
+            return {'skus': remembered, 'known': True}
     return {'skus': [], 'known': False}
 
 

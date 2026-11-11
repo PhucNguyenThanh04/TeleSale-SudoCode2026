@@ -64,7 +64,7 @@ class MCPGateway:
             return await self._policy_search(args, policy_context)
         group = "memory" if name.startswith("memory.") else (
             "catalog" if name in {"crm.get_customer", "catalog.search", "inventory.check",
-                                  "pricing.get_quote"} else "order")
+                                  "pricing.get_quote", "pricing.quote_order"} else "order")
         if group == "order" and name not in {"order.create", "order.status", "order.update",
                                                 "schedule.callback", "handoff.transfer"}:
             return {"error": "unknown_tool"}
@@ -74,7 +74,7 @@ class MCPGateway:
         payload.pop("source_channel", None)
         payload.pop("source_identity", None)
         payload.pop("operation_key", None)
-        if (name in {"pricing.get_quote", "order.create", "order.status",
+        if (name in {"pricing.get_quote", "pricing.quote_order", "order.create", "order.status",
                      "order.update", "schedule.callback", "handoff.transfer"}
                 and channel and channel_identity):
             payload["source_channel"] = channel

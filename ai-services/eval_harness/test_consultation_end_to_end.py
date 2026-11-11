@@ -1,4 +1,5 @@
 """Real rules, admission, JSON persistence and runner; scripted tools, no model/DB."""
+from eval_harness.test_support import VoiceLifecycleStub
 import asyncio
 from copy import deepcopy
 from datetime import date
@@ -18,7 +19,7 @@ from eval_harness.benchmark_runner import run_configuration
 from eval_harness.turn_diagnostics import verify_turn_diagnostics
 
 
-class Runtime:
+class Runtime(VoiceLifecycleStub):
     def __init__(self, sku, name, price, *, new_price=None):
         self.sku,self.name,self.price=sku,name,price
         self.new_price=new_price

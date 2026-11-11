@@ -85,7 +85,7 @@ def _inventory(products: list[dict], events: list[dict], sku: str, on: str) -> d
 
 def quote(products: list[dict], promos: list[dict], args: dict,
           owned_skus: set[str] | None = None,
-          once_used: set[tuple[str, str]] | None = None) -> dict:
+          once_used: set[tuple[str, str]] | None = None, *, exclude=()) -> dict:
     sku, on = args["sku"], args["on"]
     p, v = _parent(products, sku)
     if p is None:
@@ -98,6 +98,8 @@ def quote(products: list[dict], promos: list[dict], args: dict,
     basket = args.get("basket_skus") or []
     qty = args.get("qty", 1)
     for pr in promos:
+        if pr['promo_code'] in exclude:
+            continue
         targets = pr["applies_to"]
         applicable_skus = {item["sku"] for item in products
                            if "*" in targets or item["sku"] in targets or any(
@@ -126,9 +128,9 @@ def quote(products: list[dict], promos: list[dict], args: dict,
             others = [(_parent(products, other)[0], _parent(products, other)[1]) for other in basket]
             prices = [other[0]["list_price_vnd"] + (other[1]["price_delta_vnd"] if other[1] else 0)
                       for other in others if other[0] and other[0]["sku"] in applicable_skus]
-            discount = int(base * pr["discount_percent"] / 100) if prices and base <= min(prices) else 0
+            discount = int(base * pr["discount_percent"] / 100) if prices and base < min(prices) else 0
             if discount == 0:
-                ineligible.append({"promo_code": pr["promo_code"], "reason": "not_cheapest_item"})
+                ineligible.append({"promo_code": pr["promo_code"], "reason": "not_cheapest_item_or_tie_use_quote_order"})
                 continue
         else:
             discount = 0
@@ -144,3 +146,73 @@ def quote(products: list[dict], promos: list[dict], args: dict,
             "applied_promos": applied, "expired_promos": expired, "ineligible_promos": ineligible,
             "not_applied_exclusive": [p["promo_code"] for p, _ in exclusive if best and p["promo_code"] != best[0]["promo_code"]],
             "freeship": any(a["type"] == "freeship" for a in applied) or base >= 2_000_000}
+
+
+def quote_order(products: list[dict], promos: list[dict], args: dict,
+                owned_skus: set[str] | None = None,
+                once_used: set[tuple[str, str]] | None = None, *,
+                second_item_used: bool = False, tie_prefer_first: bool = False) -> dict:
+    """BTC November prices per physical unit; never multiply one discounted price by qty."""
+    lines = args.get('lines')
+    if (not isinstance(lines, list) or not lines or any(
+            not isinstance(line, dict) or not isinstance(line.get('sku'), str)
+            or type(line.get('qty', 1)) is not int or line.get('qty', 1) < 1 for line in lines)):
+        return {'error': 'invalid_lines'}
+    units = []
+    for index, line in enumerate(lines):
+        product, variant = _parent(products, line['sku'])
+        if product is None:
+            return {'error': 'unknown_sku', 'sku': line['sku']}
+        units.extend({'line': index, 'sku': line['sku'],
+                      'list_price_vnd': product['list_price_vnd'] + (variant['price_delta_vnd'] if variant else 0),
+                      'is_air': product['category'].startswith('gia-dung/may-loc-khong-khi')}
+                     for _ in range(line.get('qty', 1)))
+    second = next((promo for promo in promos if promo['type'] == 'percent_second_item'
+                   and promo['start'] <= args['on'] <= promo['end']), None)
+    air = [i for i, unit in enumerate(units) if unit['is_air']]
+    second_index = None
+    if second and len(air) >= 2 and not second_item_used:
+        cheapest = min(units[i]['list_price_vnd'] for i in air)
+        tied = [i for i in air if units[i]['list_price_vnd'] == cheapest]
+        second_index = min(tied) if tie_prefer_first else max(tied)
+    trade = next((promo for promo in promos if promo.get('conditions', {}).get('requires_owned_sku')), None)
+    trade_code = trade['promo_code'] if trade else None
+    excluded = (second['promo_code'],) if second else ()
+
+    def unit_quote(unit, exclude):
+        return quote(products, promos, {**args, 'sku': unit['sku'], 'qty': 1, 'basket_skus': []},
+                     owned_skus, once_used, exclude=exclude)
+
+    trade_index, best_gain = None, 0
+    if trade_code:
+        for i, unit in enumerate(units):
+            if i == second_index:
+                continue
+            gain = (unit_quote(unit, excluded + (trade_code,))['final_price_vnd']
+                    - unit_quote(unit, excluded)['final_price_vnd'])
+            if gain > best_gain:
+                trade_index, best_gain = i, gain
+    priced, stack = [], {}
+    for i, unit in enumerate(units):
+        q = unit_quote(unit, excluded + ((trade_code,) if trade_code and i != trade_index else ()))
+        final = q['final_price_vnd']
+        applied = [promo for promo in q['applied_promos'] if promo['type'] not in ('freeship', 'freecod')]
+        if i == second_index:
+            discount = int(unit['list_price_vnd'] * second['discount_percent'] / 100)
+            if discount >= unit['list_price_vnd'] - final:
+                final = unit['list_price_vnd'] - discount
+                applied = [{'promo_code': second['promo_code'], 'type': second['type'], 'discount_vnd': discount}]
+        for promo in q['applied_promos']:
+            if promo['type'] in ('freeship', 'freecod'):
+                stack[promo['promo_code']] = promo
+        priced.append({'unit': i + 1, 'line': unit['line'], 'sku': unit['sku'],
+                       'list_price_vnd': unit['list_price_vnd'], 'final_price_vnd': final,
+                       'applied_promos': applied})
+    grouped = []
+    for i, line in enumerate(lines):
+        prices = [unit['final_price_vnd'] for unit in priced if unit['line'] == i]
+        grouped.append({'sku': line['sku'], 'qty': len(prices), 'unit_prices_vnd': prices,
+                        'line_total_vnd': sum(prices)})
+    total = sum(unit['final_price_vnd'] for unit in priced)
+    return {'units': priced, 'lines': grouped, 'total_vnd': total,
+            'order_promos': list(stack.values()), 'freeship': bool(stack.get('NAM-SHIP0')) or total >= 2_000_000}

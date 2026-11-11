@@ -7,7 +7,7 @@ import json
 import re
 from app.mcp_servers.mcp_shared.commerce_rules import _search_text
 
-COMMERCIAL_TOOLS = frozenset({'catalog.search', 'pricing.get_quote', 'inventory.check'})
+COMMERCIAL_TOOLS = frozenset({'catalog.search', 'pricing.get_quote', 'pricing.quote_order', 'inventory.check'})
 
 
 def successful(call: dict) -> bool:
@@ -43,7 +43,7 @@ def current_customer_address(state: dict) -> str | None:
     speech.append((str(getattr(request, 'client_msg_id', '')), raw))
     current = state.get('tool_calls', [])
     calls = [c for c in [*state.get('session_tool_calls', []), *current]
-             if isinstance(c, dict) and c.get('name') == 'pricing.get_quote' and _bound(c, state)]
+             if isinstance(c, dict) and c.get('name') in {'pricing.get_quote', 'pricing.quote_order'} and _bound(c, state)]
     for tid, text in reversed(speech):
         folded = _search_text(text)
         if not re.search(r'\bo\b|dia chi|giao den', folded):

@@ -2,6 +2,8 @@
 from contextvars import ContextVar
 from functools import wraps
 import re
+from pydantic import ValidationError
+from langchain_core.exceptions import OutputParserException
 
 PHASES = frozenset({'build', 'preparation', 'model_invocation', 'postprocess', 'verification'})
 ERROR_TYPES = frozenset({'BadRequestError', 'AuthenticationError', 'PermissionDeniedError',
@@ -9,10 +11,11 @@ ERROR_TYPES = frozenset({'BadRequestError', 'AuthenticationError', 'PermissionDe
     'APIError', 'APIConnectionError', 'APITimeoutError', 'RateLimitError', 'TimeoutError',
     'RuntimeError', 'ValueError', 'TypeError', 'KeyError', 'AttributeError', 'OSError',
     'ConnectionError', 'HTTPStatusError', 'ConnectError', 'ReadTimeout', 'GraphRecursionError',
-    'unknown_error'})
+    'ValidationError', 'OutputParserException', 'LocalToolOutputError', 'unknown_error'})
 ERROR_CODES = frozenset({'invalid_value', 'invalid_request_error', 'invalid_api_key',
     'model_not_found', 'unsupported_parameter', 'unsupported_value', 'rate_limit_exceeded',
-    'insufficient_quota', 'context_length_exceeded', 'unknown'})
+    'insufficient_quota', 'context_length_exceeded', 'local_tool_output_invalid',
+    'local_tool_output_truncated', 'schema_validation_failed', 'output_parse_failed', 'unknown'})
 _phase = ContextVar('execution_phase', default=('preparation', None))
 _attempted = ContextVar('execution_model_attempted', default=False)
 
@@ -44,9 +47,12 @@ def safe_execution_error(exc: Exception, *, phase: str, invocation: str | None =
     body = body if isinstance(body, dict) else {}
     if isinstance(body.get('error'), dict):
         body = body['error']
+    code = ('schema_validation_failed' if isinstance(exc, ValidationError) else
+            'output_parse_failed' if isinstance(exc, OutputParserException) else
+            body.get('code') or getattr(exc, 'code', None))
     return normalize_execution_event({'phase': phase, 'invocation': invocation, 'status': 'failed',
         'error_type': type(exc).__name__, 'http_status': getattr(exc, 'status_code', None),
-        'error_code': body.get('code'), 'error_param': body.get('param')})
+        'error_code': code, 'error_param': body.get('param')})
 
 
 def set_execution_phase(phase: str, invocation: str | None = None) -> None:

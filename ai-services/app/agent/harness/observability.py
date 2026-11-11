@@ -9,6 +9,7 @@ from functools import wraps
 from typing import Any
 
 from app.agent.harness.state import TurnState
+from app.agent.harness.execution_diagnostics import ERROR_TYPES
 from app.mcp_servers.mcp_shared.observability import (
     render_payload, safe_tool_input, safe_tool_output,
 )
@@ -85,7 +86,7 @@ DIAGNOSTIC_REASONS = frozenset(VALUE_LABELS) | {
     "order_selection_mismatch", "customer_erasure_unverified", "handoff_not_queued", "unknown_reason"}
 DIAGNOSTIC_ERRORS = frozenset({"TimeoutError", "RuntimeError", "ValueError", "TypeError", "KeyError",
     "OSError", "ConnectionError", "APIError", "APIConnectionError", "APITimeoutError",
-    "RateLimitError", "HTTPStatusError", "ConnectError", "ReadTimeout", "GraphRecursionError", "other_error"})
+    "RateLimitError", "HTTPStatusError", "ConnectError", "ReadTimeout", "GraphRecursionError", "other_error"}) | ERROR_TYPES
 DIAGNOSTIC_RECOVERIES = frozenset({"safe_transaction_reply", "safe_quote_reply", "safe_promotion_reply", "safe_catalog_reply", "safe_consultation_reply"})
 _DIAGNOSTIC_PAIRS = frozenset({("run_agent", "model_failed"), ("verify", "grounding_checked"),
     ("verify", "answer_checked"), ("verify", "recovery_attempted"), ("verify", "recovery_unavailable"),

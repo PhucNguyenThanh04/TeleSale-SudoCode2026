@@ -1,4 +1,5 @@
 """Run stateful conversation outputs through both CLIs and BTC's real scorer."""
+from eval_harness.test_support import VoiceLifecycleStub
 import asyncio
 import json
 from pathlib import Path
@@ -19,7 +20,7 @@ IDENTITY=dict(database='offline',host='127.0.0.1',port=5432,server_started_at='s
 RELEASE=dict(release_id='btc-only',manifest_hash='btc-only')
 
 
-class StatefulRuntime:
+class StatefulRuntime(VoiceLifecycleStub):
     def __init__(self):
         self.memory=SimpleNamespace(include_prior=True,namespace='')
         self.tools=SimpleNamespace(database_identity=AsyncMock(return_value=IDENTITY),

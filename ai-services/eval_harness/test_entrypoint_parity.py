@@ -1,3 +1,4 @@
+from eval_harness.test_support import VoiceLifecycleStub
 import asyncio
 import json
 from types import SimpleNamespace
@@ -5,7 +6,7 @@ from unittest.mock import AsyncMock
 from eval_harness.benchmark_runner import run_configuration
 
 
-class Runtime:
+class Runtime(VoiceLifecycleStub):
     def __init__(self):
         self.memory = SimpleNamespace(include_prior=True, namespace='')
         self.requests = []

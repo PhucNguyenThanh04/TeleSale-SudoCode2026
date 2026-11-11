@@ -61,6 +61,7 @@ class ReadResponse(BaseModel):
     current_episode: ReadEpisode | None = None
     prior_session_ids: list[str] = Field(default_factory=list)
     owned_order_ids: list[str] = Field(default_factory=list)
+    session_tool_calls: list[dict[str, Any]] = Field(default_factory=list)
     turn_count: int = Field(default=0, ge=0)
 
 

@@ -180,9 +180,8 @@ class MemoryRepo:
             SELECT j.job_id FROM runtime.langmem_distillation_jobs j
             WHERE j.mode='enabled'
               AND (j.status='pending' OR (j.status='leased' AND j.lease_until<now()))
-              AND j.attempts<5
               AND NOT EXISTS (SELECT 1 FROM runtime.langmem_distillation_jobs earlier
-                  WHERE earlier.session_id=j.session_id AND earlier.turn_no<j.turn_no
+                  WHERE earlier.customer_id=j.customer_id AND earlier.job_id<j.job_id
                     AND earlier.status IN ('pending','leased'))
             ORDER BY j.created_at,j.job_id FOR UPDATE SKIP LOCKED LIMIT 1
         ) UPDATE runtime.langmem_distillation_jobs j
@@ -201,6 +200,11 @@ class MemoryRepo:
             WHERE job_id=$1 AND status='leased'""", job_id,
             json.dumps(proposals, ensure_ascii=False))
 
+    async def distillation_claim_current(self, conn, job_id: int, attempt: int) -> bool:
+        # Hold the job row until this transaction publishes proposals/projection.
+        return bool(await conn.fetchval('''SELECT status='leased' AND attempts=$2
+            FROM runtime.langmem_distillation_jobs WHERE job_id=$1 FOR UPDATE''', job_id, attempt))
+
     async def distillation_turn(self, conn, job: dict) -> dict | None:
         row = await conn.fetchrow("""SELECT customer_id,customer_text,agent_text,on_date,channel
             FROM runtime.turns WHERE session_id=$1 AND turn_no=$2 AND customer_id=$3""",
@@ -210,7 +214,7 @@ class MemoryRepo:
     async def recent_session_turns(self, conn, session_id: str, customer_id: str,
                                    through_turn_no: int, limit: int = 5) -> list[dict]:
         rows = await conn.fetch("""SELECT t.client_msg_id,t.customer_text,t.agent_text,
-            t.on_date,t.channel,j.tool_observations FROM runtime.turns t
+            t.on_date,t.channel,j.tool_observations,j.job_id,j.status AS memory_status FROM runtime.turns t
             LEFT JOIN runtime.langmem_distillation_jobs j ON j.session_id=t.session_id
                 AND j.source_turn_id=t.client_msg_id AND j.customer_id=t.customer_id
             WHERE t.session_id=$1 AND t.customer_id=$2 AND t.turn_no<=$3
@@ -218,6 +222,17 @@ class MemoryRepo:
             ORDER BY t.turn_no DESC LIMIT $4""",
             UUID(session_id), customer_id, through_turn_no, limit)
         return [dict(row) for row in reversed(rows)]
+
+    async def recent_customer_sessions(self, conn, customer_id: str, maximum: int) -> list[dict]:
+        rows = await conn.fetch('''SELECT t.session_id, MAX(t.on_date) AS on_date,
+            (array_agg(t.channel ORDER BY t.turn_no DESC))[1] AS channel
+            FROM runtime.turns t
+            LEFT JOIN runtime.langmem_distillation_jobs j ON j.session_id=t.session_id
+                AND j.source_turn_id=t.client_msg_id AND j.customer_id=t.customer_id
+            WHERE t.customer_id=$1
+            GROUP BY t.session_id ORDER BY MAX(t.on_date) DESC, MAX(j.job_id) DESC NULLS LAST
+            LIMIT $2''', customer_id, maximum)
+        return [dict(row) for row in rows]
 
     async def variant_details(self, conn, sku: str) -> dict | None:
         row = await conn.fetchrow("""SELECT variant_sku,parent_sku,size_label AS size,color

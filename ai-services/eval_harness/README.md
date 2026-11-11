@@ -1,5 +1,35 @@
 # Benchmark Dataset & Eval Harness — AI TeleSale SudoCode 2026
 
+## Hợp đồng BTC tháng 11 và cập nhật database
+
+Các entrypoint chạy eval tạo snapshot đầy đủ từ `--btc-root` và bản vá
+`BTC-cap-nhat-11-2026/`: giữ catalog/policy/schema nền, thay đúng ba file BTC
+`eval/mock_tools.py`, `eval/reference_eval.py`, `schemas/tools.schema.json`.
+Không sửa hai thư mục nguồn. Snapshot chứa `btc_release.json` với hash từng
+file; report/manifest ghi `btc_contract`. Snapshot đã bị sửa bị từ chối khi
+tái sử dụng. Khi replay kết quả cũ, dùng đúng BTC root đã ghi trong artifact.
+
+Trước khi triển khai code này, chạy migration bằng quy trình migration hiện có:
+
+- `backend/migrations/0006_order_lines.sql`: lưu các dòng đơn và backfill đơn scalar.
+- `ai-services/migrations/0004_memory_job_order.sql`: index hàng đợi theo khách hàng.
+
+Các migration trên chỉ được kiểm tra trên database tạm, chưa áp dụng vào database triển khai.
+Catalog/order cần cùng schema mới; memory worker và MCP memory cần cùng phiên
+bản code để giữ thứ tự revision giữa các phiên của một khách hàng.
+
+Kiểm các thay đổi này từ root repo, không gọi model:
+
+```bash
+PYTHONPATH=ai-services:ai-services/test:. ai-services/.venv/bin/python -m pytest -q \
+  ai-services/test/test_basket_harness.py ai-services/test/test_basket_runtime.py \
+  ai-services/test/test_operational_memory.py ai-services/eval_harness/test_memory_readiness.py
+```
+
+SQL/lease/concurrency có test riêng tại `ai-services/test/test_memory_postgres_integration.py`.
+Đặt `MEMORY_INTEGRATION_ADMIN_DSN` trỏ PostgreSQL kiểm thử có quyền CREATEDB;
+test tạo và xóa database riêng cho từng ca. Không đặt DSN này về database triển khai.
+
 ## Chạy text-to-text theo contract BTC
 
 Chạy lệnh dưới từ `ai-services/`. Các lệnh live gọi model và reset runtime;
@@ -110,12 +140,38 @@ Các claim không có field ground truth tương ứng không được scorer ki
 không diễn giải chúng thành đúng. Evidence/memory chỉ xuất sau mask; mất bằng
 chứng chấm → invalid, không sửa điểm hoặc tạo claim bù.
 
-Latency dùng monotonic, nonstream TTFT=Total. Ba warm-up riêng mỗi cấu hình
-không được ghi vào scored trace; gateway warm-up chặn ghi memory/đơn/ticket,
-runtime scored được reset sau warm-up. Không tính extractor/file/scoring hoặc
-chờ worker sau response vào response latency. Brief chỉ ghi phép đo thực ở
-turn 1 call_2/call_3, có freshness. Dưới 100 lượt phải ghi thiếu quy mô latency
-BTC; không bỏ ba lượt scenario để tạo warm-up.
+Eval transcript dùng `AgentHarnessRuntime` của triển khai text/voice:
+`prepare_session → [run → commit trạng thái thiết yếu] × số lượt → drain enrichment`.
+Prepare chạy một lần trước lượt đầu mỗi cuộc. Text commit trong `run`; voice gọi
+`record_playback` sau `run`. Eval voice giả lập phát hết **câu trả lời gốc**, không bị ngắt.
+Chỉ chuyển lượt khi kết quả commit có `turn_saved=True`; không chờ LangMem giữa
+các lượt. Cuối mỗi cuộc, harness đợi các job đã commit rồi thu memory writes theo
+source turn trước khi chuyển phiên/chấm điểm. Lỗi worker được giữ trong artifact.
+Memory đọc trạng thái đã commit và bằng chứng tool ngay khi worker còn pending;
+LangMem bổ sung phần trích xuất ngữ nghĩa và tóm tắt ở nền.
+Lỗi prepare dừng trước inference; lỗi playback giữ response trong partial trace nhưng
+dừng cuộc gọi, không chấm điểm với lịch sử chưa xác nhận. Input mode vẫn lấy từ dataset.
+
+Latency dùng monotonic và tách theo phạm vi:
+- `response_ms`: transcript → câu trả lời đầy đủ; `total_ms` là alias tương thích BTC.
+- `prepare_ms`: chuẩn bị session, chỉ ghi ở lượt đầu; các lượt sau bằng 0.
+- `essential_commit_ms`: thời gian lưu trạng thái thiết yếu. Với text, đây là một phần
+  của `response_ms`; với voice, đo ở bước xác nhận playback sau response.
+- `background_finalize_ms`: thời gian đợi enrichment cuối cuộc, gán về từng source turn.
+- `memory_finalize_ms`: tổng hai trường trên để tương thích báo cáo cũ. Không cộng
+  trường này vào response vì sẽ tính trùng commit của text.
+- `ttft_ms`: **proxy bằng response**, có `ttft_is_proxy=true` vì schema BTC bắt buộc số
+  nguyên; chưa đo token đầu tiên cho voice. Báo cáo đánh dấu proxy, không diễn giải là TTFT thật.
+
+Không tính extractor/file/scoring, ASR/TTS, thời gian phát âm thanh hoặc HTTP transport
+vào response. Đây là parity của runtime từ transcript, chưa phải phép đo voice đầu cuối.
+Single report và paired `run.json` ghi `conversation_measurement`; manifest của pair ghi
+cùng thông tin trong `model_params`. Chỉ so sánh các lần chạy cùng lifecycle, model,
+cấu hình, câu hỏi và lịch sử; trace cũ dùng text delivery không tương đương.
+Brief chỉ ghi phép đo thực ở turn 1 call_2/call_3 (ưu tiên brief từ prepare), có freshness.
+Ba warm-up riêng mỗi cấu hình không được ghi vào scored trace; gateway warm-up chặn
+ghi memory/đơn/ticket, runtime scored được reset sau warm-up. Dưới 100 lượt phải ghi
+thiếu quy mô latency BTC; không bỏ ba lượt scenario để tạo warm-up.
 
 ## 1. Tổng quan Bộ Dữ Liệu (19 Scenarios, 116 Turns)
 
