@@ -399,6 +399,11 @@ def derive_consultation(state: dict) -> ConsultationDecision:
         ref=_ref(state,turn.get('source_turn_id',turn.get('turn_id',f'history-{i}')),'customer',customer)
         focus=_apply_customer(snap,customer,items,focus,visible,ref,state,approval=_approval(customer,previous_agent,focus,visible))
         mentioned=_mentions(agent,items)
+        from app.mcp_servers.mcp_shared.commerce_entities import product_alternatives_requested
+        if (focus and _mentions(customer, items) == {focus}
+                and not product_alternatives_requested(customer)):
+            # A previous agent mistake is not evidence that the customer switched.
+            mentioned &= {focus}
         if len(mentioned)==1 and not re.search(r'khong phu hop|khong de xuat|khong nen',_search_text(agent)):
             focus=next(iter(mentioned))
             if re.search(r'de xuat|goi y|phu hop',_search_text(agent)):

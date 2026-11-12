@@ -666,6 +666,26 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         r'(?:là\s+)?(?P<amount>\d[\d.,]*\s*(?:triệu|tr|nghìn|ngàn|k|đồng|đ|vnd))\b',
         budget_repetition, candidate, flags=re.IGNORECASE)
     money_claims = _money_claims(money_candidate)
+    from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus, product_alternatives_requested
+    requested_skus = resolve_claim_skus(customer_text, successful)
+    promotion_claim = re.search(r'khuyến mãi|ưu đãi|tặng|miễn phí|freeship|giảm giá', money_candidate, re.I)
+    comparison = product_alternatives_requested(customer_text)
+    from app.agent.harness.catalog_query import explicit_product_queries
+    if ((money_claims or promotion_claim) and not policy_claim and not requested_skus
+            and explicit_product_queries(customer_text) and not comparison):
+        return FALLBACK, 'unverified_requested_product'
+    if (not requested_skus and focus_sku
+            and re.search(r'\bgia\b|bao nhieu|khuyen mai|uu dai|ship|cod', _fold_text(customer_text))):
+        requested_skus = {focus_sku}
+    if (money_claims or promotion_claim) and len(requested_skus) == 1 and not comparison:
+        focus_sku = next(iter(requested_skus))
+        for clause in re.split(r'[;!?\n]|\.(?!\d)', money_candidate):
+            if (not (_money_claims(clause) or re.search(r'khuyến mãi|ưu đãi|tặng|miễn phí|freeship|giảm giá', clause, re.I))
+                    or re.search(r'lan truoc|truoc day', _fold_text(clause))):
+                continue
+            claimed = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
+            if claimed and not claimed <= requested_skus:
+                return FALLBACK, 'price_product_mismatch'
     policy_amounts = (_money_claims(" ".join(chunk["content"] for chunk in policy_chunks))
                       if policy_claim else [])
     policy_values = {amount for amount, _, _ in policy_amounts}

@@ -58,12 +58,13 @@ def test_named_product_is_resolved_before_selection_clarification():
     assert 'Mình muốn lấy mẫu nào' not in (safe_consultation_reply(current) or '')
 
 
-def test_price_request_does_not_preempt_model_with_a_broad_catalog_lookup():
+def test_price_request_prepares_only_the_explicit_model_without_purchase_consent():
     current = state('Báo giá AsterAir42.')
     gateway = Gateway()
     tools = BusinessTools(gateway, current, 6, lambda: datetime.now(timezone.utc))
     asyncio.run(tools.prepare_consultation())
-    assert not gateway.calls
+    assert gateway.calls[0] == ('catalog.search', {'query': 'AsterAir42'})
+    assert all(name in {'catalog.search', 'pricing.get_quote'} for name, _ in gateway.calls)
     assert derive_consultation(current).snapshot.selected_sku is None
     assert derive_consultation(current).snapshot.accepted_offer is None
 

@@ -3,6 +3,10 @@ import re
 from app.mcp_servers.mcp_shared.commerce_rules import _search_text
 
 
+def product_alternatives_requested(text: str) -> bool:
+    return bool(re.search(r'so sanh|phuong an khac|mau khac|thay the|re hon|dat hon', _search_text(text)))
+
+
 def allows_short_product_name(text: str, item: dict) -> bool:
     """An accessory's compatible model name alone does not identify the accessory."""
     if not _search_text(item.get('category', '')).endswith('/phu-kien'):

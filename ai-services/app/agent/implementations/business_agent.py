@@ -422,8 +422,15 @@ class BusinessTools:
         before = len(self.state.get('tool_calls', []))
         from app.agent.harness.catalog_query import explicit_product_query
         from app.mcp_servers.mcp_shared.consultation import _mentions, catalog_items
+        captured = self.state.get('consultation_scope') or {}
+        if captured.get('known') and not catalog_items(self.state):
+            # Restore metadata for the admitted scope before resolving spoken names.
+            for sku in captured.get('skus', [])[:2]:
+                if self.state.get('tool_count', 0) >= self.max_tool_calls:
+                    break
+                await self.invoke('catalog.search', {'sku': sku})
         query = explicit_product_query(self.state.get('safe_text', ''))
-        if (query and decision.purchase_intent
+        if (query
                 and not _mentions(self.state.get('safe_text', ''), catalog_items(self.state))
                 and not any(call.get('name') == 'catalog.search'
                     and _search_text(call.get('args', {}).get('query', '')) == _search_text(query)
