@@ -37,6 +37,9 @@ def _supplement_customer_facts(last_turn: dict,
     except ValueError:
         return []
     safe_text = mask_pii(customer_text)
+    from app.mcp_servers.mcp_shared.room_context import named_rooms
+    rooms = named_rooms(safe_text)
+    room_scope = next(iter(rooms)) if len(rooms) == 1 else None
     from app.mcp_servers.mcp_memory.services.memory import _valid_fact
     present_keys = {
         f.key for f in existing_facts
@@ -69,8 +72,11 @@ def _supplement_customer_facts(last_turn: dict,
             if parsed is not None:
                 candidates.append((Slot.ROOM_AREA_M2, parsed, sp_match.group(0).strip()))
                 break
+    no_child_match = re.search(r"(?i)\b(?:không|chưa)\s+(?:có\s+)?(?:con|bé|em bé)\b", safe_text)
     child_match = re.search(r"(?i)\b(?:bé nhỏ|con nhỏ|có con|có em bé)\b", safe_text)
-    if child_match:
+    if no_child_match:
+        candidates.append((Slot.HAS_CHILDREN, False, no_child_match.group(0).strip()))
+    elif child_match:
         candidates.append((Slot.HAS_CHILDREN, True, child_match.group(0).strip()))
     for pattern, norm_blocker in (
         (r"(?i)\b(?:để\s+)?(?:anh|chị|tôi|mình|em)?\s*hỏi\s+(?:ông xã|chồng)\b[^.!?;,]*", "cần hỏi chồng"),
@@ -83,6 +89,8 @@ def _supplement_customer_facts(last_turn: dict,
             break
     added: list[ProfileFactCandidate] = []
     for key, value, quote in candidates:
+        if key == Slot.ROOM_AREA_M2 and len(rooms) > 1:
+            continue  # Multiple named rooms cannot share an unscoped area.
         if key in present_keys:
             continue
         ev = fact_evidence(key, value, "set", safe_text, [], quote)
@@ -94,6 +102,8 @@ def _supplement_customer_facts(last_turn: dict,
                     source_kind="customer",
                     source_turn_id=turn_id,
                     evidence_quote=ev.evidence_quote or quote,
+                    scope_type='room' if key == Slot.ROOM_AREA_M2 and room_scope else 'global',
+                    scope_id=room_scope if key == Slot.ROOM_AREA_M2 and room_scope else '',
                     observed_on=observed_on,
                 ))
                 present_keys.add(key)

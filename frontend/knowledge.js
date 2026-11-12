@@ -1,7 +1,7 @@
 const $ = id => document.getElementById(id);
 const categories = {content:'Thiếu nội dung', retrieval:'Truy xuất chưa đúng', source_conflict:'Nguồn mâu thuẫn', generation:'Lỗi sinh câu trả lời', technical:'Lỗi kỹ thuật', correct_refusal:'Từ chối đúng', insufficient_evidence:'Chưa đủ bằng chứng'};
 const statuses = {new:'Mới phát hiện', triaged:'Đã phân loại', waiting_for_source:'Chờ nguồn', technical_followup:'Xử lý kỹ thuật', closed_correct_refusal:'Từ chối đúng', awaiting_verification:'Chờ kiểm chứng', resolved:'Đã giải quyết', draft:'Bản nháp', approved:'Đã duyệt', rejected:'Đã từ chối', ready:'Sẵn sàng'};
-let token = '', offset = 0, active = null, tab = 'gaps', generation = 0, busy = false;
+let offset = 0, active = null, tab = 'gaps', generation = 0, busy = false;
 const selectedRevisions = new Map();
 function el(tag, text, cls) { const node = document.createElement(tag); if (text != null) node.textContent = text; if (cls) node.className = cls; return node; }
 function badge(value) { return el('span', statuses[value] || categories[value] || value || 'Chưa có', 'badge' + (['technical','generation','technical_followup','insufficient_evidence','waiting_for_source'].includes(value) ? ' warn' : '')); }
@@ -21,22 +21,20 @@ function check(parent, title) { const label = el('label', null, 'check-label'), 
 function button(parent, text, action, cls = '') { const b = el('button', text, cls); b.type = 'button'; b.addEventListener('click', () => perform(action)); parent.append(b); return b; }
 function details(parent, title, value) { const d = el('details'); d.append(el('summary', title), el('pre', typeof value === 'string' ? value : JSON.stringify(value, null, 2))); parent.append(d); return d; }
 function notice(text) { $('notice').textContent = text; }
-function logout() { token = ''; generation++; selectedRevisions.clear(); active = null; $('access-token').value = ''; $('workspace').hidden = true; $('access').hidden = false; $('logout').hidden = true; $('detail').replaceChildren(); $('releases-view').replaceChildren(); $('gap-list').replaceChildren(); }
 function showError(error) {
-  const messages = {401:'Mã truy cập không hợp lệ hoặc đã hết hiệu lực.',403:'Reviewer chưa có quyền duyệt hoặc yêu cầu khác origin bị từ chối.',409:'Dữ liệu đã thay đổi. Hãy làm mới và kiểm tra lại trước khi lưu.',422:'Nội dung chưa hợp lệ. Kiểm tra nguồn, phạm vi hiệu lực, lý do, test đã duyệt và trạng thái release.',503:'Chưa cấu hình dịch vụ duyệt. Kiểm tra reviewer và mã truy cập ở gateway.',502:'Không kết nối được dịch vụ tri thức. Thử làm mới sau.'};
+  const messages = {401:'Gateway không xác thực được với AI service. Kiểm tra token nội bộ của server.',403:'Reviewer chưa có quyền duyệt hoặc yêu cầu khác origin bị từ chối.',409:'Dữ liệu đã thay đổi. Hãy làm mới và kiểm tra lại trước khi lưu.',422:'Nội dung chưa hợp lệ. Kiểm tra nguồn, phạm vi hiệu lực, lý do, test đã duyệt và trạng thái release.',503:'Chưa cấu hình dịch vụ duyệt. Kiểm tra reviewer ở gateway.',502:'Không kết nối được dịch vụ tri thức. Thử làm mới sau.'};
   $('error').textContent = messages[error.status] || error.message || 'Không thực hiện được thao tác.'; $('error').hidden = false;
-  if (error.status === 401) logout();
 }
 async function perform(action) {
   if (busy) return;
   busy = true; document.body.setAttribute('aria-busy', 'true'); $('error').hidden = true;
-  $('workspace').inert = true; $('access').inert = true; $('logout').disabled = true;
+  $('workspace').inert = true;
   try { await action(); } catch (error) { showError(error); }
-  finally { $('workspace').inert = false; $('access').inert = false; $('logout').disabled = false; busy = false; document.body.removeAttribute('aria-busy'); }
+  finally { $('workspace').inert = false; busy = false; document.body.removeAttribute('aria-busy'); }
 }
 async function api(resource, params = {}, body) {
   const url = '/api/knowledge/' + resource + (body ? '' : '?' + new URLSearchParams(params));
-  const response = await fetch(url, {method:body ? 'POST' : 'GET', headers:{Authorization:'Bearer ' + token, ...(body ? {'Content-Type':'application/json'} : {})}, ...(body ? {body:JSON.stringify(body)} : {})});
+  const response = await fetch(url, {method:body ? 'POST' : 'GET', headers:body ? {'Content-Type':'application/json'} : {}, ...(body ? {body:JSON.stringify(body)} : {})});
   if (!response.ok) { const error = new Error('Không thực hiện được yêu cầu.'); error.status = response.status; throw error; }
   return response.json();
 }
@@ -46,6 +44,51 @@ async function all(resource, params = {}) {
   let items = [], page = 0, result;
   do { result = await api(resource, {...params, offset:page, limit:100}); items.push(...result.items); page += 100; } while (page < result.total);
   return items;
+}
+async function bulkReview() {
+  generation++;
+  notice('Đang nạp toàn bộ bản nháp, nguồn và test…');
+  const [drafts, gaps, sources, tests] = await Promise.all([
+    all('revisions', {status:'draft'}), all('gaps'), all('sources'), all('regression_cases')]);
+  const eligible = new Set(gaps.filter(g => !['technical','generation','correct_refusal'].includes(g.category)).map(g => g.id));
+  const revisions = drafts.filter(r => eligible.has(r.gap_id));
+  const root = $('detail'); root.replaceChildren(el('h2', `Duyệt hết · ${revisions.length} bản nháp`));
+  note(root, 'Danh sách gồm mọi trang, không phụ thuộc bộ lọc gap. Chỉ duyệt bản nháp đã có nguồn và test; gap chưa có đề xuất cần được soạn riêng.');
+  if (!revisions.length) { notice('Không có bản nháp phù hợp để duyệt.'); return; }
+  for (const revision of revisions) {
+    const item = el('details'); item.append(el('summary', `${revision.question} · ${revision.id}`));
+    details(item, 'Nội dung đã lưu', {question:revision.question, answer:revision.answer,
+      aliases:revision.aliases, scope:revision.scope, source_review_note:revision.source_review_note});
+    const attached = sources.filter(s => (revision.source_ids || []).includes(s.chunk_id));
+    details(item, 'Nguồn và hiệu lực', attached);
+    details(item, 'Regression test', tests.find(t => t.id === revision.id) || 'Thiếu test.');
+    root.append(item);
+  }
+  const form = el('form', null, 'form-grid'); root.append(form);
+  const reason = field(form, 'Lý do duyệt hàng loạt', '');
+  const reviewed = check(form, 'Tôi đã đối chiếu nội dung, nguồn và test của các bản nháp trong danh sách này.');
+  button(form, `Duyệt ${revisions.length} bản nháp`, async () => {
+    if (!reason.value.trim()) throw new Error('Nhập lý do duyệt hàng loạt.');
+    if (!reviewed.checked) throw new Error('Cần xác nhận đã review nội dung, nguồn và test.');
+    const failed = []; let approved = 0;
+    for (const revision of revisions) {
+      notice(`Đang duyệt ${approved + failed.length + 1}/${revisions.length}…`);
+      try {
+        const saved = await command('approve', {id:revision.id, content_hash:revision.content_hash,
+          reason:reason.value, approve_test:true});
+        selectedRevisions.set(saved.id, saved); approved++;
+      } catch (error) { failed.push({id:revision.id, status:error.status || 'Không kết nối được'}); }
+    }
+    const summary = `Đã duyệt ${approved}/${revisions.length} bản nháp. Chưa phát hành.`;
+    root.replaceChildren(el('h2', 'Kết quả duyệt hàng loạt'), el('p', summary));
+    if (failed.length) {
+      note(root, 'Chưa duyệt được: ' + failed.map(item => `${item.id} (${item.status})`).join(', ') + '. Làm mới để kiểm tra lại.', true);
+      button(root, 'Làm mới danh sách còn lại', bulkReview, 'secondary');
+    }
+    note(root, 'Các bản duyệt thành công đã được chọn trong tab Phát hành.');
+    notice(summary);
+  });
+  notice(`Đã nạp ${revisions.length} bản nháp để đối chiếu trước khi duyệt.`);
 }
 async function refresh() {
   generation++; $('detail').replaceChildren(el('p', 'Chọn một gap để xem bằng chứng và bản đề xuất.', 'empty'));
@@ -66,7 +109,7 @@ async function openGap(id) {
   const epoch = ++generation; notice('Đang nạp bằng chứng…');
   const gap = await record('gaps', id);
   const [revisions, events] = await Promise.all([all('revisions', {gap_id:id}), Promise.all((gap.event_ids || []).map(event => record('events', event)))]);
-  if (epoch !== generation || !token) return;
+  if (epoch !== generation) return;
   const root = $('detail'); root.replaceChildren(el('h2', gap.title || 'Chi tiết gap'), badge(gap.status), badge(gap.category));
   document.querySelectorAll('.gap-row').forEach(row => row.setAttribute('aria-current', String(row.dataset.gapId === id)));
   root.append(el('p', `Mã ${gap.id} · phiên bản ${gap.version}`, 'muted'));
@@ -97,7 +140,7 @@ async function openGap(id) {
 async function editor(gap, revision = null) {
   const epoch = ++generation; notice('Đang nạp nguồn và regression test…');
   const [sources, test] = await Promise.all([all('sources'), revision ? record('regression_cases', revision.id) : Promise.resolve(null)]);
-  if (epoch !== generation || !token) return;
+  if (epoch !== generation) return;
   const root = $('detail'); root.replaceChildren(); button(root, '← Quay lại bằng chứng', () => openGap(gap.id), 'secondary');
   root.append(el('h2', revision ? 'Duyệt bản đề xuất' : 'Soạn đề xuất có nguồn'), el('p', gap.title, 'muted'));
   if (revision) root.append(badge(revision.status), el('p', `Revision ${revision.id}`, 'muted'));
@@ -164,7 +207,7 @@ async function editor(gap, revision = null) {
 async function releases() {
   const epoch = ++generation; notice('Đang tải các phiên bản…');
   const [result, approved] = await Promise.all([all('releases'), all('revisions', {status:'approved'})]);
-  const state = await api('releases', {limit:1}); if (epoch !== generation || !token) return;
+  const state = await api('releases', {limit:1}); if (epoch !== generation) return;
   active = state.active_release_id; const root = $('releases-view'); root.replaceChildren(el('h2', 'Phát hành tri thức đã duyệt'), el('p', `Đang hoạt động: ${active || 'Chưa có release'}`, 'muted'));
   note(root, 'Duyệt nội dung không tự phát hành. Release mới chỉ chứa các bản được chọn; hãy giữ đủ nội dung muốn tiếp tục phục vụ. Phát hành xong vẫn cần eval trước/sau để xác minh gap.');
   root.append(el('h3', 'Chọn bản đã duyệt'));
@@ -174,8 +217,10 @@ async function releases() {
     box.addEventListener('change', () => box.checked ? selectedRevisions.set(revision.id, revision) : selectedRevisions.delete(revision.id));
   }
   if (!approved.length) note(root, 'Chưa có bản đề xuất đã duyệt. Quay lại tab Duyệt gap để xem nguồn và test.');
+  if (approved.length > 100) note(root, 'Mỗi release chứa tối đa 100 bản. Bỏ chọn các bản chưa muốn phát hành trong release này.');
   button(root, 'Chuẩn bị release từ các bản đã chọn', async () => {
     if (!selectedRevisions.size) throw new Error('Chọn ít nhất một bản đã duyệt.');
+    if (selectedRevisions.size > 100) throw new Error('Mỗi release chứa tối đa 100 bản. Hãy điều chỉnh danh sách đã chọn.');
     notice('Đang chuẩn bị chỉ mục và kiểm tra regression…');
     const release = await command('prepare_release', {revision_ids:[...selectedRevisions.keys()],expected_active_id:active});
     await releases(); await releaseDetail(root, release); notice('Release đã sẵn sàng. Chưa thay đổi phiên bản hoạt động.');
@@ -206,11 +251,15 @@ async function releaseDetail(root, release) {
   }
   box.scrollIntoView({block:'nearest',behavior:'auto'});
 }
-$('access-form').addEventListener('submit', event => { event.preventDefault(); perform(async () => {
-  token = $('access-token').value; await refresh(); $('access-token').value = ''; $('access').hidden = true; $('workspace').hidden = false; $('logout').hidden = false;
-}); });
-$('logout').addEventListener('click', () => { if (!busy) { logout(); notice('Đã đăng xuất.'); } });
 $('refresh').addEventListener('click', () => perform(refresh));
+$('approve-all').addEventListener('click', () => perform(async () => {
+  tab = 'gaps';
+  for (const view of ['gaps','releases']) {
+    $(view + '-tab').setAttribute('aria-selected', String(view === tab));
+    $(view + '-view').hidden = view !== tab;
+  }
+  await bulkReview();
+}));
 $('status-filter').addEventListener('change', () => { offset = 0; perform(refresh); });
 $('previous').addEventListener('click', () => { offset = Math.max(0,offset - 30); perform(refresh); });
 $('next').addEventListener('click', () => { offset += 30; perform(refresh); });
@@ -219,4 +268,4 @@ for (const view of ['gaps','releases']) $(view + '-tab').addEventListener('click
   await refresh();
 }));
 
-$('access-form').querySelector('button').disabled = false;
+perform(refresh);

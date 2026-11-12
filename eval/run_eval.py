@@ -58,7 +58,7 @@ async def run(args, runtime=None) -> int:
     try:
         result = await runner.execute_configuration(settings=settings, scenarios=scenarios,config=args.config,
             runtime=runtime,run_id=str(uuid4()),out=args.out,btc_root=btc_root,
-            expected_database=target,release=release,delivery_mode=getattr(args,'delivery_mode','voice'))
+            expected_database=target,release=release,delivery_mode=getattr(args,'delivery_mode','text'))
         rows = [r for rs in result['trace'].values() for r in rs]
         report_path=args.out.with_suffix('.report.json')
         report=json.loads(report_path.read_text())
@@ -89,7 +89,7 @@ def main():
     parser.add_argument('--isolated-db',action='store_true')
     parser.add_argument('--expected-database',default=os.getenv('EVAL_EXPECTED_DATABASE'))
     parser.add_argument('--seed',type=int,default=7)
-    parser.add_argument('--delivery-mode',choices=('text','voice'),default='voice')
+    parser.add_argument('--delivery-mode',choices=('text','voice'),default='text')
     args=parser.parse_args()
     try:
         count=asyncio.run(run(args))

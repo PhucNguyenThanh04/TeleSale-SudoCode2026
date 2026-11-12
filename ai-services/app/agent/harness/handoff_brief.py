@@ -117,6 +117,19 @@ def build_handoff_brief(state: TurnState, proposal: dict,
     for item in _open_episode_items([current_episode, *prior_episodes], "question"):
         if item not in open_questions:
             open_questions.append(item)
+    if not open_questions and reason == 'khach_yeu_cau_gap_nguoi' and state.get('history'):
+        # An immediate refusal followed by "hỏi kỹ hơn" is still a handoff task,
+        # even if optional episode extraction did not propose an open question.
+        previous = state['history'][-1]
+        pending = mask_pii(previous.get('customer', previous.get('customer_text', '')))
+        answer = previous.get('agent', previous.get('agent_text', ''))
+        resolved = [item.get('text', '') for ep in [current_episode, *prior_episodes]
+                    for topic in ep.get('topics', []) for item in topic.get('items', [])
+                    if item.get('kind') == 'question' and item.get('status') == 'resolved']
+        from app.mcp_servers.mcp_shared.episode_evidence import evidence_supports
+        if ('?' in pending and re.search(r'(?i)(?:không|chưa) (?:có thông tin|thể (?:xác nhận|khẳng định|trả lời)|có chuyên môn.{0,40}để (?:khẳng định|trả lời|xác nhận))', answer)
+                and not any(evidence_supports(item, pending) for item in resolved)):
+            open_questions.append(pending[:300])
     next_action = _NEXT[reason]
     if customer_erasure_requested(text):
         summary = ("Khách yêu cầu xử lý dữ liệu cá nhân đã lưu. "

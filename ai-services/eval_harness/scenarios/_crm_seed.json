@@ -1,0 +1,265 @@
+{
+  "customers": [
+    {
+      "customer_id": "SYN-T01",
+      "name": "Khách thử T01",
+      "honorific": "anh",
+      "phone": "0700000001",
+      "zalo_id": "team-harness-v1-t01",
+      "region": "nam",
+      "orders": [],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T02",
+      "name": "Khách thử T02",
+      "honorific": "anh",
+      "phone": "0938551246",
+      "zalo_id": "team-harness-v1-t02",
+      "region": "bac",
+      "orders": [
+        {
+          "order_id": "OD487215",
+          "sku": "SKU-JK-WND-M-NAVY",
+          "price_vnd": 690000,
+          "date": "2026-10-12",
+          "status": "delivered"
+        }
+      ],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T03",
+      "name": "Khách thử T03",
+      "honorific": "anh",
+      "phone": "0700000003",
+      "zalo_id": "team-harness-v1-t03",
+      "region": "bac",
+      "orders": [],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T04",
+      "name": "Khách thử T04",
+      "honorific": "chị",
+      "phone": "0700000004",
+      "zalo_id": "team-harness-v1-t04",
+      "region": "nam",
+      "orders": [],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T05",
+      "name": "Khách thử T05",
+      "honorific": "chị",
+      "phone": "0700000005",
+      "zalo_id": "team-harness-v1-t05",
+      "region": "bac",
+      "orders": [],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T06",
+      "name": "Khách thử T06",
+      "honorific": "anh",
+      "phone": "0700000006",
+      "zalo_id": "team-harness-v1-t06",
+      "region": "bac",
+      "orders": [],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T07",
+      "name": "Khách thử T07",
+      "honorific": "chị",
+      "phone": "0907312845",
+      "zalo_id": "team-harness-v1-t07",
+      "region": "nam",
+      "orders": [],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T08",
+      "name": "Khách thử T08",
+      "honorific": "anh",
+      "phone": "0700000008",
+      "zalo_id": "team-harness-v1-t08",
+      "region": "nam",
+      "orders": [],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T09",
+      "name": "Khách thử T09",
+      "honorific": "anh",
+      "phone": "0986214735",
+      "zalo_id": "team-harness-v1-t09",
+      "region": "bac",
+      "orders": [],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T10",
+      "name": "Khách thử T10",
+      "honorific": "chị",
+      "phone": "0700000010",
+      "zalo_id": "team-harness-v1-t10",
+      "region": "bac",
+      "orders": [],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T11",
+      "name": "Khách thử T11",
+      "honorific": "anh",
+      "phone": "0918460273",
+      "zalo_id": "team-harness-v1-t11",
+      "region": "nam",
+      "orders": [
+        {
+          "order_id": "OD731508",
+          "sku": "SKU-AF-XM",
+          "price_vnd": 1590000,
+          "date": "2026-10-23",
+          "status": "shipping"
+        }
+      ],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T12",
+      "name": "Khách thử T12",
+      "honorific": "chị",
+      "phone": "0973508164",
+      "zalo_id": "team-harness-v1-t12",
+      "region": "bac",
+      "orders": [
+        {
+          "order_id": "OD715342",
+          "sku": "SKU-AP-X-2024",
+          "price_vnd": 4290000,
+          "date": "2025-11-02",
+          "status": "delivered"
+        }
+      ],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T13",
+      "name": "Khách thử T13",
+      "honorific": "anh",
+      "phone": "0700000013",
+      "zalo_id": "team-harness-v1-t13",
+      "region": "bac",
+      "orders": [],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T14",
+      "name": "Khách thử T14",
+      "honorific": "chị",
+      "phone": "0700000014",
+      "zalo_id": "team-harness-v1-t14",
+      "region": "bac",
+      "orders": [],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T15",
+      "name": "Khách thử T15",
+      "honorific": "chị",
+      "phone": "0700000015",
+      "zalo_id": "team-harness-v1-t15",
+      "region": "bac",
+      "orders": [],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T16",
+      "name": "Khách thử T16",
+      "honorific": "anh",
+      "phone": "0700000016",
+      "zalo_id": "team-harness-v1-t16",
+      "region": "bac",
+      "orders": [],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T17",
+      "name": "Khách thử T17",
+      "honorific": "anh",
+      "phone": "0700000017",
+      "zalo_id": "team-harness-v1-t17",
+      "region": "bac",
+      "orders": [],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T18",
+      "name": "Khách thử T18",
+      "honorific": "anh",
+      "phone": "0700000018",
+      "zalo_id": "team-harness-v1-t18",
+      "region": "bac",
+      "orders": [],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T19",
+      "name": "Khách thử T19",
+      "honorific": "anh",
+      "phone": "0700000019",
+      "zalo_id": "team-harness-v1-t19",
+      "region": "bac",
+      "orders": [],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T20",
+      "name": "Khách thử T20",
+      "honorific": "chị",
+      "phone": "0965218430",
+      "zalo_id": "team-harness-v1-t20",
+      "region": "bac",
+      "orders": [
+        {
+          "order_id": "OD752946",
+          "sku": "SKU-JK-WND-L-BE",
+          "price_vnd": 690000,
+          "date": "2026-10-24",
+          "status": "delivered"
+        }
+      ],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T21",
+      "name": "Khách thử T21",
+      "honorific": "chị",
+      "phone": "0700000021",
+      "zalo_id": "team-harness-v1-t21",
+      "region": "bac",
+      "orders": [],
+      "sessions": []
+    },
+    {
+      "customer_id": "SYN-T22",
+      "name": "Khách thử T22",
+      "honorific": "anh",
+      "phone": "0937164052",
+      "zalo_id": "team-harness-v1-t22",
+      "region": "bac",
+      "orders": [
+        {
+          "order_id": "OD768213",
+          "sku": "SKU-AF-XM",
+          "price_vnd": 1590000,
+          "date": "2026-10-22",
+          "status": "delivered",
+          "payment": "COD"
+        }
+      ],
+      "sessions": []
+    }
+  ]
+}

@@ -24,6 +24,81 @@ def _mentions_children(text: str) -> bool:
     return bool(re.search(r"\b(?:con|be|tre nho|em be)\b", folded))
 
 
+def product_question_fields(text: str) -> dict[str, str]:
+    from app.mcp_servers.mcp_shared.commerce_rules import _search_text
+    folded = _search_text(text)
+    patterns = {'stock': r'con hang|het hang|co (?:san )?hang|ton kho|nhap lai',
+                'child_safe_lock': r'khoa (?:an toan )?tre em',
+                'app': r'\bapp\b|dieu khien.{0,20}dien thoai'}
+    return {key: pattern for key, pattern in patterns.items() if re.search(pattern, folded)}
+
+
+def safe_order_status_reply(state: TurnState) -> str | None:
+    from app.mcp_servers.mcp_shared.consultation_followup import order_status_requested
+    if not order_status_requested(state.get('safe_text', '')):
+        return None
+    calls = [c for c in state.get('tool_calls', []) if c.get('name') == 'order.status']
+    if not calls or 'error' in calls[-1].get('result', {}):
+        return None
+    orders = calls[-1].get('result', {}).get('orders')
+    if orders == []:
+        return 'Em đã tra cứu nhưng chưa tìm thấy đơn hàng trong kết quả hệ thống của mình ạ.'
+    if not isinstance(orders, list) or len(orders) != 1:
+        return None
+    order = orders[0]
+    label = {'created': 'đơn đã tạo', 'shipping': 'đơn đang giao',
+             'delivered': 'đơn đã giao', 'cancelled': 'đã hủy đơn'}.get(order.get('status'))
+    if not label or not order.get('order_id'):
+        return None
+    return mask_pii(f"Em kiểm tra đơn {order['order_id']}: {label} ạ.")
+
+
+def safe_product_reply(state: TurnState) -> str | None:
+    """Answer the requested stock/features rather than substitute a price."""
+    from app.mcp_servers.mcp_shared.consultation_shortlist import catalog_search_requested
+    if catalog_search_requested(state):
+        return None
+    fields = product_question_fields(state.get('safe_text', ''))
+    if not fields:
+        return None
+    from app.mcp_servers.mcp_shared.consultation import derive_consultation, catalog_items
+    from app.agent.harness.policy import resolve_product_selection
+    focus = derive_consultation(state).focus_sku
+    selection = resolve_product_selection(state, {'sku': focus}) if focus else None
+    if not selection or selection.status != 'resolved':
+        return None
+    item = catalog_items(state).get(selection.parent_sku, {})
+    if not item.get('name'):
+        return None
+    variant = next((v for v in item.get('variants', []) if v.get('variant_sku') == selection.sku), {})
+    label = item['name'] + ''.join(f' {cue} {variant[key]}' for key, cue in
+        (('size', 'size'), ('color', 'màu')) if variant.get(key) is not None)
+    parts = []
+    if 'stock' in fields:
+        calls = [c for c in build_commerce_evidence(state)
+                 if c.get('name') == 'inventory.check'
+                 and c.get('args', {}).get('sku') == selection.sku]
+        if not calls or type(calls[-1]['result'].get('in_stock')) is not bool:
+            return None
+        parts.append(f"{label} hiện {'còn hàng' if calls[-1]['result']['in_stock'] else 'hết hàng'}.")
+    attrs = item.get('attributes') or {}
+    if 'child_safe_lock' in fields:
+        lock = attrs.get('child_safe_lock')
+        parts.append(f"{item['name']} {'có' if lock else 'không có'} khóa trẻ em."
+                     if type(lock) is bool else f"Em chưa có thông tin xác minh khóa trẻ em của {item['name']}.")
+    if 'app' in fields:
+        features = attrs.get('features', '')
+        parts.append(f"Tính năng theo catalog của {item['name']}: {features}."
+                     if isinstance(features, str) and re.search(r'(?i)\bapp\b', features)
+                     else f"Em chưa có thông tin xác minh về app điều khiển của {item['name']}.")
+    from app.mcp_servers.mcp_shared.commerce_rules import _search_text
+    if re.search(r'\bgia\b|bao nhieu', _search_text(state.get('safe_text', ''))):
+        price = safe_quote_reply(state)
+        if price:
+            parts.append(price)
+    return mask_pii(' '.join(parts))
+
+
 def safe_catalog_reply(state: TurnState) -> str | None:
     """Render the same sourced shortlist used for bounded quote preparation."""
     from app.mcp_servers.mcp_shared.consultation_shortlist import (
@@ -160,6 +235,15 @@ def safe_transaction_reply(state: TurnState) -> str | None:
     if transaction_selection_mismatch(state):
         return uncertain
     answer = f"Dạ, em đã tạo đơn {result['order_id']} cho mình."
+    from app.mcp_servers.mcp_shared.commerce_rules import _search_text
+    if re.search(r'giao trong tuan\b', _search_text(state.get('safe_text', ''))):
+        from datetime import date
+        try:
+            estimated_on = date.fromisoformat(result.get('estimated_delivery'))
+            if estimated_on >= state['request'].on:
+                answer += f' Ngày giao dự kiến là {estimated_on.isoformat()}.'
+        except (TypeError, ValueError):
+            pass
     # Omit price here: a successful order alone does not supply a current quote
     # in every transport. The identifier is enough to acknowledge the transaction.
     return mask_pii(answer)
@@ -254,6 +338,12 @@ def safe_quote_reply(state: TurnState) -> str | None:
 
 def safe_consultation_reply(state: TurnState) -> str | None:
     """Pure task-aware recovery; transaction writes remain in orchestration."""
+    status_reply = safe_order_status_reply(state)
+    if status_reply:
+        return status_reply
+    product_reply = safe_product_reply(state)
+    if product_reply:
+        return product_reply
     from app.mcp_servers.mcp_shared.consultation import (
         derive_consultation, consultation_missing_fields, current_quote, requested_quantity, _search_text)
     decision = derive_consultation(state)
@@ -290,8 +380,21 @@ def safe_consultation_reply(state: TurnState) -> str | None:
         if 'identity' in missing:
             return 'Mình vui lòng xác minh thông tin khách hàng để em tiếp tục đặt hàng ạ.'
         if 'delivery' in missing:
-            return ('Em chưa xác minh được khả năng đáp ứng thời hạn mình yêu cầu. '
-                    'Mình có muốn em kiểm tra thêm khả năng đáp ứng thời hạn này không ạ?')
+            from datetime import date
+            from app.mcp_servers.mcp_shared.consultation import purchase_arguments
+            args = purchase_arguments(state)
+            quotes = [call for call in build_commerce_evidence(state, args=args)
+                      if call.get('name') == 'pricing.get_quote']
+            estimate = quotes[-1]['result'].get('estimated_delivery') if quotes else None
+            try:
+                estimated_on = date.fromisoformat(estimate)
+                if estimated_on < state['request'].on:
+                    estimate = None
+            except (TypeError, ValueError):
+                estimate = None
+            answer = f'Ngày giao dự kiến theo công cụ là {estimate}. ' if estimate else ''
+            return (answer + 'Em chưa xác nhận được thời hạn giao hàng mình yêu cầu. '
+                    'Mình có chấp nhận đặt hàng không kèm yêu cầu giao đúng hạn đó không ạ?')
         if 'requirements' in missing:
             return 'Mẫu đang chọn chưa đáp ứng đủ yêu cầu đã nêu. Mình muốn điều chỉnh yêu cầu nào ạ?'
         return 'Em chưa xác minh đủ giá và tồn kho cho đúng lựa chọn của mình nên chưa thể tạo đơn ạ.'
@@ -325,7 +428,7 @@ def safe_consultation_reply(state: TurnState) -> str | None:
 def safe_followup_reply(state: dict, task=None) -> str | None:
     """Recovery for the requested information; it never modifies speech or grants consent."""
     from app.mcp_servers.mcp_shared.consultation_followup import (
-        followup_task, policy_call_for_task, compatible_quote, offer_changes,
+        followup_task, policy_call_for_task, compatible_quote, offer_changes, product_price_requested,
     )
     from app.mcp_servers.mcp_shared.commerce_rules import _search_text
     task = task or followup_task(state)
@@ -343,12 +446,33 @@ def safe_followup_reply(state: dict, task=None) -> str | None:
         if evidence_set.get('required_dependencies_complete') is False or evidence_set.get('missing_required_section_ids'):
             return 'Em chưa xác minh đầy đủ điều kiện và ngoại lệ của chính sách cho câu hỏi này ạ.'
         query = _search_text(task.policy_query or '')
+        if re.search(r'boc seal|niem phong', query) and 'binh sua' in query:
+            # Explain the current general rule, never certify a past order's rights.
+            on = str(state['request'].on)
+            candidates = [row for row in result.get('evidence', [])
+                if row.get('evidence_type', 'business_rule') == 'business_rule'
+                and 'bình sữa' in row.get('content', '').lower()
+                and 'bóc seal' in row.get('content', '').lower()
+                and (row.get('applicability') or {}).get('status') in {'applicable', 'conditional'}
+                and not (row.get('applicability') or {}).get('missing_required_section_ids')
+                and (row.get('applicability') or {}).get('required_context', []) in ([], ['order_date'])
+                and ((row.get('applicability') or {}).get('effective_from') or on) <= on
+                and ((row.get('applicability') or {}).get('effective_until') or on) >= on]
+            if len(candidates) == 1:
+                section = candidates[0]['content'].rsplit('\n\n', 1)[-1]
+                return mask_pii('Em chưa xác minh ngày đặt và điều kiện của một đơn cụ thể. '
+                    'Theo chính sách hiện tại, để tham khảo trước khi mua: ' + section)
         # Accent folding conflates đổi (exchange) with đối (competitor).
         # Match the policy topic, not a substring in an unrelated playbook hit.
-        topic = (r'\bbảo hành\b' if 'bao hanh' in query else
+        topic = (r'\bhoàn tiền\b' if 'hoan tien' in query else
+                 r'\bbảo hành mở rộng\b' if 'bao hanh' in query and re.search(r'mo rong|gia han', query) else
+                 r'\bbảo hành\b' if 'bao hanh' in query else
                  r'\bđổi\s+(?:trả|size|sản phẩm|mới)\b' if 'doi' in query else
                  r'\bphí\b' if 'phi' in query else None)
+        if topic and re.search(r'phi (?:giao hang|van chuyen|ship)', query):
+            topic = '(?:' + topic + r'|\bphí vận chuyển\b)'
         paragraphs = []
+        direct_paragraphs = []
         for row in result.get('evidence', []):
             app = row.get('applicability') or {}
             content = row.get('content')
@@ -357,17 +481,24 @@ def safe_followup_reply(state: dict, task=None) -> str | None:
                     or app.get('missing_required_section_ids')):
                 continue
             folded = _search_text(content)
-            if topic and not re.search(topic, content, re.IGNORECASE):
+            # Document titles can mention refunds while the retrieved section
+            # actually concerns COD confirmation or an unrelated rule.
+            section = content.split('\n\n', 1)[-1]
+            if topic and not re.search(topic, section, re.IGNORECASE):
                 continue
             if not re.search(r'\d|mien phi|khong bao hanh|khong ap dung|dieu kien|loi ky thuat', folded):
                 continue
             if content not in paragraphs:
-                paragraphs.append(content.strip())
+                paragraphs.append(section.strip())
+                if topic and re.search(topic, section.split('\n', 1)[0], re.IGNORECASE):
+                    direct_paragraphs.append(section.strip())
+        if direct_paragraphs:
+            paragraphs = direct_paragraphs
         # Do not truncate policy text and silently drop exceptions or quote operational guides.
         if not paragraphs or len(' '.join(paragraphs)) > 1400:
             return 'Em chưa xác minh được thông tin chính sách đủ rõ để trả lời câu hỏi này. Mình cho em làm rõ điều kiện cần áp dụng nhé?'
         answer = 'Theo thông tin chính sách đã kiểm tra: ' + ' '.join(paragraphs)
-        if re.search(r'\bgia\b', _search_text(state.get('safe_text', ''))):
+        if product_price_requested(state.get('safe_text', '')):
             price = safe_quote_reply(state)
             if price:
                 answer = price + ' ' + answer

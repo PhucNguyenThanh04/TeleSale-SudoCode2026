@@ -137,6 +137,18 @@ def prompt_messages(context: dict[str, Any]) -> list[HumanMessage | AIMessage]:
     return messages
 
 
+def _uuid_fact_source(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    parts = value.split(':')
+    if len(parts) != 3 or parts[0] != 'langmem':
+        return False
+    try:
+        return all(str(UUID(part)) == part for part in parts[1:])
+    except (ValueError, TypeError):
+        return False
+
+
 def _split_facts(profile: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     """Keep customer-stated limits separate from prices and actions by the shop."""
     sales_keys = TOOL_ONLY_SLOT_KEYS | {Slot.PRODUCT_ADVISED}
@@ -154,7 +166,9 @@ def _split_facts(profile: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any
         public = {"key": key, "value": value,
                   "status": "active", "source_kind": fact.get("source_kind")}
         for field in ("on", "source_tool", "source", "valid_until", "source_turn_id", "session_id"):
-            if isinstance(fact.get(field), str) and mask_pii(fact[field]) == fact[field]:
+            if field == 'source' and _uuid_fact_source(fact.get(field)):
+                public[field] = fact[field]
+            elif isinstance(fact.get(field), str) and mask_pii(fact[field]) == fact[field]:
                 public[field] = fact[field]
             elif field in {"source_turn_id", "session_id"} and isinstance(fact.get(field), str):
                 try:
@@ -197,6 +211,9 @@ def _open_episode_items(episodes: list[dict], kind: str) -> list[str]:
 
 def _mask_context(value: Any, path: tuple[str, ...] = ()) -> Any:
     if isinstance(value, str):
+        if (path and path[0] in {'customer_facts', 'sales_history'}
+                and path[-1] == 'source' and _uuid_fact_source(value)):
+            return value
         if (path in {('history', '[]', 'source_turn_id'),
                      ('episodes', '[]', 'session_id'), ('current_episode', 'session_id')}
                 or path and path[0] in {'customer_facts', 'sales_history'}

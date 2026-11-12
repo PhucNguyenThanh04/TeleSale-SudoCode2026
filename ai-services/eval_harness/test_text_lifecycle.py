@@ -88,6 +88,28 @@ def test_unknown_delivery_mode_fails_before_runtime_access():
             delivery_mode='unknown'))
 
 
+def test_trace_includes_actual_preparation_reads_only_on_first_consumer():
+    quote = {'name': 'pricing.get_quote', 'args': {'sku': 'SKU-AP-PRO', 'on': '2026-10-22'},
+             'result': {'sku': 'SKU-AP-PRO', 'final_price_vnd': 7690000, 'applied_promos': []}}
+    class Runtime:
+        count = 0
+        async def prepare_session(self, request):
+            return SimpleNamespace(call_brief=None)
+        async def run(self, request):
+            self.count += 1
+            return SimpleNamespace(agent_text='Dạ.', call_brief=None)
+        def state_for(self, request):
+            return {'profile': {}, 'tool_calls': [], 'tool_count': 0,
+                    'prepared_tool_calls': [quote] if self.count == 1 else [],
+                    'session_tool_calls': [quote]}
+    runtime = Runtime()
+    rows = asyncio.run(run_scenario_call(runtime, 'X', 'call_3',
+        {'customer_turns': ['Báo giá hiện tại giúp anh.', 'Cảm ơn.']},
+        date(2026, 10, 22), '0984726714', delivery_mode='text'))
+    assert rows[0]['tool_calls'] == [quote]
+    assert rows[1]['tool_calls'] == []
+
+
 def test_measurement_metadata_distinguishes_chat_from_voice():
     from eval_harness.benchmark_runner import conversation_measurement
     chat = conversation_measurement('text')

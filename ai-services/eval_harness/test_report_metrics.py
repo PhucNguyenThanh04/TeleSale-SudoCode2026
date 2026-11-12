@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import pytest
 
 
@@ -67,15 +68,18 @@ def test_no_quality_table_for_incomplete_run(tmp_path, status):
         render_run(tmp_path)
 
 
-def test_report_explains_quote_supported_mismatches_without_rewriting_btc_score(tmp_path):
+@pytest.mark.parametrize('sku_label', ['args_match', 'facts_established'])
+def test_report_explains_quote_supported_mismatches_without_rewriting_btc_score(tmp_path, sku_label):
     from eval_harness.report_metrics import render_run
     from eval_harness.test_claim_evidence import row
     (tmp_path / 'run.json').write_text(json.dumps({'status': 'validated', 'score': 'btc_score.json',
         'traces': {'full': 'full.jsonl'}}))
     scenarios = tmp_path / 'scenarios'
     scenarios.mkdir()
+    expected = {'success_if': {'args_match': {'sku': 'SKU-Y'}}} if sku_label == 'args_match' else {
+        'facts_established': {'product_advised': 'SKU-Y'}}
     (scenarios / 'case.json').write_text(json.dumps({'scenario_id': 'CASE', 'calls': {
-        'call_1': {}, 'call_2': {'days_later': 3, 'success_if': {'args_match': {'sku': 'SKU-Y'}}}}}))
+        'call_1': {}, 'call_2': {'days_later': 3, **expected}}}))
     rows = [{**row(field, value), 'scenario_id': 'CASE', 'call': 'call_2', 'turn': n}
             for n, (field, value) in enumerate([('price_vnd', 2990000), ('promo_active', True)], 1)]
     (tmp_path / 'full.jsonl').write_text(''.join(json.dumps(r) + '\n' for r in rows))
@@ -93,3 +97,34 @@ def test_report_explains_quote_supported_mismatches_without_rewriting_btc_score(
     assert 'promo_active' in output and 'lệch ground truth' in output
     assert 'không tự chứng minh agent bịa' in output
     assert all(p.read_bytes() == content for p, content in before.items())
+
+
+@pytest.mark.parametrize('source_scenario,source_call,source_turn,supported', [
+    ('CASE', 'call_2', 1, True), ('OTHER', 'call_2', 1, False),
+    ('CASE', 'call_1', 1, False), ('CASE', 'call_2', 3, False)])
+def test_report_quote_context_stays_in_same_call_and_before_claim(tmp_path, source_scenario,
+                                                               source_call, source_turn, supported):
+    from eval_harness.report_metrics import _claim_mismatch_notes
+    from eval_harness.test_claim_evidence import row
+    (tmp_path / 'scenarios').mkdir()
+    (tmp_path / 'scenarios/case.json').write_text(json.dumps({'scenario_id': 'CASE',
+        'calls': {'call_2': {'call_date': '2026-10-18'}}}))
+    original = {**row(), 'scenario_id': source_scenario, 'call': source_call, 'turn': source_turn}
+    repeated = {**row(), 'scenario_id': 'CASE', 'call': 'call_2', 'turn': 2, 'tool_calls': []}
+    (tmp_path / 'full.jsonl').write_text('\n'.join(json.dumps(r) for r in [original, repeated]))
+    score = {'system': {'hallucination_rate': {'examples': [{'scenario': 'CASE', 'call': 'call_2',
+        'turn': 2, 'field': 'price_vnd', 'claimed': 2990000, 'truth': 4000000}]}}}
+    notes = _claim_mismatch_notes(tmp_path, {'traces': {'full': 'full.jsonl'}}, score)
+    assert ('khớp quote SKU-X' in '\n'.join(notes)) is supported
+
+
+def test_saved_t14_multi_product_price_does_not_prove_wrong_selection():
+    from eval_harness.report_metrics import _claim_mismatch_notes
+    directory = Path(__file__).resolve().parent / 'results/knowledge-k0-current/20261111T170857Z-b5ed4233'
+    run = json.loads((directory / 'run.json').read_text())
+    score = json.loads((directory / 'btc_score.json').read_text())
+    before = (directory / 'btc_score.json').read_bytes()
+    notes = _claim_mismatch_notes(directory, run, score)
+    assert notes and all('nhiều sản phẩm' in note for note in notes)
+    assert all('vẫn giữ lỗi chọn sản phẩm' not in note for note in notes)
+    assert (directory / 'btc_score.json').read_bytes() == before

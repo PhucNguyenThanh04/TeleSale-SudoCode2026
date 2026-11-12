@@ -7,15 +7,12 @@ from app.voice_main import create_app
 
 
 def app_config(**changes):
-    return VoiceSettings(_env_file=None, knowledge_review_token='review-access',
-                         knowledge_reviewer_id='reviewer-1', **changes)
+    return VoiceSettings(_env_file=None, knowledge_reviewer_id='reviewer-1', **changes)
 
 
-def test_disabled_or_unauthenticated_review_never_calls_upstream():
-    with TestClient(create_app(VoiceSettings(_env_file=None))) as client:
+def test_missing_reviewer_never_calls_upstream():
+    with TestClient(create_app(VoiceSettings(_env_file=None, knowledge_reviewer_id=''))) as client:
         assert client.get('/api/knowledge/gaps').status_code == 503
-    with TestClient(create_app(app_config())) as client:
-        assert client.get('/api/knowledge/gaps').status_code == 401
         assert client.get('/knowledge').status_code == 200
 
 
@@ -28,7 +25,7 @@ def test_proxy_binds_actor_and_keeps_internal_token_off_browser():
     with TestClient(create_app(app_config())) as client:
         client.app.state.ai_http = httpx.AsyncClient(base_url='http://ai', headers={
             'X-AI-Internal-Token': 'server-secret'}, transport=httpx.MockTransport(handler))
-        headers = {'Authorization': 'Bearer review-access'}
+        headers = {}
         response = client.get('/api/knowledge/revisions?gap_id=G1&offset=30&actor_id=attacker', headers=headers)
         assert response.status_code == 200
         assert response.headers['cache-control'] == 'no-store'
@@ -53,7 +50,7 @@ def test_upstream_errors_preserve_actionable_status_without_raw_content():
     with TestClient(create_app(app_config())) as client:
         client.app.state.ai_http = httpx.AsyncClient(base_url='http://ai', transport=httpx.MockTransport(
             lambda request: httpx.Response(409, text='server-secret private body')))
-        response = client.get('/api/knowledge/gaps', headers={'Authorization': 'Bearer review-access'})
+        response = client.get('/api/knowledge/gaps')
         assert response.status_code == 409
         assert 'server-secret' not in response.text
 
@@ -63,16 +60,19 @@ def test_proxy_timeout_and_command_allowlist():
         raise httpx.ReadTimeout('private server-secret', request=request)
     with TestClient(create_app(app_config())) as client:
         client.app.state.ai_http = httpx.AsyncClient(base_url='http://ai', transport=httpx.MockTransport(handler))
-        headers = {'Authorization': 'Bearer review-access'}
-        assert client.post('/api/knowledge/commands', json={'action':'approve','payload':{}}).status_code == 401
+        headers = {}
         assert client.post('/api/knowledge/commands', headers=headers, json={'action':'grant','payload':{}}).status_code == 422
         response = client.get('/api/knowledge/gaps', headers=headers)
         assert response.status_code == 502 and 'server-secret' not in response.text
 
 
-def test_review_access_cannot_reuse_the_internal_ai_secret():
-    with TestClient(create_app(app_config(ai_internal_token='review-access'))) as client:
-        client.app.state.ai_http = httpx.AsyncClient(base_url='http://ai', transport=httpx.MockTransport(
-            lambda request: httpx.Response(200, json={'items': []})))
-        assert client.get('/api/knowledge/gaps', headers={
-            'Authorization': 'Bearer review-access'}).status_code == 503
+def test_default_reviewer_access_needs_no_browser_token():
+    with TestClient(create_app(VoiceSettings(_env_file=None, ai_internal_token='server-secret'))) as client:
+        def handler(request):
+            assert request.url.params['actor_id'] == 'local-reviewer'
+            assert request.headers['X-AI-Internal-Token'] == 'server-secret'
+            assert 'Authorization' not in request.headers
+            return httpx.Response(200, json={'items': [], 'total': 0})
+        client.app.state.ai_http = httpx.AsyncClient(base_url='http://ai',
+            headers={'X-AI-Internal-Token': 'server-secret'}, transport=httpx.MockTransport(handler))
+        assert client.get('/api/knowledge/gaps').status_code == 200

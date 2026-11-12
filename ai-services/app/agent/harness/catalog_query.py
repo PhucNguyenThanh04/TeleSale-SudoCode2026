@@ -6,7 +6,7 @@ from app.mcp_servers.mcp_shared.commerce_rules import _search_text
 
 
 _EXPLICIT_MODEL = re.compile(
-    r'\b(?:(?i:sku-[a-z0-9-]+)|[A-Z][a-z]+[A-Z][A-Za-z0-9]*|'
+    r'\b(?:[A-Z][A-Za-z]+&[A-Z][A-Za-z]+|(?i:sku-[a-z0-9-]+)|[A-Z][a-z]+[A-Z][A-Za-z0-9]*|'
     r'[A-Za-z][A-Za-z-]*\d+[A-Za-z0-9-]*|[A-Z][a-z]{2,}(?=\s+\d+\b))'
     r'(?:\s+(?:[A-Z][A-Za-z0-9-]*|\d+|(?i:pro|lite|mini|max|plus|ultra))){0,3}(?![\w-])')
 

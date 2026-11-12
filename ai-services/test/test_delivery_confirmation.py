@@ -14,7 +14,7 @@ from app.agent.implementations.business_agent import BusinessTools
 from app.mcp_servers.mcp_shared.consultation import purchase_block_reason
 
 
-def delivery_state(text='Mua Aster giá 900.000đ, giao trong tuần này nhé.'):
+def delivery_state(text='Mua Aster giá 900.000đ, bắt buộc giao trong tuần này.'):
     s = state(text)
     s['request'] = s['request'].model_copy(update={'on': date(2026, 10, 18)})
     s['session_tool_calls'] = [catalog(), quote(), stock()]
@@ -65,8 +65,8 @@ def test_blocked_delivery_does_not_create_generic_handoff():
         s.update(asyncio.run(nodes.verify_agent(s)))
     assert writes == []
     assert not s.get('needs_handoff')
-    assert '2026-10-22' not in s['agent_text']
-    assert 'chưa' in s['agent_text'] and 'kiểm tra' in s['agent_text']
+    assert '2026-10-22' in s['agent_text'] and 'dự kiến' in s['agent_text']
+    assert 'chưa xác nhận' in s['agent_text'] and 'không kèm yêu cầu giao đúng hạn' in s['agent_text']
     assert '?' in s['agent_text']
 
 

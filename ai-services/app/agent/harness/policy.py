@@ -201,6 +201,8 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
         if state.get("identity_status") != "known" or not state.get("customer_phone"):
             return None
         requested_id = args.get("order_id")
+        if name == 'order.status' and not requested_id and len(owned_orders) == 1:
+            requested_id = args['order_id'] = next(iter(owned_orders))
         if requested_id:
             if requested_id not in owned_orders:
                 return None
@@ -212,6 +214,11 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
     if name == "order.create":
         if state.get("identity_status") != "known":
             return None
+        if isinstance(args.get('payment'), str):
+            payment = ' '.join(args['payment'].casefold().replace('_', ' ').split())
+            aliases = {'cod': 'COD', 'bank': 'bank', 'bank transfer': 'bank',
+                       'momo': 'momo', 'zalopay': 'zalopay'}
+            args['payment'] = aliases.get(payment, args['payment'])
         if basket_order:
             from app.mcp_servers.mcp_order.schemas import CreateInput
             from app.mcp_servers.mcp_shared.basket import basket_block_reason

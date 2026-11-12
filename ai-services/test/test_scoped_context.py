@@ -85,7 +85,7 @@ class ScopedContextTest(unittest.IsolatedAsyncioTestCase):
         ]
         self.assertEqual(_open_episode_items(episodes, "question"), [])
 
-    async def test_prior_open_items_only_on_first_turn(self):
+    async def test_prior_open_items_remain_in_brief_without_repeating_refresh(self):
         class EpisodicMemory(Memory):
             def __init__(self, turn_count):
                 self.turn_count = turn_count
@@ -116,7 +116,8 @@ class ScopedContextTest(unittest.IsolatedAsyncioTestCase):
         next_tools = Tools()
         later = await load_context(state, EpisodicMemory(1), next_tools,
                                    lambda: datetime(2026, 10, 15, tzinfo=timezone.utc))
-        self.assertIsNone(later["call_brief"])
+        self.assertEqual(later["call_brief"]["open_questions"], ["Có giao cuối tuần?"])
+        self.assertEqual(later["call_brief"]["open_blockers"], ["Cần hỏi người thân"])
         self.assertEqual(next_tools.calls, [])
 
     async def test_late_identity_emits_brief_when_no_owned_episode_exists(self):

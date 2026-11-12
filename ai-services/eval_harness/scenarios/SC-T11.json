@@ -1,0 +1,57 @@
+{
+  "scenario_id": "SC-T11",
+  "level": "M1",
+  "persona": "impatient_returner",
+  "hard_case": null,
+  "customer_phone": "0965384535",
+  "customer_name": "Tâm",
+  "honorific": "chị",
+  "notes": "Nguồn speech T11. Dùng khách C032 (Tâm) và đơn OD301177 / máy hút sữa Spectra S1 có sẵn trong CRM BTC, đặt ngày 03/10/2026, trạng thái shipping, tracking GHN7781234. Lời khách chưa nhận tin nhắn không có nghĩa hệ thống không có tracking. Không tự gán giao thành công hoặc tạo mã vận đơn.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-27",
+      "customer_goal": "Tra cứu đơn giao chậm",
+      "customer_turns": [
+        "Alo em, chị đặt máy hút sữa ngày 03/10/2026 mà giờ chưa thấy giao, em kiểm tra giúp chị mã đơn OD301177 nhé.",
+        "Chị chưa nhận được mã vận đơn, em báo giúp chị mã vận đơn, đơn vị giao hàng và quy định giao lại nếu lúc shipper gọi chị vắng nhà nhé."
+      ],
+      "facts_established": {
+        "order_id": "OD301177"
+      },
+      "success_if": {
+        "tool_called": "order.status",
+        "args_match": {
+          "order_id": "OD301177"
+        }
+      },
+      "ground_truth_facts": {
+        "order_status": "shipping"
+      },
+      "channel_identity": "0965384535",
+      "days_later": 0
+    },
+    "call_2": {
+      "channel": "hotline",
+      "channel_identity": "0965384535",
+      "call_date": "2026-10-29",
+      "customer_turns": [
+        "Chị hỏi tiếp đơn máy hút sữa bị giao chậm hôm trước, em kiểm tra xem đơn đó hôm nay đang ở trạng thái nào rồi?",
+        "Em báo lại giúp chị trạng thái vận chuyển hiện tại của đơn cũ đó trên hệ thống nhé."
+      ],
+      "must_carry_over": [
+        "order_id"
+      ],
+      "must_not_ask": [
+        "order_id"
+      ],
+      "success_if": {
+        "tool_called": "order.status"
+      },
+      "ground_truth_facts": {
+        "order_status": "shipping"
+      },
+      "days_later": 2
+    }
+  }
+}

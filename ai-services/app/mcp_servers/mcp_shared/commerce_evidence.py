@@ -46,7 +46,7 @@ def current_customer_address(state: dict) -> str | None:
              if isinstance(c, dict) and c.get('name') in {'pricing.get_quote', 'pricing.quote_order'} and _bound(c, state)]
     for tid, text in reversed(speech):
         folded = _search_text(text)
-        if not re.search(r'\bo\b|dia chi|giao den', folded):
+        if not re.search(r'\bo\b|dia chi|(?:giao|ship) (?:den|ve)', folded):
             continue
         # An unresolved change/revocation cannot revive the previous address.
         if re.search(r'\b(?:khong|chua)\s+(?:con\s+)?(?:o|giao)|\bneu\b|\bdoi\s+(?:dia chi|noi o|khu vuc)', folded):
@@ -60,7 +60,7 @@ def current_customer_address(state: dict) -> str | None:
             if (isinstance(address, str) and address.strip() and '[' not in address
                     and re.search(r'(?<!\w)' + re.escape(_search_text(address)) + r'(?!\w)', folded)):
                 return address
-        if re.search(r'dia chi|giao den|\b(?:anh|chi|toi|minh|a|e|em)\s+o\b', folded):
+        if re.search(r'dia chi|(?:giao|ship) (?:den|ve)|\b(?:anh|chi|toi|minh|a|e|em)\s+o\b', folded):
             return None  # A newer location without matching proof invalidates the old one.
     return None
 

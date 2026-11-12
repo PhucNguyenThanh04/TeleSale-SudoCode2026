@@ -1,0 +1,119 @@
+{
+  "scenario_id": "SC-T21",
+  "level": "M1",
+  "persona": "price_hunter",
+  "hard_case": "so_gia_va_khuyen_mai_het_han",
+  "customer_phone": "0901304118",
+  "customer_name": "Yến",
+  "honorific": "chị",
+  "notes": "Nguồn speech T21. AIR-OCT hết hạn trước phiên 2. Báo lại giá theo ngày gọi và không xác nhận giá bên khác. Call 3 follows T21-S03 when this scenario has a justified third contact; see speech dialogue source. Định danh đối chiếu CRM BTC gốc: C021 (Yến); không dùng CRM bổ sung.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-28",
+      "customer_goal": "So sánh máy lọc và xử lý giá bên khác",
+      "customer_turns": [
+        "Chào em, chị đang phân vân máy lọc không khí Samsung AX40 và AirPure Pro cho phòng khách 40 mét vuông, em kiểm tra thông số và báo giá hai mẫu này giúp chị nhé.",
+        "Chỗ khác chị thấy bán mẫu máy lọc không khí kia giá 5,9 triệu đồng, còn mẫu AirPure Pro bên em hiện giá sau ưu đãi tháng 10 là bao nhiêu và còn hàng không em?",
+        "Ok để chị cân nhắc thêm rồi báo em sau nhé."
+      ],
+      "facts_established": {
+        "room_area_m2": 40,
+        "competitor_price_vnd": 5900000,
+        "product_advised": "SKU-AP-PRO"
+      },
+      "success_if": {
+        "tool_called": "pricing.get_quote",
+        "args_match": {
+          "sku": "SKU-AP-PRO"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {
+        "promo_AIR-OCT_active": true
+      },
+      "channel_identity": "0901304118",
+      "expected_outcome": "hen_goi_lai",
+      "days_later": 0
+    },
+    "call_2": {
+      "channel": "zalo_oa",
+      "channel_identity": "zalo_yến83",
+      "call_date": "2026-11-01",
+      "customer_turns": [
+        "Chị nhắn lại vụ máy lọc không khí AirPure Pro cho phòng khách hôm trước, mã giảm giá tháng 10 hôm nay ngày 1/11 còn dùng được không em?",
+        "Em kiểm tra và báo giá hiện tại hôm nay của mẫu AirPure Pro giúp chị nhé, chị chỉ hỏi giá trước chứ chưa đặt ngay."
+      ],
+      "must_carry_over": [
+        "room_area_m2"
+      ],
+      "must_not_ask": [
+        "room_area_m2"
+      ],
+      "success_if": {
+        "tool_called": "pricing.get_quote",
+        "args_match": {
+          "sku": "SKU-AP-PRO"
+        },
+        "forbidden_claims": [
+          {
+            "field": "promo_AIR-OCT_active",
+            "value": true
+          }
+        ],
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {
+        "price_vnd": 7990000,
+        "in_stock": true,
+        "promo_AIR-OCT_active": false
+      },
+      "days_later": 4
+    },
+    "call_3": {
+      "channel": "hotline",
+      "channel_identity": "0901304118",
+      "call_date": "2026-11-02",
+      "customer_goal": "Chủ tài khoản xác nhận AirPure Pro sau khi chồng hỏi thông tin ở cuộc gọi trước; kiểm giá/tồn rồi tạo đúng một đơn COD.",
+      "customer_turns": [
+        "Alo em, chị gọi lại về mẫu máy lọc không khí AirPure Pro đã trao đổi hôm qua, em kiểm tra lại tồn kho và xác nhận lại giá bán hôm nay giúp chị nhé.",
+        "Ok chị đồng ý mức giá 7.990.000 đồng đó, em lên đơn cho chị 1 chiếc máy lọc không khí đang trao đổi thanh toán COD nhé."
+      ],
+      "must_carry_over": [
+        "room_area_m2",
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "room_area_m2",
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-AP-PRO",
+          "payment": "COD",
+          "qty": 1,
+          "price_vnd": 7990000
+        }
+      },
+      "ground_truth_facts": {
+        "promo_AIR-OCT_active": false,
+        "price_vnd": 7990000,
+        "in_stock": true
+      },
+      "expected_outcome": "chot_don",
+      "speech_dialogue_ref": "T21-S03",
+      "days_later": 1
+    }
+  }
+}

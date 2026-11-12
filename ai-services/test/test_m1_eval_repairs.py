@@ -100,9 +100,8 @@ def test_quote_exposes_same_delivery_estimate_as_order(on, address, expected):
     assert result.get('estimated_delivery') == expected == _delivery(on, address)
 
 
-@pytest.mark.parametrize('estimated,allowed', [('2026-11-07', True), ('2026-11-09', False),
-    (None, False), ('invalid', False), ('2026-11-04', False)])
-def test_week_delivery_constraint_requires_matching_fresh_estimate(estimated, allowed):
+@pytest.mark.parametrize('estimated', ['2026-11-07', '2026-11-09', None, 'invalid', '2026-11-04'])
+def test_week_delivery_preference_does_not_require_delivery_estimate(estimated):
     from test_commerce_evidence import catalog, quote, stock
     from app.mcp_servers.mcp_shared.consultation import purchase_block_reason
     s = state('Mua Aster giá 900.000đ, giao trong tuần này nhé.')
@@ -110,7 +109,7 @@ def test_week_delivery_constraint_requires_matching_fresh_estimate(estimated, al
     q['result']['estimated_delivery'] = estimated
     s['tool_calls'] = [catalog(), q, stock()]
     reason = purchase_block_reason(s, {'sku': 'SKU-ASTER', 'qty': 1, 'price_vnd': 900000})
-    assert reason == (None if allowed else 'delivery_confirmation_required')
+    assert reason is None
 
 
 def test_estimate_does_not_authorize_extra_delivery_conditions_or_wrong_address():
@@ -210,7 +209,7 @@ def test_unmet_delivery_deadline_offers_sourced_date_without_creating_order():
     from test_commerce_evidence import catalog, quote, stock
     from app.agent.harness.session_nodes import safe_consultation_reply
     from app.agent.guardrails.checks import check_answer
-    s = state('Mua Aster giá 900.000đ, giao trong tuần này nhé.')
+    s = state('Mua Aster giá 900.000đ, bắt buộc giao trong tuần này.')
     q = quote()
     q['result']['estimated_delivery'] = '2026-11-09'
     s['tool_calls'] = [catalog(), q, stock()]

@@ -277,3 +277,71 @@ def test_history_offer_keeps_historical_benefits_not_current_quote_terms():
         'result':{'sku':'SKU-ASTER','final_price_vnd':900000,'applied_promos':[gift]}}]
     s['history']=[{'customer':'Xem Aster.','agent':'Aster giá 900.000đ, có quà tặng kèm.'}]
     assert purchase_block_reason(s,{'sku':'SKU-ASTER','price_vnd':900000})=='offer_confirmation_required'
+
+
+def test_k0_short_brand_choice_matches_catalog_without_selecting_a_bundle():
+    from app.mcp_servers.mcp_shared.consultation import _mentions
+    items = {
+        'SKU-JK-WND': {'name': 'Áo khoác gió Windbreak', 'brand': 'Windbreak', 'variants': []},
+        'SKU-PUMP': {'name': 'Máy hút sữa Spectra S1', 'brand': 'Spectra', 'attributes': {}},
+        'SKU-COMBO': {'name': 'Combo Spectra S1 và máy hâm', 'brand': 'Spectra',
+                      'attributes': {'bundle_of': ['SKU-PUMP', 'SKU-WARMER']}},
+    }
+    assert _mentions('Anh mua áo Windbreak size M màu navy', items) == {'SKU-JK-WND'}
+    assert _mentions('Chị lấy Spectra, trả Momo', items) == {'SKU-PUMP'}
+    assert _mentions('Chị lấy Combo Spectra S1 và máy hâm', items) == {'SKU-COMBO'}
+
+
+def test_k0_order_wording_is_purchase_but_not_a_negated_or_hypothetical_order():
+    from app.mcp_servers.mcp_shared.consultation import _buy
+    assert _buy('ok, em lên order COD cho chị nha, thanks em')
+    assert _buy('Em tạo đơn giúp tôi nhé')
+    assert not _buy('Đừng tạo đơn cho tôi')
+    assert not _buy('Chưa lên order nhé')
+    assert not _buy('Nếu tạo đơn thì sao?')
+
+
+def test_k0_polite_acceptance_requires_an_actual_offer_and_confirmation_question():
+    from app.mcp_servers.mcp_shared.consultation import _approval
+    from app.schemas.consultation import AcceptedOffer
+    offer = AcceptedOffer(sku='SKU-TEST', qty=1, price_vnd=1890000, on='2026-10-20')
+    question = 'Anh xác nhận chốt đơn này để em lên đơn COD cho mình nhé?'
+    assert _approval('được rồi, cảm ơn em', question, 'SKU-TEST', offer)
+    assert not _approval('cảm ơn em', question, 'SKU-TEST', offer)
+    assert not _approval('được rồi, cảm ơn em', 'Dạ chào anh.', 'SKU-TEST', offer)
+    assert not _approval('được rồi, cảm ơn em', question, 'SKU-OTHER', offer)
+    assert not _approval('được rồi nhưng chưa đặt nhé', question, 'SKU-TEST', offer)
+
+
+def test_k0_price_and_stock_sentence_remains_a_presented_offer_for_polite_acceptance():
+    from test_commerce_evidence import state, catalog, quote, stock, bind_history_observations
+    from app.mcp_servers.mcp_shared.consultation import derive_consultation, purchase_arguments, purchase_block_reason
+    s = state('được rồi, cảm ơn em')
+    s['session_tool_calls'] = [catalog(), quote(), stock()]
+    s['history'] = [{'customer': 'Tôi lấy Aster, thanh toán COD.',
+                     'agent': 'Aster hiện có sẵn hàng với giá 900.000đ. Anh xác nhận để em lên đơn nhé?'}]
+    bind_history_observations(s)
+    d = derive_consultation(s)
+    assert d.purchase_intent and d.snapshot.accepted_offer is not None
+    args = purchase_arguments(s)
+    assert args and purchase_block_reason(s, args) is None
+    s['session_tool_calls'][-1]['result']['in_stock'] = False
+    assert derive_consultation(s).snapshot.accepted_offer is None
+
+
+def test_k0_lookup_of_a_past_purchase_does_not_grant_new_purchase_permission():
+    from app.mcp_servers.mcp_shared.consultation import _buy
+    assert not _buy('Tôi hỏi tình trạng đơn đã mua Aster hôm trước, tra giúp tôi.')
+    assert _buy('Tra đơn cũ giúp tôi, rồi lên đơn mua thêm một Aster.')
+
+
+def test_k0_parent_model_name_does_not_become_an_accessory_short_name():
+    from app.mcp_servers.mcp_shared.consultation import _mentions
+    from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
+    item = {'sku': 'SKU-FILTER', 'name': 'Màng lọc thay thế AirPure Pro',
+            'category': 'gia-dung/phu-kien', 'attributes': {}, 'variants': []}
+    calls = [{'name': 'catalog.search', 'result': {'items': [item]}}]
+    assert _mentions('Anh vẫn hỏi máy AirPure Pro', {'SKU-FILTER': item}) == set()
+    assert resolve_claim_skus('Anh vẫn hỏi máy AirPure Pro', calls) == set()
+    assert _mentions('Anh hỏi màng lọc AirPure Pro', {'SKU-FILTER': item}) == {'SKU-FILTER'}
+    assert resolve_claim_skus('Anh hỏi màng lọc AirPure Pro', calls) == {'SKU-FILTER'}

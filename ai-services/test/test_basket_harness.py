@@ -45,6 +45,19 @@ def test_customer_can_accept_delivered_basket_without_repeating_prices():
     assert gateway.invoke_trusted.await_args.args[1]['lines'] == args()['lines']
 
 
+@pytest.mark.parametrize('timing,allowed', [
+    ('giao trong tuần này nhé', True), ('bắt buộc giao trong tuần này', False)])
+def test_basket_delivery_preference_and_mandatory_deadline(timing, allowed):
+    current = basket_state('Đồng ý mua cả hai máy, chuyển khoản, ' + timing + '.')
+    result, gateway = invoke(current)
+    assert (result.get('status') == 'created') is allowed
+    if not allowed:
+        from app.mcp_servers.mcp_shared.basket import basket_block_reason
+        assert basket_block_reason(current, args()) == 'delivery_confirmation_required'
+        assert result.get('error')
+        assert gateway.invoke_trusted.await_count == 0
+
+
 @pytest.mark.parametrize('change', ['unheard', 'no_consent', 'hypothetical', 'revoke',
     'quantity', 'price', 'stock', 'day', 'owner', 'address', 'failed_refresh', 'terms', 'shipping'])
 def test_changed_or_unconfirmed_basket_never_writes(change):
@@ -296,7 +309,8 @@ def test_basket_respects_customer_transaction_and_product_constraints(condition)
 
 @pytest.mark.parametrize('budget,allowed', [
     ('tối đa 1 triệu mỗi máy', True), ('tối đa 1 triệu tổng cả đơn', False),
-    ('ngân sách 2 triệu', False), ('tối đa 0đ tổng cả đơn', False)])
+    ('ngân sách 2 triệu', True), ('ngân sách 1 triệu', False),
+    ('tối đa 0đ tổng cả đơn', False)])
 def test_basket_distinguishes_unit_total_and_unknown_budget(budget, allowed):
     current = basket_state(f'Đồng ý mua cả hai máy, {budget}, chuyển khoản nhé.')
     result, gateway = invoke(current)

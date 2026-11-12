@@ -46,10 +46,23 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
     items = [item for c in successful if c.get("name") == "catalog.search"
              for item in c["result"].get("items", []) if isinstance(item, dict)]
     quotes = [c for c in successful if c.get("name") == "pricing.get_quote"]
+    # A complete attributed policy section explains general conditions; it does
+    # not assert that a promotion has been applied to this customer's order.
+    from app.agent.guardrails.policy_grounding import policy_evidence_for_answer
+    normalize = lambda value: ' '.join(re.sub(r'[*`_]', '', value).split())
+    policy_sections = []
+    if candidate.startswith('Theo thông tin chính sách đã kiểm tra:'):
+        policy_sections = [normalize(row['content'].split('\n\n', 1)[-1])
+            for row in policy_evidence_for_answer(candidate, successful)]
+        policy_sections = [section for section in policy_sections if section and section in normalize(candidate)]
     for clause in re.split(r"\.(?!\d)|[;!\n]|\bnhưng\b|,\s*(?=(?:hôm nay|hiện tại)\b)", candidate):
+        if normalize(clause) and any(normalize(clause) in section for section in policy_sections):
+            continue
         folded = _fold(clause)
         # Product benefits such as "giảm bụi" / "tăng chất lượng" are not offers.
         commercial = _fold(re.sub(r'\btăng\b', '', clause, flags=re.IGNORECASE))
+        # Biểu mẫu (form) is not biếu (a promotional gift) after accent folding.
+        commercial = re.sub(r'\bbieu mau\b', '', commercial)
         commercial = re.sub(r'\bgiam\s+(?:bui|min|on|mui|vi khuan)\b', '', commercial)
         if "?" in clause or re.search(r"\b(?:lan truoc|truoc day)\b", folded) and not re.search(r"\b(?:hien|hom nay|dang)\b", folded):
             continue

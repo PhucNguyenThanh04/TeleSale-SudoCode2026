@@ -116,7 +116,13 @@ def derive_presented_offers(*, customer_id: str | None, session_id: str,
             args, result = call.get('args', {}), call['result']
             if result.get('sku', sku) != sku or args.get('on') != str(turn.get('on', '')):
                 continue
-            if check_answer(clause, [*catalogs, call], focus_sku=sku)[1] is not None:
+            stock = next((c for c in reversed(available)
+                          if c.get('name') == 'inventory.check'
+                          and c.get('args', {}).get('sku') == sku), None)
+            evidence = [*catalogs, call]
+            if stock and stock.get('args', {}).get('on') == str(turn.get('on', '')):
+                evidence.append(stock)
+            if check_answer(clause, evidence, focus_sku=sku)[1] is not None:
                 continue
             parent = next((p for p, i in items.items() if p == sku or any(
                 v.get('variant_sku') == sku for v in i.get('variants', []))), None)

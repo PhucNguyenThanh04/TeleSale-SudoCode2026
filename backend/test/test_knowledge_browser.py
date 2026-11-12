@@ -75,8 +75,7 @@ def review_site():
         if item_id:items=[r for r in items if r['id']==item_id]
         offset=int(request.url.params.get('offset',0)); limit=int(request.url.params.get('limit',30))
         return httpx.Response(200,json={'items':deepcopy(items[offset:offset+limit]),'total':len(items),'active_release_id':state['active']})
-    app=create_app(VoiceSettings(_env_file=None,knowledge_review_token='review-access',
-        knowledge_reviewer_id='reviewer-1',ai_internal_token='server-secret'))
+    app=create_app(VoiceSettings(_env_file=None,knowledge_reviewer_id='reviewer-1',ai_internal_token='server-secret'))
     original=app.router.lifespan_context
     @asynccontextmanager
     async def lifespan(app):
@@ -98,7 +97,7 @@ def open_review(browser,url):
     command,evaluate=browser
     command('Page.enable'); command('Emulation.setDeviceMetricsOverride',width=1440,height=1000,deviceScaleFactor=1,mobile=False); command('Page.navigate',url=url)
     deadline=time.monotonic()+8
-    while not evaluate("document.querySelector('#access-form button')?.disabled === false"):
+    while not evaluate("document.querySelector('#gap-count')?.textContent.includes('gap') && !document.body.hasAttribute('aria-busy')"):
         assert time.monotonic()<deadline;time.sleep(.02)
     evaluate("""window.errors=[];
       addEventListener('error',e=>errors.push(e.message));
@@ -109,7 +108,6 @@ def open_review(browser,url):
       };poll();});
       window.clickText=text=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent===text);if(!b)throw Error('Missing '+text);b.click();};
       window.fill=(label,value)=>{const l=[...document.querySelectorAll('#detail label')].find(l=>l.firstChild.textContent===label);if(!l)throw Error('Missing '+label);l.querySelector('input,textarea,select').value=value;};
-      document.querySelector('#access-token').value='review-access';document.querySelector('#access-form').requestSubmit();
       waitFor(()=>!document.querySelector('#workspace').hidden);
     """)
     return command,evaluate
@@ -130,7 +128,62 @@ def approve(evaluate):
     """)
 
 
-def test_review_prepare_activate_rollback_and_logout(review_site,browser):
+def seed_bulk(data, count):
+    for number in range(count):
+        revision = {'id': f'R{number}', 'gap_id': 'G1', 'status': 'draft',
+            'content_hash': f'hash{number}', 'kind': 'faq', 'question': f'Đổi khi nào {number}?',
+            'answer': 'Cần còn nguyên tem.', 'source_ids': ['DT-01'], 'source_review_note': 'Đã đối chiếu.'}
+        data['revisions'].append(revision)
+        data['regression_cases'].append({'id': revision['id'], 'expected': {'answer': revision['answer']},
+            'variations': [revision['question']], 'approved': False})
+
+
+def test_bulk_approve_all_pages_requires_review_and_never_publishes(review_site, browser):
+    url, data, state = review_site
+    seed_bulk(data, 101)
+    data['revisions'].append({'id': 'R-approved', 'status': 'approved'})
+    _, evaluate = open_review(browser, url)
+    evaluate("clickText('Duyệt hết');waitFor(()=>document.querySelector('#detail').innerText.includes('101 bản nháp'))")
+    evaluate("clickText('Duyệt 101 bản nháp');waitFor(()=>!document.querySelector('#error').hidden)")
+    assert not state['commands']
+    evaluate("fill('Lý do duyệt hàng loạt','Đã đọc nguồn và test');clickText('Duyệt 101 bản nháp');waitFor(()=>!document.querySelector('#error').hidden)")
+    assert evaluate("document.querySelector('#error').innerText.includes('Cần xác nhận')")
+    assert not state['commands']
+    evaluate("fill('Lý do duyệt hàng loạt','Đã đối chiếu nguồn và test');document.querySelector('#detail input[type=checkbox]').checked=true;clickText('Duyệt 101 bản nháp');waitFor(()=>document.querySelector('#notice').innerText.includes('Đã duyệt 101/101'))")
+    assert len(state['commands']) == 101
+    assert all(c['action'] == 'approve' and c['payload']['approve_test'] for c in state['commands'])
+    assert not data['releases'] and state['active'] is None
+    evaluate("document.querySelector('#releases-tab').click();waitFor(()=>document.querySelector('#releases-view').innerText.includes('Chuẩn bị release'))")
+    assert evaluate("document.querySelectorAll('#releases-view input:checked').length") == 101
+    evaluate("clickText('Chuẩn bị release từ các bản đã chọn');waitFor(()=>!document.querySelector('#error').hidden)")
+    assert evaluate("document.querySelector('#error').innerText.includes('tối đa 100')")
+    assert not data['releases']
+
+
+def test_bulk_partial_failure_keeps_successes_and_reports_remaining(review_site, browser):
+    url, data, state = review_site
+    seed_bulk(data, 2)
+    _, evaluate = open_review(browser, url)
+    evaluate("clickText('Duyệt hết');waitFor(()=>document.querySelector('#detail').innerText.includes('2 bản nháp'))")
+    state['error'] = 409
+    evaluate("fill('Lý do duyệt hàng loạt','Đã đọc nguồn và test');document.querySelector('#detail input[type=checkbox]').checked=true;clickText('Duyệt 2 bản nháp');waitFor(()=>document.querySelector('#notice').innerText.includes('Đã duyệt 1/2'))")
+    assert [r['status'] for r in data['revisions']] == ['draft', 'approved']
+    assert evaluate("document.querySelector('#detail').innerText.includes('R0')")
+    assert not data['releases'] and state['active'] is None
+
+
+def test_bulk_skips_technical_rejected_and_approved_revisions(review_site, browser):
+    url, data, state = review_site
+    seed_bulk(data, 3)
+    data['revisions'][0]['gap_id'] = 'G2'
+    data['revisions'][1]['status'] = 'approved'
+    data['revisions'][2]['status'] = 'rejected'
+    _, evaluate = open_review(browser, url)
+    evaluate("clickText('Duyệt hết');waitFor(()=>document.querySelector('#notice').innerText.includes('Không có bản nháp'))")
+    assert not state['commands']
+
+
+def test_review_prepare_activate_rollback_without_login(review_site,browser):
     url,data,state=review_site;command,evaluate=open_review(browser,url)
     assert evaluate("document.querySelector('#gap-list img')===null")
     draft(evaluate)
@@ -154,8 +207,7 @@ def test_review_prepare_activate_rollback_and_logout(review_site,browser):
     evaluate("clickText('Khôi phục về release này');waitFor(()=>document.querySelector('#releases-view').innerText.includes('Đang hoạt động: K0'))")
     assert state['commands'][-1]['action']=='rollback_release' and state['commands'][-1]['payload']['expected_active_id']=='K1'
     assert evaluate("localStorage.length===0&&sessionStorage.length===0")
-    evaluate("document.querySelector('#logout').click()")
-    assert evaluate("document.querySelector('#workspace').hidden&&document.querySelector('#detail').textContent===''&&document.querySelector('#access-token').value===''")
+    assert evaluate("document.querySelector('#access-form')===null&&document.querySelector('#logout')===null")
     assert evaluate('errors')==[]
 
 

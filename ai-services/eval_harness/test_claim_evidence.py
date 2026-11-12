@@ -68,3 +68,31 @@ def test_projection_matching_quote_cannot_clear_wrong_price_in_speech():
     r = row()
     r['claims'][0]['text'] = 'Xiaomi giá 1.000.000đ.'
     assert explain_claim_mismatch(r, 'price_vnd', 2990000, on='2026-10-18')['status'] == 'unresolved'
+
+
+def test_prior_same_call_quote_can_explain_repeated_price_without_changing_btc_claim():
+    original = row()
+    repeated = {**original, 'tool_calls': []}
+    before = deepcopy(repeated)
+    assert explain_claim_mismatch(repeated, 'price_vnd', 2990000, on='2026-10-18',
+                                  context_calls=original['tool_calls']) == {
+        'status': 'supported_by_quote', 'sku': 'SKU-X'}
+    assert repeated == before
+
+
+@pytest.mark.parametrize('change', ['stale', 'failed_refresh', 'different_price', 'different_product'])
+def test_prior_quote_cannot_override_new_incompatible_evidence(change):
+    old = row()
+    repeated = {**old, 'tool_calls': []}
+    if change == 'stale':
+        old['tool_calls'][-1]['args']['on'] = '2026-10-17'
+    elif change == 'failed_refresh':
+        repeated['tool_calls'] = [{**deepcopy(old['tool_calls'][-1]), 'result': {'error': 'unavailable'}}]
+    elif change == 'different_price':
+        repeated['tool_calls'] = [deepcopy(old['tool_calls'][-1])]
+        repeated['tool_calls'][0]['result']['final_price_vnd'] = 3100000
+    else:
+        repeated['claims'] = [{'field': 'price_vnd', 'value': 2990000, 'text': 'Brio giá 2.990.000đ.'}]
+        repeated['tool_calls'] = [{'name': 'catalog.search', 'result': {'items': [{'sku': 'SKU-B', 'name': 'Brio'}]}}]
+    assert explain_claim_mismatch(repeated, 'price_vnd', 2990000, on='2026-10-18',
+                                  context_calls=old['tool_calls'])['status'] == 'unresolved'

@@ -1,0 +1,111 @@
+{
+  "scenario_id": "SC-T01",
+  "level": "M1",
+  "persona": "busy_office_worker",
+  "hard_case": null,
+  "customer_phone": "0911265844",
+  "customer_name": "Toàn",
+  "honorific": "anh",
+  "notes": "Nguồn speech T01. Tình huống tiếp nối hỏi người nhà. Bản harness đổi đoạn chốt phiên đầu thành cân nhắc rồi chốt phiên sau. Call 3 follows T01-S03 when this scenario has a justified third contact; see speech dialogue source. Call 3 dùng receipt đơn ở call 2; blocker hỏi vợ đã được giải quyết, không yêu cầu hồi sinh blocker. Định danh đối chiếu CRM BTC gốc: C037 (Toàn); không dùng CRM bổ sung.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-20",
+      "customer_goal": "Hỏi tồn kho, khuyến mãi và mua Xiaomi Smart 4 Pro",
+      "customer_turns": [
+        "Hi em, anh muốn hỏi máy lọc không khí Xiaomi Smart 4 Pro giá bao nhiêu và hiện còn hàng không em?",
+        "Có khuyến mãi hay quà tặng gì kèm theo không em, và phí ship về Quận 7 tính thế nào?",
+        "Ừ để anh hỏi ý kiến vợ rồi báo lại em sau nhé."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-XM-4P",
+        "blocker": "can hoi vo"
+      },
+      "success_if": {
+        "tool_called": "pricing.get_quote",
+        "args_match": {
+          "sku": "SKU-XM-4P"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {
+        "price_vnd": 5490000,
+        "in_stock": true
+      },
+      "channel_identity": "0911265844",
+      "expected_outcome": "hen_goi_lai",
+      "days_later": 0
+    },
+    "call_2": {
+      "channel": "zalo_oa",
+      "channel_identity": "zalo_toàn15",
+      "call_date": "2026-10-22",
+      "customer_turns": [
+        "Anh nhắn lại vụ máy lọc không khí hôm trước, vợ anh đồng ý rồi, em kiểm tra lại giá bán và tồn kho hôm nay giúp anh nhé.",
+        "Ok em lên đơn cho anh 1 chiếc theo phương thức thanh toán COD nhé."
+      ],
+      "must_carry_over": [
+        "product_advised",
+        "blocker"
+      ],
+      "must_not_ask": [
+        "product_advised",
+        "blocker"
+      ],
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-XM-4P",
+          "payment": "COD",
+          "qty": 1,
+          "price_vnd": 5490000
+        }
+      },
+      "ground_truth_facts": {
+        "price_vnd": 5490000,
+        "in_stock": true
+      },
+      "expected_outcome": "chot_don",
+      "days_later": 2
+    },
+    "call_3": {
+      "channel": "hotline",
+      "channel_identity": "0911265844",
+      "call_date": "2026-10-28",
+      "customer_goal": "Kiểm tra đơn Xiaomi Smart 4 Pro đã giao và xác minh phần quà tặng, không tạo đơn mới.",
+      "customer_turns": [
+        "Alo em, anh kiểm tra lại trạng thái đơn hàng máy lọc không khí hôm trước anh đặt hiện đang giao tới đâu rồi em?",
+        "Phần màng lọc tặng kèm theo chương trình khuyến mãi có nằm chung trong kiện hàng của đơn đó luôn không em?"
+      ],
+      "must_carry_over": [
+        "product_advised",
+        "order_id"
+      ],
+      "must_not_ask": [
+        "product_advised",
+        "order_id",
+        "blocker"
+      ],
+      "success_if": {
+        "tool_called": "order.status",
+        "args_match": {
+          "order_id": "generated_by_order.create"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {},
+      "speech_dialogue_ref": "T01-S03",
+      "days_later": 6
+    }
+  }
+}

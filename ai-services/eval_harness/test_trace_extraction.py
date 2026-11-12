@@ -174,3 +174,15 @@ def test_core_only_receives_masked_speech(monkeypatch):
     row = trace_line('r', 'full', 'X', 'call_1', 1, 'chào',
         'Chị Lan, giá 700.000đ; gọi 0901234567.', [], [], [], 1, None, 'clean', customer_name='Lan')
     assert seen == [row['agent_text']]
+
+
+def test_k0_no_order_found_statements_are_not_requests_for_an_order_id():
+    for text in (
+        'Dạ anh, hiện em chưa tìm thấy đơn hàng nào gắn với số điện thoại của mình trên hệ thống.',
+        'Em đã kiểm tra lại lịch sử nhưng hiện chưa thấy có đơn hàng nào được tạo thành công cho chị ạ.',
+    ):
+        assert extract_questions(text) == [], text
+    questions = extract_questions('Em chưa tìm thấy đơn hàng nào, anh cho em xin mã đơn để kiểm tra nhé.')
+    assert len(questions) == 1 and questions[0]['slot'] == 'order_id'
+    assert extract_questions('Em chưa tìm thấy đơn hàng nào, anh có thể gửi mã đơn nhé.')[0]['slot'] == 'order_id'
+    assert extract_questions('Anh muốn kiểm tra đơn hàng nào?')[0]['slot'] == 'order_id'

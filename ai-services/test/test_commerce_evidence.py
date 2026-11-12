@@ -1,5 +1,6 @@
 """Commercial evidence across turns; no BTC expected-answer inputs."""
 from copy import deepcopy
+import time
 from datetime import date
 from uuid import uuid4
 from app.schemas.agent import TextTurnRequest
@@ -8,7 +9,7 @@ from app.schemas.agent import TextTurnRequest
 def state(text='Lấy Aster, lên đơn giúp tôi.'):
     request=TextTurnRequest(client_msg_id=uuid4(),session_id=uuid4(),on=date(2026,11,5),
         text=text,channel='hotline',channel_identity='0900000000',input_mode='clean')
-    return {'request':request,'safe_text':text,'identity_status':'known','customer_id':'C-OFFLINE',
+    return {'request':request,'safe_text':text,'received_at_monotonic':time.perf_counter(),'identity_status':'known','customer_id':'C-OFFLINE',
         'customer_phone':'0900000000','session_tool_calls':[], 'tool_calls':[], 'tool_count':0,
         'profile':{},'scoped_facts':{},'history':[]}
 
@@ -224,4 +225,20 @@ def test_new_unresolved_customer_region_does_not_revive_prior_quote_region():
     s['history']=[{'customer':'Anh ở Q7 HCM.','agent':'Dạ.'}]
     s['session_tool_calls']=[quote(address='Q7 HCM')]
     bind_history_observations(s)
+    assert current_customer_address(s) is None
+
+
+def test_k0_giao_ve_binds_the_customer_region_to_the_current_quote_and_order():
+    from app.mcp_servers.mcp_shared.commerce_evidence import current_customer_address
+    from app.mcp_servers.mcp_shared.consultation import customer_order_options, purchase_block_reason, purchase_arguments
+    s = state('Ok em lên đơn cho anh một máy, thanh toán COD, giao về Quận 7, TP.HCM nhé.')
+    s['history'] = [{'customer': 'Tôi chọn Aster.', 'agent': 'Aster giá 900.000đ.'}]
+    s['session_tool_calls'] = [catalog(), quote(), stock()]
+    bind_history_observations(s)
+    s['tool_calls'] = [quote(address='Quận 7, TP.HCM')]
+    assert current_customer_address(s) == 'Quận 7, TP.HCM'
+    assert customer_order_options(s)['address'] == 'Quận 7, TP.HCM'
+    args = purchase_arguments(s)
+    assert args and purchase_block_reason(s, args) is None
+    s['tool_calls'][0]['args']['address'] = 'Quận 3, TP.HCM'
     assert current_customer_address(s) is None

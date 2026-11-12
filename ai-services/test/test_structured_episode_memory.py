@@ -143,3 +143,43 @@ class MemoryPayloadTest(unittest.IsolatedAsyncioTestCase):
                                 "2026-10-15", "hotline", str(uuid4()), [])
         self.assertNotIn("episode_delta", gateway.args["data"])
         self.assertNotIn("outcome", gateway.args["data"])
+
+
+class ResolutionAdmissionTest(unittest.TestCase):
+    def test_bad_resolutions_do_not_discard_valid_memory(self):
+        from copy import deepcopy
+        from app.mcp_servers.mcp_memory.services.episode_state import admit_episode_resolutions
+        old = {'topics': [{'scope_type': 'global', 'scope_id': '', 'items': [
+            {'item_id': 'shipping', 'kind': 'question', 'status': 'open', 'text': 'phí giao hàng'},
+            {'item_id': 'price', 'kind': 'question', 'status': 'open', 'text': 'giá sản phẩm'},
+        ]}], 'resolved_prior_items': []}
+        delta = {'topic_updates': [{'scope_type': 'global', 'scope_id': '',
+            'resolve_items': [
+                {'item_id': 'shipping', 'evidence_quote': 'phí giao hàng miễn phí'},
+                {'item_id': 'price', 'evidence_quote': 'phí giao hàng miễn phí'},
+                {'item_id': 'missing', 'evidence_quote': 'phí giao hàng miễn phí'},
+            ], 'customer_goal': 'mua áo khoác',
+            'narrative_evidence_quote': 'Tôi muốn mua áo khoác'}]}
+        saved = deepcopy(delta)
+        kwargs = dict(source_turn_id=str(uuid4()), customer_text='Tôi muốn mua áo khoác',
+                      agent_text='phí giao hàng miễn phí', prior_open_items={})
+        clean, rejected = admit_episode_resolutions(old, delta, **kwargs)
+        self.assertEqual(rejected, 2)
+        self.assertEqual(delta, saved)
+        state = apply_episode_delta(old, clean, **kwargs)
+        self.assertEqual(state['topics'][0]['items'][0]['status'], 'resolved')
+        self.assertEqual(state['topics'][0]['items'][1]['status'], 'open')
+        self.assertEqual(state['topics'][0]['customer_goal'], 'mua áo khoác')
+
+    def test_prior_resolution_and_unrelated_validation_are_preserved(self):
+        from app.mcp_servers.mcp_memory.services.episode_state import admit_episode_resolutions
+        delta = {'topic_updates': [{'scope_type': 'global', 'scope_id': '',
+            'resolve_items': [{'item_id': 'prior', 'evidence_quote': 'Chồng tôi đồng ý rồi'}],
+            'customer_goal': 'không có bằng chứng'}]}
+        kwargs = dict(source_turn_id=str(uuid4()), customer_text='Chồng tôi đồng ý rồi',
+                      agent_text='', prior_open_items={'prior': ('global', '')})
+        clean, rejected = admit_episode_resolutions({'topics': []}, delta, **kwargs)
+        self.assertEqual(rejected, 0)
+        self.assertEqual(clean['topic_updates'][0]['resolve_items'], delta['topic_updates'][0]['resolve_items'])
+        with self.assertRaises(ValueError):
+            apply_episode_delta({'topics': []}, clean, **kwargs)

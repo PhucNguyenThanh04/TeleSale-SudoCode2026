@@ -13,7 +13,7 @@ from unittest.mock import patch, AsyncMock
 from eval.catalog_search_benchmark import catalog_search_metrics
 from eval.run_eval import _claims, _facts_used, _require_eval_database, _trace_args, run
 from app.agent.guardrails.diagnostics import rejected_draft
-from app.schemas.agent import TextTurnResponse
+from app.schemas.agent import TextTurnResponse, MemoryUpdate
 
 
 class _Memory:
@@ -37,7 +37,8 @@ class _Runtime(VoiceLifecycleStub):
         self.requests.append(request)
         return TextTurnResponse(client_msg_id=request.client_msg_id,
                                 session_id=request.session_id,
-                                agent_text="Dạ, em kiểm tra ạ.")
+                                agent_text="Dạ, em kiểm tra ạ.",
+                                memory_update=MemoryUpdate(turn_saved=True, status='completed'))
 
     def state_for(self, request):
         return {"request": request, "profile": {}, "tool_calls": [],
@@ -54,6 +55,15 @@ class _BlockedRuntime(_Runtime):
 
 
 class EvalRunnerTest(unittest.TestCase):
+    def test_btc_cli_defaults_to_text_and_keeps_explicit_voice(self):
+        from eval.run_eval import main
+        for extra, expected in (([], 'text'), (['--delivery-mode', 'voice'], 'voice')):
+            with patch('eval.run_eval.run', new_callable=AsyncMock, return_value=0) as execute, \
+                 patch('sys.argv', ['run_eval.py', '--scenarios', 'unused', '--btc-root', 'unused',
+                                    '--config', 'full', '--out', 'unused.jsonl', *extra]):
+                main()
+                self.assertEqual(execute.call_args.args[0].delivery_mode, expected)
+
     def setUp(self):
         for target, kwargs in (
             ("eval.run_eval.capture_release", dict(new_callable=AsyncMock,return_value={"release_id":"btc-only","manifest_hash":"btc-only"})),
@@ -105,9 +115,9 @@ class EvalRunnerTest(unittest.TestCase):
         self.assertEqual(count, len(rows))
         self.assertEqual(report["catalog_search"]["turns"], count)
         self.assertEqual(report['btc_contract']['version'], 'BTC-11-2026')
-        self.assertEqual(report['conversation_measurement']['delivery_mode'], 'voice')
-        self.assertTrue(report['conversation_measurement']['ttft_is_proxy'])
-        self.assertTrue(all(request.delivery_mode == 'voice' for request in runtime.requests))
+        self.assertEqual(report['conversation_measurement']['delivery_mode'], 'text')
+        self.assertFalse(report['conversation_measurement']['ttft_is_proxy'])
+        self.assertTrue(all(request.delivery_mode == 'text' for request in runtime.requests))
         self.assertEqual(report["catalog_search"]["total_calls"], 0)
         self.assertEqual(report["database_identity"], {
             "database": "telesale_eval", "host": "eval-postgres", "port": 5432, "server_started_at":"start"})

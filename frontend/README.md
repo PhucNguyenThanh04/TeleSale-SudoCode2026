@@ -91,23 +91,22 @@ kiểm tra trên thiết bị thật; test offline không đánh giá chất lư
 Trang `/knowledge` trên cùng gateway dùng API Knowledge thật qua proxy server.
 Không cần build frontend. Trước khi mở trang:
 
-1. Trong `backend/.env`, đặt `KNOWLEDGE_REVIEW_TOKEN` thành mã quản trị riêng,
-   khác `AI_INTERNAL_TOKEN`, và `KNOWLEDGE_REVIEWER_ID` thành actor nội bộ
-   (ví dụ `local-reviewer`). Không đưa token nội bộ AI vào browser.
-2. Người quản trị cấp quyền cho đúng actor tại AI service (thao tác DB quản trị,
-   không phải lệnh frontend tự chạy):
+1. Trang mở trực tiếp, không cần mã truy cập. Gateway dùng
+   `KNOWLEDGE_REVIEWER_ID` trong `backend/.env` (mặc định `local-reviewer`).
+2. Người quản trị cấp quyền cho actor này tại AI service một lần:
 
    ```bash
    cd ai-services
    .venv/bin/python -m app.knowledge.cli grant --actor local-reviewer
    ```
 
-   CLI cần `KNOWLEDGE_ADMIN_DATABASE_URL` trỏ đúng DB knowledge; xem
-   [cấu trúc Knowledge](../ai-services/app/knowledge/README.md) và cấu hình mẫu trong `ai-services/.env.example`. Không cấp quyền qua trang.
-3. Khởi động/restart AI service có `KNOWLEDGE_DATABASE_URL` (schema/roles đã provision) và worker `python -m app.knowledge.worker` với `KNOWLEDGE_WORKER_DATABASE_URL` riêng. Bật `KNOWLEDGE_ENABLED=true` ở AI service nếu cần thu feedback runtime; sau đó chạy
-   gateway `app.voice_main:app` như hướng dẫn trên. Mở `http://127.0.0.1:8000/knowledge`,
-   nhập mã quản trị riêng. Mã chỉ giữ trong RAM của tab; đăng xuất xóa view và mã.
-   Không cấu hình đủ hai biến thì API trả 503; chưa được cấp quyền thì trả 403.
+   CLI cần `KNOWLEDGE_ADMIN_DATABASE_URL` đúng DB knowledge. Actor vẫn được
+   kiểm quyền tại AI service; browser không tự chọn hoặc cấp quyền actor.
+3. Khởi động AI service có `KNOWLEDGE_DATABASE_URL` và worker
+   `python -m app.knowledge.worker` với `KNOWLEDGE_WORKER_DATABASE_URL` riêng.
+   Bật `KNOWLEDGE_ENABLED=true` ở AI service để thu feedback runtime. Chạy gateway
+   rồi mở `http://127.0.0.1:8000/knowledge`; danh sách gap được tải tự động.
+   `KNOWLEDGE_REVIEW_TOKEN` không còn được sử dụng.
 
 Luồng sử dụng: chọn gap → đọc câu hỏi/câu trả lời và nguồn feedback → phân loại
 nguyên nhân → mở draft tự động nếu có hoặc tạo đề xuất → chọn nguồn public và
@@ -115,6 +114,12 @@ nguyên nhân → mở draft tự động nếu có hoặc tạo đề xuất �
 review → duyệt hoặc từ chối. Sửa nội dung hoặc test tạo revision mới cần duyệt lại;
 chỉnh sửa chưa lưu không được dùng để duyệt bản cũ. Lỗi 409 yêu cầu làm mới và
 đọc lại, trang không tự retry ghi đè.
+
+Nút **Duyệt hết** nạp bản nháp ở mọi trang để đối chiếu nội dung, nguồn và test.
+Nhập lý do chung, xác nhận đã review rồi duyệt danh sách. Trang báo số thành công
+và mã bản lỗi để kiểm tra lại; gap chưa có đề xuất không được tự tạo đáp án.
+Các bản duyệt thành công được chọn trong tab Phát hành, chưa tự phát hành.
+Mỗi release chứa tối đa 100 bản; danh sách duyệt có thể lớn hơn giới hạn này.
 
 Tab **Phát hành** chọn các bản approved → chuẩn bị release → mở manifest/checks
 → xác nhận phát hành hoặc khôi phục release cũ. Chuẩn bị có thể build hybrid
@@ -126,10 +131,9 @@ retrieval offline không đồng nghĩa đã kiểm chất lượng LLM.
 
 Trang hiện phân biệt gap technical/generation/correct_refusal và chặn soạn nội
 dung cho các nhóm này. Nội dung được hiển thị bằng text, không render HTML từ
-feedback. HTTP review API cần Bearer access riêng, server cố định reviewer,
-không cache dữ liệu admin và chặn Origin khác khi ghi. Khi dùng ngoài localhost,
-đặt sau HTTPS và cơ chế truy cập quản trị của nhóm; đây chưa phải hệ thống tài
-khoản nhiều người dùng. Cả UI và backend không tự seed gap hoặc gọi eval để có
+feedback. Gateway không yêu cầu xác thực từ browser, server cố định reviewer,
+không cache dữ liệu admin và chặn Origin khác khi ghi. Token nội bộ AI vẫn chỉ
+được gửi từ gateway tới AI service. Bản demo này chạy trên localhost. Cả UI và backend không tự seed gap hoặc gọi eval để có
 số liệu demo. Chưa có gap thì chạy luồng feedback/worker hiện có từ dữ liệu thật.
 
 Kiểm thử focused, offline:

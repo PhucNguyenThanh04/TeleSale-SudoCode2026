@@ -67,6 +67,8 @@ VALUE_LABELS = {
     "stock_result_mismatch": "trạng thái tồn kho không khớp",
     "stock_quantity_mismatch": "số lượng tồn kho không khớp",
     "order_creation_unverified": "chưa có kết quả tạo đơn",
+    "callback_unverified": "chưa có kết quả đặt lịch gọi lại",
+    "policy_question_unanswered": "chưa trả lời câu hỏi chính sách",
     "promotion_quote_missing": "chưa có báo giá khuyến mãi",
     "promotion_unverified": "khuyến mãi chưa được xác minh",
     "promotion_code_mismatch": "mã khuyến mãi không khớp",
