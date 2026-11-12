@@ -7,7 +7,7 @@ from app.mcp_servers.mcp_shared.commerce_rules import _search_text
 
 _EXPLICIT_MODEL = re.compile(
     r'\b(?:[A-Z][A-Za-z]+&[A-Z][A-Za-z]+|(?i:sku-[a-z0-9-]+)|[A-Z][a-z]+[A-Z][A-Za-z0-9]*|'
-    r'[A-Za-z][A-Za-z-]*\d+[A-Za-z0-9-]*|[A-Z][a-z]{2,}(?=\s+\d+\b))'
+    r'[A-Za-z][A-Za-z-]*\d+[A-Za-z0-9-]*|[A-Z][a-z]{2,}(?=\s+(?:\d+|(?i:pro|lite|mini|max|plus|ultra))\b))'
     r'(?:\s+(?:[A-Z][A-Za-z0-9-]*|\d+|(?i:pro|lite|mini|max|plus|ultra))){0,3}(?![\w-])')
 
 
@@ -15,6 +15,12 @@ def explicit_product_queries(text: str) -> list[str]:
     """A literal model identifier can seed a read, never establish purchase consent."""
     candidates = {}
     for match in _EXPLICIT_MODEL.finditer(text):
+        prefix = _search_text(text[:match.start()])
+        if re.search(r'\b(?:ma|code)\s*$', prefix):
+            continue
+        if (re.match(r'(?i)[qp]\d+\b', match[0])
+                and re.search(r'\b(?:o|tai|dia chi|quan|phuong)\s*$', prefix)):
+            continue
         if re.match(r'\s*(?:trieu|nghin|ngan|dong|m2|met vuong)\b', _search_text(text[match.end():])):
             continue
         query = ' '.join(match[0].split())

@@ -51,6 +51,10 @@ def consultation_scope(state: dict) -> dict:
     text = state.get('safe_text', '')
     mentioned = _mentions(text, items)
     captured = state.get('consultation_scope')
+    from app.agent.harness.catalog_query import explicit_product_queries
+    if explicit_product_queries(text) and not mentioned:
+        # An unverified new model cannot inherit the previous model's quote.
+        return {'skus': [], 'known': False}
     reconsider = (not decision.snapshot.selected_sku and bool(
         _requirement_changes(text) or re.search(r'ngan sach|muc chi|toi da|chi (?:khoang|tam)', _search_text(text))))
     if _type_change(text) and not mentioned:

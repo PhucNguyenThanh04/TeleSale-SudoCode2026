@@ -64,16 +64,19 @@ HUMAN_CLAIM_PATTERNS = [
 
 _DIGITS = {"không":0,"một":1,"mốt":1,"hai":2,"ba":3,"bốn":4,"tư":4,
            "năm":5,"lăm":5,"sáu":6,"bảy":7,"tám":8,"chín":9}
-_NUMBER_WORDS = "|".join((*_DIGITS,"mười","mươi","trăm","nghìn","ngàn","triệu","linh","lẻ"))
+_NUMBER_WORDS = "|".join((*_DIGITS,"mười","mươi","trăm","nghìn","ngàn","triệu","linh","lẻ","rưỡi"))
 _SPOKEN_NUMBER = re.compile(r"(?<!\w)(?:" + _NUMBER_WORDS + r")(?:\s+(?:" + _NUMBER_WORDS + r"))*(?!\w)",re.I)
 
 
 def numeric_text(text):
     def replace(match):
         words=match.group().lower().split()
+        if not any(w in _DIGITS or w in {'mười', 'mươi', 'trăm'} for w in words):
+            return match.group()
         if not any(w in {"nghìn","ngàn","triệu"} for w in words) and not re.match(r"\s*(?:đồng|ngày|tháng)\b",text[match.end():],re.I):
             return match.group()
         total=group=0
+        unit = 0
         for w in words:
             if w in _DIGITS:
                 group+=_DIGITS[w]
@@ -82,9 +85,12 @@ def numeric_text(text):
             elif w in {"mười","mươi"}:
                 group=(group or 1)*10
             elif w in {"nghìn","ngàn","triệu"}:
-                total+=group*({"nghìn":1000,"ngàn":1000,"triệu":1000000}[w])
+                unit = {"nghìn":1000,"ngàn":1000,"triệu":1000000}[w]
+                total+=group*unit
                 group=0
-        return str(total+group)
+            elif w == 'rưỡi' and unit:
+                total += unit // 2
+        return str(total+group) + ('đ' if unit else '')
     return _SPOKEN_NUMBER.sub(replace,text)
 
 
@@ -201,7 +207,15 @@ def _claim_projections(agent_text: str, tool_calls: list[dict[str, Any]]) -> lis
             priced = re.split(r"\bchứ không(?: phải)?\b", priced, flags=re.I)[0]
             if re.search(r"không (?:phải|có)\s+(?:là\s+)?(?:giá|\d)", priced, re.I):
                 priced = ""
-            for amount, kind, _ in _money_claims(numeric_text(priced)):
+            priced = numeric_text(priced)
+            # Remove only the attributed budget amount, preserving any selling
+            # price before or after it in the same clause.
+            priced = re.sub(
+                r'\b(?:ngân sách|mức chi)\s+(?:của\s+(?:anh|chị|mình|bạn)\s+)?'
+                r'(?:(?:tầm|khoảng|tối đa|là|chỉ)\s+)*'
+                r'\d[\d.,]*(?:\s*(?:triệu|tr|nghìn|ngàn|k|đồng|đ|vnd)\b)?',
+                '', priced, flags=re.I)
+            for amount, kind, _ in _money_claims(priced):
                 if amount >= 0:
                     field = "discount_vnd" if kind == "discount" else "list_price_vnd" if re.search(r"niêm yết|giá gốc", clause, re.I) else "price_vnd"
                     if historical:
