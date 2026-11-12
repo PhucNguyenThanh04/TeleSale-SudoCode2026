@@ -11,6 +11,63 @@ def test_source_parser(source, expected):
     assert _source_session_id(source) == expected
 
 
+def test_prior_room_area_used_as_catalog_filter_with_scope_and_source():
+    scoped = {'room': {'bedroom': {'room_area_m2': fact(25)}}}
+    calls = [{'name': 'catalog.search', 'args': {'min_room_area_m2': 25}, 'result': {'items': []}}]
+    assert facts_used('Em đang tìm mẫu phù hợp.', calls, {}, scoped, 'now',
+                      customer_text='Tìm máy cho phòng ngủ hôm trước.') == ['room_area_m2']
+    assert facts_used('Dạ.', calls, {}, scoped, 'now', customer_text='Phòng ngủ 25m2.') == []
+    assert facts_used('Dạ.', calls, {}, scoped, 'now', customer_text='Phòng khách hôm trước.') == []
+    scoped['room']['living_room'] = {'room_area_m2': fact(25)}
+    assert facts_used('Dạ.', calls, {}, scoped, 'now') == []
+
+
+def test_budget_filter_is_prior_use_only_without_current_repetition():
+    calls = [{'name': 'catalog.search', 'args': {'max_price_vnd': 5500000}, 'result': {'items': []}}]
+    assert facts_used('Dạ.', calls, {'budget_vnd': fact(5500000)}, current_session_id='now') == ['budget_vnd']
+    assert facts_used('Dạ.', calls, {'budget_vnd': fact(5500000)}, current_session_id='now',
+                      customer_text='Ngân sách tối đa 5,5 triệu.') == []
+
+
+def variant_catalog():
+    return {'name': 'catalog.search', 'args': {}, 'result': {'items': [
+        {'sku': 'SKU-HIKE', 'name': 'Giày HikePro', 'variants': [
+            {'variant_sku': 'SKU-HIKE-41-XAM', 'size': 41, 'color': 'xam'},
+            {'variant_sku': 'SKU-HIKE-42-XAM', 'size': 42, 'color': 'xam'}]}]}}
+
+
+@pytest.mark.parametrize('result', [{'in_stock': True}, {'error': 'failed'}])
+def test_exact_catalog_variant_demonstrates_size_color_use(result):
+    scoped = {'product': {'SKU-HIKE': {'size': fact(41), 'color': fact('xám')}}}
+    calls = [{'name': 'inventory.check', 'args': {'sku': 'SKU-HIKE-41-XAM'}, 'result': result}]
+    expected = [] if 'error' in result else ['color', 'size']
+    assert facts_used('Dạ.', calls, {}, scoped, 'now', catalog_calls=[variant_catalog()]) == expected
+    assert facts_used('Dạ.', calls, {}, scoped, 'now') == []  # Never parse a made-up SKU suffix.
+    calls[0]['args']['sku'] = 'SKU-HIKE-42-XAM'
+    assert 'size' not in facts_used('Dạ.', calls, {}, scoped, 'now', catalog_calls=[variant_catalog()])
+    scoped['product'] = {'SKU-OTHER': {'size': fact(41), 'color': fact('xám')}}
+    assert facts_used('Dạ.', calls, {}, scoped, 'now', catalog_calls=[variant_catalog()]) == []
+
+
+def test_handoff_uses_explicit_product_field_not_arbitrary_nested_text():
+    scoped = {'product': {'SKU-HIKE': {'product_advised': fact('SKU-HIKE')}}}
+    calls = [{'name': 'handoff.transfer', 'args': {'brief': {'product_advised': 'SKU-HIKE'}},
+              'result': {'ticket_id': 'H1'}}]
+    assert facts_used('Em đã chuyển yêu cầu.', calls, {}, scoped, 'now') == ['product_advised']
+    calls[0]['args']['brief'] = {'conversation_summary': 'SKU-HIKE'}
+    assert facts_used('Em đã chuyển yêu cầu.', calls, {}, scoped, 'now') == []
+
+
+def test_spoken_variant_attributes_bind_to_the_catalog_parent_fact_scope():
+    scoped = {'product': {'SKU-HIKE': {'size': fact(41), 'color': fact('xam')}}}
+    assert facts_used('Đôi HikePro màu xám size 41 còn hàng.', [], {}, scoped, 'now',
+                      catalog_calls=[variant_catalog()]) == ['color', 'size']
+    assert facts_used('Đôi HikePro màu xám size 41 còn hàng.', [], {}, scoped, 'now',
+                      customer_text='HikePro size 41 màu xám nhé.', catalog_calls=[variant_catalog()]) == []
+    assert facts_used('Đôi HikePro màu xám size 42 còn hàng.', [], {}, scoped, 'now',
+                      catalog_calls=[variant_catalog()]) == ['color']
+
+
 def fact(value, source="langmem:prior:turn-1"):
     return {"value": value, "source": source}
 
@@ -149,6 +206,27 @@ def catalog_names():
         {'sku': 'SKU-B', 'name': 'Máy lọc Beryl Air'}]}}]
 
 
+def test_product_name_counts_as_prior_product_use_without_requiring_spoken_sku():
+    scoped = {'product': {'SKU-A': {'product_advised': fact('SKU-A')}}}
+    assert facts_used('Lần trước mình xem Aster Air.', [], {}, scoped, 'now',
+                      catalog_calls=catalog_names()) == ['product_advised']
+    assert facts_used('Lần trước mình xem Aster Air.', [], {}, scoped, 'now',
+                      customer_text='Tôi hỏi Aster Air.', catalog_calls=catalog_names()) == []
+
+
+@pytest.mark.parametrize('text', ['Lần trước mình xem Beryl Air.', 'Lần trước mình xem Air.',
+                                 'Nếu mình chọn Aster Air thì báo em.', 'Không phải Aster Air.'])
+def test_product_alias_does_not_credit_other_ambiguous_or_negated_products(text):
+    scoped = {'product': {'SKU-A': {'product_advised': fact('SKU-A')}}}
+    assert facts_used(text, [], {}, scoped, 'now', catalog_calls=catalog_names()) == []
+
+
+@pytest.mark.parametrize('status', ['inactive', 'superseded', 'expired', 'deleted'])
+def test_nonactive_fact_is_not_observable_recall(status):
+    prior = {'budget_vnd': {**fact(2000000), 'status': status}}
+    assert facts_used('Ngân sách 2 triệu.', [], prior, current_session_id='now') == []
+
+
 def test_catalog_name_can_bind_spoken_price_to_prior_product_scope():
     scoped = {'product': {'SKU-A': {'price_quoted_vnd': fact(730000)}}}
     assert facts_used('Aster Air giá 730.000đ.', catalog_names(), {}, scoped, 'now') == ['price_quoted_vnd']
@@ -216,3 +294,21 @@ def test_runner_preserves_catalog_aliases_between_turns_without_recounting_new_f
     rows = asyncio.run(run_scenario_call(Runtime(), 'GENERIC', 'call_2',
         {'customer_turns': ['Chào em', 'Tiếp tục nhé']}, date(2026, 11, 2), '0900000000'))
     assert [r['facts_used'] for r in rows] == [[], ['price_quoted_vnd']]
+    assert rows[0]['facts_used_evidence'] == []
+    assert rows[1]['facts_used_evidence'] == [{'field': 'price_quoted_vnd',
+        'scope_type': 'product', 'via': ['speech']}]
+
+
+def test_usage_evidence_records_matching_method_without_fact_values_or_context_presence():
+    evidence = []
+    prior = {'budget_vnd': fact(2000000)}
+    assert facts_used('Dạ.', [], prior, current_session_id='now', usage_evidence=evidence) == []
+    assert evidence == []
+    assert facts_used('Ngân sách 2 triệu.', [], prior, current_session_id='now',
+                      usage_evidence=evidence) == ['budget_vnd']
+    assert evidence == [{'field': 'budget_vnd', 'scope_type': 'global', 'via': ['speech']}]
+    evidence = []
+    calls = [{'name': 'order.create', 'args': {'sku': 'SKU-A', 'price_vnd': 730000}, 'result': {'ok': True}}]
+    scoped = {'product': {'SKU-A': {'price_quoted_vnd': fact(730000)}}}
+    assert facts_used('Dạ.', calls, {}, scoped, 'now', usage_evidence=evidence) == ['price_quoted_vnd']
+    assert evidence == [{'field': 'price_quoted_vnd', 'scope_type': 'product', 'via': ['tool_args']}]

@@ -156,6 +156,7 @@ async def _operational_facts(repo, conn, customer_id, sessions, facts, rows_cach
     """Admit only new committed evidence; the background projection is enrichment."""
     from app.agent.memory.customer_facts import _supplement_customer_facts
     from app.agent.memory.deterministic_tool_facts import verified_tool_candidates
+    from app.agent.memory.deterministic_tool_facts import verified_variant_details
     from app.agent.memory.episode_candidates import blocker_resolution
     from app.mcp_servers.mcp_memory.services.langmem_admission import admit_profile_candidates
     indexed = {(fact.get('scope_type', 'global'), fact.get('scope_id', ''), fact.get('key')): fact
@@ -166,14 +167,15 @@ async def _operational_facts(repo, conn, customer_id, sessions, facts, rows_cach
         count = await repo.turn_count(conn, session_id)
         rows = await repo.recent_session_turns(conn, session_id, customer_id, count, limit=None)
         rows_cache[session_id] = rows
+        variants = {}
         for row in rows:
             blocker = indexed.get(('global', '', 'blocker'))
             newer = not (type(row.get('job_id')) is int and type((blocker or {}).get('revision')) is int
                          and row['job_id'] <= blocker['revision'])
             if blocker and newer and blocker_resolution(row['customer_text'], {'blocker': blocker})[0]:
                 indexed.pop(('global', '', 'blocker'))
-            if row.get('memory_status') == 'completed':
-                continue
+            # Completion of enrichment does not prove every deterministic fact
+            # was projected. Per-key revision barriers below still protect deletes.
             tid = str(row['client_msg_id'])
             on = str(row['on_date'])
             turn = {'customer_id': customer_id, 'session_id': session_id, 'turn_id': tid,
@@ -181,11 +183,37 @@ async def _operational_facts(repo, conn, customer_id, sessions, facts, rows_cach
             observed = row.get('tool_observations') or []
             observed = json.loads(observed) if isinstance(observed, str) else observed
             calls = [{**call, 'source_turn_id': tid} for call in observed if isinstance(call, dict)]
+            for call in calls:
+                if call.get('name') == 'catalog.search' and 'error' not in call.get('result', {}):
+                    for item in call['result'].get('items', []):
+                        for variant in item.get('variants', []):
+                            variants[variant['variant_sku']] = {**variant, 'parent_sku': item['sku']}
             candidates = _supplement_customer_facts({'content': json.dumps(turn, ensure_ascii=False)}, [])
             candidates.extend(verified_tool_candidates(turn['agent_text'], calls, tid, on))
             accepted, _ = admit_profile_candidates(customer_id, session_id, candidates, [turn], calls)
+            for call in calls:
+                sku = call.get('args', {}).get('sku')
+                accepted.extend(verified_variant_details(call, variants.get(sku), tid))
             for fact in accepted:
                 key = (fact.get('scope_type', 'global'), fact.get('scope_id', ''), fact['key'])
+                if key[0] == 'room':
+                    from app.mcp_servers.mcp_shared.room_context import canonical_room
+                    aliases = {scope_id for scope, scope_id, slot in {*indexed, *revision_barriers}
+                               if scope == 'room' and slot == key[2]
+                               and canonical_room(scope_id) == canonical_room(key[1])}
+                    if len(aliases) > 1:
+                        continue  # Conflicting stored scope identities need resolution.
+                    if aliases:
+                        fact = {**fact, 'scope_id': next(iter(aliases))}
+                        key = ('room', fact['scope_id'], key[2])
+                # Completed enrichment may have assigned the evidence to a room
+                # or product. Do not reintroduce its unscoped fallback or bypass
+                # a scoped deletion from that revision (or a newer one).
+                if (row.get('memory_status') == 'completed' and key[0] == 'global'
+                        and type(row.get('job_id')) is int and any(
+                            scope != 'global' and slot == fact['key'] and revision >= row['job_id']
+                            for (scope, _, slot), revision in revision_barriers.items())):
+                    continue
                 old = indexed.get(key, {})
                 # A slower job from an older session cannot replace a newer projection.
                 old_revision = old.get('revision')

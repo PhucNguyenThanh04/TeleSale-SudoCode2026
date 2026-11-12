@@ -36,7 +36,7 @@ class SecondItemPromotionTest(unittest.TestCase):
         self.assertEqual(result["final_price_vnd"], 4_890_000)
         self.assertEqual(result["applied_promos"], [])
         self.assertEqual(result["ineligible_promos"], [{
-            "promo_code": "AIR-2ND-50", "reason": "not_cheapest_item"}])
+            "promo_code": "AIR-2ND-50", "reason": "not_cheapest_item_or_tie_use_quote_order"}])
 
     def test_single_item_order_fails_min_qty(self):
         # basket_skus lists other products; an empty list means one item total.

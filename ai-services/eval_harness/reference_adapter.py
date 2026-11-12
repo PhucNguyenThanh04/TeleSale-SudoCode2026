@@ -175,8 +175,13 @@ def _scope_units(text: str, scope_type: str | None, scope_id: str | None, catalo
         elif scope_type == 'product':
             from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
             named = resolve_claim_skus(clause, catalog_calls)
+            parents = {variant.get('variant_sku'): item.get('sku')
+                       for call in catalog_calls for item in call.get('result', {}).get('items', [])
+                       if isinstance(item, dict) for variant in item.get('variants') or []
+                       if isinstance(variant, dict)}
+            parent_names = {parents.get(sku, sku) for sku in named}
             if not re.search(_literal_pattern(_fold(str(scope_id))), clause):
-                if named == {scope_id}:
+                if parent_names == {scope_id}:
                     yield clause
                 continue
             # Bind product values to their own mention, not another SKU in a list.
@@ -209,15 +214,66 @@ def _speech_uses(text, key, value, scope_type, scope_id, *, customer=False, cata
         unit = re.split(r"\bchu khong(?: phai)?\b", unit)[0]
         if key not in {"has_children", "in_stock"} and re.search(r"\b(?:khong|chua) (?:phai|con|can|co|rong|la|bang)\b", unit):
             continue
+        if key == 'product_advised' and isinstance(value, str):
+            from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
+            if resolve_claim_skus(unit, catalog_calls) == {value}:
+                return True
         if _spoken_fact(key, value, unit):
             return True
     return False
 
 
+def _argument_uses_fact(call, key, value, scope_type, scope_id, fields, catalog,
+                        room_facts, customer_text):
+    args = call.get('args', {})
+    if call.get('name') == 'handoff.transfer' and key in {'product_advised', 'price_quoted_vnd'}:
+        brief = args.get('brief') or {}
+        if scope_type == 'room':
+            return False
+        if scope_type == 'product' and brief.get('product_advised') != scope_id:
+            return False
+        return type(brief.get(key)) is type(value) and brief[key] == value
+    variants = []
+    for c in catalog:
+        for item in c['result'].get('items', []):
+            if not isinstance(item, dict):
+                continue
+            for variant in item.get('variants') or []:
+                if isinstance(variant, dict) and variant.get('variant_sku') == args.get('sku'):
+                    entry = (item.get('sku'), variant.get('size'), variant.get('color'))
+                    if entry not in variants:
+                        variants.append(entry)
+    variant = variants[0] if len(variants) == 1 else None
+    if scope_type == 'product' and args.get('sku') != scope_id and not (
+            variant and variant[0] == scope_id):
+        return False
+    if scope_type == 'room' and args.get('room') != scope_id:
+        aliases = {**_ROOM_ALIASES, **{_fold(room): _ROOM_ALIASES.get(_fold(room), (_fold(room),))
+                                     for room in room_facts}}
+        mentioned = {room for room, labels in aliases.items() if any(
+            re.search(_literal_pattern(label), _fold(customer_text)) for label in labels)}
+        candidates = mentioned or {_fold(room) for room, facts in room_facts.items() if key in facts}
+        if candidates != {_fold(scope_id)}:
+            return False
+    if call.get('name') == 'catalog.search':
+        filter_field = {'budget_vnd': 'max_price_vnd', 'room_area_m2': 'min_room_area_m2'}.get(key)
+        if filter_field and type(args.get(filter_field)) is type(value) and args[filter_field] == value:
+            return True
+    if variant:
+        if key == 'product_advised' and value == variant[0]:
+            return True
+        index = {'size': 1, 'preferred_size': 1, 'color': 2, 'preferred_color': 2}.get(key)
+        if index and variant[index] is not None and _fold(str(variant[index])) == _fold(str(value)):
+            return True
+    return any(type(arg) is type(value) and arg == value
+               for field, arg in args.items() if field in fields)
+
+
 def facts_used(agent_text: str, tool_calls: list[dict], prior_facts: dict,
                scoped_facts: dict | None = None,
                current_session_id: str | None = None, *, customer_text: str = "",
-               catalog_calls: list[dict] | None = None) -> list[str]:
+               catalog_calls: list[dict] | None = None,
+               usage_evidence: list[dict] | None = None) -> list[str]:
     """Observable matches to sourced prior-session facts, not proof of causality."""
     if not current_session_id:
         return []  # Session provenance cannot be verified.
@@ -238,6 +294,8 @@ def facts_used(agent_text: str, tool_calls: list[dict], prior_facts: dict,
                   "preferred_size": {"size"}, "preferred_color": {"color"}, "promo_code": {"promo_code"}}
     used = set()
     for key, fact, scope_type, scope_id in candidates:
+        if not isinstance(fact, dict) or fact.get('status', 'active') != 'active':
+            continue
         source = _source_session_id(fact.get("source") if isinstance(fact, dict) else None)
         if source is None or source == current_session_id:
             continue
@@ -256,13 +314,17 @@ def facts_used(agent_text: str, tool_calls: list[dict], prior_facts: dict,
                 continue
         spoken = _speech_uses(agent_text, key, value, scope_type, scope_id, catalog_calls=catalog)
         passed = any(
-            (scope_id is None or call.get("args", {}).get("sku" if scope_type == "product" else "room") == scope_id)
-            and any(type(arg) is type(value) and arg == value
-                    for field, arg in call.get("args", {}).items() if field in arg_fields.get(key, {key}))
+            _argument_uses_fact(call, key, value, scope_type, scope_id, arg_fields.get(key, {key}),
+                               catalog, (scoped_facts or {}).get('room', {}), customer_text)
             for call in tool_calls if isinstance(call.get('result'), dict) and
                 'error' not in call['result'] and call['result'].get('ok') is not False and call['result'].get('success') is not False)
         if spoken or passed:
             used.add(key)
+            if usage_evidence is not None:
+                evidence = {'field': key, 'scope_type': scope_type or 'global',
+                            'via': (['speech'] if spoken else []) + (['tool_args'] if passed else [])}
+                if evidence not in usage_evidence:
+                    usage_evidence.append(evidence)
     return sorted(used)
 
 

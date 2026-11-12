@@ -1,0 +1,71 @@
+{
+  "scenario_id": "SC-T08",
+  "level": "M1",
+  "persona": "elderly_verbose",
+  "hard_case": "san_pham_het_hang_va_thay_the",
+  "customer_phone": "0932568855",
+  "customer_name": "Lâm",
+  "honorific": "anh",
+  "notes": "Nguồn speech T08. Tách câu chốt sang phiên 2 và để khách chọn rõ mẫu thay thế. Định danh đối chiếu CRM BTC gốc: C045 (Lâm); không dùng CRM bổ sung.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-22",
+      "customer_goal": "Tìm quạt có remote thay cho Tower Fan đã hết hàng",
+      "customer_turns": [
+        "Hello em, anh đang xem quạt tháp Xiaomi Tower Fan, mẫu này giá bao nhiêu và hiện còn hàng trong kho không em?",
+        "Tiếc quá hết hàng rồi à, ngân sách của anh tầm 2,5 triệu đổ lại thì mẫu quạt đứng Panasonic F-409 có điều khiển từ xa giá bao nhiêu và còn hàng không em?",
+        "Cảm ơn em, để anh cân nhắc mẫu quạt có điều khiển từ xa đó rồi nhắn lại sau nhé."
+      ],
+      "facts_established": {
+        "budget_vnd": 2500000
+      },
+      "success_if": {
+        "tool_called": "inventory.check",
+        "args_match": {
+          "sku": "SKU-FAN-TWR"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {},
+      "channel_identity": "0932568855",
+      "expected_outcome": "hen_goi_lai",
+      "days_later": 0
+    },
+    "call_2": {
+      "channel": "zalo_oa",
+      "channel_identity": "zalo_lâm94",
+      "call_date": "2026-10-24",
+      "customer_turns": [
+        "Anh gọi lại vụ tìm quạt trong mức ngân sách hôm trước, mẫu quạt đứng Panasonic F-409 có remote hôm nay còn hàng và giá bán chính xác là bao nhiêu em?",
+        "Ok em lên đơn cho anh 1 chiếc quạt đứng Panasonic F-409, thanh toán COD nhé."
+      ],
+      "must_carry_over": [
+        "budget_vnd"
+      ],
+      "must_not_ask": [
+        "budget_vnd"
+      ],
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-FAN-DC1",
+          "payment": "COD",
+          "qty": 1,
+          "price_vnd": 2450000
+        }
+      },
+      "ground_truth_facts": {
+        "price_vnd": 2450000,
+        "in_stock": true
+      },
+      "expected_outcome": "chot_don",
+      "days_later": 2
+    }
+  }
+}

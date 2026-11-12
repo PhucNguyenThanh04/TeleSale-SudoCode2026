@@ -51,14 +51,26 @@ def _claim_mismatch_notes(directory, run, score):
         for example in score.get(key, {}).get('hallucination_rate', {}).get('examples', []):
             identity = (example['scenario'], example['call'])
             row = by_turn.get((*identity, example['turn']))
-            explanation = (explain_claim_mismatch(row, example['field'], example['claimed'], on=dates[identity])
+            earlier_calls = [call for prior in rows
+                if (prior['scenario_id'], prior['call']) == identity and prior['turn'] < example['turn']
+                for call in prior.get('tool_calls', [])]
+            explanation = (explain_claim_mismatch(row, example['field'], example['claimed'],
+                                                on=dates[identity], context_calls=earlier_calls)
                            if row is not None and identity in dates else {'status': 'unresolved'})
             message = 'chưa đủ bằng chứng quote tương thích để phân loại nguyên nhân.'
             if explanation['status'] == 'supported_by_quote':
                 message = f"khớp quote {explanation['sku']}; lệch ground truth."
                 expected = ((specs[identity].get('success_if') or {}).get('args_match') or {}).get('sku')
+                expected = expected or (specs[identity].get('facts_established') or {}).get('product_advised')
                 if example['field'] == 'price_vnd' and expected and expected != explanation['sku']:
-                    message += f' Giá thuộc sản phẩm khác SKU kỳ vọng {expected}; vẫn giữ lỗi chọn sản phẩm.'
+                    from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
+                    requested = resolve_claim_skus(row.get('user_text', row.get('customer_text', '')),
+                                                   [*earlier_calls, *row.get('tool_calls', [])])
+                    if {expected, explanation['sku']} <= requested:
+                        message += (f' Khách hỏi nhiều sản phẩm ở lượt này; SKU kỳ vọng {expected} '
+                                    'thuộc tiêu chí cuối cuộc gọi. Chưa đủ căn cứ kết luận chọn sai sản phẩm.')
+                    else:
+                        message += f' Giá thuộc sản phẩm khác SKU kỳ vọng {expected}; cần rà soát lựa chọn ở lượt này.'
             notes.append(f"- {label} {identity[0]}/{identity[1]}/turn {example['turn']}, {example['field']}: {message}")
     return notes
 

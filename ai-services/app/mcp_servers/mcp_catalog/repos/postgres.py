@@ -27,11 +27,17 @@ class CatalogRepo(Database):
         result = await session.execute(text(
             f"SELECT customer_id, phone FROM btc_source.customers WHERE {column}=:identity"
         ), {"identity": identity})
-        return [dict(row._mapping) for row in result]
+        rows = [dict(row._mapping) for row in result]
+        if not rows and column != 'phone' and len(identity) == 10 and identity.startswith('0') and identity.isdigit():
+            fallback = await session.execute(text(
+                'SELECT customer_id,phone FROM btc_source.customers WHERE phone=:identity'
+            ), {'identity': identity})
+            rows = [dict(row._mapping) for row in fallback]
+        return rows
 
     async def runtime_orders(self, session, customer_id: str) -> list[dict]:
         result = await session.execute(text("""SELECT order_id,sku,qty,price_vnd,total_vnd,lines,
-            created_on,status FROM runtime.tool_orders WHERE customer_id=:id"""), {"id": customer_id})
+            created_on,status,payment,promos FROM runtime.tool_orders WHERE customer_id=:id"""), {"id": customer_id})
         return [dict(row._mapping) for row in result]
 
     async def used_promos(self, session) -> set[tuple[str, str]]:

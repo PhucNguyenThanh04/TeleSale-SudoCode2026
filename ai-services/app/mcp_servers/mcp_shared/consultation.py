@@ -35,13 +35,23 @@ def catalog_items(state):
 
 
 def _mentions(text, items):
+    from app.mcp_servers.mcp_shared.commerce_entities import allows_short_product_name
     folded=_search_text(text)
     matches=[]
     aliases={}
     for sku,item in items.items():
         words=_search_text(item.get('name','')).split()
-        for start in range(max(0,len(words)-1)):
+        starts = range(max(0,len(words)-1)) if allows_short_product_name(text, item) else range(1)
+        for start in starts:
             aliases.setdefault(' '.join(words[start:]),set()).add(sku)
+        # BTC tool metadata omits brand; proper-name tokens still support a
+        # unique spoken short name without changing the tool result contract.
+        if allows_short_product_name(text, item) and not (item.get('attributes') or {}).get('bundle_of'):
+            labels = [item['brand']] if item.get('brand') else [
+                word for word in item.get('name', '').split()[1:]
+                if len(word) >= 3 and word[0].isupper()]
+            for label in labels:
+                aliases.setdefault(_search_text(label), set()).add(sku)
     for sku,item in items.items():
         labels=[sku,item.get('name','')]
         labels.extend(label for label,owners in aliases.items() if owners=={sku})
@@ -179,28 +189,40 @@ def _restore(state):
 
 
 def _negated(text):
-    return bool(re.search(r'\b(?:khong|chua|dung)\s+(?:(?:muon|dinh)\s+)?(?:mua|lay|chon|dat|len|chot|dong y)\b|\b(?:huy|bo mau|doi y)\b',_search_text(text)))
+    return bool(re.search(r'\b(?:khong|chua|dung)\s+(?:(?:muon|dinh)\s+)?(?:mua|lay|chon|dat|len|tao|order|chot|dong y)\b|\b(?:huy|bo mau|doi y)\b',_search_text(text)))
 
 
 def _buy(text):
     folded=_search_text(text)
+    from app.mcp_servers.mcp_shared.consultation_followup import order_status_requested
+    if order_status_requested(text) and not re.search(
+            r'len don|len order|tao don|chot don|mua (?:them|lai)|dat (?:them|moi)', folded):
+        return False
     return not _negated(text) and not re.search(r'\bneu\b',folded) and bool(re.search(
-        r'\b(?:len don|dat hang|dat mua|chot don|mua|lay)\b',folded)) and not re.search(r'xem|can nhac|de biet|gia bao nhieu',folded)
+        r'\b(?:len don|len order|tao don|dat hang|dat mua|chot don|mua|lay)\b',folded)) and not re.search(r'xem|can nhac|de biet|gia bao nhieu',folded)
 
 
 def _requirement_changes(text):
     folded=_search_text(text)
-    if '?' in text or re.search(r'\bneu\b',folded):return {}
+    if '?' in text:return {}
     changes={}
+    delivery = re.search(r'\bgiao\b|(?<!xac )\bnhan(?: hang)? (?:truoc|trong|dung|vao)\b', folded)
+    if delivery:
+        if (not re.search(r'\bneu\b|khong bo|chua bo', folded)
+                and re.search(r'khong can giao|bo (?:yeu cau|dieu kien) giao', folded)):
+            changes['delivery_condition'] = None
+        elif (re.search(r'(?:bat buoc|nhat dinh|phai|can) (?:duoc )?(?:giao|nhan)|(?:giao|nhan(?: hang)?)[^,;.]{0,60}bat buoc|chi (?:mua|lay).{0,60}\b(?:neu|khi)\b|moi (?:mua|lay)', folded)
+                or re.search(r'(?:giao|nhan(?: hang)?) (?:truoc|dung|vao)\b|\btruoc\s+(?:\d|thu\b|ngay\b|hom\b)|\d+\s*(?:gio|ngay)\b', folded)
+                or re.search(r'(?:giao|nhan(?: hang)?) trong\b', folded)
+                and not re.search(r'(?:giao|nhan(?: hang)?) trong tuan\b', folded)):
+            changes['delivery_condition'] = mask_evidence(text)[:200]
+    if re.search(r'\bneu\b', folded):return changes
     areas=re.findall(r'(?<![\d.])(\d+(?:[.,]\d+)?)\s*(?:m2|m²|met vuong)(?!\w)',folded)
     if len(set(areas))==1:changes['room_area_m2']=float(areas[0].replace(',','.'))
     if re.search(r'(?:bat buoc|can(?: co)?|phai co).{0,25}khoa tre em',folded):changes['child_lock_required']=True
     if re.search(r'khong can.{0,20}khoa tre em|bo yeu cau.{0,20}khoa tre em',folded):changes['child_lock_required']=False
     if re.search(r'khong can (?:giao|dung ma)|bo (?:yeu cau|dieu kien) giao', folded):
-        if 'giao' in folded:changes['delivery_condition'] = None
         if 'ma' in folded:changes['required_promo_code'] = None
-    elif re.search(r'giao (?:trong|truoc|dung|vao)\b', folded):
-        changes['delivery_condition'] = mask_evidence(text)[:200]
     code = re.search(r'(?i)(?:phải dùng mã|bắt buộc.*?mã|dùng mã)\s+([A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+)', text)
     if code and not re.search(r'khong (?:can|dung)|chua', folded):
         changes['required_promo_code'] = code[1].upper()
@@ -211,24 +233,40 @@ def requirements(state):
     result={k:v for k,v in _restore(state).delegation.constraints.items() if k in {'room_area_m2','child_lock_required','delivery_condition','required_promo_code'}}
     fact=state.get('profile',{}).get('room_area_m2',{})
     if type(fact.get('value')) in (int,float):result['room_area_m2']=fact['value']
-    room_values={f.get('room_area_m2',{}).get('value') for f in state.get('scoped_facts',{}).get('room',{}).values() if isinstance(f,dict)}-{None}
+    from app.mcp_servers.mcp_shared.room_context import named_rooms
+    rooms=state.get('scoped_facts',{}).get('room',{})
+    selected_rooms=named_rooms(state.get('safe_text',''), rooms)
+    room_values={f.get('room_area_m2',{}).get('value') for room,f in rooms.items()
+                 if isinstance(f,dict) and (not selected_rooms or room in selected_rooms)}-{None}
     if len(room_values)==1:result['room_area_m2']=next(iter(room_values))
+    elif len(room_values)>1:result.pop('room_area_m2',None)
     for turn in state.get('history',[]):
-        result.update(_requirement_changes(turn.get('customer',turn.get('customer_text',''))))
+        text=turn.get('customer',turn.get('customer_text',''))
+        changes=_requirement_changes(text)
+        if selected_rooms and named_rooms(text, rooms)!=selected_rooms:
+            changes.pop('room_area_m2',None)
+        result.update(changes)
     result.update(_requirement_changes(state.get('safe_text','')))
     return result
 
 
 def _approval(text, previous_agent, focus, visible):
     return bool(focus and visible and visible.sku==focus and
-        re.fullmatch(r'(?:da\s+)?(?:dong y|vang|u|ok|duoc|dung roi)(?:\s+(?:a|nhe))?',_search_text(text).strip(' .!?')) and
+        re.fullmatch(r'(?:da\s+)?(?:dong y|vang|u|ok|duoc(?: roi)?|dung roi)(?:\s+(?:a|nhe))?'
+                     r'(?:,?\s+(?:cam on|thanks|thank you)(?:\s+(?:anh|chi|em|ban))?)?',
+                     _search_text(text).strip(' .!?')) and
         re.search(r'len don|tao don|dat hang|mua',_search_text(previous_agent)) and
         ('?' in previous_agent or re.search(r'dong y|xac nhan',_search_text(previous_agent))))
 
 
 def _apply_customer(snap,text,items,focus,visible,ref,state,*,approval=False):
     folded=_search_text(text)
-    if re.search(r'\bneu\b',folded): return focus
+    if re.search(r'\bneu\b',folded):
+        needed = _requirement_changes(text)
+        if needed:
+            snap.delegation = snap.delegation.model_copy(update={'constraints': {**snap.delegation.constraints, **needed}})
+            snap.source_refs['delegation'] = ref
+        return focus
     amounts=customer_budget_amounts(text)
     if len(amounts)==1:
         snap.budget=SpendingLimit(limit_vnd=next(iter(amounts)),mode='hard' if re.search(r'toi da|khong vuot|khong qua|duoi',folded) else 'approx',
@@ -269,11 +307,9 @@ def _apply_customer(snap,text,items,focus,visible,ref,state,*,approval=False):
         sku=snap.selected_sku
         offer=visible if visible and visible.sku==sku else None
         qty=requested_quantity({'safe_text':text}) or (visible.qty if visible and visible.sku==sku else 1)
-        quote=current_quote(state,sku,qty)
-        if quote is None:
-            from app.agent.harness.policy import resolve_product_selection
-            selection=resolve_product_selection(state,{'sku':sku})
-            if selection.status=='resolved':quote=current_quote(state,selection.sku,qty)
+        from app.agent.harness.policy import resolve_product_selection
+        selection=resolve_product_selection(state,{'sku':sku})
+        quote=current_quote(state,selection.sku,qty) if selection.status=='resolved' else None
         if re.search(r'\bgia\b',folded):
             amounts=[a for a,kind,_ in _money_claims(text) if kind=='price']
             if amounts:

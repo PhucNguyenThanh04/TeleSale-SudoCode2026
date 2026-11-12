@@ -23,7 +23,7 @@ from app.agent.memory.store import memory_error_code
 from app.agent.guardrails.checks import (FALLBACK, check_answer, check_grounding,
                                          customer_erasure_requested, mask_pii)
 from app.agent.guardrails.diagnostics import rejected_draft
-from app.agent.harness.session_nodes import (SessionNodes, safe_catalog_reply, safe_consultation_reply,
+from app.agent.harness.session_nodes import (SessionNodes, safe_catalog_reply, safe_consultation_reply, safe_product_reply, product_question_fields, safe_order_status_reply,
                                              safe_promotion_reply, safe_transaction_reply, safe_quote_reply, safe_followup_reply,
                                              transaction_selection_mismatch)
 from app.agent.harness.observability import log_event, trace_node
@@ -75,9 +75,17 @@ def _task_answer_complete(draft, state):
     task = followup_task(state)
     if task.kind != 'none' and not followup_answer_complete(state, task, draft):
         return False
-    if task.kind == 'policy' and not re.search(r'\bgia\b', _search_text(state['safe_text'])):
+    from app.mcp_servers.mcp_shared.consultation_followup import product_price_requested
+    if task.kind == 'policy' and not product_price_requested(state['safe_text']):
         return True  # Policy fees/durations are not product-price advice.
     folded = _search_text(state['safe_text'])
+    from app.mcp_servers.mcp_shared.consultation_followup import order_status_requested
+    if order_status_requested(state['safe_text']) and not re.search(
+            r'trang thai|dang giao|van chuyen|da giao|da tao|da huy|huy don|chua (?:tim )?thay', _search_text(draft)):
+        return False
+    requested_fields = product_question_fields(state['safe_text'])
+    if any(not re.search(pattern, _search_text(draft)) for pattern in requested_fields.values()):
+        return False
     from app.mcp_servers.mcp_shared.consultation import derive_consultation
     decision = derive_consultation(state)
     budget = decision.snapshot.budget.limit_vnd
@@ -133,6 +141,15 @@ class AgentNodes(SessionNodes):
         if customer_erasure_requested(state["safe_text"]):
             return await self._route_customer_erasure(state)
         business = BusinessTools(self.tools, state, self.max_tool_calls, self.clock)
+        from app.agent.harness.callback_request import callback_request
+        callback_at = callback_request(state['safe_text'], state['request'].on)
+        if callback_at and state.get('identity_status') == 'known':
+            receipt = await business.invoke('schedule.callback', {'callback_at': callback_at})
+            scheduled = receipt.get('callback_id') and receipt.get('callback_at')
+            answer = (f"Em đã đặt lịch gọi lại cho mình vào {receipt['callback_at']}."
+                      if scheduled else 'Em chưa đặt được lịch gọi lại. Mình vui lòng thử lại sau ạ.')
+            return {'agent_draft': answer, 'tool_calls': state['tool_calls'],
+                    'tool_count': state.get('tool_count', 0)}
         if (re.search(r"(?:chuyển(?: máy)?|gặp|nói chuyện với).{0,35}(?:nhân viên|chuyên viên|quản lý|người thật)",
                       state["safe_text"], re.I)
                 and not re.search(r"(?:không|chưa|đừng).{0,12}(?:chuyển|gặp)", state["safe_text"], re.I)):
@@ -145,6 +162,29 @@ class AgentNodes(SessionNodes):
                     "needs_handoff": queued, "handoff_ticket_id": state.get("handoff_ticket_id")}
         task = followup_task(state)
         state['followup_kind'] = task.kind
+        await business.prepare_order_status()
+        if (task.kind == 'none' and state.get('identity_status') == 'known' and state.get('tool_calls')
+                and state['tool_calls'][-1].get('name') == 'order.status'
+                and 'error' not in state['tool_calls'][-1].get('result', {})
+                and state['tool_calls'][-1]['result'].get('ok') is not False
+                and state['tool_calls'][-1]['result'].get('success') is not False
+                and state['tool_calls'][-1]['result'].get('orders') == []):
+            status_reply = safe_order_status_reply(state)
+            if status_reply:
+                return {'agent_draft': status_reply, 'tool_calls': state['tool_calls'],
+                        'tool_count': state.get('tool_count', 0)}
+        from app.mcp_servers.mcp_shared.basket import current_basket_quote
+        from app.agent.harness.catalog_query import explicit_product_queries
+        basket_confirmation = _search_text(state['safe_text'])
+        if (task.kind == 'none' and current_basket_quote(state) is not None
+                and re.search(r'dong y|xac nhan', basket_confirmation)
+                and re.search(r'tong gia do|bao gia|ca (?:hai|2)', basket_confirmation)
+                and not re.search(r'\bdoi\b|chuyen sang', basket_confirmation)
+                and not explicit_product_queries(state['safe_text'])):
+            completed = await business.complete_purchase_if_ready()
+            if completed and completed.get('status') == 'created':
+                return {'agent_draft': safe_transaction_reply(state),
+                        'tool_calls': state['tool_calls'], 'tool_count': state.get('tool_count', 0)}
         if task.kind == 'none':
             await business.prepare_consultation()
         else:
@@ -198,7 +238,7 @@ class AgentNodes(SessionNodes):
                 if task.kind != 'none':
                     useful = safe_followup_reply(state, task) if factual else None
                 else:
-                    useful = None if unknown_price else (safe_catalog_reply(state) or safe_quote_reply(state))
+                    useful = None if unknown_price else (safe_order_status_reply(state) or safe_product_reply(state) or safe_catalog_reply(state) or safe_quote_reply(state))
                 if useful:
                     draft = useful
             # A previous turn's offer is not evidence of today's promotion.
@@ -380,8 +420,12 @@ class AgentNodes(SessionNodes):
         log_event(state, "verify", "grounding_checked", accepted=reason is None,
                   **({"reason": reason} if reason else {}))
         answer = draft
+        policy_task = followup_task(state)
         if reason is None and self.guardrails_enabled:
             answer, reason = check_answer(draft, calls, state["safe_text"], focus_sku=_claim_focus(state))
+            if (reason is None and policy_task.kind == 'policy'
+                    and not followup_answer_complete(state, policy_task, answer)):
+                reason = 'policy_question_unanswered'
             log_event(state, "verify", "answer_checked", accepted=reason is None,
                       **({"reason": reason} if reason else {}))
         if not self.guardrails_enabled:
@@ -393,7 +437,7 @@ class AgentNodes(SessionNodes):
         recoveries = [safe_transaction_reply]
         if state.get('followup_kind') not in {None, 'none'}:
             recoveries.append(safe_followup_reply)
-        recoveries.extend([safe_consultation_reply, safe_promotion_reply, safe_quote_reply])
+        recoveries.extend([safe_order_status_reply, safe_product_reply, safe_consultation_reply, safe_promotion_reply, safe_quote_reply])
         structured_search = any(c.get("name") == "catalog.search" and any(
             type(c.get("args", {}).get(k)) is int for k in ("min_room_area_m2", "max_price_vnd"))
             for c in calls)
@@ -409,6 +453,9 @@ class AgentNodes(SessionNodes):
             checked = safe
             if safe_reason is None:
                 checked, safe_reason = check_answer(safe, calls, state["safe_text"], focus_sku=_claim_focus(state))
+            if (safe_reason is None and policy_task.kind == 'policy'
+                    and not followup_answer_complete(state, policy_task, checked)):
+                safe_reason = 'policy_question_unanswered'
             if safe_reason is None:
                 log_event(state, "verify", "recovery_succeeded", recovery=getattr(recover, "__name__", "other_recovery"))
                 return {"agent_text": customer_reply(checked), "verifier_events": rejected}

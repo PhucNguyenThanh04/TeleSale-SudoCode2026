@@ -1,0 +1,62 @@
+{
+  "scenario_id": "SC-T12",
+  "level": "M1",
+  "persona": "price_hunter",
+  "hard_case": "khuyen_mai_khong_cong_don",
+  "customer_phone": "0985003703",
+  "customer_name": "Oanh",
+  "honorific": "chị",
+  "notes": "Nguồn speech T12. Dùng lịch sử mua đủ điều kiện từ nguồn speech. Chấm giá AirPure Y ở tham số tạo đơn; giá các mẫu không dùng một nhãn chung. Định danh đối chiếu CRM BTC gốc: C031 (Oanh); không dùng CRM bổ sung. Quyền trade-in dựa đơn delivered OD188213 / SKU-AP-X-2024 ngày 17/02/2026 của C031.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-27",
+      "customer_goal": "Hỏi thu cũ đổi mới và mua AirPure Y",
+      "customer_turns": [
+        "Chào em, đầu năm nay chị có đơn máy lọc không khí AirPure X bên mình, giờ chị muốn đổi lên mẫu máy lọc không khí AirPure Y thì chính sách thu cũ đổi mới áp dụng thế nào?",
+        "Em kiểm tra tồn kho và báo giá cuối của mẫu máy lọc không khí AirPure Y sau khi áp dụng ưu đãi thu cũ đổi mới giúp chị nhé.",
+        "Ok chị đồng ý mức giá 4.800.000 đồng đó, em lên đơn cho chị 1 chiếc máy lọc không khí AirPure Y thanh toán chuyển khoản nhé."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-AP-Y",
+        "payment": "bank",
+        "order_id": "generated_by_order.create"
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-AP-Y",
+          "payment": "bank",
+          "qty": 1,
+          "price_vnd": 4800000
+        }
+      },
+      "ground_truth_facts": {},
+      "channel_identity": "0985003703",
+      "expected_outcome": "chot_don",
+      "days_later": 0
+    },
+    "call_2": {
+      "channel": "hotline",
+      "channel_identity": "0985003703",
+      "call_date": "2026-10-29",
+      "customer_turns": [
+        "Em ơi chị hỏi tình trạng đơn hàng máy lọc không khí AirPure Y mình đặt bên em lần trước hiện tới đâu rồi, em tra giúp chị nhé.",
+        "Đơn mới đặt hôm trước đã được bàn giao cho đơn vị vận chuyển chưa em?"
+      ],
+      "must_carry_over": [
+        "order_id",
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "order_id",
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "order.status"
+      },
+      "ground_truth_facts": {},
+      "days_later": 2
+    }
+  }
+}

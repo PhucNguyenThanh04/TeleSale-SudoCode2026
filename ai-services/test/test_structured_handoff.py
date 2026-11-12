@@ -45,3 +45,24 @@ class StructuredHandoffTest(unittest.TestCase):
             lambda: datetime(2026, 10, 15, tzinfo=timezone.utc))
         self.assertIn("Lịch giao cuối tuần?", brief.open_questions)
         self.assertNotIn("Có bảo hành?", brief.open_questions)
+
+    def test_k0_human_followup_keeps_the_immediately_unanswered_question(self):
+        request = TextTurnRequest(client_msg_id=uuid4(), session_id=uuid4(),
+            channel='hotline', channel_identity='0984726714', on=date(2026, 10, 15),
+            text='Chị muốn gặp nhân viên để hỏi kỹ hơn, em chuyển giúp chị nhé.', input_mode='clean')
+        question = 'Chị đang uống kháng sinh, dùng máy thì có cho bé bú được không em?'
+        state = {'request': request, 'safe_text': request.text, 'identity_status': 'known',
+                 'customer_id': 'C17', 'customer_phone': '0984726714', 'profile': {},
+                 'scoped_facts': {}, 'tool_calls': [], 'current_episode': {}, 'episodes': [],
+                 'history': [{'customer': question,
+                              'agent': 'Em không có thông tin chuyên môn để khẳng định. Chị nên hỏi bác sĩ.'}]}
+        proposal = {'escalation_reason': 'khach_yeu_cau_gap_nguoi'}
+        brief = build_handoff_brief(state, proposal, lambda: datetime.now(timezone.utc))
+        self.assertIn(question, brief.open_questions)
+        state['history'][0]['agent'] = ('Em không có chuyên môn y tế để khẳng định sữa có cho bé bú được không. '
+                                       'Chị vui lòng tham khảo ý kiến bác sĩ kê đơn.')
+        brief = build_handoff_brief(state, proposal, lambda: datetime.now(timezone.utc))
+        self.assertIn(question, brief.open_questions)
+        state['history'][0]['agent'] = 'Thông tin đã được giải đáp đầy đủ.'
+        brief = build_handoff_brief(state, proposal, lambda: datetime.now(timezone.utc))
+        self.assertNotIn(question, brief.open_questions)

@@ -34,6 +34,16 @@ def consultation_active(state):
         r'\d\s*m2\b|dien tich|be nho|con nho|tre em|khoa tre|chi (?:toi da|khoang|tam)|doi (?:mau|loai|sang)|chuyen sang|chon mau', text))
 
 
+def catalog_search_requested(state):
+    """Distinguish finding a suitable model from asking about the last model."""
+    text = _search_text(state.get('safe_text', ''))
+    return (not derive_consultation(state).snapshot.selected_sku
+            and not _mentions(state.get('safe_text', ''), catalog_items(state))
+            and not re.search(r'\b(?:khong|chua|dung)\b.{0,25}\btim\b|\bneu\b', text)
+            and bool(re.search(r'\btim(?: lai)?\b.{0,80}\b(?:mau|san pham|may loc)\b',
+                               text)))
+
+
 def consultation_scope(state: dict) -> dict:
     """Freeze established scope before a new broad lookup can pollute candidates."""
     items = catalog_items(state)

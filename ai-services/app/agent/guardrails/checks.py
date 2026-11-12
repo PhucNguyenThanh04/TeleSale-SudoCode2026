@@ -669,7 +669,17 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     policy_amounts = (_money_claims(" ".join(chunk["content"] for chunk in policy_chunks))
                       if policy_claim else [])
     policy_values = {amount for amount, _, _ in policy_amounts}
+    # A verbatim public policy formula/threshold is not a product selling price.
+    policy_literal = re.sub(r'^Theo thông tin chính sách đã kiểm tra:\s*', '', candidate)
+    policy_money_clauses = [clause.strip() for clause in
+        re.split(r'[;!?\n]|\.(?!\d)', policy_literal) if _money_claims(clause)]
+    exact_policy_quote = bool(policy_claim and policy_money_clauses and all(
+        any(' '.join(re.sub(r'[*`_]', '', clause).split()) in
+            ' '.join(re.sub(r'[*`_]', '', chunk['content']).split())
+            for chunk in policy_chunks)
+        for clause in policy_money_clauses))
     if money_claims and not (_money_evidenced(money_candidate, successful, focus_sku=focus_sku) or
+                             exact_policy_quote or
                              policy_claim and not re.search(r"(?i)\bgiá(?:\s+bán)?\b", candidate)
                              and all(amount in policy_values
                                      for amount, _, _ in money_claims) or
@@ -697,11 +707,18 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
                 return FALLBACK, 'stock_result_mismatch'
             if any(int(qty) != selected[0]['result'].get('qty') for qty in _STOCK_QTY.findall(clause)):
                 return FALLBACK, 'stock_quantity_mismatch'
-    if _ORDER.search(candidate) and not any(
+    asserted_order = _ORDER.search(candidate) or re.search(
+        r'(?i)đã\s+ghi nhận\s+đơn hàng|đơn hàng.{0,30}đang được xử lý', candidate)
+    if asserted_order and not any(
         call["name"] == "order.create" and call["result"].get("status") == "created"
         for call in successful
     ):
         return FALLBACK, "order_creation_unverified"
+    if re.search(r'(?i)đã\s+(?:đặt|tạo|lên|xếp)\s+lịch(?: hẹn)?(?: gọi lại)?', candidate) and not any(
+        call['name'] == 'schedule.callback' and call['result'].get('callback_id')
+        for call in successful
+    ):
+        return FALLBACK, 'callback_unverified'
     promotion_reason = check_promotion_grounding(candidate, tool_calls, focus_sku=focus_sku)
     if promotion_reason:
         return FALLBACK, promotion_reason

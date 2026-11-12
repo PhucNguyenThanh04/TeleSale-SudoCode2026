@@ -21,7 +21,7 @@ from app.configs import get_settings
 from app.infarstructure.llm import build_llm
 from app.mcp_servers.mcp_memory.repos.postgres import MemoryRepo
 from app.mcp_servers.mcp_memory.repos.langmem_projection import select_facts, select_episodes
-from app.mcp_servers.mcp_memory.services.episode_state import apply_episode_delta
+from app.mcp_servers.mcp_memory.services.episode_state import apply_episode_delta, admit_episode_resolutions
 from app.mcp_servers.mcp_memory.services.episode_summary import build_episode_summary
 from app.mcp_servers.mcp_memory.services.langmem_admission import (
     admit_episode_candidate, admit_profile_candidates)
@@ -320,6 +320,14 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
                 old = {"topics": decoded(prior["topics"]) if prior else [],
                        "resolved_prior_items": decoded(prior["resolved_prior_items"])
                        if prior else []}
+                if delta:
+                    delta, rejected_resolutions = admit_episode_resolutions(
+                        old, delta, source_turn_id=source_turn_id,
+                        customer_text=turn["customer_text"], agent_text=turn["agent_text"],
+                        prior_open_items=prior_open_map)
+                    if rejected_resolutions:
+                        logger.info("LangMem rejected %d resolutions for job %d",
+                                    rejected_resolutions, job_id)
                 state = (apply_episode_delta(old, delta, source_turn_id=source_turn_id,
                     customer_text=turn["customer_text"], agent_text=turn["agent_text"],
                     prior_open_items=prior_open_map)

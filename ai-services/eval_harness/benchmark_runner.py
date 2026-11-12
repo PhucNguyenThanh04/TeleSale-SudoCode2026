@@ -138,6 +138,7 @@ async def run_scenario_call(
         memory_finalize_ms = 0
         playback_error = None
         essential_not_ready = False
+        usage_evidence = []
         try:
             with (capture_decisions(aliases=diagnostics.decision_aliases) if diagnostics is not None and decision_enabled() else nullcontext(None)) as decision_capture, capture_diagnostic_events() as runtime_events:
                 decision_emit("provenance", provenance=True)
@@ -164,7 +165,9 @@ async def run_scenario_call(
                 memory_finalize_ms = state.get('memory_commit_ms', 0)
             customer_name = customer_name or state.get("customer_name")
             agent_text = resp.agent_text or ""
-            tool_calls = state.get("tool_calls", [])
+            # Runtime attributes actual preparation reads to their first real
+            # consumer; historical session evidence is not a new tool call.
+            tool_calls = [*state.get('prepared_tool_calls', []), *state.get("tool_calls", [])]
             memory_writes = state.get("memory_writes", [])
             if prior_snapshot is None:
                 prior_snapshot = deepcopy((state.get("profile", {}), state.get("scoped_facts", {})))
@@ -172,7 +175,7 @@ async def run_scenario_call(
             facts_used_this_turn = facts_used(
                 agent_text, tool_calls, *prior_snapshot,
                 current_session_id=str(session_id), customer_text=user_text,
-                catalog_calls=build_commerce_evidence(state))
+                catalog_calls=build_commerce_evidence(state), usage_evidence=usage_evidence)
             if turn_idx == 1 and call_name in {"call_2", "call_3"}:
                 brief = getattr(prepared, "call_brief", None) or resp.call_brief
                 call_brief_latency = (brief or {}).get("latency_ms")
@@ -185,12 +188,14 @@ async def run_scenario_call(
             tool_calls = []
             memory_writes = []
             facts_used_this_turn = []
+            usage_evidence = []
 
         row = trace_line(run_id, config, scenario_id, call_name, turn_idx,
                          user_text, agent_text, tool_calls, memory_writes,
                          facts_used_this_turn, latency_ms, call_brief_latency,
                          input_mode, customer_name=customer_name,
                          safety_issues=safety_issues, call_spec=call_spec)
+        row['facts_used_evidence'] = usage_evidence
         row["latency"].update(response_ms=int(latency_ms),
                               prepare_ms=prepare_ms if turn_idx == 1 else 0,
                               ttft_is_proxy=delivery_mode != 'text')

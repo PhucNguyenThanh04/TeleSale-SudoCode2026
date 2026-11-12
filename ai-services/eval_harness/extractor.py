@@ -106,6 +106,11 @@ def _question_candidates(agent_text: str) -> list[dict]:
             continue
         narrative = "?" not in sentence and bool(re.search(
             r"(?:không|chưa) (?:có|còn).*\bnào\b|\bkhi nào\b.*\bcứ\b", sentence, re.I))
+        if ("?" not in sentence and re.search(
+                r"(?:không|chưa) (?:tìm )?thấy(?: có)?.*\bnào\b", sentence, re.I)
+                and not re.search(r"cho (?:em|tôi|shop) (?:xin|biết)|vui lòng|cung cấp|xin (?:anh|chị)|"
+                                  r"(?:anh|chị|mình|bạn)\s+(?:có thể\s+)?(?:gửi|đọc|báo|cho)", sentence, re.I)):
+            narrative = True
         if _is_inspection_narrative(sentence) or narrative:
             candidates.append(_candidate("question", sentence, disposition="excluded", reason="narrative"))
             continue

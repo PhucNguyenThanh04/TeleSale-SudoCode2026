@@ -5,7 +5,8 @@ from app.agent.guardrails.checks import check_answer
 from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
 
 
-def explain_claim_mismatch(row: dict, field: str, value, *, on: str) -> dict:
+def explain_claim_mismatch(row: dict, field: str, value, *, on: str,
+                           context_calls: list[dict] | None = None) -> dict:
     unresolved = {'status': 'unresolved'}
     claims = [c for c in row.get('claims', []) if c.get('field') == field and c.get('value') == value]
     if len(claims) != 1 or field not in {'price_vnd', 'promo_active'}:
@@ -13,7 +14,8 @@ def explain_claim_mismatch(row: dict, field: str, value, *, on: str) -> dict:
     text = claims[0].get('text')
     if not text:
         return unresolved
-    calls = row.get('tool_calls', [])
+    # The caller may supply earlier reads from this same scenario/call only.
+    calls = [*(context_calls or []), *row.get('tool_calls', [])]
     named = resolve_claim_skus(text, calls)
     quotes = [c for c in calls if c.get('name') == 'pricing.get_quote'
               and (not named or c.get('args', {}).get('sku') in named)]

@@ -242,7 +242,7 @@ def test_first_variant_selection_can_accept_parent_offer_but_change_cannot():
 
 def test_explicit_delivery_condition_and_required_code_cannot_be_ignored():
     from app.mcp_servers.mcp_shared.consultation import purchase_block_reason
-    s=state('Mua Aster giá 900.000đ, giao trong tuần này nhé.')
+    s=state('Mua Aster giá 900.000đ, bắt buộc giao trong tuần này.')
     s['session_tool_calls']=[catalog(),quote(),stock()]
     assert purchase_block_reason(s,{'sku':'SKU-ASTER','qty':1,'price_vnd':900000})=='delivery_confirmation_required'
     s['safe_text']='Mua Aster giá 900.000đ, phải dùng mã EXACT-SALE.'

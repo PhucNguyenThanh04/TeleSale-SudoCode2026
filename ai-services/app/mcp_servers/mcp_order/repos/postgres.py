@@ -52,7 +52,7 @@ class OrderRepo(Database):
 
     async def runtime_orders(self, session, customer_id: str, order_id: str | None) -> list[dict]:
         result = await session.execute(text("""SELECT order_id,customer_phone,sku,qty,price_vnd,total_vnd,lines,
-            created_on,status FROM runtime.tool_orders WHERE customer_id=:customer_id
+            created_on,status,payment,promos FROM runtime.tool_orders WHERE customer_id=:customer_id
             AND (CAST(:order_id AS text) IS NULL OR order_id=CAST(:order_id AS text))"""),
             {"customer_id": customer_id, "order_id": order_id})
         return [dict(row._mapping) for row in result]

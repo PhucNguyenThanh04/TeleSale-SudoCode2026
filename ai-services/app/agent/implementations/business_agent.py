@@ -241,7 +241,13 @@ class BusinessTools:
             if reason is not None:
                 log_event(self.state,'call_tool','blocked',reason=reason)
                 return {'error':reason}
-        if name in {"catalog.search", "inventory.check", "pricing.get_quote", "pricing.quote_order"}:
+        if name in {'order.create', 'order.update', 'schedule.callback', 'handoff.transfer'}:
+            for cached in reversed(self.state.get('tool_calls', [])):
+                if cached.get('name') == name and cached.get('args') == args:
+                    # A timed-out write may already have committed. Replaying it
+                    # with a new operation key is unsafe within the same turn.
+                    return safe_tool_result(cached['result'])
+        if name in {"catalog.search", "inventory.check", "pricing.get_quote", "pricing.quote_order", "order.status"}:
             for cached in reversed(self.state.get("tool_calls", [])):
                 if cached.get("name") in {"order.create", "order.update"}:
                     break
@@ -306,12 +312,12 @@ class BusinessTools:
                 return safe_tool_result(result) if result.get('status') == 'created' else None
             if self._completion_checked:
                 return None
-            self._completion_checked = True
             from app.mcp_servers.mcp_shared.basket import current_basket_quote, basket_purchase_arguments, basket_block_reason
             if current_basket_quote(self.state) is not None:
                 basket_args = basket_purchase_arguments(self.state)
                 if basket_args is None or basket_block_reason(self.state, basket_args, require_stock=False) is not None:
                     return None
+                self._completion_checked = True
                 for sku in dict.fromkeys(line['sku'] for line in basket_args['lines']):
                     if not any(call.get('name') == 'inventory.check' and call.get('args', {}).get('sku') == sku
                                for call in build_commerce_evidence(self.state)):
@@ -321,14 +327,34 @@ class BusinessTools:
             diagnostic_emit('continuation', state=self.state, args=args or {}, status='not_evaluated' if args is None else 'unknown')
             if args is None or purchase_block_reason(self.state, args) is not None:
                 return None
+            self._completion_checked = True
             return await self._invoke_locked('order.create', args)
+
+    @phase_origin('preparation')
+    async def prepare_order_status(self) -> bool:
+        """Use verified ownership for an explicit lookup, never infer an order."""
+        from app.mcp_servers.mcp_shared.consultation_followup import order_status_requested
+        if (not order_status_requested(self.state.get('safe_text', ''))
+                or self.state.get('identity_status') != 'known'
+                or not self.state.get('customer_phone') or self.state.get('tool_failed')):
+            return False
+        if any(c.get('name') == 'order.status' for c in self.state.get('tool_calls', [])):
+            return False
+        owned = set(self.state.get('owned_order_ids', [])) | set(self.state.get('remembered_order_ids', []))
+        requested = set(re.findall(r'\bOD[A-Z0-9-]+\b', self.state.get('safe_text', '')))
+        if requested and (len(requested) != 1 or not requested <= owned):
+            return False
+        args = {'order_id': next(iter(requested or owned))} if requested or len(owned) == 1 else {}
+        before = len(self.state.get('tool_calls', []))
+        await self.invoke('order.status', args)
+        return len(self.state.get('tool_calls', [])) > before
 
     @phase_origin('preparation')
     async def prepare_followup(self, task) -> bool:
         """Prepare information, including policy during a sales pause; never writes."""
         from app.knowledge.context import selected_release
         from app.mcp_servers.mcp_shared.consultation_followup import (
-            policy_arguments, policy_call_for_task, compatible_quote,
+            policy_arguments, policy_call_for_task, compatible_quote, product_price_requested,
         )
         before = len(self.state.get('tool_calls', []))
         if task.kind == 'none' or self.state.get('tool_failed'):
@@ -353,7 +379,7 @@ class BusinessTools:
                         args['order_id'] = task.order_id
                     await self.invoke('policy.search', args)
             # An explicit price question is independent from whether purchase is paused.
-            if not re.search(r'\bgia\b', _search_text(self.state.get('safe_text', ''))):
+            if not product_price_requested(self.state.get('safe_text', '')):
                 return len(self.state.get('tool_calls', [])) > before
         focus = task.focus_sku
         if not focus or self.state.get('tool_count', 0) >= self.max_tool_calls:
@@ -383,6 +409,7 @@ class BusinessTools:
         from app.mcp_servers.mcp_shared.consultation import derive_consultation
         from app.mcp_servers.mcp_shared.consultation_shortlist import (
             build_shortlist, consultation_active, consultation_scope, shortlist_requirements,
+            catalog_search_requested,
         )
         decision = derive_consultation(self.state)
         if diagnostic_active():
@@ -424,6 +451,42 @@ class BusinessTools:
                     if self.state.get('tool_count', 0) >= self.max_tool_calls:
                         break
                     await self.invoke('catalog.search', {'sku': sku})
+        items = catalog_items(self.state)
+        speech = _search_text(self.state.get('safe_text', ''))
+        named = _mentions(self.state.get('safe_text', ''), items)
+        if (len(named) == 2 and re.search(r'tong gia|tong tien|gio hang', speech)
+                and not re.search(r'\b(?:hoac|hay)\b|so sanh', speech)
+                and not re.search(r'\b[3-9]\s*(?:mon|chiec|san pham)|moi (?:mon|san pham) [2-9]', speech)
+                and (re.search(r'(?:ca )?2 san pham|moi (?:mon|san pham) 1', speech))
+                and all(not items[sku].get('variants') for sku in named)):
+            from app.mcp_servers.mcp_shared.consultation import customer_order_options
+            args = {'lines': [{'sku': sku, 'qty': 1} for sku in sorted(named)]}
+            options = customer_order_options(self.state) or {}
+            if options.get('address'):
+                args['address'] = options['address']
+            await self.invoke('pricing.quote_order', args)
+            return len(self.state.get('tool_calls', [])) > before
+        # An explicit request to find alternatives must not stay pinned to the
+        # last recommendation. Discover within the sourced category and current budget.
+        items = catalog_items(self.state)
+        categories = {p.get('category') for p in items.values()
+                      if p['sku'] in scope.get('skus', [])} - {None, ''}
+        category = scope.get('category') or (next(iter(categories)) if len(categories) == 1 else None)
+        if category and catalog_search_requested(self.state):
+            args = {'category': category}
+            budget = derive_consultation(self.state).snapshot.budget
+            if budget.limit_vnd is not None:
+                args['max_price_vnd'] = budget.limit_vnd
+            area = shortlist_requirements(self.state).get('room_area_m2')
+            if type(area) in (int, float):
+                args['min_room_area_m2'] = area
+            if (self.state.get('tool_count', 0) < self.max_tool_calls
+                    and not any(c.get('name') == 'catalog.search'
+                        and all(c.get('args', {}).get(k) == v for k, v in args.items())
+                        for c in self.state.get('tool_calls', []))):
+                await self.invoke('catalog.search', args)
+            scope = {**scope, 'category': category, 'focus_sku': None}
+            self.state['consultation_scope'] = scope
         # Newly fetched metadata can resolve a customer's previously explicit
         # choice. Use that decision for stock preparation in this same turn.
         decision = derive_consultation(self.state)

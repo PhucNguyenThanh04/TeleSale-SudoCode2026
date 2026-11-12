@@ -30,6 +30,33 @@ def _evidence(quote: object, customer_text: str, agent_text: str) -> str:
     return value
 
 
+def admit_episode_resolutions(previous: dict, delta: dict, **evidence) -> tuple[dict, int]:
+    """Reject unsupported optional resolutions before applying the remaining delta.
+
+    Revalidate cached proposals too: a target may have disappeared since extraction.
+    The strict state validator remains responsible for every other delta field.
+    """
+    admitted = deepcopy(delta)
+    rejected = 0
+    for update in admitted.get("topic_updates", []):
+        resolutions = update.get("resolve_items", [])
+        kept = []
+        for resolution in resolutions:
+            probe = {"topic_updates": [{"scope_type": update["scope_type"],
+                "scope_id": update.get("scope_id", ""), "resolve_items": [resolution]}]}
+            try:
+                apply_episode_delta(previous, probe, **evidence)
+            except EpisodeCapacityError:
+                raise
+            except ValueError:
+                rejected += 1
+            else:
+                kept.append(resolution)
+        if "resolve_items" in update:
+            update["resolve_items"] = kept
+    return admitted, rejected
+
+
 def apply_episode_delta(previous: dict, delta: dict, *, source_turn_id: str,
                         customer_text: str, agent_text: str,
                         prior_open_items: dict[str, tuple[str, str]] | None = None) -> dict:

@@ -88,3 +88,26 @@ def test_agent_catalog_boundary_returns_products_in_one_call_without_new_args():
     assert [item["sku"] for item in result["items"]] == ["SKU-AP-X", "SKU-XM-4L"]
     assert all(item["attributes"]["child_safe_lock"] is False
                for item in result["items"])
+
+
+def test_k0_named_brand_queries_do_not_return_unrelated_product_types():
+    for query, expected in [
+        ('áo khoác Windbreak navy size M', {'SKU-JK-WND'}),
+        ('máy lọc nước Sunhouse UF', {'SKU-WF-UF'}),
+        ('Lock 4', {'SKU-AF-4L'}),
+        ('Xiaomi 4 Pro', {'SKU-XM-4P'}),
+    ]:
+        assert {item['sku'] for item in _catalog(PRODUCTS, {'query': query})['items']} == expected, query
+
+
+def test_k0_generic_product_type_does_not_match_every_device_named_may():
+    result = _catalog(PRODUCTS, {'query': 'máy lọc không khí khóa trẻ em'})
+    assert result['items']
+    assert all(item['category']=='gia-dung/may-loc-khong-khi' for item in result['items'])
+
+
+def test_named_comparison_does_not_apply_one_models_digits_to_both_brands():
+    result = _catalog(PRODUCTS, {'query': 'máy hút sữa Medela Swing Maxi và Spectra S1'})
+    assert {'SKU-MB-PUMP1', 'SKU-MB-PUMP2'} <= {p['sku'] for p in result['items']}
+    brands = {p['sku']: p['brand'] for p in PRODUCTS}
+    assert all(brands[p['sku']] in {'Medela', 'Spectra'} for p in result['items'])

@@ -195,7 +195,7 @@ async def invoke(repo, name: str, args: dict,
         customer_id, phone = await _identity(repo, session, args)
         if name != "handoff.transfer" and not customer_id:
             return {"error": "identity_required"}
-        if name == "order.create":
+        if name in {"order.create", "order.update"}:
             await repo.lock_customer(session, phone)
         if key and name != "order.status":
             previous = await repo.claim_operation(session, key, name, digest)

@@ -196,3 +196,46 @@ def test_multiple_quantity_advice_cannot_claim_affordability_with_unknown_budget
     assert not _task_answer_complete('Beryl Air có giá 4.800.000đ, phù hợp ngân sách của mình.', s)
     assert 'mỗi sản phẩm hay tổng cả đơn' in safe_catalog_reply(s)
     assert _task_answer_complete('Beryl Air giá 4.800.000đ. Ngân sách của mình cho mỗi sản phẩm hay tổng cả đơn ạ?', s)
+
+
+def test_k0_stock_question_is_not_satisfied_by_a_price_only_reply():
+    from app.agent.harness.agent_nodes import _task_answer_complete
+    from app.agent.harness.session_nodes import safe_product_reply
+    s = state('Aster còn hàng chưa em?')
+    s['tool_calls'] = [catalog(), quote(), stock()]
+    assert not _task_answer_complete('Aster giá 900.000đ.', s)
+    reply = safe_product_reply(s)
+    assert 'còn hàng' in reply and '900.000' not in reply
+    assert _task_answer_complete(reply, s)
+    s['tool_calls'][-1]['args']['on'] = '2026-11-04'
+    assert safe_product_reply(s) is None
+
+
+def test_k0_features_answer_uses_the_focused_catalog_and_never_infers_absence():
+    from app.agent.harness.agent_nodes import _task_answer_complete
+    from app.agent.harness.session_nodes import safe_product_reply
+    s = state('Aster có app với khóa trẻ em không em?')
+    c = catalog()
+    c['result']['items'][0]['attributes'] = {'child_safe_lock': True, 'features': 'HEPA và app điều khiển'}
+    s['tool_calls'] = [c, quote()]
+    assert not _task_answer_complete('Aster giá 900.000đ.', s)
+    reply = safe_product_reply(s)
+    assert 'khóa trẻ em' in reply and 'app' in reply and '900.000' not in reply
+    assert _task_answer_complete(reply, s)
+    c['result']['items'][0]['attributes'] = {}
+    reply = safe_product_reply(s)
+    assert 'chưa có thông tin' in reply.lower() and 'không có app' not in reply.lower()
+
+
+def test_k0_status_reply_uses_current_order_result_instead_of_asking_for_known_id():
+    from app.agent.harness.agent_nodes import _task_answer_complete
+    from app.agent.harness.session_nodes import safe_order_status_reply
+    s = state('Anh hỏi tình trạng đơn đã mua hôm trước. Em tra giúp nhé.')
+    s['tool_calls'] = [{'name': 'order.status', 'args': {'order_id': 'OD-OFFLINE'},
+                        'result': {'orders': [{'order_id': 'OD-OFFLINE', 'status': 'shipping'}]}}]
+    assert not _task_answer_complete('Anh cho em xin mã đơn hàng nhé.', s)
+    reply = safe_order_status_reply(s)
+    assert 'OD-OFFLINE' in reply and 'đơn đang giao' in reply
+    assert _task_answer_complete(reply, s)
+    s['tool_calls'] = []
+    assert safe_order_status_reply(s) is None

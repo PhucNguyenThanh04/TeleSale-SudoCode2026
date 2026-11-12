@@ -75,3 +75,8 @@ class CatalogQueryTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_k0_ampersand_brand_is_not_split_into_an_unknown_model_fragment():
+    from app.agent.harness.catalog_query import explicit_product_queries
+    assert explicit_product_queries('Anh muốn mua Lock&Lock 4 lít, thanh toán COD.') == ['Lock&Lock 4']

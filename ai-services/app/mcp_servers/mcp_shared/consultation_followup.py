@@ -8,6 +8,14 @@ from app.mcp_servers.mcp_shared.consultation import catalog_items, derive_consul
 from app.agent.memory.episode_candidates import blocker_resolution
 
 
+def order_status_requested(text: str) -> bool:
+    folded = _search_text(text)
+    return bool(re.search(r'\bdon\b|tracking', folded)
+                and re.search(r'\btra\b|kiem (?:tra|lai)|tinh trang|trang thai|van don|tracking|'
+                              r'da (?:duoc )?xac nhan|ban giao|du kien giao', folded)
+                and not re.search(r'\bneu\b|(?:khong|chua|dung).{0,12}(?:kiem (?:tra|lai)|\btra\b)', folded))
+
+
 @dataclass
 class FollowupTask:
     kind: str = 'none'
@@ -199,6 +207,11 @@ def policy_call_for_task(state, task):
     return None
 
 
+def product_price_requested(text):
+    folded = re.sub(r'\bgia (?:han|dung|dinh)\b', '', _search_text(text))
+    return bool(re.search(r'\bgia\b', folded))
+
+
 def compatible_quote(state, focus):
     from app.agent.harness.policy import resolve_product_selection
     from app.mcp_servers.mcp_shared.commerce_evidence import build_commerce_evidence
@@ -251,6 +264,14 @@ def followup_answer_complete(state, task, answer):
     if task.kind == 'none':
         return True
     if task.kind == 'policy':
+        from app.agent.guardrails.claims import assertion_text
+        from app.agent.guardrails.policy_grounding import policy_clarification_or_refusal
+        if (not assertion_text(answer).strip(' .!?;\n')
+                or policy_clarification_or_refusal(answer)):
+            return True
+        if (re.search(r'phi (?:giao hang|van chuyen|ship)', _search_text(task.policy_query or ''))
+                and not re.search(r'(?:phi|mien phi) (?:giao hang|van chuyen|ship)', text)):
+            return False
         if task.missing_fields:
             return bool(re.search(r'xac minh|ma don|don nao', text)) and '?' in answer
         call = policy_call_for_task(state, task)

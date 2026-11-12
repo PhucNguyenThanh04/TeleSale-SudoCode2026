@@ -1,6 +1,7 @@
 """Pure BTC catalog, inventory, pricing and delivery rules shared by two services."""
 
 import unicodedata
+import re
 from datetime import date, timedelta
 
 from app.constants import CATALOG_RESULT_LIMIT
@@ -43,7 +44,25 @@ def _search_text(value: str) -> str:
 
 def _catalog(products: list[dict], args: dict) -> dict:
     ranked = []
-    query_terms = _search_text(args.get("query") or "").split()
+    def tokens(value):
+        return set(re.findall(r"[^\W\d_]+|\d+(?:[.,]\d+)?", _search_text(value)))
+    query = _search_text(args.get("query") or "")
+    query_terms = tokens(query)
+    # Explicit brands and product types are constraints; feature words only rank.
+    brands = {p['brand'] for p in products if any(
+        len(term) >= 3 and term in query_terms for term in tokens(p.get('brand', '')))}
+    prefixes = []
+    for p in products:
+        name, brand = _search_text(p['name']), _search_text(p.get('brand', ''))
+        prefix = name.split(brand, 1)[0].strip() if brand and brand in name else ''
+        if prefix and re.search(r'(?<!\w)' + re.escape(prefix) + r'(?!\w)', query):
+            prefixes.append((len(prefix), p['category']))
+    categories = {category for length, category in prefixes
+                  if length == max((n for n, _ in prefixes), default=0)}
+    model_terms = {term for term in query_terms if any(char.isdigit() for char in term)
+                   or term in {'pro', 'lite', 'mini', 'max', 'plus', 'ultra'}} if len(brands) == 1 else set()
+    available_terms = set().union(*(tokens(p['name']) for p in products if p.get('brand') in brands))
+    model_terms &= available_terms
     for p in products:
         if args.get("sku") and p["sku"] != args["sku"] and not any(v["variant_sku"] == args["sku"] for v in p.get("variants", [])):
             continue
@@ -54,8 +73,14 @@ def _catalog(products: list[dict], args: dict) -> dict:
             continue
         if args.get("min_room_area_m2") and p["attributes"].get("room_area_m2", 0) < args["min_room_area_m2"]:
             continue
-        searchable = _search_text(" ".join((p["name"], p["brand"], p["category"], p["sku"])))
-        score = sum(term in searchable for term in query_terms)
+        if brands and p.get('brand') not in brands:
+            continue
+        if categories and p['category'] not in categories:
+            continue
+        searchable = tokens(" ".join((p["name"], p["brand"], p["category"], p["sku"])))
+        if not model_terms <= searchable:
+            continue
+        score = len(query_terms & searchable)
         if query_terms and score == 0:
             continue
         if p["attributes"].get("discontinued") and not args.get("include_discontinued") and not args.get("sku"):
@@ -215,4 +240,5 @@ def quote_order(products: list[dict], promos: list[dict], args: dict,
                         'line_total_vnd': sum(prices)})
     total = sum(unit['final_price_vnd'] for unit in priced)
     return {'units': priced, 'lines': grouped, 'total_vnd': total,
-            'order_promos': list(stack.values()), 'freeship': bool(stack.get('NAM-SHIP0')) or total >= 2_000_000}
+            'order_promos': list(stack.values()), 'freeship': bool(stack.get('NAM-SHIP0')) or total >= 2_000_000,
+            'note': 'Khi giá trong một dòng khác nhau (VD 2 máy cùng SKU, 1 máy được giảm 50%), tạo đơn bằng mỗi máy một dòng qty=1.'}

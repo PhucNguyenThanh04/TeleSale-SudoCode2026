@@ -184,3 +184,27 @@ def test_new_budget_can_reconsider_agent_recommendation_but_not_customer_selecti
                          'agent': 'Em ghi nhận mẫu mình chọn.'})
     result = build_shortlist(s, scope=consultation_scope(s))
     assert [item['sku'] for item in result.items] == ['SKU-ASTER']
+
+
+@pytest.mark.parametrize('text', [
+    'Tìm lại mẫu phù hợp nhất với ngân sách tối đa 5 triệu.',
+    'Em tìm trong danh mục giúp anh mẫu có khóa trẻ em.',
+])
+def test_alternative_search_does_not_override_customer_selection(text):
+    from app.mcp_servers.mcp_shared.consultation_shortlist import catalog_search_requested
+    s = consultation_state(text)
+    assert catalog_search_requested(s)
+    s['history'].append({'source_turn_id': str(uuid4()), 'customer': 'Tôi chọn Aster Air.',
+                         'agent': 'Em ghi nhận mẫu mình chọn.'})
+    assert not catalog_search_requested(s)
+
+
+@pytest.mark.parametrize('text', [
+    'Chưa cần tìm lại mẫu khác, ngân sách vẫn 5 triệu.',
+    'Đừng tìm mẫu khác nhé.',
+    'Nếu tìm mẫu khác trong tầm 5 triệu thì sao?',
+    'Tìm lại giá mẫu Aster Air giúp tôi.',
+])
+def test_alternative_search_requires_current_unambiguous_request(text):
+    from app.mcp_servers.mcp_shared.consultation_shortlist import catalog_search_requested
+    assert not catalog_search_requested(consultation_state(text))

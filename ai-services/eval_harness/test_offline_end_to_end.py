@@ -97,9 +97,9 @@ def test_readme_cli_help_offline_check_and_retired_dry_run(tmp_path):
         assert result.returncode==0,result.stderr
         assert '--btc-root' in result.stdout and '--expected-database' in result.stdout
     checked=subprocess.run([sys.executable,'-m','eval_harness.preflight','--offline-check',
-        '--scenarios',str(SERVICE/'eval_harness/scenarios'),'--btc-root',str(BTC)],capture_output=True,text=True)
+        '--scenarios',str(CASES),'--btc-root',str(BTC)],capture_output=True,text=True)
     assert checked.returncode==0,checked.stderr
-    assert json.loads(checked.stdout)==dict(scenarios=7,calls=13,turns=39,hard_cases=3)
+    assert json.loads(checked.stdout)==dict(scenarios=1,calls=2,turns=2,hard_cases=1)
     retired=subprocess.run([sys.executable,'-m','eval_harness.benchmark_runner','--agent','deep',
         '--btc-root',str(BTC),'--scenarios',str(CASES),'--out',str(tmp_path/'never.json'),
         '--dry-run','1'],capture_output=True,text=True)

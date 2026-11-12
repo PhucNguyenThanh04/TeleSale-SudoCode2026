@@ -1,0 +1,118 @@
+{
+  "scenario_id": "SC-T13",
+  "level": "M1",
+  "persona": "careful_mom",
+  "hard_case": "doi_ngan_sach",
+  "customer_phone": "0963279264",
+  "customer_name": "Đạt",
+  "honorific": "anh",
+  "notes": "Nguồn speech T13. Khách nâng ngân sách ở phiên 2, diện tích và trẻ nhỏ giữ nguyên. Call 3 follows T13-S03 when this scenario has a justified third contact; see speech dialogue source. Định danh đối chiếu CRM BTC gốc: C047 (Đạt); không dùng CRM bổ sung.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-20",
+      "customer_goal": "Tìm máy lọc phòng ngủ trong ngân sách, hỏi khóa trẻ em và bảo hành",
+      "customer_turns": [
+        "Chào em, anh đang tìm máy lọc không khí cho phòng ngủ 25 mét vuông trong tầm giá 3 triệu đổ lại, bên em có mẫu nào phù hợp?",
+        "Nhà anh có em bé nhỏ nên muốn hỏi mẫu đó có tính năng khóa trẻ em không và chế độ bảo hành máy bao lâu?",
+        "Được rồi, để anh suy nghĩ thêm rồi gọi lại em sau nhé."
+      ],
+      "facts_established": {
+        "room_area_m2": 25,
+        "budget_vnd": 3000000,
+        "has_children": true
+      },
+      "success_if": {
+        "tool_called": "catalog.search",
+        "must_say_any": [
+          "khóa trẻ em",
+          "khóa an toàn trẻ em"
+        ],
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {},
+      "channel_identity": "0963279264",
+      "expected_outcome": "hen_goi_lai",
+      "days_later": 0
+    },
+    "call_2": {
+      "channel": "zalo_oa",
+      "channel_identity": "zalo_đạt52",
+      "call_date": "2026-10-22",
+      "customer_turns": [
+        "Anh nhắn lại vụ tìm máy lọc không khí cho phòng ngủ hôm trước, nay anh nâng ngân sách lên tối đa 5,5 triệu đồng, diện tích phòng vẫn như cũ nhé.",
+        "Với mức ngân sách tối đa 5,5 triệu đó, em tìm trong danh mục giúp anh mẫu máy lọc không khí có khóa trẻ em và báo giá để anh tham khảo trước, anh chưa đặt ngay nhé."
+      ],
+      "must_carry_over": [
+        "room_area_m2"
+      ],
+      "must_not_ask": [
+        "room_area_m2"
+      ],
+      "success_if": {
+        "tool_called": "catalog.search",
+        "args_match": {
+          "max_price_vnd": 5500000
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {},
+      "memory_expectation": {
+        "budget_vnd": 5500000,
+        "superseded": {
+          "budget_vnd": 3000000
+        }
+      },
+      "days_later": 2
+    },
+    "call_3": {
+      "channel": "zalo_oa",
+      "channel_identity": "zalo_đạt52",
+      "call_date": "2026-11-05",
+      "customer_goal": "Tiếp tục tìm máy lọc phòng ngủ theo ngân sách, diện tích và yêu cầu khóa trẻ em; hôm nay chỉ nhận tư vấn.",
+      "customer_turns": [
+        "Anh nhắn lại về máy lọc không khí phòng ngủ hôm trước, với đúng diện tích phòng và nhu cầu có khóa trẻ em như đã trao đổi thì trong tầm giá tối đa 5,5 triệu em tìm lại giúp anh mẫu phù hợp nhất nhé.",
+        "Anh muốn hỏi kỹ thêm là chế độ bảo hành chính hãng của mẫu đó bao nhiêu tháng và màng lọc thay thế có nằm trong phạm vi bảo hành không, anh tham khảo rõ trước khi quyết định."
+      ],
+      "must_carry_over": [
+        "budget_vnd",
+        "room_area_m2",
+        "has_children"
+      ],
+      "must_not_ask": [
+        "budget_vnd",
+        "room_area_m2",
+        "has_children"
+      ],
+      "success_if": {
+        "tool_called": "catalog.search",
+        "args_match": {
+          "max_price_vnd": 5500000
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {
+        "budget_vnd": 5500000,
+        "room_area_m2": 25,
+        "has_children": true
+      },
+      "speech_dialogue_ref": "T13-S03",
+      "days_later": 14
+    }
+  }
+}

@@ -275,7 +275,10 @@ def basket_block_reason(state, args, *, require_stock=True):
     from app.mcp_servers.mcp_shared.consultation import derive_consultation
     budget = derive_consultation(state).snapshot.budget
     explicit_prices = {amount for amount, kind, _ in _money_claims(current) if kind == 'price'}
-    if budget.limit_vnd is not None and len(units) > 1 and budget.basis == 'unknown':
+    # If the whole basket fits, it also fits a per-item limit; clarification
+    # cannot change eligibility. Keep the ambiguity gate when the total exceeds it.
+    if (budget.limit_vnd is not None and len(units) > 1 and budget.basis == 'unknown'
+            and result['total_vnd'] > budget.limit_vnd):
         return 'budget_basis_required'
     cost = max(unit['final_price_vnd'] for unit in units) if budget.basis == 'unit' else result['total_vnd']
     if budget.limit_vnd is not None and cost > budget.limit_vnd and result['total_vnd'] not in explicit_prices:

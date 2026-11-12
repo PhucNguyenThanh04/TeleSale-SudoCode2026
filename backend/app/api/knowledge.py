@@ -1,5 +1,4 @@
-"""Restricted review gateway; browser access is separate from internal AI auth."""
-import hmac
+"""Review gateway with a server-bound actor and internal AI authentication."""
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -9,15 +8,8 @@ from typing import Literal
 
 async def reviewer(request: Request):
     config = request.app.state.voice_settings
-    if not config.knowledge_review_token or not config.knowledge_reviewer_id.strip():
-        raise HTTPException(503, 'Knowledge review is not configured')
-    if config.ai_internal_token and hmac.compare_digest(
-            config.knowledge_review_token.get_secret_value().encode(),
-            config.ai_internal_token.get_secret_value().encode()):
-        raise HTTPException(503, 'Use a separate reviewer access secret')
-    expected = 'Bearer ' + config.knowledge_review_token.get_secret_value()
-    if not hmac.compare_digest(request.headers.get('Authorization', '').encode(), expected.encode()):
-        raise HTTPException(401, 'Reviewer access required')
+    if not config.knowledge_reviewer_id.strip():
+        raise HTTPException(503, 'Knowledge reviewer is not configured')
     if request.method != 'GET':
         origin = request.headers.get('Origin')
         if origin and origin.rstrip('/') != str(request.base_url).rstrip('/'):

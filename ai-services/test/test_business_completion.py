@@ -149,3 +149,34 @@ def test_explicit_human_request_routes_without_model_and_checks_ticket():
         assert result["handoff_ticket_id"] == "HT-TEST"
         assert current["tool_calls"][0]["name"] == "handoff.transfer"
     asyncio.run(run())
+
+
+def test_k0_known_customer_status_lookup_uses_owned_identity_without_asking_again():
+    async def run():
+        current = state()
+        current['safe_text'] = 'Em ơi, anh hỏi tình trạng đơn mình đặt lần trước. Em tra giúp nhé.'
+        current['owned_order_ids'] = ['OD-OFFLINE']
+        gateway = AsyncMock()
+        gateway.invoke_trusted.return_value = {'orders': [{'order_id': 'OD-OFFLINE', 'status': 'shipping'}]}
+        tools = BusinessTools(gateway, current, 3, lambda: None)
+        assert await tools.prepare_order_status()
+        assert current['tool_calls'][-1]['args']['order_id'] == 'OD-OFFLINE'
+        await tools.prepare_order_status()
+        # The model may request the same lookup by phone after preparation.
+        await tools.invoke('order.status', {})
+        assert gateway.invoke_trusted.await_count == 1
+    asyncio.run(run())
+
+
+def test_k0_status_preparation_does_not_lookup_foreign_orders_or_unknown_customers():
+    async def run():
+        for identity, text in [('unknown', 'Em tra tình trạng đơn giúp tôi.'),
+                               ('known', 'Em tra đơn OD-FOREIGN giúp tôi.'),
+                               ('known', 'Đừng kiểm tra đơn giúp tôi.'),
+                               ('known', 'Nếu đặt đơn thì sao?')]:
+            current = state()
+            current.update(identity_status=identity, safe_text=text, owned_order_ids=['OD-MINE'])
+            gateway = AsyncMock()
+            assert not await BusinessTools(gateway, current, 3, lambda: None).prepare_order_status()
+            gateway.invoke_trusted.assert_not_awaited()
+    asyncio.run(run())

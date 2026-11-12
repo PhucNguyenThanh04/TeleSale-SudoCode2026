@@ -52,8 +52,7 @@ class VoiceSettings(BaseSettings):
     ai_service_url: str = "http://127.0.0.1:8001"
     ai_service_timeout_seconds: float = Field(default=120, gt=0)
     ai_internal_token: SecretStr | None = None
-    knowledge_review_token: SecretStr | None = None
-    knowledge_reviewer_id: str = ''
+    knowledge_reviewer_id: str = 'local-reviewer'
     speech_http_url: str = "http://127.0.0.1:18110"
     speech_listen_url: str = "ws://127.0.0.1:18110/v1/speech/listen"
     speech_voice: str = "Trúc Ly"
