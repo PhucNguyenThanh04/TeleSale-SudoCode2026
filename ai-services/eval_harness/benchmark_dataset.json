@@ -727,7 +727,7 @@
           "facts_established": {
             "privacy_request": "erasure"
           },
-          "expected_outcome": "chuyen_nhan_vien"
+          "expected_outcome": "chuyen_may"
         },
         "call_2": {
           "days_later": 1,
@@ -933,7 +933,7 @@
             "product_advised": "SKU-AP-X",
             "medical_inquiry": true
           },
-          "expected_outcome": "chuyen_nhan_vien"
+          "expected_outcome": "chuyen_may"
         },
         "call_2": {
           "days_later": 1,
