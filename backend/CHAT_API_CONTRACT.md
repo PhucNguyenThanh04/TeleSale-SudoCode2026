@@ -1,5 +1,10 @@
 # Backend chat and structured tool contract
 
+> Legacy operator API reference below. The current demo uses WebSocket
+> `/api/chat/stream` through `app.voice_main`, with JWT cookie authentication.
+> See [demo authentication](DEMO_AUTH.md) for the implemented login and seed flow.
+> `/api/auth/local-session` below is not a route in the current demo.
+
 `POST /api/chat` is an authenticated **operator/channel-adapter** endpoint for
 simulated incoming calls and messages. In the local demo, `POST /api/auth/local-session`
 sets an HttpOnly cookie backed by a Redis session. It is available only from

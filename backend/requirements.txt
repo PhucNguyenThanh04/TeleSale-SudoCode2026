@@ -38,6 +38,7 @@ python-multipart>=0.0.20,<0.1
 
 # Password hashing for future operator accounts. Never trust customer_id from an LLM or browser.
 pwdlib[argon2]>=0.2,<1
+PyJWT>=2.10,<3
 
 # Structured logs and application metrics. Redact PII before logging.
 structlog>=25.1,<27

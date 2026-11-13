@@ -2,8 +2,10 @@
 
 Backend-only transport orchestration. The frontend captures/plays audio; the
 speech service runs VAD/STT and TTS; the harness owns customer identification,
-conversation state, memory, tools and Call Brief. No login, database writes,
-audio persistence, transcript rewriting or business decisions in this gateway.
+conversation state, memory, tools and Call Brief. The gateway authenticates demo
+accounts with JWT cookies and binds channel identity to an assigned BTC profile.
+See [demo authentication](DEMO_AUTH.md) for account seeding and configuration.
+No audio persistence, transcript rewriting or business decisions in this gateway.
 
 ## Run
 
@@ -13,7 +15,7 @@ From the repository root, with the backend dependencies installed:
 backend/.venv/bin/python -m uvicorn app.voice_main:app --app-dir backend --host 127.0.0.1 --port 8000
 ```
 
-This dedicated entrypoint does not start PostgreSQL/Redis or import the legacy
+This dedicated entrypoint connects to existing PostgreSQL for demo accounts; it does not start PostgreSQL/Redis or import the legacy
 operator routes. The existing `app.main` imports API modules absent from the
 checkout at implementation time; it is not the entrypoint for this demo.
 `app.voice_main` serves the call website at `/`, frontend assets at `/assets/`,

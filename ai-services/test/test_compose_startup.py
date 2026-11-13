@@ -58,3 +58,22 @@ def test_local_worker_entrypoint_does_not_require_a_cloud_key(monkeypatch):
     with patch.dict(module.os.environ, {'LLM_BACKEND': 'local', 'LLM_API_KEY': ''}, clear=True):
         module.main()
     assert captured == [command]
+
+
+def test_managed_container_checks_boot_with_its_own_database_role(monkeypatch, tmp_path):
+    from unittest.mock import AsyncMock
+    from sqlalchemy.engine import make_url
+    module = startup(); captured = []
+    password = tmp_path/'password'; password.write_text('abc123')
+    check = AsyncMock()
+    monkeypatch.setattr('app.bootstrap.database.require_ready', check)
+    monkeypatch.setattr(module.sys, 'argv', ['container_start.py', 'python', '-m', 'app.mcp_servers.mcp_memory.server'])
+    monkeypatch.setattr(module.os, 'execvpe', lambda binary, args, env: captured.append(env))
+    with patch.dict(module.os.environ, {'LLM_API_KEY': 'unused', 'LLM_MODEL': 'unused',
+            'MCP_DB_HOST': 'postgres', 'MCP_DB_NAME': 'fixture', 'MCP_DB_USER': 'mcp_memory',
+            'MCP_DB_PASSWORD_FILE': str(password), 'SYSTEM_BOOT_ID': 'boot-1'}, clear=True):
+        module.main()
+    check.assert_awaited_once()
+    assert make_url(check.call_args.args[0]).username == 'mcp_memory'
+    assert check.call_args.args[1] == 'boot-1'
+    assert captured[0]['SYSTEM_BOOT_ID'] == 'boot-1'

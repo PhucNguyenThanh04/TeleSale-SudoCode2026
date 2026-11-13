@@ -17,7 +17,8 @@ def configured_url(name):
 
 
 def pinned_release():
-    return os.getenv('KNOWLEDGE_RELEASE_ID') or get_settings().knowledge_release_id
+    override = os.getenv('KNOWLEDGE_RELEASE_ID')
+    return (override or None) if override is not None else (get_settings().knowledge_release_id or None)
 
 
 def qdrant_url():

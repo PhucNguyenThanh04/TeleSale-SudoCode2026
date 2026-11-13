@@ -76,7 +76,7 @@ def _dataset_digest(scenarios):
 
 async def run_pair(*, scenarios: Path, btc_root: Path, agent: str, seed: int,
                    out_root: Path, expected_database: str | None = None,
-                   limit_scenarios: int | None = None, delivery_mode='voice') -> Path:
+                   limit_scenarios: int | None = None, delivery_mode='voice', baseline_first=False) -> Path:
     measurement = conversation_measurement(delivery_mode)
     run_id=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid4().hex[:8]
     out=out_root/run_id
@@ -110,7 +110,7 @@ async def run_pair(*, scenarios: Path, btc_root: Path, agent: str, seed: int,
         seed_digest=await fingerprint_btc_source(dsn)
         traces={}
         identity=None
-        for config in ('full','baseline'):
+        for config in (('baseline', 'full') if baseline_first else ('full', 'baseline')):
             require_same_seed(seed_digest,await fingerprint_btc_source(dsn))
             with release_context(release['release_id']):
                 trace=_run_one(config,selected,agent,seed,run_id,out,

@@ -3,9 +3,10 @@ import asyncio
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
+from app.auth import authenticated_socket, bind_start, current_user
 from app.schemas.chat import AITextTurnResponse
 from app.schemas.voice import Start
 
@@ -33,7 +34,11 @@ class MemoryUpdate(BaseModel):
 
 
 @router.websocket('/api/chat/stream')
-async def text_chat(socket: WebSocket):
+async def text_chat(socket: WebSocket, user=Depends(current_user)):
+    await authenticated_socket(socket, lambda: run_text_chat(socket, user))
+
+
+async def run_text_chat(socket: WebSocket, user):
     await socket.accept()
     tasks = set()
     lock = asyncio.Lock()
@@ -65,7 +70,7 @@ async def text_chat(socket: WebSocket):
 
     try:
         async with asyncio.timeout(socket.app.state.voice_settings.voice_start_timeout_seconds):
-            start = Start.model_validate(await socket.receive_json())
+            start = bind_start(Start.model_validate(await socket.receive_json()), user)
         session_id = str(uuid4())
         identity = {'session_id': session_id, 'channel': start.channel,
                     'channel_identity': start.channel_identity, 'on': start.on.isoformat()}

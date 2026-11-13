@@ -17,14 +17,17 @@ def test_seed_fingerprint_must_match_across_configurations():
 
 
 @pytest.mark.parametrize('failure', [None, 'publish', 'missing', 'tampered', 'turn_missing', 'turn_tampered'])
-def test_conversation_run_does_not_execute_retired_rag(tmp_path, failure):
+@pytest.mark.parametrize('baseline_first', [False, True])
+def test_conversation_run_does_not_execute_retired_rag(tmp_path, failure, baseline_first):
     scenarios = tmp_path / "scenarios"
     scenarios.mkdir()
     (scenarios / "case.json").write_text(json.dumps({
         "scenario_id": "CASE-A", "calls": {"call_1": {"customer_turns": ["Xin chào"]}}}), encoding="utf-8")
     identity = {"database": "telesale_eval_test"}
 
+    order = []
     def fake_run(config, scenarios, agent, seed, run_id, out, **kwargs):
+        order.append(config)
         assert (kwargs['btc_root'] / 'btc_release.json').is_file()
         assert 'pricing.quote_order' in (kwargs['btc_root'] / 'schemas/tools.schema.json').read_text()
         trace = out / f"{config}.jsonl"
@@ -80,9 +83,11 @@ def test_conversation_run_does_not_execute_retired_rag(tmp_path, failure):
          patch("eval_harness.run_official.publish_pair", side_effect=fake_publish), \
          patch("asyncpg.connect", side_effect=AssertionError("Retired RAG must not query source DB")):
         out = asyncio.run(run_pair(scenarios=scenarios, btc_root=__import__("pathlib").Path(__file__).resolve().parents[3] / "BTC-Data-Vong1-TEAMS",
-                                   agent="deep", seed=7, out_root=tmp_path / "results", expected_database="telesale_eval_test"))
+                                   agent="deep", seed=7, out_root=tmp_path / "results", expected_database="telesale_eval_test",
+                                   baseline_first=baseline_first))
 
     run = json.loads((out / "run.json").read_text(encoding="utf-8"))
+    assert order == (['baseline', 'full'] if baseline_first else ['full', 'baseline'])
     assert run["status"] == ("failed" if failure else "validated")
     assert run['conversation_measurement']['response_scope'] == 'transcript_to_complete_reply'
     assert "rag_summary" not in run

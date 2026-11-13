@@ -12,6 +12,7 @@ import httpx
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
+from app.auth import bind_start
 from app.schemas.voice import End, PlaybackFinished, PlaybackProgress, Start, parse_command
 from app.services.voice_speech import INPUT_AUDIO, SpeechClient
 from app.services.voice_turn import VoiceTurn
@@ -25,7 +26,8 @@ class FatalCallError(Exception):
 
 class VoiceCall:
     def __init__(self, browser: WebSocket, speech: SpeechClient, ai_http: httpx.AsyncClient,
-                 start_timeout: float = 10):
+                 start_timeout: float = 10, authenticated_user=None):
+        self.authenticated_user = authenticated_user
         self.browser = browser
         self.speech = speech
         self.ai_http = ai_http
@@ -362,6 +364,12 @@ class VoiceCall:
             except (ValidationError, ValueError, TypeError):
                 await self.error("protocol", "start_required", True)
                 return
+            if self.authenticated_user is not None:
+                try:
+                    start = bind_start(start, self.authenticated_user)
+                except ValueError:
+                    await self.error("protocol", "invalid_channel", True)
+                    return
             self.start = start
             self.session_id = str(uuid4())
             self.prepare_task = asyncio.create_task(self.prepare())

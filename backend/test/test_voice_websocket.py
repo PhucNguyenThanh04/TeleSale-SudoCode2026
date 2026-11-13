@@ -4,10 +4,10 @@ import httpx
 from fastapi.testclient import TestClient
 
 from app.configs import VoiceSettings
-from app.voice_main import create_app
+from gateway_fixture import create_app
 
 
-def test_entrypoint_starts_without_database_or_login(monkeypatch):
+def test_entrypoint_protocol_with_offline_authentication(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("REDIS_URL", raising=False)
     settings = VoiceSettings(_env_file=None)
@@ -19,7 +19,7 @@ def test_entrypoint_starts_without_database_or_login(monkeypatch):
             assert socket.receive_json() == {"event": "state", "state": "closed"}
 
 
-def test_route_runs_a_turn_without_auth_and_preserves_internal_token():
+def test_route_runs_an_authenticated_turn_and_preserves_internal_token():
     from test_voice_flow import Speech, START
 
     settings = VoiceSettings(_env_file=None, ai_internal_token="internal-only")

@@ -1,5 +1,6 @@
 """Review gateway with a server-bound actor and internal AI authentication."""
 import httpx
+from app.auth import current_user
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
@@ -17,7 +18,7 @@ async def reviewer(request: Request):
     return config.knowledge_reviewer_id
 
 
-router = APIRouter(prefix='/api/knowledge', dependencies=[Depends(reviewer)])
+router = APIRouter(prefix='/api/knowledge', dependencies=[Depends(current_user), Depends(reviewer)])
 RESOURCES = {'gaps', 'events', 'revisions', 'regression_cases', 'sources', 'releases', 'verification_runs'}
 
 

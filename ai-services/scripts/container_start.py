@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import sys
+import asyncio
 
 from dotenv import dotenv_values
 
@@ -42,6 +43,12 @@ def main():
     missing = sorted(key for key in required if not environment.get(key, '').strip())
     if missing:
         raise SystemExit('Missing settings in ai-services/.env: ' + ', '.join(missing))
+    if environment.get('SYSTEM_BOOT_ID'):
+        from app.configs import Settings
+        from app.bootstrap.database import require_ready
+        from app.mcp_servers.mcp_shared.config import database_url
+        settings = Settings(_env_file=None, **{k.lower(): v for k, v in environment.items()})
+        asyncio.run(require_ready(database_url(settings), environment['SYSTEM_BOOT_ID']))
     os.execvpe(command[0], command, environment)
 
 
