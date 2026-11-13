@@ -17,7 +17,7 @@ import uvicorn
 from websockets.sync.client import connect
 
 from app.configs import VoiceSettings
-from app.voice_main import create_app
+from gateway_fixture import create_app
 from test_voice_flow import Speech
 
 
@@ -168,7 +168,7 @@ def open_site(browser, url):
     assert "errorText" not in navigation, navigation
     assert httpx.get(url).status_code == 200
     deadline = time.monotonic() + 15
-    while not evaluate("!!document.querySelector('#identity')?.value"):
+    while not evaluate("!!document.querySelector('#identity')?.readOnly"):
         assert time.monotonic() < deadline, evaluate("document.documentElement.outerHTML")
         time.sleep(0.05)
     evaluate("""window.waitFor = (predicate) => new Promise((resolve, reject) => {
@@ -216,7 +216,7 @@ def test_browser_continuous_turns_pcm_and_end_restart(site, browser):
     assert len(requests) >= 2
     assert requests[0]["session_id"] == requests[1]["session_id"]
     assert requests[1]["session_id"]
-    assert requests[0]["channel"] == "web_chat"
+    assert requests[0]["channel"] == "hotline"
     assert all(len(chunk) == 1600 for connection in speech.sockets for chunk in connection.sent)
     assert js("""(async () => {
       document.querySelector('#start-call').click();

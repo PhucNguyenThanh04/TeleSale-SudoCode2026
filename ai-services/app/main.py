@@ -2,6 +2,7 @@
 from app.knowledge.config import configured_url
 
 from contextlib import asynccontextmanager
+import os
 
 from fastapi import FastAPI
 
@@ -19,6 +20,10 @@ async def lifespan(app: FastAPI):
     configure_agent_logging(settings.log_level)
     if not settings.ai_internal_token:
         raise RuntimeError("AI_INTERNAL_TOKEN is required for the chat endpoint")
+    if os.getenv('SYSTEM_BOOT_ID'):
+        from app.bootstrap.database import require_ready
+        from app.mcp_servers.mcp_shared.config import database_url
+        await require_ready(database_url(settings), os.environ['SYSTEM_BOOT_ID'])
     app.state.harness = get_runtime()
     if configured_url("KNOWLEDGE_DATABASE_URL"):
         from app.knowledge.repos.postgres import KnowledgeRepo

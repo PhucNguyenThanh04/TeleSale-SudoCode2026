@@ -3,14 +3,17 @@ from app.knowledge.config import configured_url
 import asyncio
 import re
 import time
+import os
 from app.knowledge.events.analysis import analyze_event
 from app.knowledge.schemas import identifier, timestamp
 
 
-async def claim_job(repo, worker_id, now=None):
+async def claim_job(repo, worker_id, now=None, *, event_ids=None):
     now = time.time() if now is None else now
     async with repo.transaction() as tx:
         for job in await tx.rows('jobs'):
+            if event_ids is not None and job['event_id'] not in event_ids:
+                continue
             eligible = (job['status'] in {'pending', 'retry'} and job.get('available_at', 0) <= now
                         or job['status'] == 'running' and job.get('lease_until', 0) <= now)
             if eligible:
@@ -21,9 +24,9 @@ async def claim_job(repo, worker_id, now=None):
     return None
 
 
-async def process_one(repo, worker_id, analyzer=analyze_event, now=None):
+async def process_one(repo, worker_id, analyzer=analyze_event, now=None, *, event_ids=None):
     now = time.time() if now is None else now
-    job = await claim_job(repo, worker_id, now)
+    job = await claim_job(repo, worker_id, now, event_ids=event_ids)
     if not job:
         return False
     try:
@@ -94,6 +97,9 @@ async def main():
     dsn = configured_url('KNOWLEDGE_WORKER_DATABASE_URL')
     if not dsn:
         raise SystemExit('KNOWLEDGE_WORKER_DATABASE_URL required (restricted worker role)')
+    if os.getenv('SYSTEM_BOOT_ID'):
+        from app.bootstrap.database import require_ready
+        await require_ready(dsn, os.environ['SYSTEM_BOOT_ID'])
     repo = KnowledgeRepo(dsn)
     worker_id = identifier()
     try:

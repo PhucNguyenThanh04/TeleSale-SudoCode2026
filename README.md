@@ -1,34 +1,48 @@
 # TeleSale SudoCode 2026
 
 **Bản nộp M1:** xem [hướng dẫn máy mới và lệnh BTC chấm chéo](docs/submission-runbook.md).
-CLI `run_eval.py` mặc định chat text; cần DB eval riêng và cấu hình model/Knowledge trước khi chạy.
+CLI `run_eval.py` mặc định chat text; cần cấu hình model/Knowledge và không chạy
+đồng thời eval với demo trên cùng DB. Managed startup bên dưới cho phép dùng lại
+DB đã nạp BTC, với operational state sạch cho từng lượt.
+
+**Khởi động demo/eval sạch, tự tạo/reset bảng cả backend và AI:**
+[quy trình mới](docs/fresh-system-startup.md). Sau khi nạp BTC một lần:
+
+```bash
+python run_system.py demo --expected-database telesale
+```
+
+Không cần chạy migration riêng. Knowledge đã học/duyệt của lượt trước cũng được
+reset; chỉ policy BTC nền và tài khoản/quyền mặc định được tạo lại từ cấu hình.
 
 Quy trình chạy chat M1, nhận replay ASR, kiểm bằng chứng và so sánh hai vòng cải
 tiến: [M1 acceptance](docs/m1-acceptance.md). Chat demo hiện nằm tại `/chat` trên
 gateway `app.voice_main:app`; entrypoint backend cũ không phải đường chạy demo.
 
 The text harness runs through `backend` → `ai-services` → four MCP
-servers. Import BTC data with `dataloader_offline` and apply the SQL migrations
-listed in [ai-services/README.md](ai-services/README.md). Configure the private
+servers. Import BTC data once with `dataloader_offline`; managed startup creates
+the operational schemas automatically. Configure the private
 backend/MCP tokens and URLs in ignored `.env` files. Start the four MCP
-containers with Compose after importing data and applying migrations; run the
-backend and AI API on the host. The backend chat contract is documented in
+containers, backend and AI API through `run_system.py` for a fresh system boot.
+The backend chat contract is documented in
 [frontend/README.md](frontend/README.md).
 
 The four MCP services are catalog, order, memory and knowledge. Knowledge uses
 Cloudflare Workers AI BGE-M3 dense embeddings, CPU BM25 and Qdrant RRF; no NVIDIA
 GPU, CUDA or model weights are required. Set `CLOUDFLARE_ACCOUNT_ID` and
-`CLOUDFLARE_API_TOKEN` in `ai-services/.env`, prepare and activate a new policy
-release with `config/policy-runtime.json`, then start all four services from root:
+`CLOUDFLARE_API_TOKEN` in `ai-services/.env` and the reviewed policy config.
+Managed startup restores or builds and activates the BTC-only baseline before
+starting the services:
 
 ```bash
-docker compose up --build -d
+python run_system.py demo --expected-database telesale
 ```
 
 The first env file supplies root database/Compose settings; the second supplies
 AI settings and overrides duplicate keys. Keep shared DB/port values consistent.
-Ingestion and serving require Internet access. A successful build does not create
-or activate an index. `relevance_verified=false` records unmeasured quality and
+Ingestion and serving require Internet access. A Docker image build alone does
+not activate an index; managed startup initializes the BTC-only policy release.
+`relevance_verified=false` records unmeasured quality and
 does not block an otherwise verified index. Follow the
 [submission runbook](docs/submission-runbook.md) for setup and migration
 from local embeddings. The clean-machine deployment/API connection still needs

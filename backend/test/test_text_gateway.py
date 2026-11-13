@@ -6,7 +6,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 from app.configs import VoiceSettings
-from app.voice_main import create_app
+from gateway_fixture import create_app
 
 
 START = {'event': 'start', 'channel': 'hotline', 'channel_identity': '0984726714', 'on': '2026-10-15'}

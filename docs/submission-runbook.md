@@ -7,7 +7,7 @@ Voice/TTS và simulator/LLM judge M2 không phải điều kiện khởi động
 
 ## 1. Những gì người chấm cần nhận
 
-- Checkout đủ source, migrations, `config/policy-runtime.json`, metadata policy,
+- Checkout đủ source, `ai-services/app/bootstrap/schema.sql`, `config/policy-runtime.json`, metadata policy,
   `BTC-cap-nhat-11-2026/` và lệnh root `run_eval.py`. Không bỏ file mới chưa track.
 - Gói BTC gốc bên cạnh repo hoặc đường dẫn riêng do `--btc-root` chỉ định.
   Hidden scenarios do BTC cấp qua `--scenarios`, không hardcode 7 sample.
@@ -23,8 +23,7 @@ Voice/TTS và simulator/LLM judge M2 không phải điều kiện khởi động
 
 ## 2. Cài trên checkout mới
 
-Các lệnh setup phía dưới dành cho **DB/volume mới, chuyên dụng**. Không chạy loop
-migration hay import vào DB đang có dữ liệu thật. Không dùng `docker compose down -v`
+Các lệnh setup phía dưới dành cho **DB/volume mới, chuyên dụng**. Không import hay khởi động fresh-system vào DB đang có dữ liệu thật. Không dùng `docker compose down -v`
 để sửa lỗi setup. Compose hiện chỉ chạy hạ tầng + MCP/worker; AI và gateway chạy host.
 
 ```bash
@@ -94,91 +93,39 @@ thay file khác hash và không tải model weights. Lệnh không có flag ch�
 Knowledge hiện dùng Cloudflare embedding nên không mô tả toàn bộ hệ thống là
 all-local chỉ vì LLM/ASR chạy local.
 
-## 3. Khởi tạo DB và quyền (thao tác ghi, một lần trên DB mới)
+## 3. Nạp nguồn BTC một lần
 
 ```bash
-docker compose up -d postgres qdrant
-ai-services/.venv/bin/python -m dataloader_offline --data-dir ../BTC-Data-Vong1-TEAMS --dry-run
+docker compose up -d postgres
 ai-services/.venv/bin/python -m dataloader_offline --data-dir ../BTC-Data-Vong1-TEAMS --only-postgres
-for sql in backend/migrations/*.sql ai-services/migrations/*.sql; do
-  docker compose exec -T postgres sh -c 'psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' < "$sql" || exit 1
-done
-(cd ai-services && .venv/bin/python -m scripts.setup_langmem_store)
-docker compose run --rm mcp-db-roles
 ```
 
-Loader dùng DATABASE_URL trong shell nếu có, nếu không dùng backend/.env. Đảm bảo
-đích đúng trước import. Setup store dùng DATABASE_URL của AI. Migrations gồm cả
-`backend/0006_order_lines.sql` và `ai-services/0004_memory_job_order.sql`; không
-bỏ qua hai file này theo hướng dẫn cũ. Store setup phải chạy riêng, không bọc DDL
-concurrent-index trong transaction. Roles MCP được provision sau khi có bảng/store.
+Loader tạo/insert `btc_source` và không tự invent CRM. DATABASE_URL của loader,
+AI và backend phải cùng DB đích. Không chạy vòng lặp migration/setup store/grant
+bằng tay nữa: đường khởi động mới tự tạo schema hiện hành và các quyền cần thiết.
 
-Migration Knowledge tạo group role NOLOGIN, chưa tạo login reviewer/worker.
-Quản trị viên dùng psql tương tác (password qua `\password`, không đặt trong lệnh):
+## 4. Khởi động demo/eval sạch
+
+Sau khi điền cấu hình/secret và tokenizer ở bước 2:
 
 ```bash
-docker compose exec postgres sh -c 'psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1'
+python run_system.py demo --expected-database telesale_eval_m1
 ```
 
-Trong psql, trên DB mới:
+Nếu Docker cần sudo, thêm `--sudo-docker`. Lệnh tự tạo/reset operational schema
+của backend + AI, cả knowledge đã duyệt; setup LangGraph store, login DB từ cấu
+hình, quyền MCP/reviewer, hai tài khoản demo và policy BTC nền, rồi bật các server.
+Không phải mở thêm uvicorn/API/knowledge worker ở terminal khác. Không thêm dữ
+liệu vào BTC và không xóa kết quả eval đã xuất. Policy index BTC được khôi phục
+nếu cache còn đúng hash; lần chưa có cache cần Cloudflare embedding/quota.
 
-```sql
-CREATE ROLE submission_reviewer LOGIN INHERIT;
-\password submission_reviewer
-GRANT knowledge_reviewer TO submission_reviewer;
-CREATE ROLE submission_knowledge_worker LOGIN INHERIT;
-\password submission_knowledge_worker
-GRANT knowledge_worker TO submission_knowledge_worker;
-GRANT CONNECT ON DATABASE telesale_eval_m1 TO submission_reviewer, submission_knowledge_worker;
-```
+Mỗi lượt mới dùng một boot ID; các service kiểm tra ready và không reset chồng
+lên nhau. Cả thí nghiệm K0 → duyệt → K1 là một boot. `--resume` giữ đúng boot cũ.
+Lệnh eval và ba-cấu-hình, cấu hình account, phạm vi reset và recovery:
+[xem hướng dẫn fresh-system](fresh-system-startup.md).
 
-Điền hai DSN login vào cấu hình đã nêu. Nếu dùng DB name khác thì thay tên trong
-GRANT. Với môi trường đã provision, kiểm quyền hiện có, không tạo trùng role.
-Cấp quyền ứng dụng cho actor reviewer, qua DSN admin:
-
-```bash
-(cd ai-services && .venv/bin/python -m app.knowledge.cli grant --actor submission-reviewer)
-```
-
-Không cấp quyền actor từ browser hoặc từ phân tích tự động. Nếu UI review dùng
-actor này, đặt KNOWLEDGE_REVIEWER_ID=submission-reviewer tại backend.
-
-## 4. Dựng Knowledge index và khởi động
-
-Chưa có active release thì MCP Knowledge chưa phục vụ được. Import source không
-tự xây index. Lệnh prepare sau **gọi Cloudflare, tiêu quota và ghi DB/Qdrant**:
-
-```bash
-ai-services/.venv/bin/python -m dataloader_offline --data-dir ../BTC-Data-Vong1-TEAMS --prepare-policy --actor submission-reviewer --runtime-config config/policy-runtime.json
-```
-
-Ghi lại release_id trong output, điền vào biến POLICY_RELEASE_ID ở shell (không
-phải secret). Kiểm manifest/index trước khi activate; nếu đã có active release,
-prepare và activate phải truyền `--expected-active` đúng ID đang chạy.
-
-```bash
-(cd ai-services && .venv/bin/python -m app.knowledge.cli policy-activate --actor submission-reviewer --release-id "$POLICY_RELEASE_ID" --runtime-config ../config/policy-runtime.json)
-ai-services/.venv/bin/python -m dataloader_offline --data-dir ../BTC-Data-Vong1-TEAMS --verify-ingestion --release-id "$POLICY_RELEASE_ID" --runtime-config config/policy-runtime.json
-docker compose --env-file .env --env-file ai-services/.env up --build -d mcp-catalog mcp-order mcp-memory mcp-knowledge
-```
-
-Hai env file có key trùng phải cùng giá trị DB/port; file thứ hai được ưu tiên.
-Sau đó mở các terminal riêng:
-
-```bash
-# Terminal AI API, 1 worker:
-(cd ai-services && .venv/bin/python -m app)
-# Terminal demo gateway (chat không cần speech server):
-backend/.venv/bin/python -m uvicorn app.voice_main:app --app-dir backend --host 127.0.0.1 --port 8000
-# Terminal Knowledge Gap worker khi cần demo vòng cải tiến:
-(cd ai-services && .venv/bin/python -m app.knowledge.worker)
-```
-
-Mở `/chat` để test hội thoại + brief + memory; `/knowledge` để review.
-Compose đã chạy langmem-worker theo dependency mcp-memory, không chạy trùng
-LangMem worker host chỉ để nạp cùng một job. Bật KNOWLEDGE_ENABLED=true ở AI
-khi cần thu runtime feedback. Chạy demo 1 session M1, không claim multi-worker
-session locking khi chưa kiểm chứng triển khai đó.
+Các command thấp hơn ở phần tiếp theo dành cho BTC/kiểm chứng độc lập trên stack
+đã khởi tạo; chúng không thay thế ranh giới boot của cả hệ thống.
 
 ## 5. Lệnh BTC chấm chéo
 

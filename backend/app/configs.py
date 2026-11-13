@@ -43,7 +43,7 @@ def get_settings() -> Settings:
 
 
 class VoiceSettings(BaseSettings):
-    """Standalone voice gateway does not require database/operator settings."""
+    """Demo gateway settings; database and JWT key enable account authentication."""
 
     model_config = SettingsConfigDict(
         env_file=_ENV_FILE, env_file_encoding="utf-8", extra="ignore", case_sensitive=False,
@@ -52,6 +52,10 @@ class VoiceSettings(BaseSettings):
     ai_service_url: str = "http://127.0.0.1:8001"
     ai_service_timeout_seconds: float = Field(default=120, gt=0)
     ai_internal_token: SecretStr | None = None
+    database_url: str | None = None
+    demo_jwt_secret: SecretStr | None = Field(default=None, min_length=32)
+    demo_jwt_minutes: int = Field(default=60, ge=1, le=1440)
+    demo_cookie_secure: bool = False
     knowledge_reviewer_id: str = 'local-reviewer'
     speech_http_url: str = "http://127.0.0.1:18110"
     speech_listen_url: str = "ws://127.0.0.1:18110/v1/speech/listen"

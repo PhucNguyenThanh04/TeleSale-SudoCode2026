@@ -2,10 +2,10 @@
 from fastapi.testclient import TestClient
 
 from app.configs import VoiceSettings
-from app.voice_main import create_app
+from gateway_fixture import create_app
 
 
-def test_voice_site_and_capture_worklet_are_available_without_login():
+def test_voice_site_and_capture_worklet_are_available():
     with TestClient(create_app(VoiceSettings(_env_file=None))) as client:
         page = client.get("/")
         assert page.status_code == 200

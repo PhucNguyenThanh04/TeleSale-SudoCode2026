@@ -1,3 +1,4 @@
+import { setupProfile } from './auth.js';
 const $ = id => document.getElementById(id);
 const fields = [$('channel'), $('identity'), $('scenario-date')];
 const panels = new Map();
@@ -6,6 +7,8 @@ let busy = false;
 $('scenario-date').value = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(new Date());
+
+await setupProfile();
 
 function controls(connected) {
   fields.forEach(field => { field.disabled = connected; });
@@ -144,7 +147,8 @@ $('connect').addEventListener('click', () => {
     }
   };
   current.onerror = () => error('Không kết nối được trợ lý. Kiểm tra dịch vụ rồi thử lại.');
-  current.onclose = () => {
+  current.onclose = event => {
+    if (event.code === 4401) location.replace('/login');
     if (socket !== current) return;
     socket = null;
     busy = false;

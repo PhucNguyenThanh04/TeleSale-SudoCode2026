@@ -48,6 +48,10 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON runtime.turns,
     runtime.langmem_distillation_jobs TO mcp_memory;
 GRANT USAGE, SELECT ON SEQUENCE runtime.langmem_distillation_jobs_job_id_seq TO mcp_memory;
 DO \$\$ BEGIN
+    IF to_regclass('system_boot.current') IS NOT NULL THEN
+        GRANT USAGE ON SCHEMA system_boot TO mcp_catalog, mcp_order, mcp_memory, mcp_knowledge;
+        GRANT SELECT ON system_boot.current TO mcp_catalog, mcp_order, mcp_memory, mcp_knowledge;
+    END IF;
     IF to_regclass('runtime.store') IS NOT NULL THEN
         GRANT SELECT, INSERT, UPDATE, DELETE ON runtime.store,
             runtime.store_migrations TO mcp_memory;

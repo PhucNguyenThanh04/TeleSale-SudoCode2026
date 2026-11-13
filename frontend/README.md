@@ -14,7 +14,7 @@ phục vụ trang và WebSocket cùng origin, token nội bộ chỉ nằm ở b
 ## Chạy
 
 Chat text M1 có tại `/chat` trên cùng gateway, không cần micro hoặc speech service.
-Nhập kênh/định danh/ngày rồi bắt đầu phiên; Call Brief được nạp trước tin nhắn đầu.
+Đăng nhập bằng tài khoản demo, chọn kênh/ngày rồi bắt đầu phiên; Call Brief được nạp trước tin nhắn đầu.
 Memory pending được theo dõi nền, kết thúc/mở phiên mới để thử khách quay lại.
 Quy trình nghiệm thu và bàn giao ASR: [M1 acceptance](../docs/m1-acceptance.md).
 
@@ -26,19 +26,19 @@ harness. Sau đó:
 backend/.venv/bin/python -m uvicorn app.voice_main:app --app-dir backend --host 127.0.0.1 --port 8000
 ```
 
-Mở http://127.0.0.1:8000 bằng Chrome/Edge, cho phép mic, nhấn **Bắt đầu gọi**.
+Thiết lập tài khoản theo [hướng dẫn auth demo](../backend/DEMO_AUTH.md).
+Mở http://127.0.0.1:8000/login bằng Chrome/Edge, đăng nhập, cho phép mic rồi nhấn **Bắt đầu gọi**.
 Nói rồi ngừng một chút để agent trả lời; website tự nghe tiếp sau khi phát xong.
 Nhấn **Kết thúc** để dừng phiên. Dùng tai nghe để tránh tiếng loa lọt vào mic.
 Nhận dạng lời nói do speech service thực hiện, không dùng Web Speech API.
 
-Mục “Thông tin phiên” cho phép đặt định danh kênh và ngày nghiệp vụ trước khi gọi.
-Mặc định là `web_chat`, định danh tạm trong tab và ngày hiện tại tại Việt Nam;
-định danh này không phải xác thực khách hàng. Khi thử một khách hàng/kịch bản có
-sẵn, nhập đúng kênh, định danh và ngày của dữ liệu đó.
+Mục “Thông tin phiên” cho phép chọn kênh và ngày nghiệp vụ. Định danh lấy từ
+profile BTC đã gán cho tài khoản, không chỉnh sửa từ trình duyệt. Hai người demo
+đăng nhập ở hai browser profile hoặc một cửa sổ thường và một cửa sổ ẩn danh.
 
-Truy cập từ máy khác cần HTTPS/WSS và reverse proxy hỗ trợ WebSocket. Mic chỉ
-hoạt động trên secure context (HTTPS hoặc localhost). Đây là demo không đăng
-nhập; không tự công khai dịch vụ ra Internet. Không lưu âm thanh/transcript vào
+Truy cập từ máy khác cần HTTPS/WSS, `DEMO_COOKIE_SECURE=true` và reverse proxy hỗ
+trợ WebSocket. Mic chỉ hoạt động trên secure context (HTTPS hoặc localhost).
+Không lưu âm thanh/transcript vào
 trình duyệt; nội dung chỉ hiển thị trong phiên trang đang mở.
 
 Mic tiếp tục gửi âm thanh khi trợ lý đang xử lý hoặc đang nói. Bạn có thể nói
@@ -91,7 +91,7 @@ kiểm tra trên thiết bị thật; test offline không đánh giá chất lư
 Trang `/knowledge` trên cùng gateway dùng API Knowledge thật qua proxy server.
 Không cần build frontend. Trước khi mở trang:
 
-1. Trang mở trực tiếp, không cần mã truy cập. Gateway dùng
+1. Trang yêu cầu đăng nhập tài khoản demo. Gateway dùng
    `KNOWLEDGE_REVIEWER_ID` trong `backend/.env` (mặc định `local-reviewer`).
 2. Người quản trị cấp quyền cho actor này tại AI service một lần:
 
@@ -131,7 +131,7 @@ retrieval offline không đồng nghĩa đã kiểm chất lượng LLM.
 
 Trang hiện phân biệt gap technical/generation/correct_refusal và chặn soạn nội
 dung cho các nhóm này. Nội dung được hiển thị bằng text, không render HTML từ
-feedback. Gateway không yêu cầu xác thực từ browser, server cố định reviewer,
+feedback. Gateway yêu cầu JWT cookie từ browser, server cố định reviewer,
 không cache dữ liệu admin và chặn Origin khác khi ghi. Token nội bộ AI vẫn chỉ
 được gửi từ gateway tới AI service. Bản demo này chạy trên localhost. Cả UI và backend không tự seed gap hoặc gọi eval để có
 số liệu demo. Chưa có gap thì chạy luồng feedback/worker hiện có từ dữ liệu thật.

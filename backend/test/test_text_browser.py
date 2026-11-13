@@ -12,6 +12,8 @@ import uvicorn
 
 from app.configs import VoiceSettings
 from app.voice_main import create_app
+from app.auth import password_hash
+from gateway_fixture import USER
 from test_voice_browser import browser
 
 
@@ -39,12 +41,19 @@ def text_site():
                 'products_advised': [{'sku': 'SKU-ASTER', 'price_quoted_vnd': 900000}]},
             'memory_update': {'turn_saved': True, 'status': 'pending', 'changes': []}})
 
-    app = create_app(VoiceSettings(_env_file=None))
+    app = create_app(VoiceSettings(_env_file=None, demo_jwt_secret='offline-browser-secret-with-at-least-32-bytes'))
+    user = {**USER, 'password_hash': password_hash.hash('browser-password')}
+    class Store:
+        async def by_username(self, username):
+            return user if username == 'offline' else None
+        async def by_id(self, user_id):
+            return user if user_id == user['id'] else None
     original = app.router.lifespan_context
 
     @asynccontextmanager
     async def lifespan(app):
         async with original(app):
+            app.state.demo_users = Store()
             async with httpx.AsyncClient(base_url='http://offline', transport=httpx.MockTransport(handler)) as http:
                 app.state.ai_http = http
                 yield
@@ -74,7 +83,17 @@ def test_chat_shows_brief_and_real_memory_updates_without_microphone(text_site, 
     command('Page.enable')
     command('Page.navigate', url=url)
     deadline = time.monotonic() + 10
-    while not evaluate("!!document.querySelector('#scenario-date')?.value"):
+    while not evaluate("!!document.querySelector('#login-form')"):
+        assert time.monotonic() < deadline
+        time.sleep(.02)
+    evaluate("document.querySelector('#username').value='offline'; document.querySelector('#password').value='browser-password'; document.querySelector('#login-form').requestSubmit()")
+    while not evaluate("!!document.querySelector('#identity')?.readOnly"):
+        assert time.monotonic() < deadline
+        time.sleep(.02)
+    assert evaluate("document.cookie.includes('demo_access')") is False
+    command('Page.navigate', url=url)
+    deadline = time.monotonic() + 10
+    while not evaluate("!!document.querySelector('#identity')?.readOnly"):
         assert time.monotonic() < deadline
         time.sleep(.02)
     evaluate("""window.waitFor = predicate => new Promise((resolve, reject) => {
@@ -107,3 +126,10 @@ def test_chat_shows_brief_and_real_memory_updates_without_microphone(text_site, 
     evaluate("document.querySelector('#text').value = 'Gọi lại'; document.querySelector('#chat-form').requestSubmit();")
     evaluate("waitFor(() => !document.querySelector('#send').disabled)")
     assert calls[-1]['session_id'] != calls[0]['session_id']
+
+    evaluate("[...document.querySelectorAll('header button')].find(b => b.textContent === 'Đăng xuất').click()")
+    deadline = time.monotonic() + 10
+    while not evaluate("!!document.querySelector('#login-form')"):
+        assert time.monotonic() < deadline
+        time.sleep(.02)
+    assert evaluate("fetch('/api/auth/me').then(r => r.status)") == 401

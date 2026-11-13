@@ -1,3 +1,4 @@
+import { setupProfile } from './auth.js';
 import { PCMEncoder, PCMPlayer } from './audio.js';
 
 const $ = id => document.getElementById(id);
@@ -9,6 +10,8 @@ $('scenario-date').value = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(new Date());
 let active = null;
+
+await setupProfile();
 
 const states = {
   connecting: ['Đang kết nối…', 'Đang chuẩn bị micro và kết nối trợ lý.'],
@@ -345,7 +348,8 @@ async function startCall() {
       catch { fail(call, 'Không xử lý được âm thanh hoặc phản hồi từ dịch vụ.'); }
     };
     call.socket.onerror = () => fail(call, 'Không kết nối được máy chủ cuộc gọi.');
-    call.socket.onclose = () => {
+    call.socket.onclose = event => {
+      if (event.code === 4401) location.replace('/login');
       if (active === call) fail(call, 'Kết nối cuộc gọi đã bị ngắt. Bạn có thể bắt đầu phiên mới.');
     };
     call.capture.port.onmessage = ({ data }) => {

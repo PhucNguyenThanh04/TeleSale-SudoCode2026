@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TeleSale · Đăng nhập demo</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script type="module" src="/assets/login.js"></script>
+</head>
+<body>
+  <header><a class="brand" href="/">tele<span>sale</span></a></header>
+  <main><section class="call-panel">
+    <h1>Đăng nhập demo</h1>
+    <p>Mỗi tài khoản sử dụng một hồ sơ khách hàng riêng.</p>
+    <form id="login-form">
+      <label>Tài khoản<input id="username" autocomplete="username" required maxlength="100"></label>
+      <label>Mật khẩu<input id="password" type="password" autocomplete="current-password" required maxlength="1024"></label>
+      <button id="login" type="submit">Đăng nhập</button>
+      <p id="error" class="error" role="alert" hidden></p>
+    </form>
+  </section></main>
+</body>
+</html>

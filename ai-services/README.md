@@ -1,5 +1,9 @@
 # Text-turn harness
 
+For a fresh demo/eval, use `python run_system.py ...` from the repository root:
+[managed startup and automatic schema/reset](../docs/fresh-system-startup.md).
+The individual service commands below are lower-level development entrypoints.
+
 Copy `.env.example` to `.env` and set `LLM_API_KEY` to your API key.
 `LLM_MODEL=gpt-6-luna` and `LLM_BASE_URL=https://api.openai.com/v1` configure
 OpenAI access through `ChatOpenAI`. For a compatible provider, set its base URL
@@ -130,7 +134,7 @@ admin credentials and host MCP URLs are not imported into the process environmen
 The mounted file itself contains credentials: only trusted service containers
 receive it. Changes require restarting the affected containers.
 
-This starts an already initialized installation. BTC import, SQL migrations,
+This low-level command starts an already initialized installation. For automatic schema/reset use `run_system.py`; BTC import, historical SQL migrations,
 LangMem store setup and policy release preparation/activation remain one-time
 setup steps; startup never resets data or invokes embedding/model APIs for setup.
 Missing provider values are reported by the relevant container, not by Compose
@@ -273,37 +277,29 @@ app/mcp_servers/          # catalog, order, memory, knowledge, shared infrastruc
 
 ## Structured MCP tools
 
-Start PostgreSQL with `docker compose up -d postgres redis`, then import the
-BTC release with `dataloader_offline`. Apply the runtime SQL in order:
-`backend/migrations/0001_chat.sql`,
-`backend/migrations/0002_tools.sql`, `backend/migrations/0003_channel_identity.sql`,
-`backend/migrations/0004_erasure_suppressions.sql`,
-`backend/migrations/0005_runtime_schema.sql`, then
-`ai-services/migrations/0001_current_memory_schema.sql`. Apply them before starting
-`mcp-db-roles`. Use the same PostgreSQL database
-for the backend and all three MCP servers. Set matching `AI_INTERNAL_TOKEN`
-values in `backend/.env` and `ai-services/.env`, and a separate
-`MCP_INTERNAL_TOKEN` in `ai-services/.env`. The values in `.env.example` are
-placeholders, not working credentials.
-
-The final database has exactly two application schemas: `btc_source` for the
-imported BTC data and `runtime` for chat, orders, memory jobs, and
-`AsyncPostgresStore` tables. The AI service migration keeps existing
-rows and removes the empty legacy schemas and the empty `public` schema; it
-stops with an error if `public` contains other objects.
-
-After importing BTC data and applying the migrations, create four ignored
-secret files under `secrets/`: `mcp_catalog_password`, `mcp_order_password`, `mcp_knowledge_password`,
-`mcp_memory_password` (hex strings) and `mcp_internal_token` (the same value as
-`MCP_INTERNAL_TOKEN` in `ai-services/.env`). The repository's existing
-`secrets/postgres_password` remains the PostgreSQL admin password. Then run:
+Import BTC once with `dataloader_offline --only-postgres`, then start the managed
+system from the repository root:
 
 ```bash
-# From the repository root:
-docker compose --env-file .env --env-file ai-services/.env up -d --build mcp-catalog mcp-order mcp-memory mcp-knowledge
-# In another terminal, from ai-services/:
-python -m app
+python run_system.py demo --expected-database telesale
 ```
+
+The launcher creates/resets current backend and AI tables, sets up LangGraph
+store and role grants, restores configured demo accounts and BTC-only policy,
+and starts the four MCP services, workers, AI and gateway. No external migration
+loop or store-setup command is required. Imported `btc_source` is read-only to
+this initializer; `runtime` and `knowledge` are fresh each boot. `system_boot`
+holds only the active boot marker. A knowledge-loop experiment keeps the same
+boot across K0/review/K1; resume does not reset it.
+
+Configure matching backend/AI internal tokens, MCP secret files, administrative
+DATABASE_URL, reviewer/worker login URLs and backend demo accounts before startup.
+The role logins and runtime tables are initialized by the launcher. Details,
+including eval commands and reset boundaries:
+[fresh-system startup](../docs/fresh-system-startup.md).
+
+The lower-level service commands below are for development on an already
+initialized stack; they do not define a new managed demo/eval boot.
 
 For a local run without the MCP Compose containers, start all four
 MCP processes and the LangMem worker in one terminal with `python -m app.mcp_servers.run` from
@@ -502,7 +498,9 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON runtime.erasure_requests TO mcp_memory;
 ```
 
 These are deployment operations; chat continues to access PostgreSQL through MCP.
-The servers do not automatically apply migrations or check the full schema on startup.
+Managed startup (`python run_system.py ...` from root) creates/resets the current
+schema and checks a shared boot marker before launching the servers. No separate
+migration command is required; see [fresh-system startup](../docs/fresh-system-startup.md).
 
 From `ai-services/`, edit the `ChatRequest` in `app/agent/chat.py`, then run one turn:
 
