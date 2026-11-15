@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from . import audio as au
+from .diarize import diarize, split_by_speaker
 from .entities import REFERENCE_DATE, Product, extract_entities
 from .lexicon import Lexicon, hotwords as lexicon_hotwords
 from .normalize import default_lexicon, normalize_text, rules_fingerprint
@@ -56,6 +57,7 @@ class DecodeConfig:
     beam_size: int = 5
     use_hotwords: bool = True
     segmentation: str = "utterance"  # "utterance": VAD cắt từng câu như agent thoại thật; "file": cả file
+    diarize: bool = True         # tách 2 người nói → ``turns[]`` có idx/speaker (entity theo lượt, diarization)
 
 
 def resolve_model(name: str) -> Path:
@@ -125,11 +127,29 @@ def _pick_language(model, chunk: np.ndarray, language: str) -> str:
     return "en" if lang == "en" and prob >= EN_THRESHOLD else "vi"
 
 
-def _decode(model, chunk: np.ndarray, language: str, cfg: DecodeConfig, hotwords: str | None):
+def _decode(model, chunk: np.ndarray, language: str, cfg: DecodeConfig, hotwords: str | None,
+            word_timestamps: bool = False):
     segments, _ = model.transcribe(
-        chunk, language=language, beam_size=cfg.beam_size, vad_filter=False, without_timestamps=True,
+        chunk, language=language, beam_size=cfg.beam_size, vad_filter=False,
+        without_timestamps=not word_timestamps, word_timestamps=word_timestamps,
         condition_on_previous_text=False, hotwords=hotwords, temperature=(0.0, 0.2, 0.4))
     return list(segments)
+
+
+def _split_words(segs, start: int, parts: list[tuple[int, int, str | None]]) -> list[tuple[int, int, str | None, str]]:
+    """Chia chữ của một đoạn đã giải mã nguyên khối cho từng người nói theo mốc giữa của từng từ.
+
+    Giải mã nguyên đoạn VAD rồi mới chia (thay vì cắt audio theo người nói) giữ ngữ cảnh cho ASR: cắt audio
+    trước làm WER team22 tăng ~1,3 điểm khi tách người nói sai ở cặp giọng giống nhau.
+    """
+    sr = au.SAMPLE_RATE
+    texts = ["" for _ in parts]
+    for seg in segs:
+        for word in seg.words or []:
+            mid = start + int((word.start + word.end) / 2 * sr)
+            k = next((i for i, (a, b, _) in enumerate(parts) if mid < b), len(parts) - 1)
+            texts[k] += word.word
+    return [(a, b, spk, text.strip()) for (a, b, spk), text in zip(parts, texts) if text.strip()]
 
 
 def transcribe_audio(model, audio: np.ndarray, *, cfg: DecodeConfig, vad: VadConfig, lexicon: Lexicon,
@@ -150,6 +170,7 @@ def decode_segments(model, audio: np.ndarray, *, cfg: DecodeConfig, vad: VadConf
     sr = au.SAMPLE_RATE
     hotwords = lexicon_hotwords(lexicon) if cfg.use_hotwords else None
     pieces: list[dict] = []
+    speakers = diarize(audio) if cfg.diarize else []
     if cfg.segmentation == "file":
         from faster_whisper.vad import VadOptions
 
@@ -161,18 +182,30 @@ def decode_segments(model, audio: np.ndarray, *, cfg: DecodeConfig, vad: VadConf
             condition_on_previous_text=False, hotwords=hotwords, temperature=(0.0, 0.2, 0.4))
         for seg in segments:
             pieces.append({"start": seg.start, "end": seg.end, "raw": seg.text, "lang": cfg.language,
-                           "avg_logprob": seg.avg_logprob, "no_speech_prob": seg.no_speech_prob})
+                           "avg_logprob": seg.avg_logprob, "no_speech_prob": seg.no_speech_prob,
+                           **({"speaker": spk} if (spk := _overlap_speaker(int(seg.start * sr), int(seg.end * sr),
+                                                                           speakers)) else {})})
     else:
         for start, end in speech_chunks(audio, vad):
             chunk = audio[start:end]
+            parts = split_by_speaker(start, end, speakers) if speakers else [(start, end, None)]
             lang = _pick_language(model, chunk, cfg.language)
-            segs = _decode(model, chunk, lang, cfg, hotwords)
+            segs = _decode(model, chunk, lang, cfg, hotwords, word_timestamps=len(parts) > 1)
             if not segs:
                 continue
-            pieces.append({"start": start / sr, "end": end / sr, "raw": " ".join(s.text.strip() for s in segs),
-                           "lang": lang, "avg_logprob": float(np.mean([s.avg_logprob for s in segs])),
-                           "no_speech_prob": float(max(s.no_speech_prob for s in segs))})
+            stats = {"lang": lang, "avg_logprob": float(np.mean([s.avg_logprob for s in segs])),
+                     "no_speech_prob": float(max(s.no_speech_prob for s in segs))}
+            texts = (_split_words(segs, start, parts) if len(parts) > 1 else
+                     [(start, end, parts[0][2], " ".join(s.text.strip() for s in segs))])
+            for a, b, speaker, raw in texts:
+                pieces.append({"start": a / sr, "end": b / sr, "raw": raw, **stats,
+                               **({"speaker": speaker} if speaker else {})})
     return pieces
+
+
+def _overlap_speaker(start: int, end: int, speakers: list[dict]) -> str | None:
+    best = max(speakers, key=lambda t: min(end, t["end"]) - max(start, t["start"]), default=None)
+    return best["speaker"] if best and min(end, best["end"]) > max(start, best["start"]) else None
 
 
 def finalize(pieces: list[dict], lexicon: Lexicon, catalog: tuple[Product, ...] = (),
@@ -190,11 +223,37 @@ def finalize(pieces: list[dict], lexicon: Lexicon, catalog: tuple[Product, ...] 
         turns.append({"start": round(piece["start"], 2), "end": round(piece["end"], 2),
                       "text": norm.spoken if norm else raw,
                       "text_written": norm.written if norm else raw, "raw": raw, "lang": piece["lang"],
-                      "avg_logprob": round(piece["avg_logprob"], 3), "no_speech_prob": round(piece["no_speech_prob"], 3)})
+                      "avg_logprob": round(piece["avg_logprob"], 3), "no_speech_prob": round(piece["no_speech_prob"], 3),
+                      **({"speaker": piece["speaker"]} if piece.get("speaker") else {})})
+    if turns and all(t.get("speaker") for t in turns):
+        return _with_speaker_turns(turns, catalog, reference_date)
     merged, per_turn = extract_entities([t["text_written"] for t in turns], catalog, reference_date)
     for turn, entities in zip(turns, per_turn):
         turn["entities"] = entities
     return {"text": " ".join(t["text"] for t in turns if t["text"]), "entities": merged, "asr_segments": turns}
+
+
+def _with_speaker_turns(segments: list[dict], catalog: tuple[Product, ...], reference_date: date) -> dict:
+    """Gộp đoạn liền kề cùng người nói thành lượt ``turns[]`` (idx từ 1) như ``asr/ground_truth.json``.
+
+    Entity được trích trên cả lượt (không trên từng mẩu VAD), nên ngữ cảnh một câu bị VAD cắt đôi vẫn giữ nguyên.
+    """
+    turns: list[dict] = []
+    for seg in segments:
+        if turns and turns[-1]["speaker"] == seg["speaker"]:
+            last = turns[-1]
+            last["end"] = seg["end"]
+            last["text"] = f"{last['text']} {seg['text']}".strip()
+            last["text_written"] = f"{last['text_written']} {seg['text_written']}".strip()
+        else:
+            turns.append({"idx": len(turns) + 1, "speaker": seg["speaker"], "start": seg["start"], "end": seg["end"],
+                          "text": seg["text"], "text_written": seg["text_written"]})
+    merged, per_turn = extract_entities([t["text_written"] for t in turns], catalog, reference_date)
+    for turn, entities in zip(turns, per_turn):
+        turn["entities"] = entities
+    out_turns = [{k: t[k] for k in ("idx", "speaker", "start", "end", "text", "entities")} for t in turns]
+    return {"text": " ".join(t["text"] for t in turns if t["text"]), "entities": merged, "turns": out_turns,
+            "asr_segments": segments}
 
 
 def transcribe_files(paths: list[Path], model_name: str, *, cfg: DecodeConfig, vad: VadConfig = VadConfig(),

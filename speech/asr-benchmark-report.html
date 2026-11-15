@@ -1,0 +1,143 @@
+<title>ASR Benchmark B0/B1/B2</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: single reading column, summary tiles → tables → caveats */
+:root{
+  --bg:#f6f7f9;--surface:#ffffff;--fg:#1b2230;--muted:#5d6878;--line:#dde2ea;
+  --accent:#1f6feb;--good:#1a7f4b;--warn:#a15c00;--bar:#c9d7f2;
+  --display:"Be Vietnam Pro",system-ui,sans-serif;--body:"Be Vietnam Pro",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151c;--surface:#181e27;--fg:#e4e9f1;--muted:#98a3b3;--line:#2a3240;--accent:#6aa3ff;--good:#4cc38a;--warn:#e0a24a;--bar:#2c3f63;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#11151c;--surface:#181e27;--fg:#e4e9f1;--muted:#98a3b3;--line:#2a3240;--accent:#6aa3ff;--good:#4cc38a;--warn:#e0a24a;--bar:#2c3f63;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);line-height:1.55}
+main{max-width:880px;margin:0 auto;padding-block:32px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:28px}
+h1,h2{font-family:var(--display);text-wrap:balance;margin:0}
+h1{font-size:1.9rem}h2{font-size:1.2rem}
+.eyebrow{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+p{margin:0;max-width:65ch}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;display:grid;gap:2px}
+.tile b{font-family:var(--mono);font-size:1.6rem;font-variant-numeric:tabular-nums}
+.tile span{color:var(--muted);font-size:.85rem}
+.wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:8px 12px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}
+th{font-size:.78rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:600}
+td{font-family:var(--mono);font-size:.9rem}
+tr.best td{color:var(--accent);font-weight:600}
+tr:last-child td{border-bottom:0}
+.delta{color:var(--good)}
+section{display:grid;gap:12px}
+ul{margin:0;padding-left:1.2em;display:grid;gap:6px;max-width:70ch}
+.warn{color:var(--warn);font-weight:600}
+code{font-family:var(--mono);font-size:.86em}
+</style>
+<main>
+  <header style="display:grid;gap:8px">
+    <div class="eyebrow">SUDO CODE 2026 · speech/ · chạy ngày 2026-11-10</div>
+    <h1>ASR Benchmark B0/B1/B2</h1>
+    <p>Whisper large-v3-turbo chạy local (faster-whisper, RTX 3050 4 GB, float16), Silero VAD, <code>language=vi</code>, beam 5. Chấm bằng <code>reference_eval.wer_cer</code> của BTC. Audio do edge-tts sinh, qua kênh thoại 300–3400 Hz μ-law; BTC chưa phát audio thật.</p>
+  </header>
+
+  <div class="tiles">
+    <div class="tile"><span>WER B2 · proxy BTC</span><b>7,2%</b><span>giảm 20,4 điểm so với B0</span></div>
+    <div class="tile"><span>Entity B2 · proxy BTC</span><b>93,1%</b><span>27/29 entity</span></div>
+    <div class="tile"><span>WER B2 · team22</span><b>14,3%</b><span>giảm 21,7 điểm so với B0</span></div>
+    <div class="tile"><span>Tốc độ GPU</span><b>6,6 s</b><span>ASR cho mỗi phút audio (CPU cũ: 92,1 s)</span></div>
+  </div>
+
+  <section>
+    <h2>Ba cấu hình</h2>
+    <div class="wrap"><table>
+      <thead><tr><th>Profile</th><th>Thay đổi</th><th>Hotwords</th><th>Lexicon + TN/ITN</th></tr></thead>
+      <tbody>
+        <tr><td>B0</td><td>Mốc cơ sở: VAD + ASR + cleanup</td><td>Tắt</td><td>Tắt</td></tr>
+        <tr><td>B1</td><td>Thêm hậu xử lý, cùng raw decode với B0</td><td>Tắt</td><td>Bật</td></tr>
+        <tr><td>B2</td><td>Pipeline đầy đủ</td><td>Bật</td><td>Bật</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Proxy BTC: D01–D04 (4 file, 167 s audio, 29 entity)</h2>
+    <div class="wrap"><table>
+      <thead><tr><th>Profile</th><th></th><th>WER %</th><th>CER %</th><th>WER thô %</th><th>Entity %</th><th>s/phút audio</th></tr></thead>
+      <tbody>
+        <tr><td>B0</td><td></td><td>27,6</td><td>23,0</td><td>27,6</td><td>79,3</td><td>6,0</td></tr>
+        <tr><td>B1</td><td></td><td>8,6</td><td>4,3</td><td>27,6</td><td>79,3</td><td>6,0</td></tr>
+        <tr class="best"><td>B2</td><td></td><td>7,2</td><td>3,6</td><td>28,0</td><td>93,1</td><td>6,0</td></tr>
+        <tr><td>Δ B0→B2</td><td></td><td class="delta">−20,4</td><td class="delta">−19,4</td><td></td><td class="delta">+13,8</td><td></td></tr>
+      </tbody>
+    </table></div>
+    <p>Oracle entity (trích từ chính GT) = 100%.</p>
+  </section>
+
+  <section>
+    <h2>Team22: T01–T22 (22 file, 1175 s audio, 139 entity)</h2>
+    <div class="wrap"><table>
+      <thead><tr><th>Profile</th><th></th><th>WER %</th><th>CER %</th><th>WER thô %</th><th>Entity %</th><th>s/phút audio</th></tr></thead>
+      <tbody>
+        <tr><td>B0</td><td></td><td>36,0</td><td>29,2</td><td>36,0</td><td>63,3</td><td>6,5</td></tr>
+        <tr><td>B1</td><td></td><td>15,9</td><td>11,4</td><td>36,0</td><td>65,5</td><td>6,5</td></tr>
+        <tr class="best"><td>B2</td><td></td><td>14,3</td><td>10,2</td><td>36,1</td><td>71,9</td><td>6,6</td></tr>
+        <tr><td>Δ B0→B2</td><td></td><td class="delta">−21,7</td><td class="delta">−19,0</td><td></td><td class="delta">+8,6</td><td></td></tr>
+      </tbody>
+    </table></div>
+    <p>Oracle entity = 84,2%, nên bộ trích entity là trần hiện tại. Kết quả CPU trước đây (README §10) cho B2 là WER 14,1%, Entity 74,8%.</p>
+    <p>File khó nhất ở B2: T07 (WER 35,3%), T22 (31,7%, 1/5 entity), T13 (23,9%), T19 (22,9%).</p>
+  </section>
+
+  <section>
+    <h2>Nhóm 1: so sánh model trên audio team22 gốc (GPU)</h2>
+    <p>Dữ liệu: team22-edge-synth + team22-edge-clone (22 file, 139 entity). Máy: RTX 3050 4 GB, cuda/float16, cùng VAD, lexicon và hotword. Oracle entity = 84,2% cho mọi model.</p>
+    <div class="wrap"><table>
+      <thead><tr><th>Model</th><th>Profile</th><th>WER %</th><th>CER %</th><th>Entity %</th><th>s/phút audio</th><th>VRAM đỉnh</th></tr></thead>
+      <tbody>
+        <tr><td>whisper-turbo (CPU int8, report gốc)</td><td>B2</td><td>14,1</td><td>10,0</td><td>74,8</td><td>92,1</td><td>–</td></tr>
+        <tr class="best"><td>whisper-turbo</td><td>B2</td><td>13,6</td><td>9,5</td><td>74,1</td><td>7,2</td><td>3,5 GB</td></tr>
+        <tr><td>whisper-large-v3</td><td>B2</td><td>13,6</td><td>10,4</td><td>74,1</td><td>118,7</td><td>3,9 GB</td></tr>
+        <tr><td>phowhisper-large</td><td>B2</td><td>14,3</td><td>9,8</td><td>65,5</td><td>86,9</td><td>3,9 GB</td></tr>
+        <tr><td>phowhisper-medium</td><td>B2</td><td>17,4</td><td>11,3</td><td>54,7</td><td>11,6</td><td>3,2 GB</td></tr>
+      </tbody>
+    </table></div>
+    <div class="wrap"><table>
+      <thead><tr><th>Model</th><th>B0 WER / Entity</th><th>B1 WER / Entity</th><th>B2 WER / Entity</th></tr></thead>
+      <tbody>
+        <tr><td>whisper-turbo</td><td>38,5 / 62,6</td><td>19,7 / 64,0</td><td>13,6 / 74,1</td></tr>
+        <tr><td>whisper-large-v3</td><td>35,1 / 66,2</td><td>14,5 / 68,3</td><td>13,6 / 74,1</td></tr>
+        <tr><td>phowhisper-large</td><td>19,7 / 17,3</td><td>15,7 / 63,3</td><td>14,3 / 65,5</td></tr>
+        <tr><td>phowhisper-medium</td><td>19,8 / 14,4</td><td>17,0 / 53,2</td><td>17,4 / 54,7</td></tr>
+      </tbody>
+    </table></div>
+    <p><strong>Kết luận:</strong> giữ <strong>whisper-turbo + B2</strong>. Model này đứng đầu về Entity (cùng large-v3), có CER thấp nhất và chạy nhanh hơn large-v3 khoảng 16 lần. Trên GPU, mỗi phút audio cần 7,2 s, nằm trong ngân sách độ trễ.</p>
+    <p>PhoWhisper có WER thô B0 thấp hơn hẳn (khoảng 20% so với 35–38%), vì chữ viết ra đã gần dạng chuẩn. Tuy vậy, Entity B0 chỉ 14–17%: model viết số, mã SKU và tên riêng theo cách bộ trích hiện tại không đọc được. Hotword không bù được phần này. Muốn dùng PhoWhisper thì phải viết lexicon/ITN riêng cho nó.</p>
+    <p>Hai model large dùng 3,9 GB VRAM, sát giới hạn 4 GB. Nhiều khả năng chúng tràn sang bộ nhớ chia sẻ, nên tốc độ đo ở đây bi quan hơn so với GPU ≥ 8 GB. Trên mẫu 139 entity, chênh lệch dưới khoảng 3 điểm chưa có ý nghĩa thống kê.</p>
+  </section>
+
+  <section>
+    <h2>Đọc kết quả</h2>
+    <ul>
+      <li>Phần lớn mức giảm WER nằm ở B0→B1. Đó là chênh lệch cách viết (chữ số, viết tắt) so với GT dạng nói. ASR không nghe tốt hơn ở bước này.</li>
+      <li>Hotwords (B1→B2) chủ yếu tăng Entity: +13,8 điểm trên proxy BTC, +6,4 điểm trên team22.</li>
+      <li>Muốn tăng Entity trên team22, sửa bộ trích entity trước, vì oracle chỉ đạt 84,2%.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Giới hạn</h2>
+    <ul>
+      <li class="warn">Đây chưa phải điểm ASR chính thức. Audio là TTS edge, chỉ có 2 giọng Bắc.</li>
+      <li><code>team22-edge-clone</code> sinh bằng <code>--preview-team</code> (vùng/giới tv1–tv3 là giả lập); synth tự ghi chú tập này chỉ để nghe thử.</li>
+      <li>Luật lexicon/chuẩn hóa từng được chỉnh trên các tập này, nên số liệu lạc quan.</li>
+      <li>Nhiễu và sạch là các hội thoại khác nội dung, không so cặp được.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Chạy lại</h2>
+    <p><code>powershell -ExecutionPolicy Bypass -File scripts\asr_benchmark.ps1 -Device cuda</code></p>
+    <p>Kết quả: <code>speech\data\runs\btc-edge-baseline-gpu\</code> và <code>speech\data\runs\team22-baseline-gpu\</code> (report.md, comparison.json, B0–B2/score.json).</p>
+  </section>
+</main>
