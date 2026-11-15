@@ -1,4 +1,4 @@
-# Chạy ba cấu hình và duyệt knowledge mô phỏng bằng CLI
+# Chạy ba cấu hình và tự duyệt knowledge bằng CLI
 
 Muốn mỗi thí nghiệm bắt đầu bằng hệ thống sạch (tự tạo bảng, reset cả knowledge),
 dùng `python run_system.py knowledge-eval ...` từ root. Khi resume một thí nghiệm
@@ -9,20 +9,97 @@ Lệnh này chạy đúng ba cấu hình hội thoại theo thứ tự:
 
 1. **A — No memory K0**.
 2. **B — Full memory K0**, cùng release với A.
-3. Phân tích feedback từ những lượt B được chỉ định, duyệt **mô phỏng** theo
-   kế hoạch có nguồn đã được kiểm tra trước, phát hành K1.
+3. Phân tích các lượt policy lookup trong B, tạo đề xuất bằng worker thật,
+   tự duyệt những đề xuất đạt kiểm tra nguồn và phát hành K1.
 4. **C — Full memory K1**. Không chạy thêm baseline K1.
 
 Mỗi cấu hình dùng vòng đời reset/warmup/runtime thật của harness. C không mang
 memory đã tích lũy trong lần B sang. Không thay đổi dữ liệu `btc_source` hay
 file BTC. Knowledge/review/release được lưu riêng; reset runtime giữ các bảng này.
 
-Đây là **thí nghiệm có người xác nhận nội dung trước**, không phải model tự tạo
-đáp án rồi tự xác nhận đáp án của nó đúng. Mọi output ghi rõ
-`simulated_pre_reviewed_plan`. Nó chứng minh cơ chế và đo số liệu của một lần
-chạy; không tự chứng minh chất lượng của người duyệt hoặc ý nghĩa thống kê.
+Mặc định không cần biết trước gap hay có file kế hoạch. Chế độ này ghi rõ
+`automatic_source_checked`: **duyệt tự động trong thí nghiệm, không phải người
+duyệt**. Nó không dùng đáp án/test tự sinh làm đáp án chuẩn để chấm chính nó.
+Số liệu BTC vẫn tính trên cùng dataset/tiêu chí gốc; có thể tăng hoặc giảm.
 
-## Chuẩn bị một lần
+## Một lệnh từ hệ thống sạch
+
+Từ root repo, tắt các server thủ công cũ trước khi chạy:
+
+```bash
+AGENT_GUARDRAILS_ENABLED=true KNOWLEDGE_ENABLED=true \
+python run_system.py knowledge-eval --expected-database telesale -- \
+  --auto-review --delivery-mode text --agent deep --seed 7 \
+  --scenarios ai-services/eval_harness/scenarios \
+  --btc-root ../BTC-Data-Vong1-TEAMS \
+  --actor local-reviewer \
+  --out-root ai-services/eval_harness/results/knowledge-triplet-final
+```
+
+Không cần frontend hoặc knowledge worker riêng. Launcher tự tạo bảng/reset
+operational state và knowledge cũ, giữ BTC, cấp quyền mặc định cho reviewer theo
+cấu hình backend, rồi bật MCP/LangMem worker. Nếu cần sudo cho Docker, thêm
+`--sudo-docker` trước dấu `--`. Không chạy lệnh fresh demo/eval khác giữa K0/K1.
+Lệnh live có gọi LLM và embedding; không chạy chỉ để kiểm tra cú pháp.
+
+## Tự duyệt sau K0 hoạt động thế nào
+
+- Chỉ xét các lượt Full K0 có policy lookup khỏe (`ok` hoặc `no_evidence`);
+  baseline, lỗi tool, evidence conditional/conflict và chủ đề giá/KM/tồn kho
+  không được tự duyệt. Không tạo nhãn trả lời sai từ điểm số hay đáp án model.
+- Ghi feedback riêng, chỉ chạy worker cho các event của thí nghiệm. Chỉ xét
+  draft do worker gắn vào đúng gap đó; không duyệt các draft cũ không liên quan.
+- Nguồn phải public, hash đúng, ngày còn hiệu lực và có ngày đơn đã xác minh
+  nếu nguồn dùng `order_date`. Nguồn đã được truy xuất được bỏ qua vì đó có thể
+  là lỗi generation. Match từ vựng phải đủ mạnh và không hòa điểm với nguồn khác.
+- FAQ chỉ được chép nguyên văn body nguồn; alias chỉ là chính câu hỏi đã che PII.
+  Không thêm câu trả lời tĩnh về giá/KM/tồn kho. Kiểm content hash và regression
+  retrieval trước khi gọi service approve thật; giới hạn tổng release 100 revision.
+- Phát hành bằng prepare/activate thật, giữ nguyên corpus nền và revision K0.
+  Full K1 dùng memory sạch độc lập, cùng snapshot dataset/model/settings.
+
+Kiểm từ vựng không chứng minh nguồn trả lời đúng ý câu hỏi. Các điều kiện này là
+bộ lọc tự động bảo thủ, vẫn có thể sai; không thay thế review của chuyên gia khi
+triển khai thật. Dataset có thể không phát sinh đề xuất đủ điều kiện: khi đó lưu
+`review.json`, trả mã 2 với `no_eligible_gaps`, không chạy C hoặc bịa cải thiện.
+
+## Kết quả và tiếp tục khi gián đoạn
+
+Trong thư mục con được tạo dưới `--out-root`:
+
+- `k0/<run>/`: cặp No memory/Full K0, snapshot và điểm BTC.
+- `review.json`: event/gap/revision/source/hash, mọi đề xuất được duyệt/bỏ qua và
+  lý do. Không đánh dấu là human review.
+- `k1/`: Full K1, manifest, diagnostics, extraction và điểm BTC cross-release.
+- `comparison.md`, `comparison.json`: ba cột RQR/CCR/TSR/HR và HR giá/KM, đáp án
+  cùng lượt ở A/B/C, evidence đích có được truy xuất trong release K1 không.
+
+Với alias, evidence đích là nguồn gốc đã thêm alias; thấy nguồn trong K1 không
+tự chứng minh alias gây ra thay đổi. Chế độ tự động **không báo accuracy đáp án
+gap**, số câu đã sửa hay grounded success khi thiếu nhãn độc lập. Hãy dùng số
+liệu BTC và trace để đánh giá cả cải thiện lẫn regression; một lần chạy không
+chứng minh ý nghĩa thống kê. Trạng thái extractor cần review vẫn được giữ nguyên.
+
+Nếu K0 đã hoàn tất nhưng review/phát hành lỗi, dùng cùng boot để chạy tiếp:
+
+```bash
+AGENT_GUARDRAILS_ENABLED=true KNOWLEDGE_ENABLED=true \
+python run_system.py knowledge-eval --expected-database telesale \
+  --resume /duong-dan/thu-muc-thi-nghiem
+```
+
+Resume không chạy lại K0 và không reset knowledge. Không thay code, model, nguồn
+BTC, cấu hình hay artifact giữa hai nửa; không resume sau khi đã tạo boot mới.
+Trace K1 dở không bị ghi đè hay tự chạy lại âm thầm. Xem checkpoint/log trước
+khi quyết định trả phí chạy mới.
+
+## Tùy chọn: kế hoạch có người đối chiếu trước
+
+`--approval-plan FILE` vẫn được hỗ trợ thay cho chế độ tự động; không dùng cùng
+`--auto-review`. Chỉ chế độ tùy chọn này ghi `simulated_pre_reviewed_plan`, dùng
+literal answer assertions độc lập đã được người duyệt xác nhận trước.
+
+### Chuẩn bị cho chế độ có plan (không bắt buộc với auto-review)
 
 Chạy từ root repo. Cần môi trường eval hiện có: PostgreSQL, MCP catalog/order/
 memory/knowledge, LangMem worker, release policy hybrid đang active và model đã
@@ -91,7 +168,7 @@ thêm case/tiêu chí tương ứng trước khi bắt đầu.
 Nguồn có `date_basis: order_date` cần ngày đơn đã xác minh trong trace policy;
 không tự dùng ngày gọi hay ngày khách nói để lách điều kiện hiệu lực.
 
-## Một lệnh live
+### Lệnh service-level cho chế độ có plan
 
 **Có gọi model và build index/embedding khi phát hành; reset dữ liệu runtime của
 DB chỉ định.** Không chạy đồng thời demo/eval khác trên cùng runtime. Dùng bộ
@@ -131,7 +208,7 @@ sẽ tạo được gap hợp lệ. Trước kích hoạt, CLI cũng đối chi�
 nền và config embedding/metadata của K0/K1: chỉ cho phép thêm FAQ dự kiến hoặc
 alias đã duyệt, không âm thầm đổi corpus nền hay bỏ revision cũ.
 
-## Kết quả và chạy tiếp
+### Artifact bổ sung và resume service-level với plan
 
 Thư mục kết quả chứa:
 
@@ -164,6 +241,7 @@ cho một lần chạy mới. Không sửa code/model/plan giữa hai nửa thí
 ```bash
 PYTHONPATH=.:ai-services:ai-services/test ai-services/.venv/bin/python -m pytest -q \
   ai-services/eval_harness/test_knowledge_auto_review.py \
+  ai-services/eval_harness/test_knowledge_automatic.py \
   ai-services/eval_harness/test_knowledge_triplet.py \
   ai-services/eval_harness/test_run_official.py \
   ai-services/test/test_knowledge_publish_search_loop.py

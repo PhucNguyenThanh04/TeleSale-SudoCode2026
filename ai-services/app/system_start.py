@@ -296,6 +296,11 @@ async def start(args, settings, env):
     serve(args, settings, env)
 
 
+def startup_lock_path():
+    # storage/ can belong to Docker's root user; keep the host lock in the checkout.
+    return ROOT/'.system-start.lock'
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('mode', choices=['demo', 'eval', 'knowledge-eval'])
@@ -304,6 +309,18 @@ def main():
     p.add_argument('--sudo-docker', action='store_true', help='Use sudo only for Docker commands')
     args, command = p.parse_known_args()
     args.command = command
+    if args.mode == 'knowledge-eval' and not args.resume:
+        plan_parser = argparse.ArgumentParser(add_help=False)
+        review_mode = plan_parser.add_mutually_exclusive_group()
+        review_mode.add_argument('--approval-plan', type=Path)
+        review_mode.add_argument('--auto-review', action='store_true')
+        plan_args, _ = plan_parser.parse_known_args(command[1:] if command[:1] == ['--'] else command)
+        if plan_args.approval_plan:
+            try:
+                from eval_harness.knowledge_auto_review import validate_plan
+                validate_plan(json.loads(plan_args.approval_plan.read_text(encoding='utf-8')))
+            except Exception:
+                p.error('--approval-plan must point to an existing valid pre-reviewed JSON plan; no startup/reset performed')
     if any(item == '--resume' or item.startswith('--resume=') for item in command):
         p.error('Put --resume before --; refusing a fresh reset of an existing experiment')
     if args.resume and args.mode != 'knowledge-eval': p.error('--resume is only valid for knowledge-eval')
@@ -325,7 +342,7 @@ def main():
     os.environ['SYSTEM_BOOT_ID'] = boot_id  # Compose and host processes share one generation.
     os.environ['KNOWLEDGE_RELEASE_ID'] = ''  # A deleted release pin must not survive a fresh system.
     if args.sudo_docker: os.environ['SYSTEM_SUDO_DOCKER'] = '1'
-    lock = ROOT/'storage/system/start.lock'; lock.parent.mkdir(parents=True, exist_ok=True)
+    lock = startup_lock_path()
     with lock.open('a') as handle:
         try:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)

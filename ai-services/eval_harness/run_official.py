@@ -35,6 +35,8 @@ def require_same_seed(full_digest, baseline_digest):
 
 def _run_one(config, scenarios, agent, seed, run_id, out, *, btc_root, expected_database, release,
              delivery_mode='voice'):
+    # The child runs from SERVICE, while callers can pass paths relative to repo root.
+    scenarios, btc_root, out = (Path(path).resolve() for path in (scenarios, btc_root, out))
     report=out/f'{config}.diagnostics.json'
     env=dict(os.environ)
     env['_EVAL_PINNED_RELEASE']=json.dumps(release)

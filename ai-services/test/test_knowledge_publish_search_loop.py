@@ -12,7 +12,7 @@ from test_knowledge_repo import MemoryRepo
 from test_policy_embedding import runtime_config, Backend
 
 
-@pytest.mark.parametrize('simulated_review', [False, True])
+@pytest.mark.parametrize('simulated_review', [False, True, 'automatic'])
 def test_reviewed_faq_reaches_policy_search_only_after_publication(monkeypatch, simulated_review):
     from app.knowledge.policy.source import parse_policy_sources, default_metadata
     from app.knowledge.services.lifecycle import command
@@ -51,7 +51,18 @@ def test_reviewed_faq_reaches_policy_search_only_after_publication(monkeypatch, 
             await command(repo, 'reviewer', 'activate_release', {'id': base['id'], 'expected_active_id': None})
             question = 'Đổi hàng cần giữ nguyên tem nhãn và hộp không?'
             answer = 'Sản phẩm phải còn nguyên tem, nhãn, hộp, chưa qua sử dụng và có hóa đơn hoặc mã đơn hàng.'
-            if simulated_review:
+            if simulated_review == 'automatic':
+                from eval_harness.knowledge_automatic import review_proposals
+                reviewed = await review_proposals(repo, repo,
+                    [{'scenario_id': 'LOCAL', 'call': 'call_1', 'turn': 1, 'run_id': 'k0', 'config': 'full',
+                      'user_text': question, 'agent_text': 'Em chưa có thông tin.', 'tool_calls': [{
+                          'name': 'policy.search', 'args': {}, 'result': {'retrieval_status': 'no_evidence',
+                          'context': {'on': '2026-11-11', 'order_date': '2026-10-20',
+                                      'knowledge_release_id': base['id']}, 'evidence': []}}]}],
+                    actor='reviewer', run_id='automatic-experiment', release_id=base['id'])
+                assert len(reviewed['approved']) == 1, reviewed
+                revision = await repo.get('revisions', reviewed['approved'][0]['revision_id'])
+            elif simulated_review:
                 from eval_harness.knowledge_auto_review import auto_review
                 reviewed = await auto_review(repo, repo, {'schema_version': 1, 'reviewed_by': 'domain-expert',
                     'review_note': 'Đối chiếu điều kiện đổi hàng DT-02.', 'cases': [{
@@ -74,7 +85,12 @@ def test_reviewed_faq_reaches_policy_search_only_after_publication(monkeypatch, 
             ready = await build_policy_release(repo, encoder, index, revision_ids=[revision['id']],
                                                expected_active_id=base['id'], **args)
             from eval_harness.knowledge_triplet import check_release_extension
-            check_release_extension(base, ready, [{'revision_id': revision['id'], 'kind': 'faq'}])
+            check_release_extension(base, ready, [{'revision_id': revision['id'], 'kind': revision['kind']}])
+            if simulated_review == 'automatic':
+                old = next(c for c in await repo.snapshot(base) if c.chunk_id == source.chunk_id)
+                new = next(c for c in await repo.snapshot(ready) if c.chunk_id == source.chunk_id)
+                assert question not in old.search_aliases and question in new.search_aliases
+                assert old.content == new.content and old.source_hash == new.source_hash
             await service.start()
             async with Client(create_server(service, context_secret='offline-secret')) as mcp:
                 async def lookup(pin=None, include=True):
@@ -85,10 +101,10 @@ def test_reviewed_faq_reaches_policy_search_only_after_publication(monkeypatch, 
                     result = await mcp.call_tool('policy.search', {**request.model_dump(mode='json'),
                         'trusted_context': sign_policy_context(request, context, 'offline-secret')})
                     return result.data if isinstance(result.data, dict) else result.structured_content
-                key = 'KG-' + revision['id']
+                key = source.chunk_id if revision['kind'] == 'aliases' else 'KG-' + revision['id']
                 before = await lookup()
                 assert before['retrieval_status'] == 'ok'
-                assert key not in {e['chunk_id'] for e in before['evidence']}
+                if revision['kind'] == 'faq': assert key not in {e['chunk_id'] for e in before['evidence']}
                 await command(repo, 'reviewer', 'activate_release', {
                     'id': ready['id'], 'expected_active_id': base['id']})
                 after = await lookup()
@@ -96,9 +112,10 @@ def test_reviewed_faq_reaches_policy_search_only_after_publication(monkeypatch, 
                 evidence = next(e for e in after['evidence'] if e['chunk_id'] == key)
                 assert revision['answer'] in evidence['content']
                 assert 'DT-02' in {e['chunk_id'] for e in after['evidence']}
-                for result in (await lookup(base['id']), await lookup(include=False)):
-                    assert result['retrieval_status'] == 'ok'
-                    assert key not in {e['chunk_id'] for e in result['evidence']}
+                if revision['kind'] == 'faq':
+                    for result in (await lookup(base['id']), await lookup(include=False)):
+                        assert result['retrieval_status'] == 'ok'
+                        assert key not in {e['chunk_id'] for e in result['evidence']}
                 assert (await repo.get('gaps', revision['gap_id']))['status'] == 'awaiting_verification'
         finally:
             await encoder.close()

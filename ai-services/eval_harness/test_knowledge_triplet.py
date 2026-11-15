@@ -31,8 +31,10 @@ def test_changed_artifact_is_rejected_before_resume(tmp_path):
     assert before != tree_hash(tmp_path)
 
 
-@pytest.mark.parametrize('mode', ['complete', 'interrupted_publication', 'no_gaps', 'changed_k0', 'changed_k1', 'real_scoring', 'boot_replaced'])
-def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tmp_path, monkeypatch, mode):
+@pytest.mark.parametrize('mode', ['complete', 'interrupted_publication', 'interrupted_review', 'no_gaps',
+    'changed_k0', 'changed_k1', 'changed_review', 'changed_catalog', 'real_scoring', 'boot_replaced'])
+@pytest.mark.parametrize('automatic', [False, True])
+def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tmp_path, monkeypatch, mode, automatic):
     from eval_harness import knowledge_triplet as mod
     from unittest.mock import AsyncMock
     boot_check = AsyncMock()
@@ -54,6 +56,7 @@ def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tm
         agent='deep', seed=7, out_root=tmp_path/'runs', actor='simulated-reviewer', resume=None,
         delivery_mode='text', worker_timeout=2, approval_plan=tmp_path/'plan.json')
     args.approval_plan.write_text(json.dumps(plan()))
+    if automatic: args.approval_plan = None
     settings = SimpleNamespace(app_env='test', agent_guardrails_enabled=True, knowledge_enabled=True,
         model_dump=lambda **kwargs: {'model': 'offline'})
     metadata = {'knowledge_release': {'release_id': 'k0', 'manifest_hash': 'hash0'},
@@ -91,10 +94,16 @@ def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tm
         (out/'run.json').write_text(json.dumps({'status': 'validated', 'execution_health': 'healthy',
             'traces': {'full': 'full.jsonl', 'baseline_no_memory': 'baseline.jsonl'}}))
         return out
+    reviews = []
     async def review(*args, **kwargs):
-        if mode == 'no_gaps': return {'approval_mode': 'simulated_pre_reviewed_plan', 'approved': [], 'skipped': []}
-        return {'approval_mode': 'simulated_pre_reviewed_plan', 'approved': [{'case_id': 'condition',
-            'revision_id': 'revision', 'kind': 'faq', 'sources': plan()['cases'][0]['sources']}], 'skipped': []}
+        reviews.append('review')
+        if mode == 'interrupted_review' and len(reviews) == 1:
+            raise RuntimeError('interrupted during proposal review')
+        review_mode = mod.MODE if automatic else 'simulated_pre_reviewed_plan'
+        if mode == 'no_gaps': return {'approval_mode': review_mode, 'approved': [], 'skipped': []}
+        return {'approval_mode': review_mode, 'approved': [{'case_id': 'condition',
+            'revision_id': 'revision', 'kind': 'faq', 'sources': plan()['cases'][0]['sources'],
+            'locator': ['LOCAL', 'call_1', 1]}], 'skipped': []}
     activations = []
     async def cmd(repo, actor, action, payload):
         if action == 'prepare_release':
@@ -121,6 +130,7 @@ def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tm
     def score(*args, **kwargs):
         args[3].write_text(json.dumps({'system': {}, 'baseline': {}})); return {}
     monkeypatch.setattr(mod, 'run_pair', pair); monkeypatch.setattr(mod, 'auto_review', review)
+    monkeypatch.setattr(mod, 'review_proposals', review)
     monkeypatch.setattr(mod, 'load_scenarios', lambda *a, **kw: {'LOCAL': {'calls': {'call_1': {
         'customer_turns': [row()['user_text']]}}}})
     monkeypatch.setattr(mod, 'command', cmd); monkeypatch.setattr(mod, '_run_one', single)
@@ -133,7 +143,7 @@ def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tm
     monkeypatch.setattr(mod, 'verify_report_turn_diagnostics', lambda _: {})
     monkeypatch.setattr(mod, 'trace_execution_health', lambda _: 'healthy')
     if mode != 'real_scoring': monkeypatch.setattr(mod, 'build_manifest', lambda **kw: {'config': 'full'})
-    if mode == 'interrupted_publication':
+    if mode in {'interrupted_publication', 'interrupted_review'}:
         with pytest.raises(RuntimeError): asyncio.run(mod.run_experiment(args, r, r, settings))
         args.resume = next(args.out_root.iterdir())
         assert calls == ['baseline', 'full_k0']
@@ -144,7 +154,24 @@ def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tm
         return
     assert calls == ['baseline', 'full_k0', 'full_k1']
     assert json.loads((out/'experiment.json').read_text())['status'] == 'complete'
+    if automatic:
+        assert not (out/'review-plan.json').exists()
+        result = json.loads((out/'comparison.json').read_text())
+        assert result['approval_mode'] == mod.MODE
+        assert 'gap_answer_accuracy' not in result['gap_evidence']
+        assert 'not measured' in (out/'comparison.md').read_text()
     args.resume = out
+    if mode == 'changed_catalog':
+        r.source_rows['PUBLIC']['source_hash'] = 'b'*64
+        with pytest.raises(ValueError): asyncio.run(mod.run_experiment(args, r, r, settings))
+        assert calls == ['baseline', 'full_k0', 'full_k1']
+        return
+    if mode == 'changed_review':
+        (out/'review.json').write_text('{}')
+        with pytest.raises(ValueError, match='Review artifact changed'):
+            asyncio.run(mod.run_experiment(args, r, r, settings))
+        assert calls == ['baseline', 'full_k0', 'full_k1']
+        return
     if mode == 'boot_replaced':
         boot_check.side_effect = ValueError('database boot replaced')
         with pytest.raises(ValueError): asyncio.run(mod.run_experiment(args, r, r, settings))
@@ -174,3 +201,28 @@ def test_release_extension_rejects_changed_base_or_dropped_revision():
                          ('items', [{'id': 'new'}]), ('config_hash', 'changed')]:
         changed = deepcopy(ready); changed['manifest'][field] = value
         with pytest.raises(ValueError): check_release_extension(before, changed, approved)
+
+
+def test_failed_pair_reports_its_cause_without_reading_missing_manifest(tmp_path, monkeypatch):
+    from eval_harness import knowledge_triplet as mod
+    from unittest.mock import AsyncMock
+    r = repo()
+    async def setup():
+        await r.put('permissions', 'reviewer', {'permissions': ['knowledge_review']})
+    asyncio.run(setup())
+    r.database_identity = AsyncMock(return_value={'database': 'telesale'})
+    args = Namespace(resume=None, approval_plan=None, scenarios=tmp_path/'scenarios', btc_root=tmp_path/'btc',
+        expected_database='telesale', agent='deep', seed=7, out_root=tmp_path/'runs', actor='reviewer',
+        delivery_mode='text', worker_timeout=2)
+    settings = SimpleNamespace(app_env='test', agent_guardrails_enabled=True, knowledge_enabled=True,
+        model_dump=lambda **kw: {'model': 'offline'})
+    pair = tmp_path/'failed-pair'; pair.mkdir()
+    (pair/'run.json').write_text(json.dumps({'status': 'failed', 'phase': 'configuration',
+        'error_code': 'configuration_execution_failed', 'service': None}))
+    monkeypatch.delenv('SYSTEM_BOOT_ID', raising=False)
+    monkeypatch.setattr(mod, 'run_pair', AsyncMock(return_value=pair))
+    monkeypatch.setattr(mod, 'review_proposals', AsyncMock(side_effect=AssertionError('must not review failed K0')))
+    with pytest.raises(mod.ExperimentError, match='configuration_execution_failed'):
+        asyncio.run(mod.run_experiment(args, r, r, settings))
+    checkpoint = json.loads(next(args.out_root.glob('*/experiment.json')).read_text())
+    assert checkpoint['phase'] != 'k0_complete'
