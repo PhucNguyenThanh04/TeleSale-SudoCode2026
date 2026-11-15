@@ -1,4 +1,4 @@
-"""LIVE three-arm experiment with explicitly simulated, pre-reviewed approval."""
+"""LIVE three-arm experiment with automatic or optional pre-reviewed approval."""
 import argparse
 import asyncio
 import hashlib
@@ -18,6 +18,7 @@ from app.knowledge.services.permissions import require_permission
 from app.mcp_servers.mcp_shared.config import database_url
 from eval_harness.knowledge_auto_review import (answer_passes, auto_review, check_review_sources,
                                                locator, retrieved_ids, validate_plan)
+from eval_harness.knowledge_automatic import MODE, review_proposals, source_catalog_digest
 from eval_harness.official_pipeline import atomic_json
 from eval_harness.extraction_report import write_extraction_sidecar, summarize_extraction
 from eval_harness.run_official import PROJECT, _run_one, run_pair, source_snapshot_digest
@@ -85,6 +86,26 @@ def check_release_extension(previous, ready, approved):
 
 
 def comparison_report(plan, baseline, full, after, approved, release_id):
+    if plan is None:
+        indexed = {name: {locator(r): r for r in rows} for name, rows in
+                   [('no_memory_k0', baseline), ('full_k0', full), ('full_k1', after)]}
+        cases = []
+        for item in approved:
+            key = tuple(item['locator'])
+            expected = ({'KG-'+item['revision_id']} if item['kind'] == 'faq'
+                        else {s['chunk_id'] for s in item['sources']})
+            turns = {name: rows.get(key, {}) for name, rows in indexed.items()}
+            hit = any(t.get('name') == 'policy.search'
+                and t.get('result', {}).get('context', {}).get('knowledge_release_id') == release_id
+                and expected & {e.get('chunk_id') for e in t.get('result', {}).get('evidence', [])}
+                for t in turns['full_k1'].get('tool_calls', []))
+            cases.append(dict(item, answers={name: r.get('agent_text') for name, r in turns.items()},
+                target_evidence_in_k1=hit, retrieved_ids={name: sorted(retrieved_ids(r)) for name, r in turns.items()}))
+        return {'assertion_kind': 'not_measured_no_independent_answer_labels', 'cases': cases,
+            'target_evidence_in_k1': {'retrieved': sum(c['target_evidence_in_k1'] for c in cases),
+                                      'total': len(cases)},
+            'limitations': ['Target-source retrieval in K1 does not prove answer correctness or causality.',
+                           'Automatic source checks are not human review.']}
     arms = {name: {locator(r): r for r in rows} for name, rows in
             [('no_memory_k0', baseline), ('full_k0', full), ('full_k1', after)]}
     decisions = {a['case_id']: a for a in approved}
@@ -116,9 +137,11 @@ def comparison_report(plan, baseline, full, after, approved, release_id):
 
 
 def render_report(report):
-    lines = ['# Knowledge experiment — simulated approval', '',
+    automatic = report['approval_mode'] == MODE
+    lines = ['# Knowledge experiment — ' + ('automatic approval' if automatic else 'simulated approval'), '',
         'K0 is an audited official pair. K1 is a full-only, cross-release experiment.',
-        'Approval follows a pre-reviewed plan; this is not a human review performed during the run.', '',
+        ('Approval uses automatic source/lexical/regression checks; no human review is claimed.' if automatic else
+         'Approval follows a pre-reviewed plan; this is not a human review performed during the run.'), '',
         '| Metric | No memory K0 | Full K0 | Full K1 |', '|---|---:|---:|---:|']
     arms = report['btc_metrics']
     for label, field in [('RQR ↓', 'repeat_question_rate'), ('CCR ↑', 'context_carryover_rate'),
@@ -127,11 +150,18 @@ def render_report(report):
         lines.append('| ' + label + ' (%) | ' + ' | '.join(values) + ' |')
     values = [str(arms[a].get('hallucination_rate', {}).get('price_promo_only', {}).get('value', 'N/A')) for a in arms]
     lines.append('| HR price/promo (%) | ' + ' | '.join(values) + ' |')
-    rates = report['gap_evidence']['gap_answer_accuracy']
-    lines.extend(['| Reviewed answer checks (%) | ' + ' | '.join(str(rates[a]['percent']) for a in arms) + ' |', '',
+    if automatic:
+        lines.extend(['', f"Target evidence retrieved in K1: {report['gap_evidence']['target_evidence_in_k1']}.",
+            'Independent gap-answer accuracy: not measured. Generated tests are not answer ground truth.',
+            'Retrieval alone does not prove a correct answer or an effect caused by the new revision.'])
+    else:
+        rates = report['gap_evidence']['gap_answer_accuracy']
+        lines.extend(['| Reviewed answer checks (%) | ' + ' | '.join(str(rates[a]['percent']) for a in arms) + ' |', '',
         'Answer checks use the same assertions in all three arms. Retrieval alone is not answer correctness.',
         f"Answers fixed: {report['gap_evidence']['fixed_answers']}; regressed: {report['gap_evidence']['regressed_answers']}.",
-        f"New revision retrieved AND answer checks passed: {report['gap_evidence']['new_revision_used']}.", '',
+        f"New revision retrieved AND answer checks passed: {report['gap_evidence']['new_revision_used']}."])
+    lines.extend(['',
+        f"Approved revisions: {len(report.get('review', {}).get('approved', []))}; skipped K0 turns: {len(report.get('review', {}).get('skipped', []))}.",
         f"Extraction status: {report.get('extraction_status', {})}.", '',
         'Full per-case answers, source/revision lineage and skipped reasons are in comparison.json.',
         'No new official same-release pair is claimed for the cross-release K1 comparison.', ''])
@@ -148,14 +178,14 @@ async def run_experiment(args, repo, worker_repo, settings):
         for key, value in state['arguments'].items():
             setattr(args, key, Path(value) if key in {'scenarios', 'btc_root'} else value)
         out = args.resume
-        plan = validate_plan(read_json(out/'review-plan.json'))
+        plan = None if state['approval_mode'] == MODE else validate_plan(read_json(out/'review-plan.json'))
     else:
-        plan = validate_plan(read_json(args.approval_plan))
-        check_plan_scenarios(plan, args.scenarios, args.btc_root)
+        plan = validate_plan(read_json(args.approval_plan)) if args.approval_plan else None
+        if plan: check_plan_scenarios(plan, args.scenarios, args.btc_root)
         out = args.out_root/(datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid4().hex[:8])
         out.mkdir(parents=True, exist_ok=False)
-        atomic_json(out/'review-plan.json', plan)
-        state = {'kind': 'three_arm_knowledge_experiment', 'approval_mode': 'simulated_pre_reviewed_plan',
+        if plan: atomic_json(out/'review-plan.json', plan)
+        state = {'kind': 'three_arm_knowledge_experiment', 'approval_mode': 'simulated_pre_reviewed_plan' if plan else MODE,
             'status': 'running', 'phase': 'initial', 'plan_digest': digest(plan),
             'system_boot_id': os.getenv('SYSTEM_BOOT_ID'),
             'source_digest': source_snapshot_digest(PROJECT), 'settings_digest': digest(settings.model_dump(mode='json')),
@@ -172,7 +202,13 @@ async def run_experiment(args, repo, worker_repo, settings):
         if (state['plan_digest'] != digest(plan) or state['source_digest'] != source_snapshot_digest(PROJECT)
                 or state['settings_digest'] != digest(settings.model_dump(mode='json'))):
             raise ExperimentError('Plan/source/settings changed; refusing incompatible resume')
-        await check_review_sources(repo, plan, args.actor)
+        if plan:
+            await check_review_sources(repo, plan, args.actor)
+        else:
+            catalog = await source_catalog_digest(repo, args.actor)
+            if state.get('catalog_digest', catalog) != catalog:
+                raise ExperimentError('Public source catalog changed; refusing incompatible automatic review/resume')
+            if 'catalog_digest' not in state: save(catalog_digest=catalog)
         identities = [await connection.database_identity() for connection in (repo, worker_repo)]
         for identity in identities:
             if identity['database'] != args.expected_database:
@@ -181,19 +217,24 @@ async def run_experiment(args, repo, worker_repo, settings):
             print('[knowledge] A: baseline K0; B: full K0', flush=True)
             k0 = await run_pair(scenarios=args.scenarios, btc_root=args.btc_root, agent=args.agent, seed=args.seed,
                 out_root=out/'k0', expected_database=args.expected_database, delivery_mode=args.delivery_mode, baseline_first=True)
-            save(k0=str(k0.resolve()), k0_digest=tree_hash(k0), phase='k0_complete')
+            save(k0=str(k0.resolve()), k0_digest=tree_hash(k0), phase='k0_finished')
         k0 = Path(state['k0'])
         if state['k0_digest'] != tree_hash(k0):
             raise ExperimentError('Frozen K0 artifacts changed')
-        run = read_json(k0/'run.json'); metadata = read_json(k0/'full.manifest.json')
+        run = read_json(k0/'run.json')
         if run['status'] != 'validated' or run.get('execution_health') != 'healthy':
-            raise ExperimentError('K0 must be validated and healthy; inspect it before another paid run')
+            raise ExperimentError(f"K0 must be validated and healthy: phase={run.get('phase')} "
+                f"code={run.get('error_code')} service={run.get('service')}; inspect {k0}/run.json")
+        if state['phase'] == 'k0_finished': save(phase='k0_complete')
+        metadata = read_json(k0/'full.manifest.json')
         if metadata['source_digest'] != state['source_digest']:
             raise ExperimentError('K0 source differs from experiment source')
         if any(identity != metadata['database_identity'] for identity in identities):
             raise ExperimentError('Knowledge and runtime must use the same database server')
         if await fingerprint_btc_source(database_url(settings)) != metadata['seed_digest']:
             raise ExperimentError('BTC seed changed between arms')
+        if state.get('review_digest') and state['review_digest'] != sha(out/'review.json'):
+            raise ExperimentError('Review artifact changed')
         if state['phase'] == 'compared':
             if (state['comparison_digest'] != sha(out/'comparison.json')
                     or state['k1_digest'] != tree_hash(out/'k1')):
@@ -205,12 +246,22 @@ async def run_experiment(args, repo, worker_repo, settings):
             async with repo.transaction() as tx:
                 active = (await tx.get('active', 'current') or {}).get('release_id')
             if active != base: raise ExperimentError('Active release changed since K0')
-            print('[knowledge] simulated review of selected K0 feedback', flush=True)
-            review = await auto_review(repo, worker_repo, plan, full, actor=args.actor,
-                run_id=out.name, timeout=args.worker_timeout, score_sha256=sha(k0/'btc_score.json'), release_id=base)
+            print('[knowledge] ' + ('simulated pre-reviewed plan' if plan else 'automatic source-checked worker proposals'), flush=True)
+            if plan:
+                review = await auto_review(repo, worker_repo, plan, full, actor=args.actor,
+                    run_id=out.name, timeout=args.worker_timeout, score_sha256=sha(k0/'btc_score.json'), release_id=base)
+            else:
+                if await source_catalog_digest(repo, args.actor) != state['catalog_digest']:
+                    raise ExperimentError('Public source catalog changed during K0')
+                async with repo.transaction() as tx:
+                    previous = await tx.get('releases', base)
+                review = await review_proposals(repo, worker_repo, full, actor=args.actor,
+                    run_id=out.name, timeout=args.worker_timeout, score_sha256=sha(k0/'btc_score.json'), release_id=base,
+                    max_approvals=max(0, 100-len(previous['manifest']['items'])))
             atomic_json(out/'review.json', review)
-            save(review=review, phase='reviewed')
+            save(review=review, review_digest=sha(out/'review.json'), phase='reviewed')
         review = state['review']
+        print(f"[knowledge] approved={len(review['approved'])}; skipped={len(review['skipped'])}; review: {out}/review.json", flush=True)
         if not review['approved']:
             save(status='no_eligible_gaps', phase='reviewed')
             return out
@@ -294,7 +345,9 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--scenarios', type=Path, default=PROJECT/'ai-services/eval_harness/scenarios')
     p.add_argument('--btc-root', type=Path)
-    p.add_argument('--approval-plan', type=Path)
+    review_mode = p.add_mutually_exclusive_group()
+    review_mode.add_argument('--approval-plan', type=Path, help='Optional pre-reviewed plan instead of automatic approval')
+    review_mode.add_argument('--auto-review', action='store_true', help='Automatic source-checked proposal review (default without a plan)')
     p.add_argument('--expected-database')
     p.add_argument('--actor', default='local-reviewer')
     p.add_argument('--agent', choices=['deep', 'react'], default='deep')
@@ -307,8 +360,8 @@ def main():
     args = p.parse_args()
     if args.resume and args.export_sources:
         p.error('--resume and --export-sources are mutually exclusive')
-    if not args.resume and not args.export_sources and not all((args.approval_plan, args.btc_root, args.expected_database)):
-        p.error('--approval-plan, --btc-root and --expected-database are required for a new experiment')
+    if not args.resume and not args.export_sources and not all((args.btc_root, args.expected_database)):
+        p.error('--btc-root and --expected-database are required for a new experiment')
     async def run():
         if args.export_sources:
             url = configured_url('KNOWLEDGE_DATABASE_URL')

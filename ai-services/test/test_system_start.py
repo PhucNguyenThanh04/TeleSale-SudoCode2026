@@ -104,3 +104,39 @@ def test_invalid_startup_configuration_leaves_existing_services_untouched(monkey
     env = {'SYSTEM_BOOT_ID': 'new'}
     with pytest.raises(ValueError): asyncio.run(mod.start(Namespace(mode='demo'), None, env))
     assert 'SYSTEM_STACK_OWNER' not in env
+
+
+def test_missing_review_plan_fails_before_settings_or_service_start(monkeypatch, tmp_path, capsys):
+    from app import system_start as mod
+    monkeypatch.setattr('sys.argv', ['system_start', 'knowledge-eval', '--expected-database',
+        'telesale', '--', '--approval-plan', str(tmp_path/'missing.json')])
+    monkeypatch.setattr(mod, 'get_settings', lambda: pytest.fail('must validate plan before startup'))
+    with pytest.raises(SystemExit):
+        mod.main()
+    assert '--approval-plan must point to an existing valid' in capsys.readouterr().err
+
+
+def test_lock_does_not_use_container_owned_storage(monkeypatch, tmp_path):
+    from app import system_start as mod
+    monkeypatch.setattr(mod, 'ROOT', tmp_path)
+    assert mod.startup_lock_path() == tmp_path/'.system-start.lock'
+
+
+@pytest.mark.parametrize('options', [[], ['--auto-review']])
+def test_automatic_knowledge_start_does_not_require_review_plan(monkeypatch, options):
+    from app import system_start as mod
+    monkeypatch.setattr('sys.argv', ['system_start', 'knowledge-eval', '--expected-database',
+        'telesale', '--', *options])
+    def stop_before_startup(): raise RuntimeError('configuration reached without plan')
+    monkeypatch.setattr(mod, 'get_settings', stop_before_startup)
+    with pytest.raises(RuntimeError, match='configuration reached without plan'):
+        mod.main()
+
+
+def test_conflicting_review_modes_fail_before_startup(monkeypatch, capsys):
+    from app import system_start as mod
+    monkeypatch.setattr('sys.argv', ['system_start', 'knowledge-eval', '--expected-database',
+        'telesale', '--', '--auto-review', '--approval-plan', 'plan.json'])
+    monkeypatch.setattr(mod, 'get_settings', lambda: pytest.fail('must not start with conflicting modes'))
+    with pytest.raises(SystemExit): mod.main()
+    assert 'not allowed with argument' in capsys.readouterr().err

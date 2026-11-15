@@ -35,7 +35,7 @@ async def reset_runtime_database(
             )]
             if "store_migrations" not in tables or len(tables) < 2:
                 raise ValueError("Runtime schema is incomplete")
-            mutable = [name for name in tables if name != "store_migrations"]
+            mutable = [name for name in tables if name not in {"store_migrations", "demo_users"}]
             qualified = []
             for name in mutable:
                 safe_name = name.replace('"', '""')

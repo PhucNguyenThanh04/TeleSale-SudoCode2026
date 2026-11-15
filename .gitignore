@@ -105,6 +105,7 @@ Thumbs.db
 .graphifyignore
 graphify-out/
 .superpowers/
+/.system-start.lock
 
 # Local tokenizer asset and selected design/audit documents
 /ai-services/app/mcp_servers/mcp_knowledge/assets/bge-m3-tokenizer.json

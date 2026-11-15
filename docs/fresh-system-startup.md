@@ -107,9 +107,15 @@ python run_system.py knowledge-eval --expected-database telesale -- \
   --delivery-mode text --agent deep --seed 7 \
   --scenarios ai-services/eval_harness/scenarios \
   --btc-root ../BTC-Data-Vong1-TEAMS \
-  --actor local-reviewer --approval-plan /duong-dan/review-plan.json \
+  --actor local-reviewer --auto-review \
   --out-root ai-services/eval_harness/results/knowledge-triplet
 ```
+
+Cơ chế tự duyệt chạy sau K0, không cần `review-plan.json`: CLI dùng worker thật
+để tạo đề xuất, kiểm nguồn/hash/ngày, nội dung gắn nguồn và regression trước khi
+duyệt/phát hành. Đề xuất không đủ điều kiện được bỏ qua kèm lý do; không có gap
+hợp lệ thì dừng trước K1, không ép tạo cải thiện. Đây là duyệt tự động trong
+thí nghiệm, không phải duyệt bởi con người hoặc bảo đảm đáp án đúng về ngữ nghĩa.
 
 Cả thí nghiệm dùng **một boot**. Chỉ reset knowledge ở đầu thí nghiệm; giữa
 K0 → duyệt/phát hành → K1 giữ nguyên knowledge mới. Memory/runtime vẫn reset

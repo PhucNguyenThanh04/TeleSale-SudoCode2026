@@ -100,6 +100,8 @@ class RuntimeResetTests(unittest.IsolatedAsyncioTestCase):
                 await target.execute("CREATE TABLE runtime.store_migrations (version integer PRIMARY KEY)")
                 await target.execute("CREATE TABLE runtime.tool_orders (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY)")
                 await target.execute("CREATE TABLE runtime.store (id integer PRIMARY KEY)")
+                await target.execute("CREATE TABLE runtime.demo_users (id integer PRIMARY KEY)")
+                await target.execute("INSERT INTO runtime.demo_users VALUES (42)")
                 await target.execute("INSERT INTO runtime.store_migrations VALUES (1)")
                 await target.execute("INSERT INTO runtime.tool_orders DEFAULT VALUES")
                 await target.execute("INSERT INTO runtime.store VALUES (7)")
@@ -117,6 +119,7 @@ class RuntimeResetTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(await target.fetchval("SELECT count(*) FROM runtime.tool_orders"), 0)
                 self.assertEqual(await target.fetchval("SELECT count(*) FROM runtime.store"), 0)
                 self.assertEqual(await target.fetchval("SELECT count(*) FROM runtime.store_migrations"), 1)
+                self.assertEqual(await target.fetchval("SELECT id FROM runtime.demo_users"), 42)
                 self.assertEqual(await target.fetchval("SELECT nextval('runtime.tool_order_seq')"), 600001)
                 self.assertEqual(await target.fetchval(
                     "INSERT INTO runtime.tool_orders DEFAULT VALUES RETURNING id"), 1)
@@ -155,7 +158,7 @@ class OfflineResetScopeTests(unittest.IsolatedAsyncioTestCase):
             return True
         connection=SimpleNamespace(transaction=transaction,fetchval=fetchval,
             fetchrow=AsyncMock(return_value={'host':'10.0.0.2','port':5432}),
-            fetch=AsyncMock(return_value=[{'tablename':x} for x in ('store_migrations','turns','tool_orders')]),
+            fetch=AsyncMock(return_value=[{'tablename':x} for x in ('store_migrations','demo_users','turns','tool_orders')]),
             execute=AsyncMock(),close=AsyncMock())
         with patch('asyncpg.connect',new_callable=AsyncMock,return_value=connection):
             await reset_runtime_database('postgresql://offline',expected_database='telesale',
@@ -163,5 +166,5 @@ class OfflineResetScopeTests(unittest.IsolatedAsyncioTestCase):
                 expected_server_port=5432,app_env='test')
         sql=' '.join(call.args[0] for call in connection.execute.call_args_list)
         self.assertIn('runtime."turns"',sql)
-        for forbidden in ('btc_source','knowledge.','store_migrations'):
+        for forbidden in ('btc_source','knowledge.','store_migrations','demo_users'):
             self.assertNotIn(forbidden,sql)

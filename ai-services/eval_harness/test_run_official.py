@@ -179,3 +179,22 @@ def test_malformed_child_report_keeps_safe_runner_failure(tmp_path, payload):
                      expected_database='telesale',release={'release_id':'r','manifest_hash':'h'})
     assert caught.value.error_code == 'configuration_execution_failed'
     assert 'private-secret' not in str(caught.value.__dict__)
+
+
+def test_relative_child_paths_are_resolved_before_changing_working_directory(tmp_path, monkeypatch):
+    from pathlib import Path
+    from eval_harness.run_official import _run_one, SERVICE
+    monkeypatch.chdir(tmp_path)
+    out = tmp_path/'runs'; out.mkdir()
+    trace = out/'full.diagnostics_full.jsonl'
+    trace.write_text('')
+    trace.with_suffix('.report.json').write_text(json.dumps({'status': 'completed'}))
+    with patch('eval_harness.run_official.subprocess.run', return_value=SimpleNamespace(returncode=0)) as child:
+        actual = _run_one('full', Path('inputs'), 'deep', 7, 'run', Path('runs'),
+            btc_root=Path('btc'), expected_database='telesale', release={'release_id': 'k0'})
+    argv = child.call_args.args[0]
+    assert child.call_args.kwargs['cwd'] == SERVICE
+    for flag, expected in [('--scenarios', tmp_path/'inputs'), ('--btc-root', tmp_path/'btc'),
+                           ('--out', out/'full.diagnostics.json')]:
+        assert argv[argv.index(flag)+1] == str(expected)
+    assert actual == trace

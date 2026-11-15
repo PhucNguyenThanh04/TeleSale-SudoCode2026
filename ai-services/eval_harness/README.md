@@ -1,6 +1,6 @@
 # Benchmark Dataset & Eval Harness — AI TeleSale SudoCode 2026
 
-CLI so sánh **No memory K0 / Full K0 / Full K1** với duyệt knowledge mô phỏng,
+CLI so sánh **No memory K0 / Full K0 / Full K1** với duyệt knowledge tự động sau K0,
 không chạy baseline lần thứ tư: [hướng dẫn Knowledge Triplet](KNOWLEDGE_TRIPLET.md).
 
 ## Hợp đồng BTC tháng 11 và cập nhật database
