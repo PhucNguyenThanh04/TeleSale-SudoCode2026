@@ -175,7 +175,7 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
                       if isinstance(order, dict) and order.get("order_id") == order_id]
             if len(orders) != 1:
                 return None
-            created = orders[0].get("created_on") or orders[0].get("created_at")
+            created = orders[0].get("created_on") or orders[0].get("created_at") or orders[0].get("date")
             if not created:
                 return None
             args["order_date"] = str(created)[:10]

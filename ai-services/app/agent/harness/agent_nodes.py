@@ -14,7 +14,7 @@ from typing import Any
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agent.harness.context import prompt_context, prompt_messages
-from app.agent.implementations import AgentKind, build_agent
+from app.agent.implementations import build_agent
 from app.agent.implementations.business_agent import BusinessTools
 from app.agent.prompts import SALES_PROMPT, text_prompt
 from app.agent.implementations.business_agent import _SYSTEM_PROMPT
@@ -34,6 +34,7 @@ from app.agent.harness.policy import prepare_tool_call
 from app.agent.harness.observability import log_tool_input, log_tool_output
 from app.agent.harness.state import Decision
 from app.schemas.brief import HandoffBrief
+from app.agent.harness.streaming import active_stream, invoke_agent
 
 
 POLICY_UNAVAILABLE = "Tạm thời chưa tra cứu được thông tin, vui lòng thử lại sau."
@@ -76,6 +77,12 @@ def _task_answer_complete(draft, state):
     if task.kind != 'none' and not followup_answer_complete(state, task, draft):
         return False
     from app.mcp_servers.mcp_shared.consultation_followup import product_price_requested
+    requested = _search_text(state['safe_text'])
+    if re.search(r'ma van don|tracking', requested) and not re.search(r'ma van don|tracking', _search_text(draft)):
+        return False
+    if re.search(r'don vi (?:giao hang|van chuyen)', requested) and not re.search(
+            r'don vi (?:giao hang|van chuyen)', _search_text(draft)):
+        return False
     if (task.kind == 'policy' and not product_price_requested(state['safe_text'])
             and not product_question_fields(state['safe_text'])):
         return True  # Policy fees/durations are not product-price advice.
@@ -139,13 +146,12 @@ from app.agent.harness.execution_diagnostics import (
 class AgentNodes(SessionNodes):
     guardrails_enabled = True
 
-    def __init__(self, *args, agent_kind: AgentKind = "deep", **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.agent_kind = agent_kind
-
     @trace_node("run_agent")
     @execution_node("preparation")
     async def run_agent(self, state: TurnState) -> dict[str, Any]:
+        stream = active_stream.get()
+        if stream is not None:
+            stream.state = state
         if state.get("memory_blocked") and customer_erasure_requested(state["safe_text"]):
             state["tool_calls"] = list(state.get("tool_calls", []))
             return await self._route_customer_erasure(state)
@@ -226,8 +232,13 @@ class AgentNodes(SessionNodes):
             if prepared_reply and _task_answer_complete(prepared_reply, state):
                 return {'agent_draft': prepared_reply, 'tool_calls': state['tool_calls'],
                         'tool_count': state.get('tool_count', 0)}
+        elif task.kind in {'price_objection', 'returning_objection'}:
+            prepared_reply = safe_followup_reply(state, task)
+            if prepared_reply and _task_answer_complete(prepared_reply, state):
+                return {'agent_draft': prepared_reply, 'tool_calls': state['tool_calls'],
+                        'tool_count': state.get('tool_count', 0), 'followup_kind': task.kind,
+                        'policy_order_bindings': state.get('policy_order_bindings', {})}
         elif task.kind == 'policy':
-            from app.mcp_servers.mcp_shared.consultation_followup import order_status_requested
             prepared_reply = safe_followup_reply(state, task)
             product_reply = safe_product_reply(state)
             price_reply = safe_quote_reply(state)
@@ -235,7 +246,7 @@ class AgentNodes(SessionNodes):
                 if price_reply and prepared_reply.startswith(price_reply):
                     prepared_reply = prepared_reply[len(price_reply):].lstrip()
                 prepared_reply = product_reply + ' ' + prepared_reply
-            if (prepared_reply and not order_status_requested(state['safe_text'])
+            if (prepared_reply
                     and 'Theo thông tin chính sách đã kiểm tra:' in prepared_reply
                     and _task_answer_complete(prepared_reply, state)):
                 return {'agent_draft': prepared_reply, 'tool_calls': state['tool_calls'],
@@ -243,15 +254,16 @@ class AgentNodes(SessionNodes):
                         'policy_order_bindings': state.get('policy_order_bindings', {})}
         set_execution_phase("build")
         system_prompt = prompt_read.result()
-        agent = build_agent(self.agent_kind, self.llm, business, system_prompt)
+        agent = build_agent("deep", self.llm, business, system_prompt)
         context = prompt_context(state, self.prompt_history_turns)
         input_messages = prompt_messages(context)
         messages = []
         try:
             set_execution_phase("model_invocation", "initial")
-            result = await agent.ainvoke(
+            result = await invoke_agent(agent,
                 {"messages": input_messages},
                 config={"recursion_limit": max(12, self.max_tool_calls * 4 + 4)},
+                state=state,
             )
             execution_result(state)
             set_execution_phase("postprocess")
@@ -323,14 +335,14 @@ class AgentNodes(SessionNodes):
                     if ("error" not in quote and quote.get("sku") == sku
                             and type(quote.get("final_price_vnd")) is int):
                         set_execution_phase("model_invocation", "refresh")
-                        result = await agent.ainvoke(
+                        result = await invoke_agent(agent,
                             {"messages": [*messages, HumanMessage(content=(
                                 "Bản nháp nói về ưu đãi nhưng chưa có bằng chứng trong lượt này. "
                                 "Báo giá công cụ vừa xác minh theo ngày hiện tại: "
                                 + json.dumps(quote, ensure_ascii=False)
                                 + ". Hãy viết lại câu trả lời chỉ theo báo giá này; "
                                 "không dùng ưu đãi cũ hoặc hứa quà không có trong applied_promos."))]},
-                            config={"recursion_limit": max(12, self.max_tool_calls * 4 + 4)})
+                            config={"recursion_limit": max(12, self.max_tool_calls * 4 + 4)}, state=state)
                         execution_result(state)
                         set_execution_phase("postprocess")
                         refreshed = result.get("messages", [])

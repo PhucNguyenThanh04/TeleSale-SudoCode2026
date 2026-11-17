@@ -55,14 +55,14 @@ class _BlockedRuntime(_Runtime):
 
 
 class EvalRunnerTest(unittest.TestCase):
-    def test_btc_cli_defaults_to_text_and_keeps_explicit_voice(self):
+    def test_btc_cli_uses_submission_stream_without_mode_selectors(self):
         from eval.run_eval import main
-        for extra, expected in (([], 'text'), (['--delivery-mode', 'voice'], 'voice')):
+        for extra in ([],):
             with patch('eval.run_eval.run', new_callable=AsyncMock, return_value=0) as execute, \
                  patch('sys.argv', ['run_eval.py', '--scenarios', 'unused', '--btc-root', 'unused',
                                     '--config', 'full', '--out', 'unused.jsonl', *extra]):
                 main()
-                self.assertEqual(execute.call_args.args[0].delivery_mode, expected)
+                self.assertFalse(hasattr(execute.call_args.args[0], 'delivery_mode'))
 
     def setUp(self):
         for target, kwargs in (

@@ -21,11 +21,10 @@ from test_november_pricing import OrderRepo, reference
 RUN = Path(__file__).resolve().parents[1] / 'eval_harness/results/smoke-repairs/20261112T060044Z-17ffa366'
 
 
-@pytest.mark.parametrize('agent_kind', ['deep', 'react'])
 @pytest.mark.parametrize('acceptance,created', [
     (None, True), ('Chưa đặt hàng nhé.', False),
     ('Em lên đơn đúng đôi đó giá 1.000.000 đồng, chuyển khoản nhé.', False)])
-def test_t17_real_preparation_and_operational_prior_episode_can_close(reference, acceptance, created, agent_kind):
+def test_t17_real_preparation_and_operational_prior_episode_can_close(reference, acceptance, created):
     rows = [r for r in map(json.loads, (RUN / 'full.diagnostics_full.jsonl').read_text().splitlines())
             if r['scenario_id'] == 'SC-T17']
     customer = next(c for c in reference.CRM if c['customer_id'] == 'C008')
@@ -54,7 +53,7 @@ def test_t17_real_preparation_and_operational_prior_episode_can_close(reference,
     model = FakeToolModel(replies=[reads(current[0]), AIMessage(content=current[0]['agent_text']),
                                   reads(current[1]), AIMessage(content=current[1]['agent_text'])])
     runtime = AgentHarnessRuntime(model, MCPGateway(catalog_server(commerce), order_server(commerce), None),
-                                  Memory(repo), agent_kind=agent_kind, max_tool_calls=5)
+                                  Memory(repo), max_tool_calls=5)
     async def run():
         sid = uuid4()
         request = TextTurnRequest(client_msg_id=uuid4(), session_id=sid, on=date(2026, 10, 27),
@@ -76,11 +75,10 @@ def test_t17_real_preparation_and_operational_prior_episode_can_close(reference,
     asyncio.run(run())
 
 
-@pytest.mark.parametrize('agent_kind', ['deep', 'react'])
 @pytest.mark.parametrize('sid,cid,on,total', [
     ('SC-T18', 'C010', '2026-10-25', 779000),
     ('SC-T10', 'C011', '2026-10-23', 8480000)])
-def test_basket_real_memory_and_preparation_quotes_total_before_acceptance(reference, sid, cid, on, total, agent_kind):
+def test_basket_real_memory_and_preparation_quotes_total_before_acceptance(reference, sid, cid, on, total):
     rows = [r for r in map(json.loads, (RUN / 'full.diagnostics_full.jsonl').read_text().splitlines())
             if r['scenario_id'] == sid]
     customer = next(c for c in reference.CRM if c['customer_id'] == cid)
@@ -106,7 +104,7 @@ def test_basket_real_memory_and_preparation_quotes_total_before_acceptance(refer
         for sku in (['SKU-MB-BOT', 'SKU-MB-MON'] if sid == 'SC-T18' else ['SKU-MB-CAR', 'SKU-MB-STR1'])]),
         AIMessage(content='Dạ, em đang kiểm tra giỏ hàng.')])
     runtime = AgentHarnessRuntime(model, MCPGateway(catalog_server(commerce), order_server(commerce), None),
-                                  Memory(repo), agent_kind=agent_kind, max_tool_calls=5)
+                                  Memory(repo), max_tool_calls=5)
     current = [r for r in rows if r['call'] == 'call_2'] if sid == 'SC-T18' else [r for r in rows if r['call'] == 'call_1' and r['turn'] > 1]
     async def run():
         request = TextTurnRequest(client_msg_id=uuid4(), session_id=session_id, on=date.fromisoformat(on),
@@ -126,8 +124,7 @@ def test_basket_real_memory_and_preparation_quotes_total_before_acceptance(refer
     asyncio.run(run())
 
 
-@pytest.mark.parametrize('agent_kind', ['deep', 'react'])
-def test_t09_trace_records_real_prepare_quote_without_duplicate_read(reference, agent_kind):
+def test_t09_trace_records_real_prepare_quote_without_duplicate_read(reference):
     from eval_harness.benchmark_runner import run_scenario_call
     rows = [r for r in map(json.loads, (RUN / 'full.diagnostics_full.jsonl').read_text().splitlines())
             if r['scenario_id'] == 'SC-T09']
@@ -152,7 +149,7 @@ def test_t09_trace_records_real_prepare_quote_without_duplicate_read(reference, 
         'id': str(uuid4()), 'name': 'catalog_search', 'args': {'sku': 'SKU-AP-PRO'}}]),
         AIMessage(content=current[0]['agent_text']), AIMessage(content=current[1]['agent_text'])])
     runtime = AgentHarnessRuntime(model, MCPGateway(catalog_server(commerce), order_server(commerce), None),
-                                  Memory(repo), agent_kind=agent_kind, max_tool_calls=5)
+                                  Memory(repo), max_tool_calls=5)
     trace = asyncio.run(run_scenario_call(runtime, 'SC-T09', 'call_3',
         {'customer_turns': [r['user_text'] for r in current]}, date(2026, 10, 22),
         customer['phone'], delivery_mode='text'))

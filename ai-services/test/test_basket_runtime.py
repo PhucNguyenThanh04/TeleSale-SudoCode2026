@@ -65,14 +65,13 @@ class Memory:
              'on': on, 'channel': channel, **kwargs}, f'{sid}:{tid}:commit_turn')
 
 
-@pytest.mark.parametrize('agent_kind', ['deep', 'react'])
 @pytest.mark.parametrize('delivery_mode,include_prior,heard,price_changed', [
     ('text', True, True, False), ('voice', True, True, False), ('text', False, True, False),
     ('voice', False, True, False), ('voice', True, False, False),
     ('text', True, True, True), ('voice', True, True, True)],
     ids=['text-full', 'voice-full', 'text-baseline', 'voice-baseline', 'voice-interrupted',
          'text-price-change', 'voice-price-change'])
-def test_returning_customer_buys_delivered_basket_while_all_workers_pending(reference, agent_kind, delivery_mode, include_prior, heard, price_changed):
+def test_returning_customer_buys_delivered_basket_while_all_workers_pending(reference, delivery_mode, include_prior, heard, price_changed):
     customer = {'customer_id': 'C1', 'phone': '0900000000', 'name': 'Khách',
                 'orders': [], 'sessions': [], 'honorific': 'anh'}
     class CommerceRepo(OrderRepo):
@@ -100,7 +99,7 @@ def test_returning_customer_buys_delivered_basket_while_all_workers_pending(refe
                                         if price_changed else 'Dạ, em kiểm tra đơn giúp anh.')),
         AIMessage(content='Dạ, em kiểm tra đơn giúp anh.')])
     runtime = AgentHarnessRuntime(model, MCPGateway(catalog_server(commerce), order_server(commerce), None),
-                                  Memory(memory_repo), agent_kind=agent_kind, max_tool_calls=8)
+                                  Memory(memory_repo), max_tool_calls=8)
     runtime.memory.include_prior = include_prior
     async def run():
         responses = []
@@ -141,7 +140,6 @@ def test_returning_customer_buys_delivered_basket_while_all_workers_pending(refe
     asyncio.run(run())
 
 
-@pytest.mark.parametrize('agent_kind', ['deep', 'react'])
 @pytest.mark.parametrize('delivery_mode', ['text', 'voice'])
 @pytest.mark.parametrize('changed_lines,change_text', [
     ([{'sku': 'SKU-AP-PRO', 'qty': 1}], 'Chỉ lấy một máy AirPure Pro, chuyển khoản nhé.'),
@@ -149,7 +147,7 @@ def test_returning_customer_buys_delivered_basket_while_all_workers_pending(refe
     ([{'sku': 'SKU-AP-PRO', 'qty': 1}, {'sku': 'SKU-AP-MINI', 'qty': 1}],
      'Lấy một AirPure Pro và một AirPure Mini, chuyển khoản nhé.'),
 ], ids=['quantity', 'product', 'mixed-products'])
-def test_changed_basket_requires_new_delivered_offer_then_can_complete(reference, agent_kind, delivery_mode, changed_lines, change_text):
+def test_changed_basket_requires_new_delivered_offer_then_can_complete(reference, delivery_mode, changed_lines, change_text):
     from collections import Counter
     customer = {'customer_id': 'C1', 'phone': '0900000000', 'name': 'Khách', 'orders': [], 'sessions': []}
     class CommerceRepo(OrderRepo):
@@ -178,7 +176,7 @@ def test_changed_basket_requires_new_delivered_offer_then_can_complete(reference
         AIMessage(content='Dạ, em kiểm tra đơn giúp mình.')])
     memory_repo = MemoryRepo()
     runtime = AgentHarnessRuntime(model, MCPGateway(catalog_server(commerce), order_server(commerce), None),
-                                  Memory(memory_repo), agent_kind=agent_kind, max_tool_calls=12)
+                                  Memory(memory_repo), max_tool_calls=12)
     async def run():
         sid = uuid4()
         for index, text in enumerate(('Báo giá 2 máy AirPure Pro.', change_text,

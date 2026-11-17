@@ -103,12 +103,12 @@ worker phải cùng trỏ vào database eval tách riêng; `--expected-database`
 đích, không tự tạo/cấu hình database hay biến database demo thành an toàn để reset.
 
 ```bash
-AGENT_GUARDRAILS_ENABLED=true PYTHONPATH=.:ai-services ai-services/.venv/bin/python -m eval_harness.run_official --delivery-mode text --scenarios /path/to/frozen-scenarios --btc-root ../BTC-Data-Vong1-TEAMS --expected-database telesale_eval_m1 --out-root ai-services/eval_harness/results
+AGENT_GUARDRAILS_ENABLED=true PYTHONPATH=.:ai-services ai-services/.venv/bin/python -m eval_harness.run_official --scenarios /path/to/frozen-scenarios --btc-root ../BTC-Data-Vong1-TEAMS --expected-database telesale_eval_m1 --out-root ai-services/eval_harness/results
 ```
 
-Chọn model/backend trong cấu hình trước khi chạy và giữ nguyên giữa full/baseline.
-`LLM_BACKEND=local` dùng Qwen local; `api` dùng profile API, không có yêu cầu
-fine-tune. Chạy smoke trên 7 sample trước khi chạy tập lớn nếu chưa kiểm tích hợp.
+Chọn profile API trong cấu hình trước khi chạy và giữ nguyên giữa full/baseline.
+Deep Agent dùng streaming có guardrails cho text; không còn tùy chọn local LLM,
+ReAct hoặc text không streaming. Chạy smoke trên 7 sample trước khi chạy tập lớn nếu chưa kiểm tích hợp.
 Smoke không thay cho nghiệm thu về độ phủ hoặc p95.
 
 Đọc số lưu và kiểm bằng chứng:
@@ -124,11 +124,12 @@ không thay câu nói của agent hoặc sửa ground truth theo output để đ
 
 Call Brief <=5 giây; chat TTFT p95 <=3 giây; total p95 <=8 giây. P95 cần ít nhất
 100 lượt/cấu hình sau warmup. Runner phân biệt prepare, response và worker wait.
-Chat lưu turn trong `run(text)`; voice lưu sau playback. Quy tắc 7 của
-`eval/huong-dan-do-latency.md` BTC cho phép **không streaming thì TTFT = Total**.
-Chat M1 ghi rõ cơ sở `nonstreaming_total_btc_rule_7`; không cần thêm streaming để
-được chấm M1, nhưng TTFT p95 vẫn phải <=3 giây trên đủ mẫu thực tế. Voice giữ
-TTFT proxy và không được dùng để tuyên bố đạt chat M1. M1 không yêu cầu TTFA/TTS.
+Chat lưu phần trả lời đã phát trước sự kiện `done`; voice lưu sau playback.
+Chat M1 hiện dùng cơ sở `streaming_guarded_answer_delta`: TTFT tới delta trả lời
+đầu tiên đã qua guardrails; Total tới hoàn tất nội dung và persistence. Báo cáo
+không streaming cũ vẫn được đọc theo quy tắc 7 (`TTFT = Total`) và không được
+đổi thành số đo streaming. Voice giữ TTFT proxy và không được dùng để tuyên bố
+đạt chat M1. M1 không yêu cầu TTFA/TTS.
 
 ## 5. Knowledge Gap Loop hai vòng
 

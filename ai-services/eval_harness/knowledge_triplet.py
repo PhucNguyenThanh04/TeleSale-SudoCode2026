@@ -201,7 +201,7 @@ async def run_experiment(args, repo, worker_repo, settings):
             'system_boot_id': os.getenv('SYSTEM_BOOT_ID'),
             'source_digest': source_snapshot_digest(PROJECT), 'settings_digest': digest(settings.model_dump(mode='json')),
             'arguments': {k: str(getattr(args, k)) if k in {'scenarios', 'btc_root'} else getattr(args, k)
-                          for k in ('scenarios', 'btc_root', 'agent', 'seed', 'delivery_mode', 'expected_database', 'actor', 'worker_timeout')}}
+                          for k in ('scenarios', 'btc_root', 'seed', 'expected_database', 'actor', 'worker_timeout')}}
         atomic_json(out/'experiment.json', state)
     def save(**updates):
         state.update(updates); atomic_json(out/'experiment.json', state)
@@ -232,8 +232,8 @@ async def run_experiment(args, repo, worker_repo, settings):
                 raise ExperimentError('Knowledge database identity differs from expected database')
         if 'k0' not in state:
             print('[knowledge] A: baseline K0; B: full K0', flush=True)
-            k0 = await run_pair(scenarios=args.scenarios, btc_root=args.btc_root, agent=args.agent, seed=args.seed,
-                out_root=out/'k0', expected_database=args.expected_database, delivery_mode=args.delivery_mode, baseline_first=True)
+            k0 = await run_pair(scenarios=args.scenarios, btc_root=args.btc_root, seed=args.seed,
+                out_root=out/'k0', expected_database=args.expected_database, baseline_first=True)
             save(k0=str(k0.resolve()), k0_digest=tree_hash(k0), phase='k0_finished')
         k0 = Path(state['k0'])
         if state['k0_digest'] != tree_hash(k0):
@@ -348,8 +348,8 @@ async def run_experiment(args, repo, worker_repo, settings):
         trace = k1/'full.diagnostics_full.jsonl'
         if not trace.exists():
             print('[knowledge] C: full memory with published K1 (no fourth baseline)', flush=True)
-            trace = _run_one('full', k0/'scenarios', args.agent, args.seed, out.name+'-k1', k1,
-                btc_root=k0/'btc-release', expected_database=args.expected_database, release=release, delivery_mode=args.delivery_mode)
+            trace = _run_one('full', k0/'scenarios', args.seed, out.name+'-k1', k1,
+                btc_root=k0/'btc-release', expected_database=args.expected_database, release=release)
         runner = read_json(trace.with_suffix('.report.json'))
         if (runner.get('status') != 'completed' or runner.get('safety_issues')
                 or runner.get('database_identity') != metadata['database_identity']
@@ -414,9 +414,7 @@ def main():
     review_mode.add_argument('--auto-review', action='store_true', help='Automatic source-checked proposal review (default without a plan)')
     p.add_argument('--expected-database')
     p.add_argument('--actor', default='local-reviewer')
-    p.add_argument('--agent', choices=['deep', 'react'], default='deep')
     p.add_argument('--seed', type=int, default=7)
-    p.add_argument('--delivery-mode', choices=['text'], default='text')
     p.add_argument('--worker-timeout', type=float, default=60)
     p.add_argument('--out-root', type=Path, default=PROJECT/'ai-services/eval_harness/results/knowledge-triplet')
     p.add_argument('--resume', type=Path)

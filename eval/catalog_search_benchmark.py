@@ -119,7 +119,6 @@ async def measure(args: argparse.Namespace) -> dict:
         max_tool_calls=settings.agent_max_tool_calls,
         prompt_history_turns=settings.agent_prompt_history_turns,
         guardrails_enabled=settings.agent_guardrails_enabled,
-        agent_kind=settings.agent_kind,
         fact_extraction_mode=extraction_mode,
     )
     turns = []
@@ -149,7 +148,7 @@ async def measure(args: argparse.Namespace) -> dict:
         "business_date": business_date.isoformat(),
         "input_sha256": hashlib.sha256(args.text.encode("utf-8")).hexdigest(),
         "model": settings.llm_model,
-        "agent_kind": settings.agent_kind,
+        "agent_kind": "deep",
         "fact_extraction_mode": extraction_mode,
         "catalog_search": catalog_search_metrics(turns),
         "model_calls_total": sum(turn["model_calls"] for turn in turns),

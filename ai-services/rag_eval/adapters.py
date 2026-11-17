@@ -77,7 +77,7 @@ class Generator:
     def __init__(self, settings):
         from app.infarstructure.llm import build_llm
         self.model = build_llm(settings)
-        self.identity = {'model': settings.llm_model, 'backend': settings.llm_backend,
+        self.identity = {'model': settings.llm_model, 'backend': 'api',
             'temperature': settings.llm_temperature, 'max_tokens': settings.llm_max_tokens,
             'seed': settings.llm_seed, 'prompt_sha256': digest(GENERATION_PROMPT),
             'endpoint_sha256': digest(str(settings.llm_base_url))}

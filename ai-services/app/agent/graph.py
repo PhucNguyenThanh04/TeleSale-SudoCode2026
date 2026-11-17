@@ -8,7 +8,6 @@ from langgraph.graph import END, START, StateGraph
 
 from app.agent.memory.store import MemoryStore
 from app.agent.harness.agent_nodes import AgentNodes
-from app.agent.implementations import AgentKind
 from app.agent.harness.state import TurnState
 from app.agent.mcp.gateway import ToolGateway
 from app.constants import DEFAULT_MAX_TOOL_CALLS, DEFAULT_PROMPT_HISTORY_TURNS
@@ -19,22 +18,18 @@ def build_graph(llm: BaseChatModel, tools: ToolGateway, memory: MemoryStore,
                 prompt_history_turns: int = DEFAULT_PROMPT_HISTORY_TURNS,
                 clock: Callable[[], datetime] | None = None,
                 guardrails_enabled: bool = True,
-                agent_kind: AgentKind = "deep", nodes: AgentNodes | None = None):
-    """Production outer graph shared by the selectable agent implementations."""
-    nodes = nodes or AgentNodes(llm, tools, memory, max_tool_calls, prompt_history_turns, clock,
-                                agent_kind=agent_kind)
+                nodes: AgentNodes | None = None):
+    """One Deep Agent graph; runtime persists delivered text or voice receipts."""
+    nodes = nodes or AgentNodes(llm, tools, memory, max_tool_calls, prompt_history_turns, clock)
     nodes.guardrails_enabled = guardrails_enabled
     graph = StateGraph(TurnState)
     graph.add_node("accept", nodes.accept)
     graph.add_node("retrieve_context", nodes.retrieve_context)
     graph.add_node("run_agent", nodes.run_agent)
     graph.add_node("verify", nodes.verify_agent)
-    graph.add_node("persist", nodes.persist_agent)
     graph.add_edge(START, "accept")
     graph.add_edge("accept", "retrieve_context")
     graph.add_edge("retrieve_context", "run_agent")
     graph.add_edge("run_agent", "verify")
-    graph.add_conditional_edges("verify", lambda state:
-        END if state["request"].delivery_mode == "voice" else "persist")
-    graph.add_edge("persist", END)
+    graph.add_edge("verify", END)
     return graph.compile()

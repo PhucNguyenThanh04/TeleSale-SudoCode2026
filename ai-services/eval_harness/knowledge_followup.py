@@ -39,7 +39,7 @@ async def prepare_review(base_run, repo, worker, settings, *, actor='local-revie
         'k0': str(base_run), 'k0_digest': core.tree_hash(base_run),
         'k0_release_id': metadata['knowledge_release']['release_id'],
         'arguments': {'scenarios': str(base_run/'scenarios'), 'btc_root': str(base_run/'btc-release'),
-            'agent': params['agent'], 'seed': params['seed'], 'delivery_mode': run['conversation_measurement']['delivery_mode'],
+            'seed': params['seed'],
             'expected_database': expected, 'actor': actor, 'worker_timeout': timeout}}
     atomic_json(out/'experiment.json', state)
     # K0 already exists: this only proposes, and the coordinator always returns before C.

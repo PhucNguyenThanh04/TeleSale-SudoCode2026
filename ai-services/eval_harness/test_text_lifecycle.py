@@ -1,4 +1,5 @@
 """M1 chat evaluation must use text persistence, never simulated voice playback."""
+from eval_harness.test_support import VoiceLifecycleStub
 import asyncio
 from datetime import date
 from pathlib import Path
@@ -9,8 +10,7 @@ import pytest
 from eval_harness.benchmark_runner import run_scenario_call
 
 
-@pytest.mark.parametrize('agent_kind', ['deep', 'react'])
-def test_text_eval_commits_through_real_runtime_before_next_turn(monkeypatch, agent_kind):
+def test_text_eval_commits_through_real_runtime_before_next_turn(monkeypatch):
     monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / 'test'))
     from langchain_core.messages import AIMessage
     from app.agent.harness.runtime import AgentHarnessRuntime
@@ -36,7 +36,7 @@ def test_text_eval_commits_through_real_runtime_before_next_turn(monkeypatch, ag
                     {'customer': 'chào', 'agent': 'Dạ, em nghe ạ.'}]
             return await super().run(request)
 
-    runtime = Runtime(model, FakeGateway(), memory, agent_kind=agent_kind)
+    runtime = Runtime(model, FakeGateway(), memory)
 
     async def wait(source):
         assert any(key[1] == source for key in memory.operations)
@@ -49,13 +49,13 @@ def test_text_eval_commits_through_real_runtime_before_next_turn(monkeypatch, ag
     assert not runtime._playback_tasks
     assert rows[1]['latency']['prepare_ms'] == 0
     assert all(r['latency']['ttft_is_proxy'] is False for r in rows)
-    assert all(r['latency']['ttft_ms'] == r['latency']['total_ms'] for r in rows)
+    assert all(r['latency']['ttft_ms'] <= r['latency']['total_ms'] for r in rows)
 
 
 def test_text_latency_includes_runtime_persistence_but_not_worker_wait(monkeypatch):
     clock = [0.0]
 
-    class Runtime:
+    class Runtime(VoiceLifecycleStub):
         async def prepare_session(self, request):
             clock[0] += .125
             return SimpleNamespace(call_brief={'latency_ms': 125})
@@ -91,7 +91,7 @@ def test_unknown_delivery_mode_fails_before_runtime_access():
 def test_trace_includes_actual_preparation_reads_only_on_first_consumer():
     quote = {'name': 'pricing.get_quote', 'args': {'sku': 'SKU-AP-PRO', 'on': '2026-10-22'},
              'result': {'sku': 'SKU-AP-PRO', 'final_price_vnd': 7690000, 'applied_promos': []}}
-    class Runtime:
+    class Runtime(VoiceLifecycleStub):
         count = 0
         async def prepare_session(self, request):
             return SimpleNamespace(call_brief=None)
@@ -115,9 +115,9 @@ def test_measurement_metadata_distinguishes_chat_from_voice():
     chat = conversation_measurement('text')
     voice = conversation_measurement('voice')
     assert chat['delivery_mode'] == 'text'
-    assert 'including persistence' in chat['lifecycle'] and 'prepare_session' in chat['lifecycle']
+    assert 'persistence' in chat['lifecycle'] and 'prepare_session' in chat['lifecycle']
     assert chat['ttft_is_proxy'] is False
-    assert chat['ttft_basis'] == 'nonstreaming_total_btc_rule_7'
+    assert chat['ttft_basis'] == 'streaming_guarded_answer_delta'
     assert voice['delivery_mode'] == 'voice'
     chat['excluded'].append('mutated')
     assert 'mutated' not in conversation_measurement('text')['excluded']
@@ -136,8 +136,8 @@ def test_coordinator_forwards_text_delivery_to_child_process(tmp_path, monkeypat
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr('eval_harness.run_official.subprocess.run', run)
-    result = _run_one('full', tmp_path, 'deep', 7, 'r', tmp_path,
-        btc_root=tmp_path, expected_database='offline', release={'release_id': 'offline'}, delivery_mode='text')
+    result = _run_one('full', tmp_path, 7, 'r', tmp_path,
+        btc_root=tmp_path, expected_database='offline', release={'release_id': 'offline'})
     assert result == trace
     command = commands[0]
-    assert command[command.index('--delivery-mode') + 1] == 'text'
+    assert '--delivery-mode' not in command and '--streaming' not in command

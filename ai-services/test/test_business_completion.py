@@ -1,4 +1,5 @@
 """General tool and context contracts for completing a purchase safely."""
+from test_deep_memory import FakeStreamAgent
 import asyncio
 from datetime import date
 from uuid import uuid4
@@ -91,9 +92,9 @@ def test_ready_purchase_gets_one_continuation_but_unknown_customer_does_not():
         bind_history_observations(current)
         node.tools, node.llm = AsyncMock(), object()
         node.tools.invoke_trusted.return_value = {'status':'created','order_id':'OD-CONTINUATION'}
-        node.max_tool_calls, node.prompt_history_turns, node.agent_kind = 5, 6, "deep"
+        node.max_tool_calls, node.prompt_history_turns = 5, 6
         node.clock = lambda: datetime.now(timezone.utc)
-        agent = AsyncMock()
+        agent = FakeStreamAgent()
 
         async def respond(*args, **kwargs):
             if not current["tool_calls"]:
@@ -105,16 +106,16 @@ def test_ready_purchase_gets_one_continuation_but_unknown_customer_does_not():
                 current["tool_count"] = 2
             return {"messages": [AIMessage(content="Dạ em kiểm tra tiếp ạ")]}
 
-        agent.ainvoke.side_effect = respond
+        agent.response.side_effect = respond
         with patch("app.agent.harness.agent_nodes.build_agent", return_value=agent), \
              patch("app.agent.harness.agent_nodes.text_prompt", return_value="test"):
             await node.run_agent(current)
         writes = [call for call in node.tools.invoke_trusted.await_args_list if call.args[0]=='order.create']
-        return agent.ainvoke.await_count, len(writes)
+        return agent.response.await_count, len(writes)
 
     # Continuation now writes through BusinessTools instead of prompting the model again.
-    assert asyncio.run(run("known")) == (1, 1)
-    assert asyncio.run(run("known", session_quote=True)) == (1, 1)
+    assert asyncio.run(run("known")) == (0, 1)
+    assert asyncio.run(run("known", session_quote=True)) == (0, 1)
     assert asyncio.run(run("unknown")) == (1, 0)
     assert asyncio.run(run("known", "Chưa lên đơn nhé")) == (1, 0)
 

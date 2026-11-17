@@ -1,4 +1,5 @@
 """Missing promotion evidence is refreshed, never borrowed from old quotes."""
+from test_deep_memory import FakeStreamAgent
 import asyncio
 from datetime import date, datetime, timezone
 from unittest.mock import AsyncMock, patch
@@ -50,11 +51,11 @@ async def _exercise(fail=False, multiple=False, memory_only=False):
         current["session_tool_calls"] = []
         current["scoped_facts"] = {"product": {"SKU-EXAMPLE": {
             "product_advised": {"value": "SKU-EXAMPLE", "source_kind": "tool"}}}}
-    node.llm, node.agent_kind = object(), "deep"
+    node.llm = object()
     node.max_tool_calls, node.prompt_history_turns, node.guardrails_enabled = 5, 6, True
     node.clock = lambda: datetime.now(timezone.utc)
-    agent = AsyncMock()
-    agent.ainvoke.side_effect = [
+    agent = FakeStreamAgent()
+    agent.response.side_effect = [
         {"messages": [AIMessage(content="Dạ, mẫu này đang tặng kèm một màng lọc và miễn phí vận chuyển ạ.")]},
         {"messages": [AIMessage(content="Dạ, giá hiện tại là 1.200.000đ ạ.")]}]
     with patch("app.agent.harness.agent_nodes.build_agent", return_value=agent), \
@@ -64,13 +65,13 @@ async def _exercise(fail=False, multiple=False, memory_only=False):
     verified = await node.verify_agent(current)
     if fail or multiple:
         assert verified["agent_text"] == FALLBACK
-        assert agent.ainvoke.await_count == 1
+        assert agent.response.await_count == 1
         assert node.tools.invoke_trusted.await_count == (0 if multiple else 1)
         return
     assert verified["agent_text"] != FALLBACK
     assert "tặng" not in verified["agent_text"]
     assert "1.200.000" in verified["agent_text"]
-    assert agent.ainvoke.await_count == 2
+    assert agent.response.await_count == 2
     args = node.tools.invoke_trusted.await_args.args
     assert args[0] == "pricing.get_quote"
     assert args[1]["sku"] == "SKU-EXAMPLE"

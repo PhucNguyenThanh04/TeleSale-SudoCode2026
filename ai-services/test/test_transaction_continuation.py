@@ -34,10 +34,9 @@ def test_receipt_lookup_language_keeps_negation_and_purchase_separate(text, requ
 
 @pytest.mark.parametrize('scenario_id,sku', [
     ('SC-T01', 'SKU-XM-4P'), ('SC-T02', 'SKU-JK-WND-M-NAVY'), ('SC06', 'SKU-XM-4P')])
-@pytest.mark.parametrize('agent_kind', ['deep', 'react'])
 @pytest.mark.parametrize('delivery_mode', ['text', 'voice'])
 def test_k0_customer_sequence_creates_selected_order_and_reads_receipt(reference, scenario_id, sku,
-                                                                     agent_kind, delivery_mode):
+                                                                     delivery_mode):
     scenario = next(data for path in (K0 / 'scenarios').glob('*.json')
                     if (data := json.loads(path.read_text()))['scenario_id'] == scenario_id)
     customer = next(c for c in reference.CRM if c['phone'] == scenario['customer_phone'])
@@ -69,7 +68,7 @@ def test_k0_customer_sequence_creates_selected_order_and_reads_receipt(reference
         for i, call in enumerate(reads)]),
         *[AIMessage(content='Dạ, em kiểm tra giúp mình.') for _ in range(80)]])
     runtime = AgentHarnessRuntime(model, MCPGateway(catalog_server(repo), order_server(repo), None),
-                                  Memory(MemoryRepo()), agent_kind=agent_kind, max_tool_calls=8)
+                                  Memory(MemoryRepo()), max_tool_calls=8)
     async def run():
         rows = []
         try:

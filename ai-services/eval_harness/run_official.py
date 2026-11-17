@@ -33,8 +33,7 @@ def require_same_seed(full_digest, baseline_digest):
     return full_digest
 
 
-def _run_one(config, scenarios, agent, seed, run_id, out, *, btc_root, expected_database, release,
-             delivery_mode='voice'):
+def _run_one(config, scenarios, seed, run_id, out, *, btc_root, expected_database, release):
     # The child runs from SERVICE, while callers can pass paths relative to repo root.
     scenarios, btc_root, out = (Path(path).resolve() for path in (scenarios, btc_root, out))
     report=out/f'{config}.diagnostics.json'
@@ -44,10 +43,9 @@ def _run_one(config, scenarios, agent, seed, run_id, out, *, btc_root, expected_
     env['KNOWLEDGE_RELEASE_ID']=release['release_id']
     # The child applies the same offline dataset validator before any mutation.
     print(f"[eval] {config}: starting", flush=True)
-    completed=subprocess.run([sys.executable,'-u','-m','eval_harness.benchmark_runner','--agent',agent,
+    completed=subprocess.run([sys.executable,'-u','-m','eval_harness.benchmark_runner',
         '--config',config,'--seed',str(seed),'--scenarios',str(scenarios),'--btc-root',str(btc_root),
-        '--expected-database',expected_database,'--run-id',run_id,'--out',str(report),
-        '--delivery-mode',delivery_mode],
+        '--expected-database',expected_database,'--run-id',run_id,'--out',str(report)],
         cwd=SERVICE,env=env,stdout=None,stderr=subprocess.PIPE,text=True)
     suffix='baseline' if config in {'baseline','baseline_no_memory'} else config
     trace=report.with_name(report.stem+f'_{suffix}.jsonl')
@@ -76,10 +74,10 @@ def _dataset_digest(scenarios):
     return hashlib.sha256(json.dumps(scenarios,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
 
 
-async def run_pair(*, scenarios: Path, btc_root: Path, agent: str, seed: int,
+async def run_pair(*, scenarios: Path, btc_root: Path, seed: int,
                    out_root: Path, expected_database: str | None = None,
-                   limit_scenarios: int | None = None, delivery_mode='text', baseline_first=False) -> Path:
-    measurement = conversation_measurement(delivery_mode)
+                   limit_scenarios: int | None = None, baseline_first=False) -> Path:
+    measurement = conversation_measurement()
     run_id=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid4().hex[:8]
     out=out_root/run_id
     out.mkdir(parents=True,exist_ok=False)
@@ -115,8 +113,8 @@ async def run_pair(*, scenarios: Path, btc_root: Path, agent: str, seed: int,
         for config in (('baseline', 'full') if baseline_first else ('full', 'baseline')):
             require_same_seed(seed_digest,await fingerprint_btc_source(dsn))
             with release_context(release['release_id']):
-                trace=_run_one(config,selected,agent,seed,run_id,out,
-                    btc_root=btc_root,expected_database=target,release=release,delivery_mode=delivery_mode)
+                trace=_run_one(config,selected,seed,run_id,out,
+                    btc_root=btc_root,expected_database=target,release=release)
             require_same_seed(seed_digest,await fingerprint_btc_source(dsn))
             report=json.loads(trace.with_suffix('.report.json').read_text())
             current=report['database_identity']
@@ -135,8 +133,8 @@ async def run_pair(*, scenarios: Path, btc_root: Path, agent: str, seed: int,
         provider=urlsplit(str(settings.llm_base_url)).hostname
         metadata=dict(source_digest=source_before,seed_id=f'btc-source-seed-{seed}',seed_digest=seed_digest,
             model_id=settings.llm_model,model_params={'temperature':settings.llm_temperature,
-                'max_tokens':settings.llm_max_tokens,'seed':seed,'agent':agent,'provider':provider,
-                'streaming':False,'warmup_turns':3,'prompt_history_turns':settings.agent_prompt_history_turns,
+                'max_tokens':settings.llm_max_tokens,'seed':seed,'agent':'deep','provider':provider,
+                'streaming':True,'warmup_turns':3,'prompt_history_turns':settings.agent_prompt_history_turns,
                 'conversation_measurement': measurement, 'btc_contract': release_metadata(btc_root)},
             tool_mode='mcp',guardrails={'enabled':settings.agent_guardrails_enabled},database_identity=identity,
             hardware={'platform':platform.platform(),'machine':platform.machine(),'cpu_count':os.cpu_count(),
@@ -203,9 +201,7 @@ def main():
     parser.add_argument('--btc-root',type=Path,required=True)
     parser.add_argument('--expected-database',default=os.getenv('EVAL_EXPECTED_DATABASE'))
     parser.add_argument('--decision-diagnostics', action='store_true', help='Capture safe decision evidence; remote memory/worker need EVAL_DECISION_DIAGNOSTICS=1')
-    parser.add_argument('--agent',choices=('deep','react'),default='deep')
     parser.add_argument('--seed',type=int,default=7)
-    parser.add_argument('--delivery-mode',choices=('text','voice'),default='text')
     parser.add_argument('--limit-scenarios',type=int)
     parser.add_argument('--out-root',type=Path,default=SERVICE/'eval_harness/results')
     from eval_harness.asr_evidence import add_asr_arguments, asr_sources_from_args, collect_asr_evidence
@@ -221,9 +217,8 @@ def main():
     if args.decision_diagnostics:
         os.environ['EVAL_DECISION_DIAGNOSTICS'] = '1'
     out=asyncio.run(run_pair(scenarios=args.scenarios.resolve(),btc_root=args.btc_root.resolve(),
-        agent=args.agent,seed=args.seed,out_root=args.out_root.resolve(),
-        expected_database=args.expected_database,limit_scenarios=args.limit_scenarios,
-        delivery_mode=args.delivery_mode))
+        seed=args.seed,out_root=args.out_root.resolve(),
+        expected_database=args.expected_database,limit_scenarios=args.limit_scenarios))
     summary=json.loads((out/'run.json').read_text())
     status=summary['status']
     print(f'{status}: {out / "run.json"}')

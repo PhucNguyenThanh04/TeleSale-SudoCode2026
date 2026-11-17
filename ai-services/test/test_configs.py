@@ -13,44 +13,6 @@ from app.mcp_servers.mcp_shared.config import database_url, mcp_token
 
 
 class SettingsTest(unittest.TestCase):
-    def test_local_backend_needs_no_cloud_credentials_and_selects_memory_model(self) -> None:
-        with patch.dict(os.environ, {"LLM_BACKEND": "local"}, clear=True):
-            settings = Settings(_env_file=None)
-        self.assertEqual(settings.llm_model, "Qwen/Qwen2.5-3B-Instruct-AWQ")
-        self.assertEqual(str(settings.llm_base_url), "http://localhost:8081/v1")
-        self.assertEqual(settings.langmem_model, "Qwen/Qwen2.5-3B-Instruct-AWQ")
-        self.assertEqual(settings.llm_api_key.get_secret_value(), "local-vllm")
-
-    def test_backend_toggle_preserves_api_profile_in_env_file(self) -> None:
-        with patch.dict(os.environ, {}, clear=True), tempfile.TemporaryDirectory() as cwd:
-            env_file = Path(cwd) / "service.env"
-            env_file.write_text(
-                "LLM_API_KEY=cloud-key\nLLM_MODEL=cloud-model\n"
-                "LLM_BASE_URL=https://cloud.example/v1\nLANGMEM_MODEL=cloud-memory\n"
-                "LOCAL_LLM_MODEL=local-model\nLOCAL_LLM_BASE_URL=http://127.0.0.1:9090/v1\n"
-                "LOCAL_LLM_API_KEY=local-secret\n", encoding="utf-8")
-            with patch.dict(os.environ, {"LLM_BACKEND": "local"}):
-                local = Settings(_env_file=env_file)
-            with patch.dict(os.environ, {"LLM_BACKEND": "api"}):
-                api = Settings(_env_file=env_file)
-        self.assertEqual(local.llm_model, "local-model")
-        self.assertEqual(local.langmem_model, "local-model")
-        self.assertEqual(str(local.llm_base_url), "http://127.0.0.1:9090/v1")
-        self.assertEqual(local.llm_api_key.get_secret_value(), "local-secret")
-        self.assertNotIn("local-secret", repr(local))
-        self.assertEqual(api.llm_model, "cloud-model")
-        self.assertEqual(api.langmem_model, "cloud-memory")
-        self.assertEqual(str(api.llm_base_url), "https://cloud.example/v1")
-        self.assertEqual(api.llm_api_key.get_secret_value(), "cloud-key")
-
-    def test_invalid_backend_or_local_connection_is_rejected(self) -> None:
-        for change in ({"llm_backend": "unknown"},
-                       {"llm_backend": "local", "local_llm_base_url": "invalid"},
-                       {"llm_backend": "local", "local_llm_model": ""},
-                       {"llm_backend": "local", "local_llm_api_key": ""}):
-            with self.subTest(change=change), self.assertRaises(ValidationError):
-                Settings(_env_file=None, llm_api_key="cloud-key", llm_model="cloud", **change)
-
     def test_loads_env_file_from_other_working_directory(self) -> None:
         with patch.dict(os.environ, {}, clear=True), tempfile.TemporaryDirectory() as cwd:
             env_file = Path(cwd) / "service.env"
@@ -76,14 +38,6 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(settings.llm_model, "another-model")
         self.assertEqual(settings.port, 9001)
         self.assertFalse(settings.agent_guardrails_enabled)
-
-    def test_agent_selection_is_validated(self) -> None:
-        settings = Settings(_env_file=None, llm_api_key="model-key", llm_model="model",
-                            agent_kind="react")
-        self.assertEqual(settings.agent_kind, "react")
-        with self.assertRaises(ValidationError):
-            Settings(_env_file=None, llm_api_key="model-key", llm_model="model",
-                     agent_kind="unknown")
 
     def test_invalid_or_missing_required_values_are_rejected(self) -> None:
         with patch.dict(os.environ, {}, clear=True):

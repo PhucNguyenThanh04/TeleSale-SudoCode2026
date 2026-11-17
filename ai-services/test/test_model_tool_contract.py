@@ -127,9 +127,14 @@ def test_runtime_graph_emits_health_and_preserves_canonical_observations():
                     'function':{'name':'catalog_search','arguments':'{"query":"máy lọc"}'}}]}
             else:
                 message = {'role':'assistant','content':'Dạ, em đã kiểm tra danh mục.'}
-            return httpx.Response(200, request=request, json={'id':'offline','object':'chat.completion',
-                'created':0,'model':'gpt-6-luna','choices':[{'index':0,'message':message,
-                'finish_reason':'tool_calls' if n == 1 else 'stop'}]})
+            assert json.loads(request.content)['stream'] is True
+            delta = dict(message)
+            if delta.get('tool_calls'):
+                delta['tool_calls'] = [dict(call, index=i) for i, call in enumerate(delta['tool_calls'])]
+            frame = {'id':'offline', 'object':'chat.completion.chunk', 'created':0, 'model':'gpt-6-luna',
+                'choices':[{'index':0, 'delta':delta, 'finish_reason':'tool_calls' if n == 1 else 'stop'}]}
+            return httpx.Response(200, request=request, headers={'content-type':'text/event-stream'},
+                text='data: ' + json.dumps(frame) + '\n\ndata: [DONE]\n\n')
         request = turn('Xin chào')
         with patch.object(httpx.AsyncClient, 'send', send), capture_diagnostic_events() as events:
             await runtime.run(request)

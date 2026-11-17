@@ -10,6 +10,7 @@ from app.auth import authenticated_socket, bind_start, current_user
 from app.schemas.chat import AITextTurnResponse
 from app.schemas.voice import Start
 from app.schemas.timeline import TimelineQuery, TimelineResponse
+from app.services.text_stream import stream_text_turn
 
 router = APIRouter()
 
@@ -118,11 +119,14 @@ async def run_text_chat(socket: WebSocket, user):
                 continue
             client_msg_id = str(command.client_msg_id)
             try:
-                response = await socket.app.state.ai_http.post('/v1/chat/turns', json={**identity,
-                    'client_msg_id': client_msg_id, 'text': command.text,
-                    'input_mode': 'clean', 'delivery_mode': 'text'})
-                response.raise_for_status()
-                raw = response.json()
+                async for event in stream_text_turn(socket.app.state.ai_http, {**identity,
+                        'client_msg_id': client_msg_id, 'text': command.text,
+                        'input_mode': 'clean', 'delivery_mode': 'text'}):
+                    if event['event'] == 'delta':
+                        await send('agent_delta', client_msg_id=client_msg_id, session_id=session_id,
+                                   text=event['text'], seq=event['seq'])
+                    else:
+                        raw = event
                 reply = AITextTurnResponse.model_validate(raw)
                 if str(reply.session_id) != session_id or str(reply.client_msg_id) != client_msg_id:
                     raise ValueError('harness_identity_changed')

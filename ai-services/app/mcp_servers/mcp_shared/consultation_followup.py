@@ -10,10 +10,11 @@ from app.agent.memory.episode_candidates import blocker_resolution
 
 def order_status_requested(text: str) -> bool:
     folded = _search_text(text)
+    folded = re.split(r'\bneu\b', folded, maxsplit=1)[0]
     return bool(re.search(r'\bdon\b|tracking', folded)
                 and re.search(r'\btra\b|kiem (?:tra|lai)|tinh trang|trang thai|van don|tracking|'
                               r'da (?:duoc )?xac nhan|ban giao|du kien giao', folded)
-                and not re.search(r'\bneu\b|(?:khong|chua|dung).{0,12}(?:kiem (?:tra|lai)|\btra\b)', folded))
+                and not re.search(r'(?:khong|chua|dung).{0,12}(?:kiem (?:tra|lai)|\btra\b)', folded))
 
 
 @dataclass
@@ -111,13 +112,17 @@ def _open_items(state, focus):
 
 def _policy_question(text):
     folded = _search_text(text)
-    if re.search(r'(?:khong|chua) can (?:hoi|tra cuu|kiem tra|noi).{0,25}(?:bao hanh|chinh sach)', folded):
+    if re.search(r'(?:khong|chua) can (?:hoi|tra cuu|kiem tra|noi).{0,25}(?:bao hanh|chinh sach|quy dinh giao lai)', folded):
         return None
-    topic_pattern = r'bao hanh|chinh sach|doi tra|tra hang|hoan tien|doi size|phi (?:doi|ship|van chuyen)|mat phi|thu hoi|tem mac|tem nhan'
+    topic_pattern = r'bao hanh|chinh sach|doi tra|tra hang|hoan tien|doi size|phi (?:doi|ship|van chuyen)|mat phi|thu hoi|tem mac|tem nhan|quy dinh giao lai|giao lai'
     topic = re.search(topic_pattern, folded)
     if not topic:
         return None
-    if not (re.search(r'\?|the nao|ra sao|luu y|bao lau|may ngay|co .{0,60}khong|cho (?:biet|hoi)|kiem tra|tra cuu|chinh sach', folded)
+    if (re.search(r'tem mac|tem nhan', folded)
+            and not re.search(r'bao hanh|chinh sach|doi tra|tra hang|hoan tien|doi size|\bphi\b|thu hoi|giao lai|'
+                              r'dieu kien|quy dinh|yeu cau|the nao|ra sao|luu y|can.{0,20}giu|giu.{0,20}khong', folded)):
+        return None  # Reporting intact packaging is not itself a policy question.
+    if not (re.search(r'\?|the nao|ra sao|luu y|bao lau|may ngay|co .{0,60}khong|cho (?:biet|hoi)|kiem tra|tra cuu|chinh sach|quy dinh', folded)
             or folded.strip() in {'bao hanh', 'doi tra', 'phi doi size'}):
         return None
     # Keep the actual question and remove a trailing sales pause rather than dropping the question.
@@ -174,7 +179,7 @@ def policy_arguments(state, task):
                   if order.get('order_id') == task.order_id]
         if len(orders) != 1:
             return None
-        created = orders[0].get('created_on') or orders[0].get('created_at')
+        created = orders[0].get('created_on') or orders[0].get('created_at') or orders[0].get('date')
         if not created:
             return None
         args['order_date'] = str(created)[:10]
@@ -214,7 +219,7 @@ def product_price_requested(text):
 
 def stock_requested(text):
     folded = _search_text(text)
-    return bool(re.search(r'con hang|het hang|co (?:san )?hang|co san trong kho|ton kho|nhap lai', folded)
+    return bool(re.search(r'con hang|het hang|co (?:san )?hang|co san trong kho|ton kho|nhap lai|con (?:size|co)\s+\d+', folded)
                 and not re.search(r'(?:khong|chua|dung)\s+(?:can\s+)?kiem tra\s+(?:ton kho|hang)', folded))
 
 
@@ -284,7 +289,9 @@ def followup_answer_complete(state, task, answer):
         result = call.get('result', {}) if call else {}
         if result.get('retrieval_status') != 'ok':
             return bool(re.search(r'chua (?:co|xac minh|tra cuu)|tam thoi', text))
-        topic = 'bao hanh' if 'bao hanh' in _search_text(task.policy_query or '') else 'doi|tra|phi|chinh sach'
+        query = _search_text(task.policy_query or '')
+        topic = ('bao hanh' if 'bao hanh' in query else
+                 'giao lai|giao hang|van chuyen' if 'giao lai' in query else 'doi|tra|phi|chinh sach')
         if not re.search(topic, text):
             return False
         from app.agent.guardrails.policy_grounding import policy_evidence_for_answer, policy_clarification_or_refusal

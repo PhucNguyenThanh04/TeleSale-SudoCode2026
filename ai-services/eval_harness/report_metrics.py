@@ -157,6 +157,9 @@ def render_run(directory: Path, *, btc_root: Path | None = None, asr_sources=Non
         lines.append('Chat đo đến câu trả lời đầy đủ, gồm persistence của runtime; '
                      'không gồm prepare, chờ memory worker, ASR/TTS hoặc HTTP. '
                      'TTFT proxy = Total; chưa đo token đầu tiên.')
+    elif run.get('conversation_measurement', {}).get('ttft_basis') == 'streaming_guarded_answer_delta':
+        lines.append('Chat streaming: TTFT đo tới delta trả lời đầu tiên đã qua kiểm tra tại harness; '
+                     'Total gồm hoàn tất nội dung và persistence. Prepare và chờ worker được đo riêng.')
     elif run.get('conversation_measurement', {}).get('ttft_basis') == 'nonstreaming_total_btc_rule_7':
         lines.append('Chat không streaming: TTFT = Total theo quy tắc 7 trong hướng dẫn latency BTC. '
                      'Response gồm persistence của runtime; prepare và chờ worker được đo riêng.')

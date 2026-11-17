@@ -29,6 +29,8 @@ def explicit_product_queries(text: str) -> list[str]:
             continue
         candidates.setdefault(query.casefold(), query)
     literal = re.search(r'(?i:\b(?:đang xem|đang tham khảo|đang tìm hiểu)\s+(?:mẫu\s+)?)([^,;?!\n]+)', text)
+    if literal is None:
+        literal = re.search(r'((?i:\bgiày(?: sneaker| chạy bộ| trekking)?\s+)[^,;?!\n]+)', text)
     if literal:
         query = re.split(r'(?i)\s+(?:giá|hiện|bản|size|màu|cho|còn|thì|em)\b', literal[1], maxsplit=1)[0].strip()
         if (re.search(r'\b[A-Z][A-Za-z0-9&-]{2,}\b', query)

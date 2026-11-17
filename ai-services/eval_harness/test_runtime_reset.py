@@ -13,6 +13,7 @@ import asyncpg
 import pytest
 from sqlalchemy.engine import make_url
 
+from eval_harness.test_support import VoiceLifecycleStub
 from app.configs import Settings
 from app.mcp_servers.mcp_shared.config import database_url
 
@@ -29,7 +30,8 @@ class RuntimeResetTests(unittest.IsolatedAsyncioTestCase):
                 prepare_session=AsyncMock(return_value=None), record_playback=AsyncMock(return_value=None),
                 run=AsyncMock(return_value=SimpleNamespace(agent_text="Dạ",call_brief=None)), state_for=lambda request: {}, memory=SimpleNamespace(
                 include_prior=True, namespace=""))
-            args = ["benchmark_runner", "--agent", "deep", "--config", "both",
+            fake_runtime.stream = lambda request: VoiceLifecycleStub.stream(fake_runtime, request)
+            args = ["benchmark_runner", "--config", "both",
                     "--scenarios", str(dataset), "--out", str(output),
                     "--btc-root", str(Path(__file__).resolve().parents[3] / "BTC-Data-Vong1-TEAMS"), "--expected-database", "telesale"]
             with patch("app.knowledge.context.capture_release",new_callable=AsyncMock,return_value={"release_id":"btc-only","manifest_hash":"btc-only"}), patch("eval_harness.benchmark_runner.preflight_runtime",new_callable=AsyncMock), patch("eval_harness.benchmark_runner.warm_up_configuration",new_callable=AsyncMock), patch("eval_harness.benchmark_runner.wait_for_distillation",new_callable=AsyncMock), patch("eval_harness.benchmark_runner.read_distillation_writes",new_callable=AsyncMock,return_value={}), patch.object(sys, "argv", args), patch(
@@ -38,7 +40,7 @@ class RuntimeResetTests(unittest.IsolatedAsyncioTestCase):
                 "eval_harness.benchmark_runner.prepare_runtime_for_eval",
                 new_callable=AsyncMock,
                 return_value={"database": "telesale", "host": "localhost", "port": 5432},
-            ) as reset, patch("eval_harness.benchmark_runner.print_cli_summary"):
+            ) as reset:
                 await main()
             self.assertEqual(reset.await_count, 2)
 
@@ -49,7 +51,7 @@ class RuntimeResetTests(unittest.IsolatedAsyncioTestCase):
             dataset = Path(folder) / "scenarios.json"
             dataset.write_text('{"scenarios": [{"scenario_id":"X","calls":{"call_1":{"customer_turns":["Xin chào"]}}}]}', encoding="utf-8")
             output = Path(folder) / "report.json"
-            args = ["benchmark_runner", "--agent", "deep", "--scenarios",
+            args = ["benchmark_runner", "--scenarios",
                     str(dataset), "--out", str(output), "--btc-root", str(Path(__file__).resolve().parents[3] / "BTC-Data-Vong1-TEAMS"), "--expected-database", "telesale"]
             with patch("app.knowledge.context.capture_release",new_callable=AsyncMock,return_value={"release_id":"btc-only","manifest_hash":"btc-only"}), patch("eval_harness.benchmark_runner.preflight_runtime",new_callable=AsyncMock), patch("eval_harness.benchmark_runner.warm_up_configuration",new_callable=AsyncMock), patch("eval_harness.benchmark_runner.wait_for_distillation",new_callable=AsyncMock), patch("eval_harness.benchmark_runner.read_distillation_writes",new_callable=AsyncMock,return_value={}), patch.object(sys, "argv", args), patch(
                 "eval_harness.benchmark_runner.build_runtime",
@@ -57,7 +59,7 @@ class RuntimeResetTests(unittest.IsolatedAsyncioTestCase):
             ), patch(
                 "eval_harness.benchmark_runner.prepare_runtime_for_eval",
                 new_callable=AsyncMock, side_effect=RuntimeError("reset failed"),
-            ), patch("eval_harness.benchmark_runner.print_cli_summary"):
+            ):
                 with self.assertRaisesRegex(RuntimeError, "configuration_failed"):
                     await main()
             self.assertFalse(output.exists())
@@ -238,6 +240,7 @@ def test_three_arms_reset_identically_and_keep_memory_between_calls(tmp_path, mo
         events.append('warmup')
         memory.append('warmup must not survive reset')
     async def conversations(**kwargs):
+        assert kwargs['delivery_mode'] == 'text'
         runtime = kwargs['runtime']
         assert memory == []
         observed.append((kwargs['config'], runtime.memory.include_prior, selected_release()))

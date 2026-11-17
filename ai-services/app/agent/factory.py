@@ -10,7 +10,7 @@ from app.infarstructure.llm import build_llm
 
 
 def build_runtime(settings: Settings, *, gateway=None) -> AgentHarnessRuntime:
-    """Build the selected agent runtime using the four MCP servers."""
+    """Build the Deep Agent runtime using the four MCP servers."""
     configure_agent_logging(settings.log_level)
     if gateway is None and not all((settings.mcp_catalog_url, settings.mcp_order_url,
                 settings.mcp_memory_url, settings.mcp_knowledge_url, settings.mcp_internal_token)):
@@ -23,5 +23,4 @@ def build_runtime(settings: Settings, *, gateway=None) -> AgentHarnessRuntime:
                               max_tool_calls=settings.agent_max_tool_calls,
                               prompt_history_turns=settings.agent_prompt_history_turns,
                               guardrails_enabled=settings.agent_guardrails_enabled,
-                              tracing=LangfuseTracing(settings) if settings.langfuse_enabled else None,
-                              agent_kind=settings.agent_kind)
+                              tracing=LangfuseTracing(settings) if settings.langfuse_enabled else None)

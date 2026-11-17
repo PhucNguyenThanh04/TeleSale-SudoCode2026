@@ -43,66 +43,19 @@ The backend and speech services do not need model-specific changes. Offline
 request/tool tests do not verify Cloud credentials, model availability or latency;
 no live model evaluation is performed by this migration.
 
-### Switch between the API and a local model
+### Submission runtime
 
-Keep the existing `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` and `LANGMEM_MODEL`
-in `ai-services/.env`. Add:
+The submission uses Deep Agent with an OpenAI-compatible API and guarded text
+streaming. Configure `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` and optionally
+`LANGMEM_MODEL`; keep the same profile for Full and baseline. Local LLM support
+has been removed. Deep and ReAct share the `build_agent` interface and business
+tools; the submission harness selects Deep. Text callers needing one complete response
+collect the same streaming core. Voice retains playback receipts before memory
+persistence. Local ASR/TTS remains separate from the language model.
 
-```dotenv
-LLM_BACKEND=local
-LOCAL_LLM_BASE_URL=http://localhost:8081/v1
-LOCAL_LLM_MODEL=Qwen/Qwen2.5-3B-Instruct-AWQ
-LOCAL_LLM_API_KEY=local-vllm
-```
-
-`local-vllm` is a client placeholder for an unauthenticated local server; use its
-real key if authentication is enabled. Set `LLM_BACKEND=api` to switch back.
-Omitting the selector keeps the existing API behavior. Local mode resolves the
-active connection before building any models, and uses the local model for both
-the agent and LangMem, ignoring the API profile's `LANGMEM_MODEL`. Sampling,
-and token limits continue to use the common `LLM_*` settings. Local requests use
-`LOCAL_LLM_TIMEOUT_SECONDS` (default 120 seconds) to allow for GPU queueing.
-
-Set `LOCAL_LLM_CONTEXT_WINDOW=8192` to match vLLM's `--max-model-len` (change both
-if using another context size). For nonstreaming requests carrying tools, a
-`finish_reason=length` response is discarded and retried once with a larger
-output budget, capped at 4096 tokens and the remaining context reported by the
-server. Both attempts count toward token usage. A second truncated response,
-missing usage or insufficient context raises `local_tool_output_truncated`;
-partial tool output is never inserted into history. HTTP 400, normal responses,
-plain text requests, streaming and the API backend do not use this retry policy.
-Both local agent and LangMem tool bindings set `strict: true` on the initial
-request, including already formatted dictionary tools, while preserving tool
-choice and normal multi-call behavior. The local LangMem episode schema restricts
-topic `consultation` to null instead of exposing the canonical consultation/offer
-schemas to the model. Evidence, facts, topics and open/resolved items remain
-typed and admitted as before; the worker derives consultation deterministically.
-Cloud extraction continues to use its existing schema.
-Local nonstreaming tool requests also detect Hermes `<tool_call>` markup leaked
-as plain content and LangChain `invalid_tool_calls`, even with a `stop` finish
-reason. Recovery reuses the original messages without the malformed output,
-requires a tool call and disables parallel calls, preserving a named tool choice
-when specified. Syntax-only failures keep the original output budget. Truncation
-and parser recovery share one retry total; malformed or missing tool output on
-that retry raises `local_tool_output_invalid` instead of becoming ordinary text.
-This does not repair semantic schema validation errors or prompts exceeding the
-server's input context limit.
-
-After changing the selector, restart the host AI service and the memory worker.
-For the first deployment of this code, rebuild/recreate the worker from the repo
-root with `docker compose up -d --build langmem-worker`; later `.env` changes only
-need `docker compose restart langmem-worker` plus restarting the host AI process.
-The worker connects through `host.docker.internal:8081`, since its `localhost`
-belongs to the container. To change this address, set
-`LOCAL_LLM_CONTAINER_BASE_URL` in the root `.env` and recreate the worker with
-`docker compose up -d langmem-worker`. The model server must listen on an address
-reachable from Docker, rather than only host loopback.
-
-The local server must support Chat Completions, SSE streaming, `tools` and
-`tool_choice=auto` for the agent. A plain text curl response only verifies basic
-chat. Enable the server's automatic tool-choice support and a tool parser
-compatible with its model when needed. Offline tests cover request routing,
-tool responses and streaming; they do not evaluate this local model's quality.
+Paired evaluation, warmup and published K1 evaluation use guarded text streaming
+by default. There are no `--agent`, `--delivery-mode` or `--streaming` selectors.
+Saved nonstreaming reports remain readable under their original latency contract.
 
 ## Runtime settings
 
@@ -114,8 +67,7 @@ settings needed for your run.
 |---|---|---|
 | API | `APP_NAME`, `APP_ENV`, `DEBUG`, `HOST`, `PORT`, `LOG_LEVEL`, `TIMEZONE` | API identity, environment label, debug flag, bind address, logging, callback timezone |
 | OpenAI-compatible API | `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, `LLM_TIMEOUT_SECONDS`, `LLM_TEMPERATURE`, `LLM_MAX_TOKENS`, `LLM_SEED` | Model, authentication, timeout, response budget and reproducible sampling |
-| LLM backend | `LLM_BACKEND`, `LOCAL_LLM_API_KEY`, `LOCAL_LLM_MODEL`, `LOCAL_LLM_BASE_URL` | Select `api` (default) or `local` without overwriting the saved API profile |
-| Harness | `AGENT_KIND`, `AGENT_MAX_TOOL_CALLS`, `AGENT_PROMPT_HISTORY_TURNS`, `AGENT_GUARDRAILS_ENABLED` | Select `deep` or `react`, set tool and context limits, and toggle answer checks |
+| Harness | `AGENT_MAX_TOOL_CALLS`, `AGENT_PROMPT_HISTORY_TURNS`, `AGENT_GUARDRAILS_ENABLED` | Deep Agent tool/context limits and answer checks |
 | Memory | `MEMORY_MAX_EPISODES`, `LANGMEM_MODEL` | Customer-scoped LangMem knowledge and a separate distillation model; LangMem is the only runtime memory path |
 | Langfuse | `LANGFUSE_ENABLED`, `LANGFUSE_PROMPTS_ENABLED`, `LANGFUSE_CAPTURE_CONTENT`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` | Optional tracing and production-labeled prompt management; content capture is opt-in for development/test |
 | Internal transport | `AI_INTERNAL_TOKEN`, `MCP_INTERNAL_TOKEN`, `MCP_CATALOG_URL`, `MCP_ORDER_URL`, `MCP_MEMORY_URL` | Backend-to-AI and AI-to-MCP authentication and endpoints |
@@ -151,7 +103,7 @@ reference date are source-of-truth rules, not tunable settings. Keep them in
 the BTC-compatible business logic and scenario input.
 
 The API invokes an outer one-turn LangGraph. It resolves identity through
-mcp-catalog, reads mcp-memory, and runs the selected Deep or ReAct agent for
+mcp-catalog, reads mcp-memory, and runs the Deep Agent for
 business tools. LangMem is the only supported runtime mode. The agent commits a masked turn
 and successful order links to tables in `runtime`, then a separate worker uses LangMem
 to extract profile facts and call episodes. The worker checks each proposal
@@ -182,7 +134,7 @@ session context. Brief rendering alone does not refresh price or stock.
 Working memory is read synchronously from `runtime.turns` for every turn in
 the same session; recent customer and agent turns are passed to the model with
 their conversation roles and do not wait for LangMem distillation.
-When `AGENT_GUARDRAILS_ENABLED=false`, the outer graph returns the selected agent's
+When `AGENT_GUARDRAILS_ENABLED=false`, the outer graph returns the Deep Agent's
 draft reply without `check_answer` or catalog fallback. PII masking, MCP tool
 preconditions, identity checks, and memory evidence validation still apply.
 Missing MCP URLs or token are a configuration error at runtime startup. Chat response caching remains process-local; writes through the MCP
@@ -236,7 +188,7 @@ AI process only. The application starts without Langfuse when the flag is
 `false`; enabling it without all three connection settings fails startup.
 
 Each uncached `chat()` turn creates a `chat-turn` trace and groups turns by
-`session_id`. The LangGraph callback records the outer graph, selected nested agent,
+`session_id`. The LangGraph callback records the outer graph, nested Deep Agent,
 model generations, and tool steps. Trace names, channel, input mode, handoff
 status, tool and memory write counts, model name and token usage remain visible.
 By default, the export mask removes prompts, responses, customer identifiers,
@@ -255,7 +207,7 @@ by the repository's credential-free tests.
 The agent code is grouped by responsibility under `app/agent/`: `chat.py` is
 the public entrypoint, `factory.py` assembles the runtime, `graph.py` wires
 the turn, `implementations/` contains
-the selectable Deep and ReAct agents plus shared business tools, `harness/` contains runtime, nodes and tool policy,
+the shared Deep/ReAct interface and business tools, `harness/` contains runtime, nodes and tool policy,
 `memory/` contains fact proposals and the MCP memory adapter, `guardrails/`
 contains answer and evidence checks, and `mcp/gateway.py` routes business
 tools to the four servers in `app/mcp_servers/`. DeepSeek is a possible model
@@ -267,7 +219,7 @@ app/agent/
   chat.py                 # public chat() entrypoint
   factory.py              # assemble the active implementation and adapters
   graph.py                # outer LangGraph wiring
-  implementations/        # selectable Deep/ReAct agents and shared business tools
+  implementations/        # shared Deep/ReAct interface and business tools
   harness/                # runtime, graph nodes, state, tool policy
   memory/                 # candidate validation and MCP memory adapter
   guardrails/             # answer and fact evidence checks

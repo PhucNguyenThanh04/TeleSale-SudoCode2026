@@ -1,0 +1,17 @@
+# Guarded chat streaming
+
+Approved scope: implement the streaming/guardrail approach approved in chat, in the existing checkout. No subagents, worktrees, unrelated refactors, model changes or live evaluations without explicit authorization.
+
+The existing tool preconditions, customer ownership, consent, source grounding and transaction receipts remain authoritative. Never expose raw tool arguments, reasoning tokens or an unverified draft. Streaming is a backend/harness lifecycle used by the text demo and the paired evaluator, not an animation over a completed reply.
+
+Implementation decisions:
+
+- Reuse LangGraph/LangChain message streaming from the existing business agent, with no extra model invocation. Keep `run()` and voice behavior available unchanged.
+- Buffer complete answer units. Early emission requires the existing grounding/answer checks and task-completeness checks to pass on the accumulated prefix. Do not emit generic progress acknowledgements. Hold policy, PII-sensitive requests, erasure, handoff and purchase turns until their complete verified answer is available; cross-sentence conditions must not be lost. This conservative initial coverage can make TTFT equal Total for some turns.
+- Once an answer prefix is published, do not execute further business tools: its supporting evidence and business phase are frozen. A model tool call after that point is refused. Purchase turns are held, so publication never suppresses a required order write.
+- Keep the final verifier. A final rewrite cannot retract an emitted prefix: reconcile only by appending text that passes the same checks, or retain the independently complete verified prefix. Never replace content already sent with a different answer.
+- Defer chat persistence until emitted text is known. Persist the verified prefix actually emitted at the runtime/backend boundary, not buffered draft text. Client reading/rendering is not proven by a backend emission. On disconnect stop publishing, let the protected turn settle under its existing lock/timeouts, then commit only that prefix and real tool observations. Retries reuse execution/cache and never repeat successful business writes. Shutdown drains these tasks.
+- AI endpoint `POST /v1/chat/turns/stream` emits NDJSON `delta`, `done`, or bounded `error` events with session/turn IDs. `done` follows persistence and contains the existing response. The backend WebSocket forwards validated deltas; the frontend updates one textContent bubble. A missing or inconsistent done is an error, never automatic model retry.
+- Eval streaming is opt-in, uses the same runtime generator as HTTP, measures TTFT at the first nonempty answer delta and Total at completion including persistence, excludes warmup/prepare/worker wait as before, and fails rather than inventing a first token. Both arms must use the same streaming setting. BTC thresholds/scorer and historical runs remain unchanged.
+
+Acceptance evidence: offline barrier tests prove a checked prefix arrives before model completion; unsupported prices/stock, policy qualifiers, split PII and tool tokens never leak; graph/runtime tests cover rewrites, disconnects, retry and session ownership; HTTP/WebSocket/frontend checks cover real progressive delivery and safe rendering; evaluator contract tests distinguish first delta from terminal/persistence time. Live latency is unproven until a separately authorized paired run completes.

@@ -16,15 +16,14 @@ def test_seed_fingerprint_must_match_across_configurations():
         require_same_seed("digest-a", "digest-b")
 
 
-@pytest.mark.parametrize('extra,mode', [([], 'text'), (['--delivery-mode', 'voice'], 'voice')])
-def test_cli_uses_m1_text_by_default_and_retains_explicit_voice(tmp_path, monkeypatch, extra, mode):
+def test_cli_uses_only_the_submission_stream(tmp_path, monkeypatch):
     from eval_harness.run_official import main
     (tmp_path / 'run.json').write_text(json.dumps({'status': 'validated'}))
-    monkeypatch.setattr('sys.argv', ['run_official', '--btc-root', str(tmp_path), *extra])
+    monkeypatch.setattr('sys.argv', ['run_official', '--btc-root', str(tmp_path)])
     with patch('eval_harness.run_official.run_pair', new_callable=AsyncMock, return_value=tmp_path) as run, \
          patch('eval_harness.report_metrics.render_run', return_value='offline test'):
         main()
-    assert run.call_args.kwargs['delivery_mode'] == mode
+    assert not {'delivery_mode', 'streaming', 'agent'} & run.call_args.kwargs.keys()
 
 
 def test_incomplete_asr_options_fail_before_any_agent_run(tmp_path, monkeypatch):
@@ -82,7 +81,7 @@ def test_conversation_run_does_not_execute_retired_rag(tmp_path, failure, baseli
     identity = {"database": "telesale_eval_test"}
 
     order = []
-    def fake_run(config, scenarios, agent, seed, run_id, out, **kwargs):
+    def fake_run(config, scenarios, seed, run_id, out, **kwargs):
         order.append(config)
         assert (kwargs['btc_root'] / 'btc_release.json').is_file()
         assert 'pricing.quote_order' in (kwargs['btc_root'] / 'schemas/tools.schema.json').read_text()
@@ -139,7 +138,7 @@ def test_conversation_run_does_not_execute_retired_rag(tmp_path, failure, baseli
          patch("eval_harness.run_official.publish_pair", side_effect=fake_publish), \
          patch("asyncpg.connect", side_effect=AssertionError("Retired RAG must not query source DB")):
         out = asyncio.run(run_pair(scenarios=scenarios, btc_root=__import__("pathlib").Path(__file__).resolve().parents[3] / "BTC-Data-Vong1-TEAMS",
-                                   agent="deep", seed=7, out_root=tmp_path / "results", expected_database="telesale_eval_test",
+                                   seed=7, out_root=tmp_path / "results", expected_database="telesale_eval_test",
                                    baseline_first=baseline_first))
 
     run = json.loads((out / "run.json").read_text(encoding="utf-8"))
@@ -153,7 +152,7 @@ def test_conversation_run_does_not_execute_retired_rag(tmp_path, failure, baseli
 def test_preflight_failure_persists_failed_status_without_model(tmp_path):
     with patch('eval_harness.run_official._run_one') as model:
         out=asyncio.run(run_pair(scenarios=tmp_path/'missing',btc_root=tmp_path,
-            agent='deep',seed=7,out_root=tmp_path/'results',expected_database='telesale'))
+            seed=7,out_root=tmp_path/'results',expected_database='telesale'))
     assert not model.called
     assert json.loads((out/'run.json').read_text())['status']=='failed'
     assert not (out/'btc_score.json').exists()
@@ -166,7 +165,7 @@ def test_child_preflight_diagnostic_survives_coordinator_boundary(tmp_path):
         'phase':'preflight','error_code':'mcp_database_identity_unavailable','service':'knowledge'}))
     with patch('eval_harness.run_official.subprocess.run',return_value=SimpleNamespace(returncode=1)):
         with pytest.raises(RuntimeError) as caught:
-            _run_one('full',tmp_path,'deep',7,'r',tmp_path,btc_root=tmp_path,
+            _run_one('full',tmp_path,7,'r',tmp_path,btc_root=tmp_path,
                 expected_database='telesale',release={'release_id':'r','manifest_hash':'h'})
     assert caught.value.error_code=='mcp_database_identity_unavailable'
     assert caught.value.phase=='preflight'
@@ -180,7 +179,7 @@ def test_child_progress_is_inherited_unbuffered_but_stderr_stays_private(tmp_pat
     trace.write_text('')
     trace.with_suffix('.report.json').write_text(json.dumps({'status':'completed'}))
     with patch('eval_harness.run_official.subprocess.run',return_value=SimpleNamespace(returncode=0)) as child:
-        _run_one('full',tmp_path,'deep',7,'r',tmp_path,btc_root=tmp_path,
+        _run_one('full',tmp_path,7,'r',tmp_path,btc_root=tmp_path,
             expected_database='telesale',release={'release_id':'r','manifest_hash':'h'})
     args=child.call_args
     assert '-u' in args.args[0]
@@ -200,7 +199,7 @@ def test_child_execution_error_survives_without_raw_stderr(tmp_path):
             'message':'private-secret'}}))
     with patch('eval_harness.run_official.subprocess.run', return_value=SimpleNamespace(returncode=1, stderr='private-secret')):
         with pytest.raises(RuntimeError) as caught:
-            _run_one('full',tmp_path,'deep',7,'r',tmp_path,btc_root=tmp_path,
+            _run_one('full',tmp_path,7,'r',tmp_path,btc_root=tmp_path,
                      expected_database='telesale',release={'release_id':'r','manifest_hash':'h'})
     assert caught.value.execution_error['error_type'] == 'BadRequestError'
     assert 'private-secret' not in json.dumps(caught.value.__dict__)
@@ -218,7 +217,7 @@ def test_full_failure_never_starts_baseline_or_publishes(tmp_path):
          patch('eval_harness.run_official.publish_pair') as publish:
         from pathlib import Path
         btc=Path(__file__).resolve().parents[3]/'BTC-Data-Vong1-TEAMS'
-        out=asyncio.run(run_pair(scenarios=scenarios,btc_root=btc,agent='deep',seed=7,
+        out=asyncio.run(run_pair(scenarios=scenarios,btc_root=btc,seed=7,
                                 out_root=tmp_path/'runs',expected_database='telesale'))
     assert child.call_count==1 and child.call_args.args[0]=='full'
     publish.assert_not_called()
@@ -231,7 +230,7 @@ def test_malformed_child_report_keeps_safe_runner_failure(tmp_path, payload):
     (tmp_path/'full.diagnostics_full.report.json').write_text(payload)
     with patch('eval_harness.run_official.subprocess.run',return_value=SimpleNamespace(returncode=1)):
         with pytest.raises(RuntimeError) as caught:
-            _run_one('full',tmp_path,'deep',7,'r',tmp_path,btc_root=tmp_path,
+            _run_one('full',tmp_path,7,'r',tmp_path,btc_root=tmp_path,
                      expected_database='telesale',release={'release_id':'r','manifest_hash':'h'})
     assert caught.value.error_code == 'configuration_execution_failed'
     assert 'private-secret' not in str(caught.value.__dict__)
@@ -246,7 +245,7 @@ def test_relative_child_paths_are_resolved_before_changing_working_directory(tmp
     trace.write_text('')
     trace.with_suffix('.report.json').write_text(json.dumps({'status': 'completed'}))
     with patch('eval_harness.run_official.subprocess.run', return_value=SimpleNamespace(returncode=0)) as child:
-        actual = _run_one('full', Path('inputs'), 'deep', 7, 'run', Path('runs'),
+        actual = _run_one('full', Path('inputs'), 7, 'run', Path('runs'),
             btc_root=Path('btc'), expected_database='telesale', release={'release_id': 'k0'})
     argv = child.call_args.args[0]
     assert child.call_args.kwargs['cwd'] == SERVICE
@@ -254,3 +253,14 @@ def test_relative_child_paths_are_resolved_before_changing_working_directory(tmp
                            ('--out', out/'full.diagnostics.json')]:
         assert argv[argv.index(flag)+1] == str(expected)
     assert actual == trace
+
+
+@pytest.mark.parametrize('retired', [['--agent', 'react'], ['--delivery-mode', 'voice'], ['--streaming']])
+def test_retired_selectors_fail_before_any_live_run(tmp_path, monkeypatch, retired):
+    from eval_harness.run_official import main
+    monkeypatch.setattr('sys.argv', ['run_official', '--btc-root', str(tmp_path), *retired])
+    with patch('eval_harness.run_official.run_pair', new_callable=AsyncMock) as pair:
+        with pytest.raises(SystemExit) as error:
+            main()
+    assert error.value.code == 2
+    pair.assert_not_called()

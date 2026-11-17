@@ -1,3 +1,5 @@
+from copy import deepcopy
+from eval_harness.test_support import LEGACY_TEXT_MEASUREMENT
 import json
 from pathlib import Path
 import pytest
@@ -49,9 +51,8 @@ def test_text_report_does_not_relabel_completion_proxy_as_measured_ttft(tmp_path
 
 def test_nonstreaming_text_report_explains_btc_rule_7(tmp_path):
     from eval_harness.report_metrics import render_run
-    from eval_harness.benchmark_runner import conversation_measurement
     (tmp_path / 'run.json').write_text(json.dumps({'status': 'validated', 'score': 'btc_score.json',
-        'conversation_measurement': conversation_measurement('text')}))
+        'conversation_measurement': deepcopy(LEGACY_TEXT_MEASUREMENT)}))
     metric = {'latency': {'ttft': {'p50_ms': 250}, 'total': {'p50_ms': 250}}}
     (tmp_path / 'btc_score.json').write_text(json.dumps({'system': metric, 'baseline': metric}))
     output = render_run(tmp_path)

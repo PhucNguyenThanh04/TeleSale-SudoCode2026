@@ -333,9 +333,6 @@ def main():
     if args.resume and args.mode != 'knowledge-eval': p.error('--resume is only valid for knowledge-eval')
     if command[:1] == ['--']: command = command[1:]
     args.command = command
-    if args.mode != 'demo' and not args.resume:
-        if not any(item == '--delivery-mode' or item.startswith('--delivery-mode=') for item in command):
-            args.command += ['--delivery-mode', 'text']
     env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(ROOT/'ai-services'), str(ROOT)]))
     env.pop('SYSTEM_STACK_OWNER', None)
     if args.mode == 'eval':

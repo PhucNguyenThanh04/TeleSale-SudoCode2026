@@ -98,9 +98,8 @@ def test_unresolved_new_product_cannot_reuse_an_older_selected_product():
     assert derive_consultation(current).snapshot.selected_sku is None
 
 
-@pytest.mark.parametrize('agent_kind', ['deep', 'react'])
 @pytest.mark.parametrize('delivery_mode', ['text', 'voice'])
-def test_btc_returning_product_replay_does_not_repeat_selection(reference, agent_kind, delivery_mode):
+def test_btc_returning_product_replay_does_not_repeat_selection(reference, delivery_mode):
     import json
     from datetime import date
     from pathlib import Path
@@ -132,7 +131,7 @@ def test_btc_returning_product_replay_does_not_repeat_selection(reference, agent
         'AirPure X giá hiện tại 4.890.000đ. Mình đồng ý giá này để lên đơn không ạ?',
         'AirPure X giá hiện tại 4.890.000đ.', 'Dạ, em kiểm tra đơn giúp mình.')])
     runtime = AgentHarnessRuntime(model, MCPGateway(catalog_server(commerce), order_server(commerce), None),
-                                  Memory(MemoryRepo()), agent_kind=agent_kind, max_tool_calls=10)
+                                  Memory(MemoryRepo()), max_tool_calls=10)
     async def run():
         trace = []
         states = []
@@ -197,7 +196,7 @@ def test_btc_context_replays_keep_brief_on_all_returning_turns(reference, scenar
     model = FakeToolModel(replies=[*calls, *[AIMessage(content=f'Em đang tư vấn {name}.') for _ in range(count + 4)]])
     repo = MemoryRepo()
     runtime = AgentHarnessRuntime(model, MCPGateway(catalog_server(commerce), order_server(commerce), None),
-                                  Memory(repo), agent_kind='react', max_tool_calls=10)
+                                  Memory(repo), max_tool_calls=10)
     async def run():
         returning = []
         for call, spec in sorted(scenario['calls'].items()):

@@ -78,7 +78,7 @@ def test_new_runtime_recovers_delivered_basket_from_committed_session(reference,
         AIMessage(content=f'2 máy AirPure Pro có tổng giá {price:,}đ.'.replace(',', '.'))])
     def runtime(model):
         return AgentHarnessRuntime(model, MCPGateway(catalog_server(commerce), order_server(commerce), None),
-                                   Memory(memory_repo), agent_kind='react', max_tool_calls=10)
+                                   Memory(memory_repo), max_tool_calls=10)
     async def run():
         request = TextTurnRequest(client_msg_id=uuid4(), session_id=uuid4(), on=date(2026, 10, 15),
             channel='hotline', channel_identity=customer['phone'], input_mode='clean',

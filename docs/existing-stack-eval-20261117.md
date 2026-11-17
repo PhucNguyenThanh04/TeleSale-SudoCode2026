@@ -11,7 +11,7 @@ Lệnh từ root repo, trên DB eval đã cấu hình:
 ```bash
 AGENT_GUARDRAILS_ENABLED=true KNOWLEDGE_ENABLED=true \
 python3 run_system.py eval --expected-database telesale -- \
-  --delivery-mode text --agent deep --seed 7 \
+  --seed 7 \
   --scenarios ai-services/eval_harness/scenarios \
   --btc-root ../BTC-Data-Vong1-TEAMS \
   --out-root ai-services/eval_harness/results/paired-knowledge

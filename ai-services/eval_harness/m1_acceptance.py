@@ -175,7 +175,22 @@ def inspect_run(directory, *, btc_root, extraction_review=None):
                 and all(r.get('latency', {}).get('ttft_is_proxy') is False
                         and r['latency']['ttft_ms'] == r['latency']['total_ms']
                         for rs in rows.values() for r in rs))
+    streamed = (measurement.get('ttft_is_proxy') is False
+                and measurement.get('ttft_basis') == 'streaming_guarded_answer_delta'
+                and all(m['model_params'].get('streaming') is True for m in manifests.values())
+                and all(_read(p.with_suffix('.report.json')).get('streaming') is True for p in traces.values())
+                and all(r.get('latency', {}).get('streaming') is True
+                        and r['latency'].get('ttft_is_proxy') is False
+                        and r['latency'].get('stream_completed') is True
+                        and type(r['latency'].get('answer_delta_count')) is int
+                        and r['latency']['answer_delta_count'] >= 1
+                        and type(r['latency'].get('ttft_ms')) is int
+                        and type(r['latency'].get('total_ms')) is int
+                        and 0 <= r['latency']['ttft_ms'] <= r['latency']['total_ms']
+                        for rs in rows.values() for r in rs))
+    measured = measured or streamed
     checks.append(_check('ttft_measured', True if measured else None,
+                         'Streaming first answer delta, completion and timestamps bound in both arms.' if streamed else
                          'BTC rule 7: nonstreaming chat TTFT = Total; voice proxies are excluded.'))
     for name, field, limit in [('ttft_p95', 'ttft', 3000), ('total_p95', 'total', 8000)]:
         values = [m.get('latency', {}).get(field, {}).get('p95_ms') for m in (full, baseline)]

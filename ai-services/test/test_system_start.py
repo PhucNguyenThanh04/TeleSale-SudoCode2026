@@ -176,7 +176,7 @@ def test_public_eval_uses_running_stack_without_docker_bootstrap_or_demo_lock(mo
     command, env = commands[0]
     assert command[2] == 'eval_harness.run_official'
     assert command[-2:] == ['--expected-database', 'telesale']
-    assert command[command.index('--delivery-mode')+1] == 'text'
+    assert not {'--delivery-mode', '--streaming', '--agent'} & set(command)
     assert env['SYSTEM_BOOT_ID'] == 'running-demo-boot'
     assert env['KNOWLEDGE_RELEASE_ID'] == 'chosen-k0'
 

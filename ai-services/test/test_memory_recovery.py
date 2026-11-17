@@ -1,4 +1,5 @@
 """Regression coverage for session memory and recoverable read failures."""
+from test_deep_memory import FakeStreamAgent
 import unittest
 from unittest.mock import AsyncMock, patch
 from types import SimpleNamespace
@@ -14,8 +15,8 @@ from test_deep_memory import FakeGateway, FakeMemory, FakeToolModel, turn
 
 class MemoryRecoveryTest(unittest.IsolatedAsyncioTestCase):
     async def test_primary_agent_receives_prior_turns_as_dialogue(self):
-        agent = SimpleNamespace(ainvoke=AsyncMock(return_value={
-            "messages": [AIMessage(content="Dạ, em kiểm tra ạ.")]}))
+        agent = FakeStreamAgent(return_value={
+            "messages": [AIMessage(content="Dạ, em kiểm tra ạ.")]})
         nodes = AgentNodes(FakeToolModel(replies=[]), FakeGateway(),
                            SimpleNamespace(langmem_primary=True), 10, 6)
         state = {"request": turn("Mẫu đó có khuyến mãi không?"),
@@ -28,7 +29,7 @@ class MemoryRecoveryTest(unittest.IsolatedAsyncioTestCase):
         with patch("app.agent.harness.agent_nodes.build_agent", return_value=agent):
             await nodes.run_agent(state)
 
-        messages = agent.ainvoke.await_args.args[0]["messages"]
+        messages = agent.response.await_args.args[0]["messages"]
         self.assertEqual([type(item) for item in messages],
                          [HumanMessage, HumanMessage, AIMessage, HumanMessage])
         self.assertIn("AirPure X", messages[2].content)
@@ -38,7 +39,7 @@ class MemoryRecoveryTest(unittest.IsolatedAsyncioTestCase):
         async def echo_input(payload, config):
             return {"messages": payload["messages"]}
 
-        agent = SimpleNamespace(ainvoke=AsyncMock(side_effect=echo_input))
+        agent = FakeStreamAgent(side_effect=echo_input)
         nodes = AgentNodes(FakeToolModel(replies=[]), FakeGateway(),
                            SimpleNamespace(langmem_primary=True), 10, 6)
         state = {"request": turn("Tiếp tục"), "safe_text": "Tiếp tục",

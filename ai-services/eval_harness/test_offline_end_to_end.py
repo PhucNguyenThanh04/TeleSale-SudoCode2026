@@ -58,7 +58,7 @@ def test_cli_pair_matches_hand_calculated_btc_metrics(tmp_path,monkeypatch):
                         out=out,isolated_db=True,expected_database='offline'),runtime))
                 else:
                     report=run_dir/f'benchmark-{config}.diagnostic.json'
-                    monkeypatch.setattr(sys,'argv',['runner','--agent','deep','--config',config,
+                    monkeypatch.setattr(sys,'argv',['runner','--config',config,
                         '--scenarios',str(CASES),'--btc-root',str(BTC),'--out',str(report),
                         '--expected-database','offline'])
                     asyncio.run(benchmark_main())
@@ -100,7 +100,7 @@ def test_readme_cli_help_offline_check_and_retired_dry_run(tmp_path):
         '--scenarios',str(CASES),'--btc-root',str(BTC)],capture_output=True,text=True)
     assert checked.returncode==0,checked.stderr
     assert json.loads(checked.stdout)==dict(scenarios=1,calls=2,turns=2,hard_cases=1)
-    retired=subprocess.run([sys.executable,'-m','eval_harness.benchmark_runner','--agent','deep',
+    retired=subprocess.run([sys.executable,'-m','eval_harness.benchmark_runner',
         '--btc-root',str(BTC),'--scenarios',str(CASES),'--out',str(tmp_path/'never.json'),
         '--dry-run','1'],capture_output=True,text=True)
     assert retired.returncode==2 and 'retired' in retired.stderr
