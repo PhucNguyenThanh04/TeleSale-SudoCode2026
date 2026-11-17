@@ -9,13 +9,19 @@ from app.knowledge.services.releases import prepare_release, activate_release, r
 RESOURCES = {'events', 'gaps', 'revisions', 'regression_cases', 'releases', 'jobs', 'audit', 'verification_runs', 'sources', 'backend_outbox'}
 
 
-async def query(repo, actor_id, resource, offset=0, limit=30, status=None, source=None, item_id=None, gap_id=None):
+async def query(repo, actor_id, resource, offset=0, limit=30, status=None, source=None, item_id=None, gap_id=None, run_id=None):
     if resource not in RESOURCES or offset < 0 or not 1 <= limit <= 100:
         raise KnowledgeError('Invalid query')
     async with repo.transaction() as tx:
         await require_permission(tx, actor_id)
         rows = ([dict(r, id=r['chunk_id']) for r in await tx.sources() if r.get('access_level') == 'public']
                 if resource == 'sources' else await tx.rows(resource))
+        if run_id and resource in {'events', 'gaps', 'revisions', 'regression_cases'}:
+            events = {e['id'] for e in await tx.rows('events') if e.get('run_id') == run_id}
+            gaps = {g['id'] for g in await tx.rows('gaps') if events.intersection(g.get('event_ids', []))}
+            revisions = {r['id'] for r in await tx.rows('revisions') if r.get('gap_id') in gaps}
+            ids = {'events': events, 'gaps': gaps, 'revisions': revisions, 'regression_cases': revisions}[resource]
+            rows = [r for r in rows if r['id'] in ids]
         if item_id:
             rows = [r for r in rows if r['id'] == item_id]
         if status:

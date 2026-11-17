@@ -76,9 +76,14 @@ def _task_answer_complete(draft, state):
     if task.kind != 'none' and not followup_answer_complete(state, task, draft):
         return False
     from app.mcp_servers.mcp_shared.consultation_followup import product_price_requested
-    if task.kind == 'policy' and not product_price_requested(state['safe_text']):
+    if (task.kind == 'policy' and not product_price_requested(state['safe_text'])
+            and not product_question_fields(state['safe_text'])):
         return True  # Policy fees/durations are not product-price advice.
     folded = _search_text(state['safe_text'])
+    from app.mcp_servers.mcp_shared.basket import current_basket_quote, basket_money_evidenced
+    if (current_basket_quote(state) is not None and re.search(r'tong (?:gia|tien)|gio hang', folded)
+            and (not re.search(r'\btong\b', _search_text(draft)) or not basket_money_evidenced(draft, calls))):
+        return False
     from app.mcp_servers.mcp_shared.consultation_followup import order_status_requested
     if order_status_requested(state['safe_text']) and not re.search(
             r'trang thai|dang giao|van chuyen|da giao|da tao|da huy|huy don|chua (?:tim )?thay', _search_text(draft)):
@@ -86,6 +91,15 @@ def _task_answer_complete(draft, state):
     requested_fields = product_question_fields(state['safe_text'])
     if any(not re.search(pattern, _search_text(draft)) for pattern in requested_fields.values()):
         return False
+    from app.mcp_servers.mcp_shared.consultation import _mentions, catalog_items
+    requested_products = _mentions(state['safe_text'], catalog_items(state))
+    if (len(requested_products) > 1 and (product_price_requested(state['safe_text']) or 'stock' in requested_fields)
+            and not requested_products <= _mentions(draft, catalog_items(state))):
+        return False
+    if 'tds' in requested_fields and 'chưa có thông tin' not in draft.lower():
+        sourced_reply = safe_product_reply(state)
+        if sourced_reply and 'chưa có thông tin' in sourced_reply.lower():
+            return False
     from app.mcp_servers.mcp_shared.consultation import derive_consultation
     decision = derive_consultation(state)
     budget = decision.snapshot.budget.limit_vnd
@@ -103,13 +117,14 @@ def _task_answer_complete(draft, state):
                 return False
             named = _mentions(draft, catalog_items(state))
             allowed = {item['sku'] for item in shortlist.items}
+            allowed.update(_mentions(state['safe_text'], catalog_items(state)))
             if named and not named <= allowed:
                 return False
             child_safe = {item['sku'] for item in shortlist.items
                           if item.get('attributes', {}).get('child_safe_lock') is True}
             if named and prefers_child_safety(state) and child_safe and not named & child_safe:
                 return False
-    needs_price = bool(re.search(r'\bgia\b|bao nhieu', folded)
+    needs_price = bool(product_price_requested(state['safe_text']) or 'bao nhieu' in folded and not requested_fields
                        or budget is not None and re.search(r'tu van|goi y|phu hop|ngan sach', folded))
     needs_promo = bool(re.search(r'khuyen mai|uu dai|giam|tang|qua', folded))
     return ((not needs_price or any(kind == 'price' for _, kind, _ in _money_claims(draft)))
@@ -185,12 +200,49 @@ class AgentNodes(SessionNodes):
             if completed and completed.get('status') == 'created':
                 return {'agent_draft': safe_transaction_reply(state),
                         'tool_calls': state['tool_calls'], 'tool_count': state.get('tool_count', 0)}
+        # Both operations are reads; prompt fetching need not wait for MCP reads.
+        try:
+            async with asyncio.TaskGroup() as preparation:
+                prompt_read = preparation.create_task(asyncio.to_thread(text_prompt, SALES_PROMPT, _SYSTEM_PROMPT))
+                preparation.create_task(business.prepare_consultation() if task.kind == 'none'
+                                        else business.prepare_followup(task))
+        except ExceptionGroup as exc:
+            if len(exc.exceptions) == 1:
+                raise exc.exceptions[0] from exc
+            raise
         if task.kind == 'none':
-            await business.prepare_consultation()
-        else:
-            await business.prepare_followup(task)
+            completed = await business.complete_purchase_if_ready()
+            if completed and completed.get('status') == 'created':
+                return {'agent_draft': safe_transaction_reply(state),
+                        'tool_calls': state['tool_calls'], 'tool_count': state.get('tool_count', 0)}
+            # These replies use only prepared evidence and still pass the normal verifier.
+            from app.mcp_servers.mcp_shared.consultation import derive_consultation
+            from app.mcp_servers.mcp_shared.consultation_followup import product_price_requested
+            prepared_reply = None
+            if not derive_consultation(state).purchase_intent:
+                prepared_reply = safe_product_reply(state)
+                if not prepared_reply and product_price_requested(state['safe_text']) and not product_question_fields(state['safe_text']):
+                    prepared_reply = safe_quote_reply(state)
+            if prepared_reply and _task_answer_complete(prepared_reply, state):
+                return {'agent_draft': prepared_reply, 'tool_calls': state['tool_calls'],
+                        'tool_count': state.get('tool_count', 0)}
+        elif task.kind == 'policy':
+            from app.mcp_servers.mcp_shared.consultation_followup import order_status_requested
+            prepared_reply = safe_followup_reply(state, task)
+            product_reply = safe_product_reply(state)
+            price_reply = safe_quote_reply(state)
+            if prepared_reply and product_reply:
+                if price_reply and prepared_reply.startswith(price_reply):
+                    prepared_reply = prepared_reply[len(price_reply):].lstrip()
+                prepared_reply = product_reply + ' ' + prepared_reply
+            if (prepared_reply and not order_status_requested(state['safe_text'])
+                    and 'Theo thông tin chính sách đã kiểm tra:' in prepared_reply
+                    and _task_answer_complete(prepared_reply, state)):
+                return {'agent_draft': prepared_reply, 'tool_calls': state['tool_calls'],
+                        'tool_count': state.get('tool_count', 0), 'followup_kind': task.kind,
+                        'policy_order_bindings': state.get('policy_order_bindings', {})}
         set_execution_phase("build")
-        system_prompt = await asyncio.to_thread(text_prompt, SALES_PROMPT, _SYSTEM_PROMPT)
+        system_prompt = prompt_read.result()
         agent = build_agent(self.agent_kind, self.llm, business, system_prompt)
         context = prompt_context(state, self.prompt_history_turns)
         input_messages = prompt_messages(context)
@@ -295,7 +347,10 @@ class AgentNodes(SessionNodes):
             draft = FALLBACK
         set_execution_phase("postprocess")
         completed = await business.complete_purchase_if_ready()
-        if completed and completed.get('status') == 'created':
+        exchange_attempted = any(c.get('name') == 'order.update'
+            and c.get('args', {}).get('action') in {'exchange_size', 'exchange_product'}
+            for c in state.get('tool_calls', []))
+        if completed and completed.get('status') == 'created' or exchange_attempted:
             draft = safe_transaction_reply(state) or draft
             if task.kind == 'policy':
                 policy_reply = safe_followup_reply(state, task)

@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 
-@pytest.mark.parametrize('mode', ['demo', 'eval', 'knowledge-eval'])
+@pytest.mark.parametrize('mode', ['demo', 'knowledge-eval'])
 def test_startup_creates_resets_and_seeds_before_starting_servers(monkeypatch, tmp_path, mode):
     from app import system_start as mod
     events = []
@@ -39,7 +39,8 @@ def test_startup_creates_resets_and_seeds_before_starting_servers(monkeypatch, t
     monkeypatch.setattr(mod, 'database_url', lambda _: 'postgresql://offline')
     monkeypatch.setattr(mod, 'capture_base', AsyncMock(return_value=None))
     settings = SimpleNamespace(app_env='test')
-    args = Namespace(mode=mode, expected_database='telesale', command=[], resume=None)
+    args = Namespace(mode=mode,
+        expected_database='telesale', command=[], resume=None)
     env = {'SYSTEM_BOOT_ID': 'boot-1'}
     asyncio.run(mod.start(args, settings, env))
     assert events.index('schema') < events.index('store') < events.index('roles')
@@ -58,7 +59,8 @@ def test_resume_does_not_create_new_boot_or_reset_any_schema(monkeypatch):
     monkeypatch.setattr(mod, 'wait_services', lambda *args: None)
     monkeypatch.setattr(mod, 'compose', lambda *args: resets.append(args))
     monkeypatch.setattr(mod, 'database_url', lambda _: 'postgresql://offline')
-    args = Namespace(mode='knowledge-eval', expected_database='telesale', command=[], resume=Path('existing'))
+    args = Namespace(mode='knowledge-eval', expected_database='telesale', command=[],
+        resume=Path('existing'))
     asyncio.run(mod.start(args, SimpleNamespace(app_env='test'), {'SYSTEM_BOOT_ID': 'boot-1'}))
     assert resets == [('up', '-d', *mod.MCP), 'resume']
 
@@ -133,10 +135,56 @@ def test_automatic_knowledge_start_does_not_require_review_plan(monkeypatch, opt
         mod.main()
 
 
-def test_conflicting_review_modes_fail_before_startup(monkeypatch, capsys):
+@pytest.mark.parametrize('options', [['--auto-review', '--approval-plan', 'plan.json']])
+def test_conflicting_review_modes_fail_before_startup(monkeypatch, capsys, options):
     from app import system_start as mod
     monkeypatch.setattr('sys.argv', ['system_start', 'knowledge-eval', '--expected-database',
-        'telesale', '--', '--auto-review', '--approval-plan', 'plan.json'])
+        'telesale', '--', *options])
     monkeypatch.setattr(mod, 'get_settings', lambda: pytest.fail('must not start with conflicting modes'))
     with pytest.raises(SystemExit): mod.main()
     assert 'not allowed with argument' in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('failure', [False, True])
+def test_public_eval_uses_running_stack_without_docker_bootstrap_or_demo_lock(monkeypatch, tmp_path, failure):
+    from app import system_start as mod
+    import fcntl
+    import subprocess
+    commands = []
+    monkeypatch.setattr('sys.argv', ['system_start', 'eval', '--expected-database', 'telesale',
+        '--', '--btc-root', '/btc', '--scenarios', '/scenarios'])
+    monkeypatch.setenv('SYSTEM_BOOT_ID', 'running-demo-boot')
+    monkeypatch.setenv('KNOWLEDGE_RELEASE_ID', 'chosen-k0')
+    monkeypatch.setattr(mod, 'get_settings', lambda: pytest.fail('eval uses runner configuration'))
+    monkeypatch.setattr(mod, 'compose', lambda *a: pytest.fail('eval must not control Docker'))
+    monkeypatch.setattr(mod, 'BootDatabase', lambda *a, **kw: pytest.fail('no schema bootstrap'))
+    monkeypatch.setattr(mod, 'check_host_ports', lambda *a: pytest.fail('ports belong to running services'))
+    monkeypatch.setattr(mod.subprocess, 'Popen', lambda *a, **kw: pytest.fail('do not start servers'))
+    monkeypatch.setattr(mod, 'startup_lock_path', lambda: tmp_path/'demo.lock')
+    def run(command, **kwargs):
+        commands.append((command, kwargs['env']))
+        if failure: raise subprocess.CalledProcessError(1, command)
+    monkeypatch.setattr(mod, 'run', run)
+    with (tmp_path/'demo.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if failure:
+            with pytest.raises(SystemExit) as exc: mod.main()
+            assert exc.value.code == 1
+        else:
+            mod.main()
+    assert len(commands) == 1
+    command, env = commands[0]
+    assert command[2] == 'eval_harness.run_official'
+    assert command[-2:] == ['--expected-database', 'telesale']
+    assert command[command.index('--delivery-mode')+1] == 'text'
+    assert env['SYSTEM_BOOT_ID'] == 'running-demo-boot'
+    assert env['KNOWLEDGE_RELEASE_ID'] == 'chosen-k0'
+
+
+def test_removed_manual_flag_fails_before_startup(monkeypatch, tmp_path, capsys):
+    from app import system_start as mod
+    monkeypatch.setattr('sys.argv', ['system_start', 'knowledge-eval', '--expected-database',
+        'telesale', '--', '--manual-review'])
+    monkeypatch.setattr(mod, 'get_settings', lambda: pytest.fail('no startup/reset'))
+    with pytest.raises(SystemExit): mod.main()
+    assert 'run_knowledge_eval.py' in capsys.readouterr().err

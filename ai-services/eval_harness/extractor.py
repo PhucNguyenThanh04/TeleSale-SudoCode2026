@@ -46,13 +46,18 @@ SLOT_QUESTION_PATTERNS = [
     ("room_area_m2", re.compile(r"(bao nhiêu mét|diện tích|m2|m²|rộng bao nhiêu)", re.IGNORECASE)),
     ("has_children", re.compile(r"(có trẻ nhỏ|trẻ em|bé nhỏ|bé sơ sinh|con nhỏ)", re.IGNORECASE)),
     ("budget_vnd", re.compile(r"(ngân sách|tầm tiền|tầm giá|khoảng bao nhiêu tiền)", re.IGNORECASE)),
-    ("preferred_color", re.compile(r"(màu gì|thích màu|chọn màu|màu sắc|màu nào)", re.IGNORECASE)),
+    ("color", re.compile(r"(màu gì|thích màu|chọn màu|màu sắc|màu nào)", re.IGNORECASE)),
     ("size", re.compile(r"(cỡ|size|kích cỡ)", re.IGNORECASE)),
-    ("product_advised", re.compile(r"(máy nào|sản phẩm nào|quan tâm mẫu nào|chọn loại nào|mẫu (?:giày |máy )?nào|(?:chốt|chọn|quan tâm|muốn lấy) (?:mẫu|máy|sản phẩm)\b|(?:tên|mã) (?:máy|sản phẩm)\b|có muốn (?:lấy|mua|chọn) (?:mẫu|sản phẩm|máy|loại))", re.IGNORECASE)),
+    ("product_advised", re.compile(r"(máy nào|sản phẩm nào|quan tâm mẫu nào|chọn loại nào|mẫu (?:giày |máy )?nào|(?:chốt|chọn|quan tâm(?: đến)?|muốn lấy) (?:mẫu|máy|sản phẩm)\b|(?:tên|mã) (?:máy|sản phẩm)\b|có muốn (?:lấy|mua|chọn) (?:mẫu|sản phẩm|máy|loại))", re.IGNORECASE)),
     ("order_id", re.compile(r"mã đơn|đơn hàng nào", re.I)),
     ("address", re.compile(r"địa chỉ|giao (?:tới|đến) đâu", re.I)),
     ("payment", re.compile(r"thanh toán|chuyển khoản|\bCOD\b", re.I)),
     ("promo_code", re.compile(r"mã (?:khuyến mãi|ưu đãi)", re.I)),
+    ("purchase_consent", re.compile(r"(?:lên|tạo|đặt) đơn", re.I)),
+    ("quantity", re.compile(r"số lượng|mỗi loại (?:một|\d+)", re.I)),
+    ("stock_check_consent", re.compile(r"kiểm tra tồn kho", re.I)),
+    ("return_reason", re.compile(r"lý do (?:cụ thể|trả hàng)", re.I)),
+    ("product_requirements", re.compile(r"yêu cầu đặc biệt", re.I)),
     ("customer_name", re.compile(r"(tên là gì|xin phép gọi anh/chị là|tên của anh/chị)", re.IGNORECASE)),
 ]
 
@@ -83,7 +88,7 @@ def numeric_text(text):
             elif w=="trăm":
                 group*=100
             elif w in {"mười","mươi"}:
-                group=(group or 1)*10
+                group=group//10*10+(group%10 or 1)*10
             elif w in {"nghìn","ngàn","triệu"}:
                 unit = {"nghìn":1000,"ngàn":1000,"triệu":1000000}[w]
                 total+=group*unit
@@ -111,13 +116,15 @@ def _question_candidates(agent_text: str) -> list[dict]:
             candidates.append(_candidate("question", sentence, disposition="excluded", reason="reported_speech"))
             continue
         narrative = "?" not in sentence and bool(re.search(
-            r"(?:không|chưa) (?:có|còn).*\bnào\b|\bkhi nào\b.*\bcứ\b", sentence, re.I))
+            r"(?:không|chưa) (?:có|còn|phát sinh).*\bnào\b|"
+            r"\bkhi nào\b.*(?:\bcứ\b|(?:anh|chị|mình) (?:báo|nhắn) em nhé)", sentence, re.I))
         if ("?" not in sentence and re.search(
                 r"(?:không|chưa) (?:tìm )?thấy(?: có)?.*\bnào\b", sentence, re.I)
                 and not re.search(r"cho (?:em|tôi|shop) (?:xin|biết)|vui lòng|cung cấp|xin (?:anh|chị)|"
                                   r"(?:anh|chị|mình|bạn)\s+(?:có thể\s+)?(?:gửi|đọc|báo|cho)", sentence, re.I)):
             narrative = True
-        if _is_inspection_narrative(sentence) or narrative:
+        if _is_inspection_narrative(sentence) or narrative or (
+                '?' not in sentence and re.search(r'bất cứ lúc nào', sentence, re.I)):
             candidates.append(_candidate("question", sentence, disposition="excluded", reason="narrative"))
             continue
         target = sentence
@@ -132,21 +139,33 @@ def _question_candidates(agent_text: str) -> list[dict]:
         confirm = any(p.search(asked) for p in CONFIRM_PATTERNS)
         blocker = re.search(r"trao đổi|bàn với|cân nhắc|hỏi (?:chồng|vợ|người)|quyết định|đồng ý", asked, re.I)
         matches = [(m.start(), slot) for slot, pat in SLOT_QUESTION_PATTERNS if (m := pat.search(asked))]
-        if re.search(r"\bmàu\b", asked, re.I) and not any(slot == "preferred_color" for _, slot in matches):
-            matches.append((re.search(r"\bmàu\b", asked, re.I).start(), "preferred_color"))
+        if not re.search(r'nào|\bgì\b|bao nhiêu|\bhay\b', asked, re.I) and re.search(
+                r'chốt\s+(?:mẫu|máy|sản phẩm) này|vẫn\s+(?:lấy|chọn|giữ)|'
+                r'chốt (?:lấy|mua).*(?:em|shop) (?:lên|tạo|đặt) đơn', asked, re.I):
+            confirm = True
+        if re.search(r"\bmàu\b", asked, re.I) and not any(slot == "color" for _, slot in matches):
+            matches.append((re.search(r"\bmàu\b", asked, re.I).start(), "color"))
         quote_confirmation = re.search(
             r"(?:đồng ý(?:\s+với)?|xác nhận(?:\s+lại)?)\s+(?:mức\s+)?(?:báo\s+)?giá\b", asked, re.I)
         if quote_confirmation:
             matches.append((quote_confirmation.start(), 'price_quoted_vnd'))
             confirm = True
-        elif blocker and not any(slot == 'product_advised' for _, slot in matches):
+        elif consent := re.search(r'đồng ý điều chỉnh (?:mức chi|ngân sách)', asked, re.I):
+            matches = [(consent.start(), 'budget_consent')]
+        elif requirement := re.search(r'có phải yêu cầu bắt buộc', asked, re.I):
+            matches = [(requirement.start(), 'product_requirements')]
+        elif blocker and (not any(slot == 'product_advised' for _, slot in matches)
+                          or re.search(r'(?:chọn|chốt) mẫu này', asked, re.I)
+                          and not re.search(r'nào|\bgì\b|\bhay\b', asked, re.I)):
             matches = [(blocker.start(), "blocker")]
-        generic = bool(re.search(r"(?:hỗ trợ|giúp|cần|thắc mắc).*(?:gì|không)|có (?:câu hỏi|thắc mắc)", asked, re.I))
+        generic = bool(re.search(r"(?:hỗ trợ|giúp|cần|thắc mắc|xử lý tiếp).*(?:gì|không)|"
+                                 r"có (?:câu hỏi|thắc mắc)|làm rõ điều kiện|khi nào.*(?:muốn|cần) đặt hàng", asked, re.I))
         if not matches:
             matches = [(0, "other")]
         for _, slot in sorted(set(matches)):
             uncertainty = ["unresolved_slot"] if slot == "other" and not generic else []
-            if slot != "other" and not confirm and not request and not re.search(r"\b(?:có|muốn|cần)\b.*không", target, re.I):
+            if slot != "other" and not confirm and not request and not re.search(
+                    r"\b(?:có|muốn|cần)\b.*không|\bhay\b", target, re.I):
                 uncertainty.append("unresolved_question_type")
             projection = {"slot": slot, "type": "confirm" if confirm and slot != "other" else "open", "text": target}
             candidates.append(_candidate("question", target, projection=projection,
@@ -238,8 +257,8 @@ def _claim_projections(agent_text: str, tool_calls: list[dict[str, Any]]) -> lis
         if "?" in clause or re.search(r"\bnếu\b", clause, re.I):
             continue
         historical = bool(re.search(r"lần trước|trước đây", clause, re.I)) and not re.search(r"hiện|hôm nay|đang", clause, re.I)
-        negative = bool(re.search(r"không\s+(?:còn|có)\s+hàng|hết hàng|tạm hết", clause, re.I))
-        positive = bool(re.search(r"còn hàng|sẵn hàng", clause, re.I))
+        negative = bool(re.search(r"không\s+(?:còn|có)\s+hàng|hết hàng|tạm hết|(?:không|chưa) có sẵn trong kho", clause, re.I))
+        positive = bool(re.search(r"còn hàng|sẵn hàng|có sẵn trong kho", clause, re.I))
         if negative or positive:
             stock_field = "new_size_in_stock" if re.search(r"size mới|size đổi|cỡ mới", clause, re.I) else "in_stock"
             claims.append({"field": "historical_" + stock_field if historical else stock_field,
@@ -257,8 +276,8 @@ def _claim_projections(agent_text: str, tool_calls: list[dict[str, Any]]) -> lis
         prefix = "historical_" if historical else ""
         patterns = [
             ("delivery_days", r"giao\s*(?:trong vòng|trong|khoảng|mất)?\s*(\d+)\s*ngày", int),
-            ("return_days", r"đổi\s*(?:trả)?\s*(?:là\s*)?(?:trong vòng|trong|tối đa)?\s*(\d+)\s*ngày", int),
-            ("warranty_months", r"bảo hành\s*(?:trong|tới|đến)?\s*(\d+)\s*tháng", int),
+            ("return_days", r"đổi\s*(?:(?:hoặc\s+)?trả)?\s*(?:sản phẩm\s*)?(?:cho các đơn hàng mới\s*)?(?:là\s*)?(?:trong vòng|trong|tối đa)?\s*(?:\d+\s*→\s*)?(\d+)\s*ngày", int),
+            ("warranty_months", r"bảo hành\s*(?:chính hãng\s*)?(?:trong|tới|đến)?\s*(\d+)\s*tháng", int),
             ("restock_date", r"(?:hàng về|về hàng|nhập hàng)\s*(?:ngày)?\s*(20\d{2}-\d{2}-\d{2})", str),
         ]
         claims.extend(_policy_version_projections(clause))
@@ -292,7 +311,7 @@ def _candidate(kind: str, text: str, *, projection: dict | None = None,
 def _claim_clauses(text: str):
     for sentence in re.split(r"\.(?!\d)|[!;\n]|\bnhưng\b", text):
         # A leading if-clause governs the consequent across its comma.
-        if re.match(r"\s*(?:nếu|lần (?:đổi )?đầu)", sentence, re.I):
+        if re.match(r"\s*(?:nếu|lần (?:đổi )?đầu|từ lần đổi)", sentence, re.I):
             yield sentence
             continue
         for clause in re.split(r",\s*(?!\d)", sentence):
@@ -312,7 +331,7 @@ def _claim_candidates(agent_text: str) -> list[dict]:
         clause = clause.strip(" *#-")
         if not clause:
             continue
-        factual = bool(re.search(r"giá|tổng (?:tiền|đơn)|giảm|miễn phí|freeship|giao|đổi|bảo hành|còn hàng|hết hàng|ưu đãi|khuyến mãi|tặng|người thật|không phải bot|ngừng bán|chính sách|phiên bản|không có hàng|mã [A-Z0-9]+-", clause, re.I))
+        factual = bool(re.search(r"giá|tổng (?:tiền|đơn)|giảm|miễn phí|freeship|giao|đổi|bảo hành|còn hàng|hết hàng|có sẵn trong kho|ưu đãi|khuyến mãi|tặng|người thật|không phải bot|ngừng bán|chính sách|phiên bản|không có hàng|mã [A-Z0-9]+-", clause, re.I))
         factual = factual or bool(re.search(r"20\d{2}-\d{2}", clause) and re.search(r"thay thế|hiện.*dùng|trước đây.*dùng|đơn.*(?:trước|sau)", clause, re.I))
         if not factual:
             continue
@@ -325,7 +344,21 @@ def _claim_candidates(agent_text: str) -> list[dict]:
         if _is_inspection_narrative(clause):
             candidates.append(_candidate("claim", clause, disposition="excluded", reason="not_assertion"))
             continue
-        conditional = re.search(r"\bnếu\b|lần\b.{0,60}?\bđầu(?: tiên)?|chỉ (?:áp dụng|dành cho)", clause, re.I)
+        no_assertion = re.fullmatch(
+            r'(?:Theo (?:thông tin )?chính sách(?: đã kiểm tra| hiện tại)?(?::\s*(?:Phí vận chuyển|Giá bán|Điều kiện đổi trả|Bảo hành mở rộng|Hoàn tiền|\d{2}/\d{2}/\d{4}\s*—\s*Bảo hành))?'
+            r'|Về (?:chế độ )?bảo hành|Về điều kiện (?:đổi trả|đổi hàng)'
+            r'|Khi cần bảo hành|Về quy định giao (?:hàng|lại)|Về yêu cầu đổi áo của (?:anh|chị)'
+            r'|Để tham khảo trước khi mua: Điều kiện đổi trả'
+            r'|Giá bán|\d{2}/\d{2}/\d{4}\s*—\s*Bảo hành'
+            r'|Em gửi (?:anh|chị) giá và tình trạng kho của hai sản phẩm(?: ạ)?:'
+            r'|Báo giá cần được xác nhận lại trước khi tạo đơn)', clause, re.I)
+        no_assertion = no_assertion or (not _money_claims(numeric_text(clause)) and re.match(
+            r'(?:Em|Tôi) chưa (?:xác minh (?:được|đủ)|có thông tin)\b'
+            r'|(?:Anh|Chị) (?:chờ|đợi) em.*để (?:em )?kiểm tra\b', clause, re.I))
+        if no_assertion:
+            candidates.append(_candidate('claim', clause, disposition='excluded', reason='not_assertion'))
+            continue
+        conditional = re.search(r"\bnếu\b|lần\b.{0,60}?\bđầu(?: tiên)?|từ lần đổi|chỉ (?:áp dụng|dành cho)|đơn\s+(?:hàng\s+)?(?:từ|trên)\s*\**\d", clause, re.I)
         if conditional and re.search(r"thì\s+(?:anh|chị|khách|tôi|mình)\s+(?:sẽ )?(?:mua|chọn|cân nhắc)", clause, re.I):
             candidates.append(_candidate("claim", clause, disposition="excluded", reason="hypothetical"))
             continue
@@ -335,7 +368,7 @@ def _claim_candidates(agent_text: str) -> list[dict]:
                 qualifiers={"condition": clause[conditional.start():]}))
             continue
         variant = re.search(r"(?:size|cỡ)\s+(\d+)\b", clause, re.I)
-        if variant and re.search(r"còn hàng|hết hàng|không có hàng", clause, re.I):
+        if variant and re.search(r"còn hàng|hết hàng|không có hàng|có sẵn trong kho", clause, re.I):
             candidates.append(_candidate("claim", clause, disposition="excluded", reason="qualified_not_representable",
                 qualifiers={"size": int(variant[1])}))
             continue
@@ -343,8 +376,12 @@ def _claim_candidates(agent_text: str) -> list[dict]:
             candidates.append(_candidate("claim", clause, disposition="excluded", reason="unsupported_mapping",
                 qualifiers={"category": "shipping_fee"}))
             continue
-        calendar_delivery = bool(re.search(r"\bngày\s+\d{1,2}[/\-]\d{1,2}\b", clause, re.I) and re.search(r"\bgiao\b", clause, re.I))
-        if calendar_delivery or re.search(r"tổng (?:tiền|đơn)|giao (?:vào )?ngày\s+\d{1,2}[/\-]\d{1,2}|đổi mới", clause, re.I):
+        if re.search(r"miễn phí thu hộ\s*\(?COD\b", clause, re.I):
+            candidates.append(_candidate("claim", clause, disposition="excluded", reason="unsupported_mapping",
+                qualifiers={"category": "cod_fee"}))
+            continue
+        calendar_delivery = bool(re.search(r"\bngày\s+\d{1,2}[/\-]\d{1,2}\b|\b20\d{2}-\d{2}-\d{2}\b", clause, re.I) and re.search(r"\bgiao\b", clause, re.I))
+        if calendar_delivery or re.search(r"tổng (?:tiền|đơn|giá)|giao (?:vào )?ngày\s+\d{1,2}[/\-]\d{1,2}|đổi mới", clause, re.I):
             candidates.append(_candidate("claim", clause, disposition="excluded", reason="unsupported_mapping",
                 qualifiers={"category": "total" if re.search(r"tổng", clause, re.I) else "calendar_delivery" if re.search(r"giao", clause, re.I) else "replacement"}))
             continue

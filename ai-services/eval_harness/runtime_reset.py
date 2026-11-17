@@ -40,7 +40,17 @@ async def reset_runtime_database(
             for name in mutable:
                 safe_name = name.replace('"', '""')
                 qualified.append(f'runtime."{safe_name}"')
+            await connection.execute('LOCK TABLE ' + ', '.join(qualified) + ' IN ACCESS EXCLUSIVE MODE')
+            worker_sequence = None
+            if 'langmem_distillation_jobs' in mutable:
+                worker_sequence = await connection.fetchrow(
+                    'SELECT last_value,is_called FROM runtime.langmem_distillation_jobs_job_id_seq')
             await connection.execute("TRUNCATE TABLE " + ", ".join(qualified) + " RESTART IDENTITY")
+            # An old worker claim must never match a job created after reset.
+            if worker_sequence:
+                await connection.execute(
+                    "SELECT setval('runtime.langmem_distillation_jobs_job_id_seq', $1, $2)",
+                    worker_sequence['last_value'], worker_sequence['is_called'])
             if await connection.fetchval("SELECT to_regclass('runtime.tool_order_seq')"):
                 await connection.execute("ALTER SEQUENCE runtime.tool_order_seq RESTART WITH 600001")
     finally:

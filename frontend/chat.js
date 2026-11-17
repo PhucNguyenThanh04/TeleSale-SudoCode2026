@@ -4,6 +4,10 @@ const fields = [$('channel'), $('identity'), $('scenario-date')];
 const panels = new Map();
 let socket = null;
 let busy = false;
+let timelineSession = null;
+let timelineNext = null;
+let timelineController = null;
+let timelineVersion = 0;
 $('scenario-date').value = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(new Date());
@@ -21,6 +25,72 @@ function error(message) {
   $('error').textContent = message;
   $('error').hidden = false;
 }
+
+function resetTimeline() {
+  timelineVersion++;
+  timelineController?.abort();
+  timelineSession = null;
+  timelineNext = null;
+  $('timeline-items').replaceChildren();
+  $('timeline-status').textContent = 'Bắt đầu phiên để xem lịch sử.';
+  $('timeline-reload').disabled = true;
+  $('timeline-more').hidden = true;
+}
+
+async function loadTimeline(reset = true) {
+  if (!timelineSession || !reset && timelineNext === null) return;
+  const query = { ...timelineSession, offset: reset ? 0 : timelineNext, limit: 10 };
+  const version = ++timelineVersion;
+  timelineController?.abort();
+  timelineController = new AbortController();
+  $('timeline-reload').disabled = true;
+  $('timeline-more').disabled = true;
+  $('timeline-status').textContent = 'Đang tải lịch sử…';
+  try {
+    const response = await fetch('/api/chat/timeline', { method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(query), signal: timelineController.signal });
+    if (response.status === 401) location.replace('/login');
+    if (!response.ok) throw Error('timeline_unavailable');
+    const data = await response.json();
+    if (version !== timelineVersion) return;
+    if (data.session_id !== query.session_id || !Array.isArray(data.timeline?.items)) throw Error('timeline_identity_changed');
+    const page = data.timeline;
+    if (reset) $('timeline-items').replaceChildren();
+    const channels = { hotline: 'Hotline', chat_fanpage: 'Fanpage', zalo_oa: 'Zalo OA', web_chat: 'Website', other: 'Kênh khác' };
+    const outcomes = { chot_don: 'Đã đặt hàng', hen_goi_lai: 'Hẹn liên hệ lại', tu_choi: 'Từ chối', chuyen_may: 'Chuyển nhân viên', khac: 'Đã trao đổi' };
+    for (const item of page.items) {
+      const row = document.createElement('li');
+      const when = document.createElement('time');
+      when.dateTime = item.on;
+      when.textContent = `${item.on.split('-').reverse().join('/')} · ${channels[item.channel]}`;
+      const summary = document.createElement('p');
+      summary.textContent = item.summary;
+      const outcome = document.createElement('small');
+      outcome.textContent = outcomes[item.outcome] + (item.summary_status === 'pending' ? ' · Đang cập nhật tóm tắt' : '');
+      row.append(when, summary, outcome);
+      $('timeline-items').append(row);
+    }
+    timelineNext = page.next_offset;
+    $('timeline-more').hidden = timelineNext === null;
+    $('timeline-status').textContent = page.status === 'not_applicable'
+      ? 'Chưa xác minh khách hàng để hiển thị lịch sử.'
+      : page.total === 0 ? 'Chưa có tương tác đã lưu.'
+        : `Đang hiển thị ${$('timeline-items').childElementCount}/${page.total} phiên.`;
+  } catch (exception) {
+    if (version !== timelineVersion) return;
+    $('timeline-items').replaceChildren();
+    timelineNext = null;
+    $('timeline-more').hidden = true;
+    $('timeline-status').textContent = 'Chưa tải được lịch sử. Bạn có thể tải lại.';
+  } finally {
+    if (version === timelineVersion) {
+      $('timeline-reload').disabled = !timelineSession;
+      $('timeline-more').disabled = false;
+    }
+  }
+}
+$('timeline-reload').addEventListener('click', () => loadTimeline());
+$('timeline-more').addEventListener('click', () => loadTimeline(false));
 function message(role, text) {
   const article = document.createElement('article');
   article.className = `message ${role}`;
@@ -105,6 +175,7 @@ $('connect').addEventListener('click', () => {
   if (!fields.every(field => field.reportValidity())) return;
   $('error').hidden = true;
   $('brief').replaceChildren();
+  resetTimeline();
   panels.clear();
   busy = true;
   controls(true);
@@ -119,6 +190,8 @@ $('connect').addEventListener('click', () => {
     try { data = JSON.parse(event.data); } catch { error('Phản hồi không hợp lệ.'); return; }
     if (data.event === 'ready') {
       brief(data.call_brief);
+      timelineSession = { session_id: data.session_id, channel: $('channel').value, on: $('scenario-date').value };
+      loadTimeline();
       busy = false;
       controls(true);
       $('status').textContent = 'Sẵn sàng trò chuyện';
@@ -131,6 +204,7 @@ $('connect').addEventListener('click', () => {
       article.append(panel);
       panels.set(data.client_msg_id, panel);
       memory(panel, data.memory_update);
+      if (data.memory_update?.status === 'completed') loadTimeline();
       if (data.needs_handoff) message('agent', 'Yêu cầu đã được chuyển để nhân viên tiếp nhận.');
       busy = false;
       controls(true);
@@ -139,6 +213,7 @@ $('connect').addEventListener('click', () => {
     } else if (data.event === 'memory_update') {
       const panel = panels.get(data.client_msg_id);
       if (panel) memory(panel, data.memory_update, data.tracking_finished);
+      if (data.memory_update?.status === 'completed') loadTimeline();
     } else if (data.event === 'error') {
       error(data.code === 'harness_failed' ? 'Trợ lý chưa xử lý được lượt này. Bạn có thể thử lại.' : 'Thông tin phiên hoặc tin nhắn chưa hợp lệ.');
       busy = false;
@@ -150,6 +225,7 @@ $('connect').addEventListener('click', () => {
   current.onclose = event => {
     if (event.code === 4401) location.replace('/login');
     if (socket !== current) return;
+    resetTimeline();
     socket = null;
     busy = false;
     controls(false);
@@ -172,6 +248,7 @@ $('chat-form').addEventListener('submit', event => {
   $('status').textContent = 'Trợ lý đang xử lý…';
 });
 $('end').addEventListener('click', () => {
+  resetTimeline();
   if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ event: 'end' }));
   socket?.close();
 });

@@ -113,16 +113,16 @@ def _policy_question(text):
     folded = _search_text(text)
     if re.search(r'(?:khong|chua) can (?:hoi|tra cuu|kiem tra|noi).{0,25}(?:bao hanh|chinh sach)', folded):
         return None
-    topic = re.search(r'bao hanh|chinh sach|doi tra|tra hang|hoan tien|doi size|phi (?:doi|ship|van chuyen)|mat phi', folded)
+    topic_pattern = r'bao hanh|chinh sach|doi tra|tra hang|hoan tien|doi size|phi (?:doi|ship|van chuyen)|mat phi|thu hoi|tem mac|tem nhan'
+    topic = re.search(topic_pattern, folded)
     if not topic:
         return None
-    if not (re.search(r'\?|the nao|bao lau|co .{0,60}khong|cho (?:biet|hoi)|kiem tra|tra cuu|chinh sach', folded)
+    if not (re.search(r'\?|the nao|ra sao|luu y|bao lau|may ngay|co .{0,60}khong|cho (?:biet|hoi)|kiem tra|tra cuu|chinh sach', folded)
             or folded.strip() in {'bao hanh', 'doi tra', 'phi doi size'}):
         return None
     # Keep the actual question and remove a trailing sales pause rather than dropping the question.
     clauses = re.split(r'[?;\n]', text)
-    index = next((i for i, c in enumerate(clauses) if re.search(
-        r'bao hanh|chinh sach|doi tra|tra hang|hoan tien|doi size|phi', _search_text(c))), None)
+    index = next((i for i, c in enumerate(clauses) if re.search(topic_pattern, _search_text(c))), None)
     # A fee question can depend on the preceding question (e.g. changing size).
     # Keep that context instead of retrieving generic shipping fees in isolation.
     return ('? '.join(clauses[:index + 1]) if index is not None else text).strip()[:400]
@@ -142,7 +142,7 @@ def followup_task(state: dict) -> FollowupTask:
         task = FollowupTask('policy', focus_sku=focus, policy_query=query)
         # Rights tied to an existing order keep the existing ownership and order.status boundary.
         folded = _search_text(text)
-        if re.search(r'\bdon\b|da mua|da nhan|mua hom|mua ngay', folded):
+        if re.search(r'\bdon\b|da mua|da nhan|mua hom|mua ngay|doi.{0,30}hom truoc|(?:ao|hang) cu', folded):
             requested = re.findall(r'\bOD[A-Z0-9-]+\b', text)
             owned = set(state.get('owned_order_ids', [])) | set(state.get('remembered_order_ids', []))
             orders = requested or (list(owned) if len(owned) == 1 else [])
@@ -209,7 +209,13 @@ def policy_call_for_task(state, task):
 
 def product_price_requested(text):
     folded = re.sub(r'\bgia (?:han|dung|dinh)\b', '', _search_text(text))
-    return bool(re.search(r'\bgia\b', folded))
+    return bool(re.search(r'\bgia\b|bao nhieu tien|may tien', folded))
+
+
+def stock_requested(text):
+    folded = _search_text(text)
+    return bool(re.search(r'con hang|het hang|co (?:san )?hang|co san trong kho|ton kho|nhap lai', folded)
+                and not re.search(r'(?:khong|chua|dung)\s+(?:can\s+)?kiem tra\s+(?:ton kho|hang)', folded))
 
 
 def compatible_quote(state, focus):

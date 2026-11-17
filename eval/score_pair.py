@@ -60,8 +60,9 @@ def main() -> None:
     parser.add_argument("--full", type=Path, required=True)
     parser.add_argument("--baseline", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument('--btc-root', type=Path, help='Gói BTC chứa scorer dùng cho cặp trace')
     args = parser.parse_args()
-    score_pair(args.scenarios, args.full, args.baseline, args.out)
+    score_pair(args.scenarios, args.full, args.baseline, args.out, btc_root=args.btc_root)
 
 
 if __name__ == "__main__":

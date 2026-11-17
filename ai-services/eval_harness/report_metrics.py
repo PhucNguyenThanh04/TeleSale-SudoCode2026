@@ -1,4 +1,4 @@
-"""Display saved BTC scores without models, DB access, rescoring or mutation."""
+"""Display saved BTC scores and verify evidence without models, DB access or mutation."""
 import argparse
 from datetime import date, timedelta
 import json
@@ -75,7 +75,36 @@ def _claim_mismatch_notes(directory, run, score):
     return notes
 
 
-def render_run(directory: Path) -> str:
+def _difference(full, baseline, path, unit=''):
+    values = [_value(m, path) for m in (full, baseline)]
+    if not all(type(v) in (int, float) for v in values):
+        return MISSING
+    return f'{values[0] - values[1]:+g}{unit}'
+
+
+def _asr_lines(evidence, btc_root):
+    from eval_harness.asr_evidence import verify_asr_evidence
+    if not verify_asr_evidence(evidence, btc_root=btc_root):
+        return ['ASR: bằng chứng không khớp hoặc không còn truy cập được; không công bố số đã đính kèm.']
+    lines = ['', '| Nhóm | File | WER (%) | CER (%) | Entity (%) | Tiền (%) | SĐT (%) | Đủ bằng chứng |',
+             '|---|---:|---:|---:|---:|---:|---:|---|']
+    ready = True
+    for group in ('btc', 'team'):
+        report = evidence['groups'].get(group, {}).get('report', {})
+        ready &= report.get('asr_evidence_ready') is True
+        values = [report.get('dialogues'), *[_value(report, 'metrics.'+key) for key in
+                  ('WER', 'CER', 'entity_accuracy', 'money.value', 'phone.value')]]
+        if not report.get('input_integrity'):
+            values = [None] * len(values)
+        cells = [MISSING if value is None else str(value) for value in values]
+        lines.append(f'| ASR {group.upper() if group == "btc" else group} | ' + ' | '.join(cells)
+                     + (' | ĐẠT |' if report.get('asr_evidence_ready') else ' | CHƯA ĐỦ |'))
+    lines.append('Bằng chứng ASR M1: ' + ('ĐẠT' if ready else 'CHƯA ĐỦ'))
+    lines.append('ASR dùng scorer BTC, báo riêng BTC/team; không lấy trung bình WER hai nhóm và không chạy lại ASR.')
+    return lines
+
+
+def render_run(directory: Path, *, btc_root: Path | None = None, asr_sources=None) -> str:
     run = json.loads((directory / 'run.json').read_text())
     if run.get('status') != 'validated':
         raise ValueError('Chỉ hiển thị bảng điểm cho run validated; run này chưa hoàn tất.')
@@ -89,17 +118,19 @@ def render_run(directory: Path) -> str:
              f"Execution: {run.get('execution_health', 'unknown')}; extraction: {run.get('extraction_status', 'unknown')}",
              f"Phạm vi mỗi cấu hình: {coverage.get('scenarios', '?')} kịch bản, "
              f"{coverage.get('calls', '?')} cuộc, {coverage.get('turns', '?')} lượt.",
-             '', '| Chỉ số | Full | Baseline không memory |', '|---|---:|---:|']
+             '', '| Chỉ số | Full | Baseline không memory | Chênh lệch Full − Baseline |', '|---|---:|---:|---:|']
     rates = [('RQR ↓', 'repeat_question_rate', 'redundant', 'total_questions'),
              ('CCR ↑', 'context_carryover_rate', 'used', 'required'),
              ('TSR ↑', 'task_success_rate', 'passed', 'total'),
              ('HR ↓', 'hallucination_rate', 'wrong', 'total_claims')]
     for label, name, num, den in rates:
-        lines.append(f'| {label} | {_rate(full, name, num, den)} | {_rate(baseline, name, num, den)} |')
+        lines.append(f'| {label} | {_rate(full, name, num, den)} | {_rate(baseline, name, num, den)} | '
+                     f'{_difference(full, baseline, name+".value", " đpt")} |')
     for label, parent, key in [('TSR ca khó ↑', 'task_success_rate', 'hard_cases'),
                               ('HR giá/KM ↓', 'hallucination_rate', 'price_promo_only')]:
         cells = [_rate({key: m.get(parent, {}).get(key)}, key, 'wrong', 'total') for m in (full, baseline)]
-        lines.append(f'| {label} | {cells[0]} | {cells[1]} |')
+        lines.append(f'| {label} | {cells[0]} | {cells[1]} | '
+                     f'{_difference(full, baseline, parent+"."+key+".value", " đpt")} |')
     fields = [('Số lượt TB/cuộc', 'avg_turns_per_call'),
               ('Calls-to-close', 'calls_to_close.value'),
               ('Guardrail violations', 'guardrail_violations.total')]
@@ -112,9 +143,12 @@ def render_run(directory: Path) -> str:
     for label, path in fields:
         cells = [_value(m, path) for m in (full, baseline)]
         cells = [MISSING if v is None else str(v) for v in cells]
-        lines.append(f'| {label} | {cells[0]} | {cells[1]} |')
-    lines.append(f'| WER/CER, entity accuracy ASR | {MISSING} trong eval text | {MISSING} trong eval text |')
+        lines.append(f'| {label} | {cells[0]} | {cells[1]} | {_difference(full, baseline, path)} |')
+    lines.append(f'| WER/CER, entity accuracy ASR | {MISSING} trong eval text | {MISSING} trong eval text | — |')
     lines.append('')
+    lines.append('Chênh lệch tỷ lệ dùng điểm phần trăm (đpt); số âm tốt hơn với RQR/HR.')
+    reduction = score.get('comparison', {}).get('rqr_relative_reduction_pct')
+    lines.append(f'RQR giảm tương đối: {str(reduction)+"%" if reduction is not None else MISSING}')
     if voice_measurement:
         lines.append('Response đo từ transcript đến câu trả lời đầy đủ; không gồm prepare, lưu memory, '
                      'ASR/TTS, thời gian phát tiếng hoặc HTTP. TTFT proxy = Response để tương thích '
@@ -135,6 +169,28 @@ def render_run(directory: Path) -> str:
         lines.append('Chưa đủ ≥100 lượt/cấu hình để đánh giá p95 theo hướng dẫn BTC.')
     if run.get('extraction_status') != 'complete':
         lines.append('Extractor còn cần rà soát; không coi claim chưa phân giải là đúng.')
+    root = Path(btc_root) if btc_root is not None else directory/'btc-release'
+    if (root/'eval/reference_eval.py').is_file():
+        from eval_harness.m1_acceptance import inspect_run
+        acceptance = inspect_run(directory, btc_root=root)
+        verdict = 'ĐẠT' if acceptance['conversation_accepted'] else 'CHƯA ĐẠT'
+        lines.extend(['', f'Nghiệm thu hội thoại M1: {verdict}'])
+        for check in acceptance['checks']:
+            if check['status'] != 'pass':
+                lines.append(f'- {check["name"]}: {check["status"]}; '
+                             f'{json.dumps(check["evidence"], ensure_ascii=False)}')
+    else:
+        lines.append('Nghiệm thu hội thoại M1: CHƯA KIỂM CHỨNG — thiếu BTC snapshot; truyền --btc-root.')
+    lines.append('validated chỉ xác nhận pipeline; hoàn thành M1 còn cần ASR, vòng cải tiến, demo và chi phí.')
+    if asr_sources:
+        from eval_harness.asr_evidence import collect_asr_evidence
+        lines.extend(_asr_lines(collect_asr_evidence(asr_sources, btc_root=root), root))
+    elif (directory/'asr_evidence.json').is_file():
+        try:
+            evidence = json.loads((directory/'asr_evidence.json').read_text())
+        except (OSError, ValueError):
+            evidence = {}
+        lines.extend(_asr_lines(evidence, root))
     lines.append('CCR không phải tỷ lệ fact đã lưu/đọc thành công; thiếu ghi nhận sử dụng không tự chứng minh memory quên.')
     lines.append('HR BTC đối chiếu ground_truth_facts; một sai lệch không tự chứng minh agent bịa thông tin.')
     notes = _claim_mismatch_notes(directory, run, score)
@@ -147,10 +203,13 @@ def render_run(directory: Path) -> str:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('run', type=Path, help='Thư mục run hoặc file run.json')
+    parser.add_argument('--btc-root', type=Path, help='BTC snapshot dùng để kiểm nghiệm thu hội thoại')
+    from eval_harness.asr_evidence import add_asr_arguments, asr_sources_from_args
+    add_asr_arguments(parser)
     args = parser.parse_args()
     directory = args.run.parent if args.run.is_file() else args.run
     try:
-        print(render_run(directory))
+        print(render_run(directory, btc_root=args.btc_root, asr_sources=asr_sources_from_args(args)))
     except (ValueError, KeyError, OSError) as exc:
         parser.error(str(exc))
 

@@ -120,6 +120,8 @@ def derive_presented_offers(*, customer_id: str | None, session_id: str,
                           if c.get('name') == 'inventory.check'
                           and c.get('args', {}).get('sku') == sku), None)
             evidence = [*catalogs, call]
+            evidence.extend(c for c in available if c.get('name') == 'policy.search'
+                            and c.get('args', {}).get('on') == str(turn.get('on', '')))
             if stock and stock.get('args', {}).get('on') == str(turn.get('on', '')):
                 evidence.append(stock)
             if check_answer(clause, evidence, focus_sku=sku)[1] is not None:

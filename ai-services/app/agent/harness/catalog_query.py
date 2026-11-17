@@ -6,9 +6,10 @@ from app.mcp_servers.mcp_shared.commerce_rules import _search_text
 
 
 _EXPLICIT_MODEL = re.compile(
-    r'\b(?:[A-Z][A-Za-z]+&[A-Z][A-Za-z]+|(?i:sku-[a-z0-9-]+)|[A-Z][a-z]+[A-Z][A-Za-z0-9]*|'
+    r'\b(?:[A-Z][a-z]{2,}\s+[A-Z][A-Za-z]+(?=\s+\d+(?:ml|l)?\b)|'
+    r'[A-Z][A-Za-z]+&[A-Z][A-Za-z]+|(?i:sku-[a-z0-9-]+)|[A-Z][a-z]+[A-Z][A-Za-z0-9]*|'
     r'[A-Za-z][A-Za-z-]*\d+[A-Za-z0-9-]*|[A-Z][a-z]{2,}(?=\s+(?:\d+|(?i:pro|lite|mini|max|plus|ultra))\b))'
-    r'(?:\s+(?:[A-Z][A-Za-z0-9-]*|\d+|(?i:pro|lite|mini|max|plus|ultra))){0,3}(?![\w-])')
+    r'(?:\s+(?:[A-Z][A-Za-z0-9-]*|\d+(?:ml|l)?|(?i:pro|lite|mini|max|plus|ultra))){0,3}(?![\w-])')
 
 
 def explicit_product_queries(text: str) -> list[str]:
@@ -27,6 +28,13 @@ def explicit_product_queries(text: str) -> list[str]:
         if re.fullmatch(r'(?i)(?:(?:m|cm|mm|km)[23]|(?:size|co)\d+)', query):
             continue
         candidates.setdefault(query.casefold(), query)
+    literal = re.search(r'(?i:\b(?:đang xem|đang tham khảo|đang tìm hiểu)\s+(?:mẫu\s+)?)([^,;?!\n]+)', text)
+    if literal:
+        query = re.split(r'(?i)\s+(?:giá|hiện|bản|size|màu|cho|còn|thì|em)\b', literal[1], maxsplit=1)[0].strip()
+        if (re.search(r'\b[A-Z][A-Za-z0-9&-]{2,}\b', query)
+                and not re.search(r'\b(?:va|hoac|hay)\b', _search_text(query))
+                and all(value.casefold() in query.casefold() for value in candidates.values())):
+            return [query]
     return list(candidates.values())
 
 

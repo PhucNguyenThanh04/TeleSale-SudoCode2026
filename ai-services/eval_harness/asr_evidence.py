@@ -1,10 +1,35 @@
-"""Inspect saved local-ASR reports without transcription or rescoring."""
+"""Verify saved local-ASR reports with the BTC scorer; never transcribe audio."""
 import argparse
 import json
 from pathlib import Path
 
 from eval.score_pair import _sha
 from eval_harness.m1_acceptance import _read
+
+
+def _score_matches(score, gt, hypotheses, dataset, btc_root):
+    from speech.btc import load_reference_eval
+    from speech.evaluate import _wer_cer, _has_speakers
+    segments = dataset/'audio' if _has_speakers(hypotheses) and (dataset/'audio').is_dir() else None
+    actual = _wer_cer(load_reference_eval(btc_root), gt, hypotheses, segments)
+    actual.pop('per_dialogue', None)
+    if actual != score.get('official'):
+        return False
+    for kind in ('money', 'phone'):
+        correct = total = 0
+        for dialogue in gt['dialogues']:
+            for key, value in dialogue.get('entities', {}).items():
+                if not (key.endswith('_vnd') if kind == 'money' else key == 'phone'):
+                    continue
+                total += 1
+                values = value if isinstance(value, list) else [value]
+                correct += any(str(hypotheses[dialogue['id']].get('entities', {}).get(key)) == str(v)
+                               for v in values)
+        expected = {'correct': correct, 'total': total,
+                    'value': round(100 * correct / total, 1) if total else None}
+        if score.get('entity_accuracy_by_type', {}).get(kind) != expected:
+            return False
+    return True
 
 
 def inspect_asr(dataset, run, *, btc_root, group):
@@ -24,9 +49,11 @@ def inspect_asr(dataset, run, *, btc_root, group):
         expected = [d['id'] for d in gt['dialogues']]
         if not expected or len(set(expected)) != len(expected) or set(expected) != set(hypotheses):
             return result
+        if not _score_matches(score, gt, hypotheses, dataset, btc_root):
+            return result
         result['input_integrity'] = True
         btc_matches = _read(btc_root / 'asr/ground_truth.json') == gt
-        enough = btc_matches if group == 'btc' else len(expected) >= 20 and not btc_matches
+        enough = btc_matches and len(expected) >= 12 if group == 'btc' else len(expected) >= 20 and not btc_matches
         official = score['official']
         entity = score.get('entity_accuracy_by_type') or {}
         entity_measured = all(type(entity.get(kind, {}).get('value')) in (int, float)
@@ -50,6 +77,50 @@ def inspect_asr(dataset, run, *, btc_root, group):
     except (OSError, ValueError, KeyError, TypeError):
         result['input_integrity'] = False
     return result
+
+
+def collect_asr_evidence(sources, *, btc_root):
+    """Bind optional BTC/team reports after offline score verification; never transcribe."""
+    if not sources or set(sources) - {'btc', 'team'}:
+        raise ValueError('asr_groups_invalid')
+    root = Path(btc_root).resolve()
+    groups = {}
+    for group, source in sources.items():
+        dataset, run = Path(source['dataset']).resolve(), Path(source['run']).resolve()
+        if not dataset.is_dir() or not run.is_dir():
+            raise ValueError('asr_source_directory_missing')
+        groups[group] = {'dataset': str(dataset), 'run': str(run),
+                         'report': inspect_asr(dataset, run, btc_root=root, group=group)}
+    return {'version': 1, 'btc_root': str(root),
+            'scorer_sha256': _sha(root / 'eval/reference_eval.py'),
+            'btc_ground_truth_sha256': _sha(root / 'asr/ground_truth.json'), 'groups': groups}
+
+
+def verify_asr_evidence(evidence, *, btc_root):
+    try:
+        sources = {group: {'dataset': value['dataset'], 'run': value['run']}
+                   for group, value in evidence['groups'].items()}
+        return (evidence['scorer_sha256'] == _sha(Path(btc_root) / 'eval/reference_eval.py')
+                and evidence == collect_asr_evidence(sources, btc_root=evidence['btc_root']))
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+def add_asr_arguments(parser):
+    for group in ('btc', 'team'):
+        parser.add_argument(f'--asr-{group}-dataset', type=Path, help=f'Dataset audio ASR {group} đã chấm')
+        parser.add_argument(f'--asr-{group}-run', type=Path, help=f'Thư mục score/hypotheses ASR {group} đã lưu')
+
+
+def asr_sources_from_args(args):
+    sources = {}
+    for group in ('btc', 'team'):
+        dataset, run = (getattr(args, f'asr_{group}_{key}') for key in ('dataset', 'run'))
+        if bool(dataset) != bool(run):
+            raise ValueError(f'--asr-{group}-dataset và --asr-{group}-run phải đi cùng nhau')
+        if dataset:
+            sources[group] = {'dataset': dataset, 'run': run}
+    return sources
 
 
 def main():

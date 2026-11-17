@@ -10,6 +10,7 @@ from app.configs import get_settings
 from app.schemas.agent import (ChatRequest, ChatResponse, PrepareSessionRequest,
                                PrepareSessionResponse, TurnMemoryRequest, TurnMemoryResponse,
                                VoicePlaybackRequest)
+from app.schemas.timeline import TimelineRequest, TimelineResponse
 
 router = APIRouter(prefix="/v1/chat", tags=["chat"])
 
@@ -48,6 +49,25 @@ async def create_text_turn(
     ):
         raise HTTPException(401, "Unauthorized AI caller")
     return await chat(turn, runtime=harness)
+
+
+@router.post('/sessions/timeline', response_model=TimelineResponse)
+async def memory_timeline(
+    query: TimelineRequest, request: Request,
+    harness: AgentHarnessRuntime = Depends(get_harness),
+) -> TimelineResponse:
+    expected = get_settings().ai_internal_token
+    if not expected or not hmac.compare_digest(
+        request.headers.get('X-AI-Internal-Token', ''), expected.get_secret_value()
+    ):
+        raise HTTPException(401, 'Unauthorized AI caller')
+    try:
+        page = await harness.memory_timeline(query)
+    except ValueError:
+        raise HTTPException(409, 'Session identity conflict') from None
+    except RuntimeError:
+        raise HTTPException(503, 'Memory timeline unavailable') from None
+    return TimelineResponse(session_id=str(query.session_id), timeline=page)
 
 
 @router.post("/turns/memory", response_model=TurnMemoryResponse)

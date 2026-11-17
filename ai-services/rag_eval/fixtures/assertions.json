@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "description": "Literal diagnostic checks only; passing does not prove semantic correctness. Patterns are applied case-insensitively after Unicode NFC normalization.",
+  "cases": {
+    "Q32": {"must_all": ["24\\s*tháng"], "must_not": []},
+    "Q36": {"must_all": ["19[/.-]10|19\\s*tháng\\s*10"], "must_not": ["200\\s*(máy|chiếc)"]},
+    "Q42": {"must_all": ["36\\s*tháng"], "must_not": []},
+    "Q43": {"must_all": ["14\\s*ngày"], "must_not": []},
+    "Q52": {"must_all": [], "must_not": ["4[.,\\s]?950[.,\\s]?000|27\\s*%"]},
+    "Q53": {"must_all": [], "must_not": ["42\\s*%"]},
+    "Q56": {"must_all": [], "must_not": ["Công ty TNHH Không Khí Sạch"]},
+    "Q57": {"must_all": ["10[.,\\s]?435[.,\\s]?000"], "must_not": []},
+    "Q58": {"must_all": ["1[.,\\s]?530[.,\\s]?000"], "must_not": []},
+    "Q59": {"must_all": ["270"], "must_not": []},
+    "Q60": {"must_all": ["639[.,\\s]?200", "15\\s*ngày"], "must_not": []}
+  }
+}

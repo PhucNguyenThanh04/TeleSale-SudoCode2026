@@ -78,7 +78,7 @@ def _dataset_digest(scenarios):
 
 async def run_pair(*, scenarios: Path, btc_root: Path, agent: str, seed: int,
                    out_root: Path, expected_database: str | None = None,
-                   limit_scenarios: int | None = None, delivery_mode='voice', baseline_first=False) -> Path:
+                   limit_scenarios: int | None = None, delivery_mode='text', baseline_first=False) -> Path:
     measurement = conversation_measurement(delivery_mode)
     run_id=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid4().hex[:8]
     out=out_root/run_id
@@ -191,6 +191,9 @@ async def run_pair(*, scenarios: Path, btc_root: Path, agent: str, seed: int,
             **safe_failure_details(exc),
             safety_issues=safety_issues)
     atomic_json(out/'run.json',summary)
+    if summary['status'] == 'validated':
+        from eval_harness.m1_acceptance import inspect_run
+        atomic_json(out/'m1_conversation_acceptance.json', inspect_run(out, btc_root=btc_root))
     return out
 
 
@@ -202,10 +205,19 @@ def main():
     parser.add_argument('--decision-diagnostics', action='store_true', help='Capture safe decision evidence; remote memory/worker need EVAL_DECISION_DIAGNOSTICS=1')
     parser.add_argument('--agent',choices=('deep','react'),default='deep')
     parser.add_argument('--seed',type=int,default=7)
-    parser.add_argument('--delivery-mode',choices=('text','voice'),default='voice')
+    parser.add_argument('--delivery-mode',choices=('text','voice'),default='text')
     parser.add_argument('--limit-scenarios',type=int)
     parser.add_argument('--out-root',type=Path,default=SERVICE/'eval_harness/results')
+    from eval_harness.asr_evidence import add_asr_arguments, asr_sources_from_args, collect_asr_evidence
+    add_asr_arguments(parser)
     args=parser.parse_args()
+    try:
+        sources = asr_sources_from_args(args)
+        asr = collect_asr_evidence(sources, btc_root=args.btc_root) if sources else None
+        if asr is not None and any(not group['report']['input_integrity'] for group in asr['groups'].values()):
+            raise ValueError('asr_input_integrity_failed')
+    except (OSError, ValueError, KeyError, TypeError):
+        parser.error('Invalid saved ASR evidence/options; no agent evaluation was started.')
     if args.decision_diagnostics:
         os.environ['EVAL_DECISION_DIAGNOSTICS'] = '1'
     out=asyncio.run(run_pair(scenarios=args.scenarios.resolve(),btc_root=args.btc_root.resolve(),
@@ -219,8 +231,15 @@ def main():
         print(f"phase={summary.get('phase')} code={summary.get('error_code')} service={summary.get('service')}")
     if status!='validated':
         raise SystemExit(1)
+    if asr is not None:
+        atomic_json(out/'asr_evidence.json', asr)
     from eval_harness.report_metrics import render_run
     print(render_run(out))
+    from eval_harness.knowledge_followup import detect_after_pair
+    try:
+        asyncio.run(detect_after_pair(out))
+    except Exception as exc:
+        print(f'[knowledge] Detection failed ({type(exc).__name__}); paired metrics are complete. Inspect {out}.knowledge/experiment.json.', flush=True)
 
 
 if __name__=='__main__':

@@ -7,9 +7,10 @@ Voice/TTS và simulator/LLM judge M2 không phải điều kiện khởi động
 
 ## 1. Những gì người chấm cần nhận
 
-- Checkout đủ source, `ai-services/app/bootstrap/schema.sql`, `config/policy-runtime.json`, metadata policy,
-  `BTC-cap-nhat-11-2026/` và lệnh root `run_eval.py`. Không bỏ file mới chưa track.
-- Gói BTC gốc bên cạnh repo hoặc đường dẫn riêng do `--btc-root` chỉ định.
+- Checkout đủ source, `ai-services/app/bootstrap/schema.sql`, `config/policy-runtime.json`, metadata policy
+  và lệnh root `run_eval.py`. Không bỏ file mới chưa track.
+- Gói BTC đầy đủ, đã cập nhật scorer/mock tools/schema, bên cạnh repo hoặc đường
+  dẫn riêng do `--btc-root` chỉ định; không cần thư mục patch riêng.
   Hidden scenarios do BTC cấp qua `--scenarios`, không hardcode 7 sample.
 - Python **3.12** cho AI/backend/speech; Docker Compose, PostgreSQL client và
   Internet khi cài dependency/build policy. Không dùng `pip install .` ở root
@@ -104,7 +105,7 @@ Loader tạo/insert `btc_source` và không tự invent CRM. DATABASE_URL của 
 AI và backend phải cùng DB đích. Không chạy vòng lặp migration/setup store/grant
 bằng tay nữa: đường khởi động mới tự tạo schema hiện hành và các quyền cần thiết.
 
-## 4. Khởi động demo/eval sạch
+## 4. Khởi động hệ thống một lần trước demo/eval
 
 Sau khi điền cấu hình/secret và tokenizer ở bước 2:
 
@@ -119,9 +120,12 @@ Không phải mở thêm uvicorn/API/knowledge worker ở terminal khác. Không
 liệu vào BTC và không xóa kết quả eval đã xuất. Policy index BTC được khôi phục
 nếu cache còn đúng hash; lần chưa có cache cần Cloudflare embedding/quota.
 
-Mỗi lượt mới dùng một boot ID; các service kiểm tra ready và không reset chồng
-lên nhau. Cả thí nghiệm K0 → duyệt → K1 là một boot. `--resume` giữ đúng boot cũ.
-Lệnh eval và ba-cấu-hình, cấu hình account, phạm vi reset và recovery:
+Khởi động demo mới tạo boot ID và reset knowledge. Eval thường dùng hạ tầng
+đang chạy, chỉ reset runtime/memory trước mỗi cấu hình; `run_system.py eval`
+không gọi Docker hoặc tạo boot mới. Giữ cùng hệ thống giữa K0 → duyệt → K1,
+không chạy lại fresh demo. Các service có thể tiếp tục chạy để dùng frontend,
+nhưng không thao tác chat/eval khác trên DB trong lúc đo.
+Cấu hình account, phạm vi reset và recovery:
 [xem hướng dẫn fresh-system](fresh-system-startup.md).
 
 Các command thấp hơn ở phần tiếp theo dành cho BTC/kiểm chứng độc lập trên stack

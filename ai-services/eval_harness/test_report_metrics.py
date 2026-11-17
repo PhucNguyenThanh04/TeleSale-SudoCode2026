@@ -128,3 +128,60 @@ def test_saved_t14_multi_product_price_does_not_prove_wrong_selection():
     assert notes and all('nhiều sản phẩm' in note for note in notes)
     assert all('vẫn giữ lỗi chọn sản phẩm' not in note for note in notes)
     assert (directory / 'btc_score.json').read_bytes() == before
+
+
+def test_comparison_shows_percentage_points_and_btc_relative_rqr_reduction(tmp_path):
+    from eval_harness.report_metrics import render_run
+    (tmp_path / 'run.json').write_text(json.dumps({'status': 'validated', 'score': 'btc_score.json'}))
+    (tmp_path / 'btc_score.json').write_text(json.dumps({
+        'system': {'repeat_question_rate': {'value': 10}, 'task_success_rate': {'value': 80}},
+        'baseline': {'repeat_question_rate': {'value': 50}, 'task_success_rate': {'value': 60}},
+        'comparison': {'rqr_relative_reduction_pct': 80}}))
+    output = render_run(tmp_path)
+    assert '| Chênh lệch Full − Baseline |' in output
+    assert '-40 đpt' in output and '+20 đpt' in output
+    assert 'RQR giảm tương đối: 80%' in output
+
+
+def test_zero_baseline_does_not_invent_relative_reduction(tmp_path):
+    from eval_harness.report_metrics import render_run
+    (tmp_path / 'run.json').write_text(json.dumps({'status': 'validated', 'score': 'btc_score.json'}))
+    (tmp_path / 'btc_score.json').write_text(json.dumps({
+        'system': {'repeat_question_rate': {'value': 0}},
+        'baseline': {'repeat_question_rate': {'value': 0}},
+        'comparison': {'rqr_relative_reduction_pct': None}}))
+    output = render_run(tmp_path)
+    assert 'RQR giảm tương đối: Chưa đo' in output
+    assert 'RQR giảm tương đối: 100%' not in output
+
+
+def test_report_distinguishes_validated_from_m1_acceptance(tmp_path):
+    from eval_harness.test_m1_acceptance import saved_pair
+    from eval_harness.test_official_pipeline import BTC
+    from eval_harness.report_metrics import render_run
+    saved_pair(tmp_path)
+    output = render_run(tmp_path, btc_root=BTC)
+    assert 'Nghiệm thu hội thoại M1: CHƯA ĐẠT' in output
+    assert 'multi_session_coverage' in output and 'latency_sample_size' in output
+    assert 'ASR' in output and 'cải tiến' in output
+
+
+def test_attached_asr_metrics_are_separate_and_insufficient_coverage_is_visible(tmp_path):
+    from eval_harness.asr_evidence import collect_asr_evidence
+    from eval_harness.test_asr_evidence import asr_score
+    from eval_harness.test_official_pipeline import BTC
+    from eval_harness.report_metrics import render_run
+    dataset, run = asr_score(tmp_path)
+    (tmp_path / 'run.json').write_text(json.dumps({'status': 'validated', 'score': 'btc_score.json'}))
+    (tmp_path / 'btc_score.json').write_text(json.dumps({'system': {}, 'baseline': {}}))
+    evidence = collect_asr_evidence({'team': {'dataset': dataset, 'run': run}}, btc_root=BTC)
+    (tmp_path / 'asr_evidence.json').write_text(json.dumps(evidence))
+    output = render_run(tmp_path, btc_root=BTC)
+    assert '| ASR team | 1 |' in output
+    assert '| ASR BTC | Chưa đo |' in output
+    assert 'Bằng chứng ASR M1: CHƯA ĐỦ' in output
+    original = (run / 'score.json').read_bytes()
+    (run / 'score.json').write_bytes(original + b' ')
+    changed = render_run(tmp_path, btc_root=BTC)
+    assert 'ASR: bằng chứng không khớp' in changed
+    assert '| ASR team | 1 |' not in changed

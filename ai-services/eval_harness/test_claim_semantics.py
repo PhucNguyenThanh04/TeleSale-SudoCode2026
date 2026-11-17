@@ -199,3 +199,32 @@ def test_sc07_original_changelog_keeps_new_version_only_current():
 def test_replaced_version_without_named_successor_is_historical():
     claims = extract_claims('Phiên bản 2026-06 đã bị thay thế.', [])
     assert [(c['field'],c['value']) for c in claims] == [('historical_policy_version','2026-06')]
+
+
+@pytest.mark.parametrize('text,expected', [
+    ('Mẫu này được bảo hành chính hãng 24 tháng.', [('warranty_months', 24)]),
+    ('Bảo hành chính hãng trong mười tám tháng.', [('warranty_months', 18)]),
+    ('Chị được đổi hoặc trả sản phẩm trong vòng 7 ngày.', [('return_days', 7)]),
+    ('Anh được đổi hoặc trả trong vòng 9 ngày.', [('return_days', 9)]),
+])
+def test_explicit_policy_durations_are_not_lost(text, expected):
+    assert pairs(text) == expected
+
+
+def test_spoken_hundreds_keep_tens_inside_the_same_group():
+    assert pairs('Giá một triệu bảy trăm bốn mươi nghìn đồng.') == [('price_vnd', 1740000)]
+
+
+@pytest.mark.parametrize('text', [
+    'Em chưa xác minh được giá cuối để so sánh với mức chi của mình ạ.',
+    'Em chưa có thông tin về khuyến mãi hiện tại.',
+    'Chị chờ em một chút để em kiểm tra giá chính xác nhất nhé.',
+    'Theo thông tin chính sách đã kiểm tra: Phí vận chuyển',
+    'Về chế độ bảo hành',
+])
+def test_headings_and_explicit_lack_of_information_are_not_factual_claims(text):
+    from eval_harness.extractor import extract_detailed
+    result = extract_detailed(text)
+    assert result['claims'] == []
+    assert all(c['disposition'] == 'excluded' and c['reason'] == 'not_assertion'
+               for c in result['candidates'] if c['kind'] == 'claim')

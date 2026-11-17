@@ -95,7 +95,7 @@ def load_pair(directory, *, btc_root):
     return run, score, manifests, traces, rows
 
 
-def inspect_run(directory, *, btc_root):
+def inspect_run(directory, *, btc_root, extraction_review=None):
     directory = Path(directory)
     checks = []
     try:
@@ -124,6 +124,7 @@ def inspect_run(directory, *, btc_root):
     except (OSError, ValueError, KeyError, TypeError):
         healthy = None
     checks.append(_check('execution_health', healthy, 'Verified per-turn model/tool execution diagnostics.'))
+    extraction_evidence = 'Verified extraction report; unresolved candidates require review.'
     try:
         from eval_harness.extraction_report import verify_extraction_report
         reference = run['extraction_report']
@@ -137,10 +138,15 @@ def inspect_run(directory, *, btc_root):
                     or extraction['configs'][config]['btc_checked'] != score[score_key]):
                 raise ValueError('extraction_run_binding_mismatch')
         extraction_complete = extraction['extraction_status'] == 'complete'
+        if extraction_review is not None:
+            from eval_harness.extraction_review import verify_review
+            reviewed = verify_review(path, extraction_review)
+            extraction_complete = reviewed['complete']
+            extraction_evidence = {'automated_status': extraction['extraction_status'],
+                'review_sha256': _sha(Path(extraction_review)), 'review': reviewed}
     except (OSError, ValueError, KeyError, TypeError):
         extraction_complete = None
-    checks.append(_check('extraction_review', extraction_complete,
-                         'Verified extraction report; unresolved candidates require review.'))
+    checks.append(_check('extraction_review', extraction_complete, extraction_evidence))
     full, baseline = score['system'], score['baseline']
     tsr = full.get('task_success_rate', {}).get('value')
     hr = full.get('hallucination_rate', {}).get('price_promo_only', {})
@@ -191,9 +197,14 @@ def main():
     parser.add_argument('kind', choices=('run', 'dataset'))
     parser.add_argument('path', type=Path)
     parser.add_argument('--btc-root', required=True, type=Path)
+    parser.add_argument('--extraction-review', type=Path,
+                        help='Optional per-candidate review bound to the saved extraction report')
     args = parser.parse_args()
     try:
-        report = (inspect_run if args.kind == 'run' else inspect_dataset)(args.path, btc_root=args.btc_root)
+        if args.kind == 'dataset' and args.extraction_review is not None:
+            parser.error('--extraction-review requires run evidence')
+        report = (inspect_run(args.path, btc_root=args.btc_root, extraction_review=args.extraction_review)
+                  if args.kind == 'run' else inspect_dataset(args.path, btc_root=args.btc_root))
     except (OSError, ValueError, KeyError, TypeError):
         parser.error('Invalid evidence or dataset contract; no inference was performed.')
     print(json.dumps(report, ensure_ascii=False, indent=2))

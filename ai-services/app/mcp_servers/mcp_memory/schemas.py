@@ -1,9 +1,11 @@
 """Memory tool inputs."""
 
 from uuid import UUID
+from datetime import date
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator, ValidationError
+from app.schemas.brief import PreviousSession
 
 
 class ReadInput(BaseModel):
@@ -78,6 +80,16 @@ class TurnStatusInput(BaseModel):
     customer_id: str | None = None
     session_id: UUID
     client_msg_id: UUID
+
+
+class TimelineInput(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    customer_id: str | None = None
+    session_id: UUID
+    on: date
+    offset: int = Field(default=0, ge=0, strict=True)
+    limit: int = Field(default=10, ge=1, le=20, strict=True)
+    crm_sessions: list[PreviousSession] = Field(default_factory=list)
 
 
 class WriteInput(BaseModel):

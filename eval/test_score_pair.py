@@ -47,7 +47,10 @@ class ScorePairTest(unittest.TestCase):
             full.write_text(json.dumps({**row, "config": "full"}) + "\n")
             baseline.write_text(json.dumps({**row, "config": "baseline_no_memory"}) + "\n")
             score = Path(folder) / "score.json"
-            score_pair(local, full, baseline, score, btc_root=btc)
+            from eval.score_pair import main
+            with patch('sys.argv', ['score_pair', '--scenarios', str(local), '--full', str(full),
+                                   '--baseline', str(baseline), '--out', str(score), '--btc-root', str(btc)]):
+                main()
             self.assertEqual(json.loads(score.read_text())["n_scenarios"], 1)
 
     def test_real_btc_scorer_records_exact_historical_input_hashes(self):

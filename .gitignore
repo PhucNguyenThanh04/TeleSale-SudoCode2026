@@ -71,6 +71,7 @@ temp/
 **/data/processed/*.parquet
 **/eval/runs/
 ai-services/eval_harness/results/
+ai-services/rag_eval/results/
 outputs/
 artifacts/
 

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "description": "Synthetic component fixtures, not real CRM verification. Default assumes a current order on BTC reference date. Month-only questions use the 15th; Q43 uses the exact dates in the question. Read-tool selection is authored from questions, never expected answers.",
+  "defaults": {"on": "2026-10-15", "verified_order_date": "2026-10-15", "date_source": "eval_fixture", "read_tools": []},
+  "cases": {
+    "Q20": {"read_tools": [{"name": "catalog.search", "args": {"sku": "SKU-XM-4L"}}]},
+    "Q25": {"read_tools": [{"name": "catalog.search", "args": {"sku": "SKU-AP-X-2024"}}]},
+    "Q26": {"read_tools": [{"name": "catalog.search", "args": {"sku": "SKU-WF-RO10"}}]},
+    "Q27": {"read_tools": [{"name": "pricing.get_quote", "args": {"sku": "SKU-AP-PRO"}, "owned_sku": "SKU-AP-X-2024"}]},
+    "Q28": {"read_tools": [{"name": "catalog.search", "args": {"query": "Warmly"}}, {"name": "catalog.search", "args": {"query": "Windbreak"}}]},
+    "Q30": {"read_tools": [{"name": "catalog.search", "args": {"category": "gia-dung/may-loc-khong-khi"}}]},
+    "Q31": {"read_tools": [{"name": "pricing.get_quote", "args": {"sku": "SKU-SN-RUN2-43-DEN"}}]},
+    "Q32": {"verified_order_date": "2026-07-15"},
+    "Q36": {"read_tools": [{"name": "inventory.check", "args": {"sku": "SKU-XM-4P"}}]},
+    "Q42": {"verified_order_date": "2026-09-15"},
+    "Q43": {"on": "2026-10-09", "verified_order_date": "2026-09-28"},
+    "Q51": {"read_tools": [{"name": "catalog.search", "args": {"query": "Sharp"}}]},
+    "Q57": {"read_tools": [{"name": "pricing.quote_order", "args": {"lines": [{"sku": "SKU-AP-PRO", "qty": 1}, {"sku": "SKU-AP-X", "qty": 1}]}}]},
+    "Q58": {"read_tools": [{"name": "pricing.get_quote", "args": {"sku": "SKU-JK-DWN-XL-DEN"}}]},
+    "Q59": {"read_tools": [{"name": "catalog.search", "args": {"category": "gia-dung/may-loc-khong-khi"}}]},
+    "Q60": {"read_tools": [{"name": "catalog.search", "args": {"sku": "SKU-AP-PRO"}}]}
+  }
+}

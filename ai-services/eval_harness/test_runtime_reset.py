@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import asyncpg
+import pytest
 from sqlalchemy.engine import make_url
 
 from app.configs import Settings
@@ -24,7 +25,9 @@ class RuntimeResetTests(unittest.IsolatedAsyncioTestCase):
             dataset = Path(folder) / "scenarios.json"
             dataset.write_text('{"scenarios": [{"scenario_id":"X","calls":{"call_1":{"customer_turns":["Xin chào"]}}}]}', encoding="utf-8")
             output = Path(folder) / "report.json"
-            fake_runtime = SimpleNamespace(tools=SimpleNamespace(), run=AsyncMock(return_value=SimpleNamespace(agent_text="Dạ",call_brief=None)), state_for=lambda request: {}, memory=SimpleNamespace(
+            fake_runtime = SimpleNamespace(tools=SimpleNamespace(),
+                prepare_session=AsyncMock(return_value=None), record_playback=AsyncMock(return_value=None),
+                run=AsyncMock(return_value=SimpleNamespace(agent_text="Dạ",call_brief=None)), state_for=lambda request: {}, memory=SimpleNamespace(
                 include_prior=True, namespace=""))
             args = ["benchmark_runner", "--agent", "deep", "--config", "both",
                     "--scenarios", str(dataset), "--out", str(output),
@@ -168,3 +171,97 @@ class OfflineResetScopeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('runtime."turns"',sql)
         for forbidden in ('btc_source','knowledge.','store_migrations','demo_users'):
             self.assertNotIn(forbidden,sql)
+
+    async def test_reset_does_not_reuse_an_old_worker_job_id(self):
+        from contextlib import asynccontextmanager
+        from eval_harness.runtime_reset import reset_runtime_database
+        old_job_id = 1
+        sequence = {'last_value': old_job_id, 'is_called': True}
+        locked = False
+        @asynccontextmanager
+        async def transaction(): yield
+        async def fetchval(sql):
+            return 'telesale' if 'current_database' in sql else False
+        async def fetchrow(sql):
+            self.assertTrue(locked)
+            return dict(sequence)
+        async def execute(sql, *args):
+            nonlocal locked
+            if sql.startswith('LOCK TABLE'):
+                locked = True
+            elif sql.startswith('TRUNCATE'):
+                sequence.update(last_value=1, is_called=False)
+            elif 'setval' in sql:
+                sequence.update(last_value=args[0], is_called=args[1])
+        connection = SimpleNamespace(transaction=transaction, fetchval=fetchval, fetchrow=fetchrow,
+            fetch=AsyncMock(return_value=[{'tablename':t} for t in
+                ('store_migrations','store','langmem_distillation_jobs','turns')]),
+            execute=execute, close=AsyncMock())
+        with patch('asyncpg.connect', new_callable=AsyncMock, return_value=connection):
+            await reset_runtime_database('postgresql://offline', expected_database='telesale', app_env='test')
+        new_job_id = sequence['last_value'] + (1 if sequence['is_called'] else 0)
+        self.assertGreater(new_job_id, old_job_id)
+        connection.close.assert_awaited_once()
+
+
+@pytest.mark.parametrize('order', [('baseline_no_memory','full'), ('full','baseline_no_memory')])
+def test_three_arms_reset_identically_and_keep_memory_between_calls(tmp_path, monkeypatch, order):
+    """Exercise the actual lifecycle and reset SQL with an in-memory DB transport."""
+    import asyncio
+    from contextlib import asynccontextmanager
+    from datetime import datetime, timezone
+    from eval_harness import benchmark_runner as mod
+    from eval_harness.test_official_pipeline import BTC
+    from app.knowledge.context import selected_release
+    settings = Settings(_env_file=None)
+    started = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    identity = {'database':'telesale','host':'127.0.0.1','port':5432,'server_started_at':started.isoformat()}
+    memory, events, observed = ['memory from a previous evaluation'], [], []
+    knowledge = {'release_id':'k0','body':'unchanged approved knowledge'}
+    @asynccontextmanager
+    async def transaction(): yield
+    async def fetchval(sql):
+        if 'current_database' in sql: return 'telesale'
+        if 'pg_postmaster' in sql: return started
+        return False
+    async def execute(sql, *args):
+        assert 'knowledge.' not in sql and 'btc_source' not in sql
+        if sql.startswith('TRUNCATE'):
+            memory.clear()
+            events.append('reset')
+    connection = SimpleNamespace(transaction=transaction, fetchval=fetchval,
+        fetchrow=AsyncMock(side_effect=lambda sql: {'last_value': 20, 'is_called': True} if 'last_value' in sql else {'host':'127.0.0.1','port':5432}),
+        fetch=AsyncMock(return_value=[{'tablename':t} for t in
+            ('store_migrations','demo_users','store','turns','langmem_distillation_jobs')]),
+        execute=execute, close=AsyncMock())
+    async def warm(_):
+        events.append('warmup')
+        memory.append('warmup must not survive reset')
+    async def conversations(**kwargs):
+        runtime = kwargs['runtime']
+        assert memory == []
+        observed.append((kwargs['config'], runtime.memory.include_prior, selected_release()))
+        for call in ('call_1', 'call_2'):
+            events.append(call)
+            if call == 'call_2': assert memory == ['call_1']
+            memory.append(call)
+        return {'trace':{}, 'safety_issues':[]}
+    monkeypatch.setattr(mod, 'preflight_runtime', AsyncMock(return_value=identity))
+    monkeypatch.setattr(mod, 'build_runtime', lambda *a, **kw: SimpleNamespace(memory=SimpleNamespace()))
+    monkeypatch.setattr(mod, 'warm_up_configuration', warm)
+    monkeypatch.setattr(mod, 'run_configuration', conversations)
+    monkeypatch.setattr('eval_harness.turn_diagnostics.trace_execution_health', lambda _: 'healthy')
+    monkeypatch.setattr('asyncpg.connect', AsyncMock(return_value=connection))
+    async def run():
+        for index, config in enumerate((*order, 'full')):
+            if index == 2: knowledge['release_id'] = 'k1'
+            release = {'release_id':knowledge['release_id'], 'manifest_hash':'frozen-hash'}
+            await mod.execute_configuration(settings=settings, scenarios={'S':{'calls':{
+                'call_1':{}, 'call_2':{}}}}, config=config, run_id=f'arm-{index}',
+                out=tmp_path/f'arm-{index}.jsonl', btc_root=BTC, expected_database='telesale',
+                release=release, runtime=SimpleNamespace(tools=SimpleNamespace(), memory=SimpleNamespace()),
+                delivery_mode='text')
+            assert knowledge['body'] == 'unchanged approved knowledge'
+    asyncio.run(run())
+    assert events == ['warmup','reset','call_1','call_2'] * 3
+    assert observed == [(config, config == 'full', 'k0') for config in order] + [('full', True, 'k1')]

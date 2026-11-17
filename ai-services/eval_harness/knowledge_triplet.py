@@ -1,9 +1,11 @@
-"""LIVE three-arm experiment with automatic or optional pre-reviewed approval."""
+"""LIVE three-arm experiment with manual, automatic or pre-reviewed approval."""
 import argparse
 import asyncio
+import fcntl
 import hashlib
 import json
 import os
+import shlex
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -19,6 +21,8 @@ from app.mcp_servers.mcp_shared.config import database_url
 from eval_harness.knowledge_auto_review import (answer_passes, auto_review, check_review_sources,
                                                locator, retrieved_ids, validate_plan)
 from eval_harness.knowledge_automatic import MODE, review_proposals, source_catalog_digest
+from eval_harness.knowledge_manual import MODE as MANUAL_MODE, propose, collect_review
+from eval_harness.evaluation_feedback import build_feedback
 from eval_harness.official_pipeline import atomic_json
 from eval_harness.extraction_report import write_extraction_sidecar, summarize_extraction
 from eval_harness.run_official import PROJECT, _run_one, run_pair, source_snapshot_digest
@@ -83,9 +87,12 @@ def check_release_extension(previous, ready, approved):
     expected_ids = {i['id'] for i in old['items']} | {a['revision_id'] for a in approved}
     if {i['id'] for i in new['items']} != expected_ids:
         raise ExperimentError('K1 did not retain exactly the intended revisions')
+    new_items = {i['id']: i for i in new['items']}
+    if any(new_items[i['id']] != i for i in old['items']):
+        raise ExperimentError('K1 changed an existing revision snapshot')
 
 
-def comparison_report(plan, baseline, full, after, approved, release_id):
+def comparison_report(plan, baseline, full, after, approved, release_id, *, manual=False):
     if plan is None:
         indexed = {name: {locator(r): r for r in rows} for name, rows in
                    [('no_memory_k0', baseline), ('full_k0', full), ('full_k1', after)]}
@@ -105,7 +112,8 @@ def comparison_report(plan, baseline, full, after, approved, release_id):
             'target_evidence_in_k1': {'retrieved': sum(c['target_evidence_in_k1'] for c in cases),
                                       'total': len(cases)},
             'limitations': ['Target-source retrieval in K1 does not prove answer correctness or causality.',
-                           'Automatic source checks are not human review.']}
+                           ('Review decisions are recorded; independent answer correctness is not measured.' if manual
+                            else 'Automatic source checks are not human review.')]}
     arms = {name: {locator(r): r for r in rows} for name, rows in
             [('no_memory_k0', baseline), ('full_k0', full), ('full_k1', after)]}
     decisions = {a['case_id']: a for a in approved}
@@ -138,9 +146,11 @@ def comparison_report(plan, baseline, full, after, approved, release_id):
 
 def render_report(report):
     automatic = report['approval_mode'] == MODE
-    lines = ['# Knowledge experiment — ' + ('automatic approval' if automatic else 'simulated approval'), '',
+    manual = report['approval_mode'] == MANUAL_MODE
+    lines = ['# Knowledge experiment — ' + ('manual review' if manual else 'automatic approval' if automatic else 'simulated approval'), '',
         'K0 is an audited official pair. K1 is a full-only, cross-release experiment.',
-        ('Approval uses automatic source/lexical/regression checks; no human review is claimed.' if automatic else
+        ('Approval decisions, configured reviewer actor, reasons and reviewed test hashes were collected from the published K1.' if manual else
+         'Approval uses automatic source/lexical/regression checks; no human review is claimed.' if automatic else
          'Approval follows a pre-reviewed plan; this is not a human review performed during the run.'), '',
         '| Metric | No memory K0 | Full K0 | Full K1 |', '|---|---:|---:|---:|']
     arms = report['btc_metrics']
@@ -150,7 +160,7 @@ def render_report(report):
         lines.append('| ' + label + ' (%) | ' + ' | '.join(values) + ' |')
     values = [str(arms[a].get('hallucination_rate', {}).get('price_promo_only', {}).get('value', 'N/A')) for a in arms]
     lines.append('| HR price/promo (%) | ' + ' | '.join(values) + ' |')
-    if automatic:
+    if automatic or manual:
         lines.extend(['', f"Target evidence retrieved in K1: {report['gap_evidence']['target_evidence_in_k1']}.",
             'Independent gap-answer accuracy: not measured. Generated tests are not answer ground truth.',
             'Retrieval alone does not prove a correct answer or an effect caused by the new revision.'])
@@ -178,14 +188,15 @@ async def run_experiment(args, repo, worker_repo, settings):
         for key, value in state['arguments'].items():
             setattr(args, key, Path(value) if key in {'scenarios', 'btc_root'} else value)
         out = args.resume
-        plan = None if state['approval_mode'] == MODE else validate_plan(read_json(out/'review-plan.json'))
+        plan = None if state['approval_mode'] in {MODE, MANUAL_MODE} else validate_plan(read_json(out/'review-plan.json'))
     else:
         plan = validate_plan(read_json(args.approval_plan)) if args.approval_plan else None
         if plan: check_plan_scenarios(plan, args.scenarios, args.btc_root)
         out = args.out_root/(datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid4().hex[:8])
         out.mkdir(parents=True, exist_ok=False)
         if plan: atomic_json(out/'review-plan.json', plan)
-        state = {'kind': 'three_arm_knowledge_experiment', 'approval_mode': 'simulated_pre_reviewed_plan' if plan else MODE,
+        state = {'kind': 'three_arm_knowledge_experiment', 'approval_mode': ('simulated_pre_reviewed_plan' if plan else
+                MANUAL_MODE if getattr(args, 'manual_review', False) else MODE),
             'status': 'running', 'phase': 'initial', 'plan_digest': digest(plan),
             'system_boot_id': os.getenv('SYSTEM_BOOT_ID'),
             'source_digest': source_snapshot_digest(PROJECT), 'settings_digest': digest(settings.model_dump(mode='json')),
@@ -194,6 +205,12 @@ async def run_experiment(args, repo, worker_repo, settings):
         atomic_json(out/'experiment.json', state)
     def save(**updates):
         state.update(updates); atomic_json(out/'experiment.json', state)
+    lock = (out/'.resume.lock').open('a')
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock.close()
+        raise ExperimentError('This experiment is already running; wait for the current process') from None
     try:
         if state.get('system_boot_id') and state['system_boot_id'] != os.getenv('SYSTEM_BOOT_ID'):
             raise ExperimentError('Resume must use the original managed system boot; do not reset knowledge between K0 and K1')
@@ -242,6 +259,51 @@ async def run_experiment(args, repo, worker_repo, settings):
             return out
         full = trace_rows(k0/run['traces']['full']); baseline = trace_rows(k0/run['traces']['baseline_no_memory'])
         base = metadata['knowledge_release']['release_id']
+        manual = state['approval_mode'] == MANUAL_MODE
+        if manual:
+            new_proposals = 'proposals' not in state
+            if state.get('proposals_digest') and state['proposals_digest'] != sha(out/'proposals.json'):
+                raise ExperimentError('Proposal artifact changed')
+            if 'proposals' not in state:
+                async with repo.transaction() as tx:
+                    active = (await tx.get('active', 'current') or {}).get('release_id')
+                if active != base: raise ExperimentError('Active release changed since K0')
+                feedback = build_feedback(k0, btc_root=k0/'btc-release')
+                proposals = await propose(repo, worker_repo, full, feedback, actor=args.actor, run_id=out.name,
+                    timeout=args.worker_timeout, score_sha256=sha(k0/'btc_score.json'), release_id=base)
+                atomic_json(out/'proposals.json', proposals)
+                save(proposals=proposals, proposals_digest=sha(out/'proposals.json'), phase='awaiting_review')
+            if not state['proposals']['proposed']:
+                save(status='no_eligible_gaps', phase='proposed')
+                return out
+            if 'review' not in state:
+                collected = None if new_proposals else await collect_review(
+                    repo, state['proposals'], actor=args.actor, run_id=out.name, base=base)
+                if collected is None:
+                    save(status='awaiting_review', phase='awaiting_review',
+                        review_url='http://127.0.0.1:8000/knowledge?run_id='+out.name)
+                    print('[knowledge] Review/edit/reject proposals and publish K1: '+state['review_url'], flush=True)
+                    separate = state.get('workflow') == 'paired_then_published_full'
+                    resume = ([str(PROJECT/'ai-services/.venv/bin/python'), str(PROJECT/'run_knowledge_eval.py'),
+                               '--base-run', str(k0.resolve())] if separate else
+                              [str(PROJECT/'ai-services/.venv/bin/python'), '-m',
+                               'eval_harness.knowledge_triplet', '--resume', str(out.resolve())])
+                    prefix = 'AGENT_GUARDRAILS_ENABLED=true KNOWLEDGE_ENABLED=true PYTHONPATH='+shlex.quote(str(PROJECT/'ai-services')+os.pathsep+str(PROJECT))
+                    if state.get('system_boot_id'):
+                        prefix += ' SYSTEM_BOOT_ID='+shlex.quote(state['system_boot_id'])
+                    pin = getattr(settings, 'knowledge_release_id', None)
+                    if pin is not None:
+                        prefix += ' KNOWLEDGE_RELEASE_ID='+shlex.quote(pin)
+                    print(('[knowledge] Run the separate file after publication: ' if separate else
+                           '[knowledge] Resume in another terminal: ')+prefix+' '+shlex.join(resume), flush=True)
+                    return out
+                review, ready = collected
+                async with repo.transaction() as tx:
+                    previous = await tx.get('releases', base)
+                check_release_extension(previous, ready, review['approved'])
+                atomic_json(out/'review.json', review)
+                save(review=review, review_digest=sha(out/'review.json'), status='running', phase='published',
+                    k1_release={'release_id': ready['id'], 'manifest_hash': ready['manifest_hash']})
         if 'review' not in state:
             async with repo.transaction() as tx:
                 active = (await tx.get('active', 'current') or {}).get('release_id')
@@ -327,7 +389,7 @@ async def run_experiment(args, repo, worker_repo, settings):
         comparison = {'kind': 'cross_release_experiment_not_official_same_release_pair',
             'approval_mode': state['approval_mode'], 'k0_release': metadata['knowledge_release'], 'k1_release': release,
             'btc_metrics': {'no_memory_k0': before_score['baseline'], 'full_k0': before_score['system'], 'full_k1': after_score['system']},
-            'gap_evidence': comparison_report(plan, baseline, full, trace_rows(trace), review['approved'], release['release_id']),
+            'gap_evidence': comparison_report(plan, baseline, full, trace_rows(trace), review['approved'], release['release_id'], manual=manual),
             'review': review, 'k0_run': str(k0), 'k1_trace_sha256': sha(trace),
             'k1_score_sha256': sha(score_path), 'extraction_status': {
                 'k0': run.get('extraction_status', 'needs_review'), 'k1': extraction['extraction_status']}}
@@ -339,6 +401,8 @@ async def run_experiment(args, repo, worker_repo, settings):
         save(status='failed', error_type=type(exc).__name__)
         print(f'[knowledge] stopped ({type(exc).__name__}); checkpoint: {out}/experiment.json', flush=True)
         raise
+    finally:
+        lock.close()
 
 
 def main():
@@ -380,8 +444,10 @@ def main():
             out = await run_experiment(args, repo, worker, Settings())
             print(f"{read_json(out/'experiment.json')['status']}: {out}/experiment.json")
             if (out/'comparison.md').exists(): print((out/'comparison.md').read_text())
+            if read_json(out/'experiment.json')['status'] == 'awaiting_review':
+                raise SystemExit(3)
             if read_json(out/'experiment.json')['status'] != 'complete':
-                print('No eligible gaps: C was not run; inspect review.json. No improvement is claimed.')
+                print('No eligible gaps: C was not run; inspect proposals.json/review.json. No improvement is claimed.')
                 raise SystemExit(2)
         finally:
             await repo.close(); await worker.close()

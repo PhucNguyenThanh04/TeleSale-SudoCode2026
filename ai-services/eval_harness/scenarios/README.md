@@ -82,6 +82,7 @@ PYTHONPATH=ai-services:. ai-services/.venv/bin/python -m eval_harness.m1_accepta
   dataset ai-services/eval_harness/scenarios --btc-root ../BTC-Data-Vong1-TEAMS
 ```
 
-Chạy eval thật cần scorer BTC patch tháng 11 để so khớp mã đơn động; runner
-chính thức xử lý patch bằng prepare_btc_release. Kiểm offline không chứng minh
+Chạy eval thật cần gói BTC đầy đủ chứa scorer đã cập nhật để so khớp mã đơn động;
+runner tạo snapshot trực tiếp từ `--btc-root` bằng prepare_btc_release, không
+cần thư mục patch riêng. Kiểm offline không chứng minh
 model đạt TSR/CCR/RQR. Chưa gọi model, import/reset DB hoặc chạy eval live.

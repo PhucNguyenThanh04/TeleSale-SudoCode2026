@@ -36,6 +36,9 @@ class MemoryStore(Protocol):
     async def read_turn_status(self, session_id: str, customer_id: str | None,
                                client_msg_id: str) -> dict: ...
 
+    async def read_timeline(self, session_id: str, customer_id: str | None, on: str,
+                            *, offset: int = 0, limit: int = 10, crm_sessions=()) -> dict: ...
+
     async def commit_turn(self, session_id: str, customer_id: str | None,
                           customer_text: str, agent_text: str, on: str, channel: str,
                           client_msg_id: str,
@@ -76,6 +79,12 @@ class MCPMemoryStore:
         return await self.gateway.invoke("memory.turn_status", {
             "session_id": session_id, "customer_id": self._id(customer_id),
             "client_msg_id": client_msg_id})
+
+    async def read_timeline(self, session_id: str, customer_id: str | None, on: str,
+                            *, offset: int = 0, limit: int = 10, crm_sessions=()) -> dict:
+        return await self.gateway.invoke('memory.timeline', {
+            'session_id': session_id, 'customer_id': self._id(customer_id), 'on': on,
+            'offset': offset, 'limit': limit, 'crm_sessions': list(crm_sessions)})
 
     async def commit_turn(self, session_id: str, customer_id: str | None,
                           customer_text: str, agent_text: str, on: str, channel: str,

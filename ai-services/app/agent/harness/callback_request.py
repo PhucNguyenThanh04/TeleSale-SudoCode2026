@@ -6,9 +6,12 @@ from app.mcp_servers.mcp_shared.commerce_rules import _search_text
 
 def callback_request(text: str, on: date) -> str | None:
     folded = _search_text(text)
+    request_clauses = ' '.join(clause for clause in re.split(r'[,;.!]', folded)
+                              if re.search(r'\bgoi\b|dat lich|\bhen\b', clause))
     if (not re.search(r'(?:dat lich|hen|goi lai)', folded)
             or not re.search(r'goi lai', folded)
-            or re.search(r'\bneu\b|\b(?:khong|chua|dung)\b|\?|\bhoac\b|\bhay\b', folded)):
+            or re.search(r'\bneu\b|\?|\bhoac\b|\bhay\b|\bdung\b', folded)
+            or re.search(r'\b(?:khong|chua|dung)\b', request_clauses)):
         return None
     dates = re.findall(r'\b(\d{1,2})/(\d{1,2})/(\d{4})\b', folded)
     relative = on + timedelta(days=1) if 'ngay mai' in folded else on if 'hom nay' in folded else None

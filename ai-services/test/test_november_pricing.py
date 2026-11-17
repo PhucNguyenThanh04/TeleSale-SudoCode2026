@@ -8,15 +8,14 @@ from app.mcp_servers.mcp_shared import commerce_rules
 
 ROOT = Path(__file__).resolve().parents[2]
 BTC = ROOT.parent / 'BTC-Data-Vong1-TEAMS'
-PATCH = ROOT / 'BTC-cap-nhat-11-2026'
 
 
 @pytest.fixture
 def reference():
-    # November is a partial patch: load its exact code against the original catalog.
+    # The supplied BTC package includes the November reference code and catalog.
     module = ModuleType('november_mock')
     module.__file__ = str(BTC / 'eval/mock_tools.py')
-    source = PATCH / 'eval/mock_tools.py'
+    source = BTC / 'eval/mock_tools.py'
     exec(compile(source.read_bytes(), str(source), 'exec'), module.__dict__)
     return module
 

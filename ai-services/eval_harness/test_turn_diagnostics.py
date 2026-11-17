@@ -107,7 +107,9 @@ def test_actual_model_exception_is_observed_without_exception_message():
          patch('app.agent.harness.agent_nodes.prompt_context',return_value={}), \
          patch('app.agent.harness.agent_nodes.prompt_messages',return_value=[]):
         with capture_diagnostic_events() as events:
-            result=asyncio.run(node.run_agent({'safe_text':'xin chào','tool_calls':[]}))
+            from datetime import date
+            result=asyncio.run(node.run_agent({'safe_text':'xin chào','tool_calls':[],
+                'request':SimpleNamespace(on=date(2026,10,15))}))
     assert result['agent_draft']==FALLBACK
     assert {'step':'run_agent','event':'model_failed','error_type':'TimeoutError'} in events
     assert any(e.get('phase') == 'model_invocation' and e.get('error_type') == 'TimeoutError' for e in events)
