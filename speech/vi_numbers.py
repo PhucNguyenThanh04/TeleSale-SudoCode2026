@@ -182,6 +182,7 @@ _SCALE = {"nghìn": 10**3, "ngàn": 10**3, "triệu": 10**6, "tỷ": 10**9, "t�
 _LINH = {"linh", "lẻ"}
 _CONTINUES = {"trăm", "mươi", "chục", "phẩy", "rưỡi"} | set(_SCALE) | set(_COLLOQUIAL_UNIT)
 _SMALL_NUMBER_TOKEN = re.compile(r"\d{1,3}")
+_GROUPED_NUMBER_TOKEN = re.compile(r"\d{1,3}(?:\.\d{3})+")
 
 # Một từ số đứng riêng ("ba", "mười") chỉ đổi sang chữ số khi có đơn vị phía sau hoặc ngữ cảnh phía trước;
 # nếu không, "ba" (bố), "năm nay", "một màng lọc" sẽ bị đổi sai.
@@ -265,6 +266,9 @@ def _cardinal(t: list[str], i: int) -> tuple[int | float, int, bool] | None:
             if (j < n and _SMALL_NUMBER_TOKEN.fullmatch(t[j])
                     and (j + 1 >= n or (t[j + 1] not in _CONTINUES and t[j + 1] not in UNIT_AFTER))):
                 return total + int(t[j]) * scale // 10 ** len(t[j]), j + 1, True
+            # Whisper viết "một triệu chín trăm chín mươi nghìn" thành "1 triệu 990.000": cộng phần lẻ vào.
+            if j < n and _GROUPED_NUMBER_TOKEN.fullmatch(t[j]) and int(t[j].replace(".", "")) < scale:
+                return total + int(t[j].replace(".", "")), j + 1, True
             following = _group(t, j, after_scale=True)
             if following is None:
                 return total, j, True
