@@ -234,6 +234,18 @@ class MemoryRepo:
             LIMIT $2''', customer_id, maximum)
         return [dict(row) for row in rows]
 
+    async def timeline_sessions(self, conn, customer_id: str, on) -> list[dict]:
+        rows = await conn.fetch('''SELECT t.session_id, MAX(t.on_date) AS on_date,
+            (array_agg(t.channel ORDER BY t.turn_no DESC))[1] AS channel,
+            (array_agg(j.status ORDER BY t.turn_no DESC))[1] AS memory_status,
+            (array_agg(j.verified_outcome ORDER BY t.turn_no DESC))[1] AS outcome
+            FROM runtime.turns t LEFT JOIN runtime.langmem_distillation_jobs j
+              ON j.session_id=t.session_id AND j.source_turn_id=t.client_msg_id
+              AND j.customer_id=t.customer_id
+            WHERE t.customer_id=$1 AND t.on_date<=$2
+            GROUP BY t.session_id ORDER BY MAX(t.on_date) DESC, t.session_id DESC''', customer_id, on)
+        return [dict(row) for row in rows]
+
     async def variant_details(self, conn, sku: str) -> dict | None:
         row = await conn.fetchrow("""SELECT variant_sku,parent_sku,size_label AS size,color
             FROM btc_source.variants WHERE variant_sku=$1""", sku)

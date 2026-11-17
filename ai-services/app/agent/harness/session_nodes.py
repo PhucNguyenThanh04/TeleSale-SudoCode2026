@@ -27,9 +27,10 @@ def _mentions_children(text: str) -> bool:
 def product_question_fields(text: str) -> dict[str, str]:
     from app.mcp_servers.mcp_shared.commerce_rules import _search_text
     folded = _search_text(text)
-    patterns = {'stock': r'con hang|het hang|co (?:san )?hang|ton kho|nhap lai',
+    patterns = {'stock': r'con hang|het hang|co (?:san )?hang|co san trong kho|ton kho|nhap lai',
                 'child_safe_lock': r'khoa (?:an toan )?tre em',
-                'app': r'\bapp\b|dieu khien.{0,20}dien thoai'}
+                'app': r'\bapp\b|dieu khien.{0,20}dien thoai',
+                'tds': r'\btds\b'}
     return {key: pattern for key, pattern in patterns.items() if re.search(pattern, folded)}
 
 
@@ -82,6 +83,11 @@ def safe_product_reply(state: TurnState) -> str | None:
             return None
         parts.append(f"{label} hiện {'còn hàng' if calls[-1]['result']['in_stock'] else 'hết hàng'}.")
     attrs = item.get('attributes') or {}
+    if 'tds' in fields:
+        ppm = attrs.get('tds_output_ppm')
+        parts.append(f"Chỉ số TDS đầu ra của {item['name']} theo catalog là {ppm:g} ppm."
+                     if type(ppm) in (int, float) and 0 <= ppm < float('inf')
+                     else f"Em chưa có thông tin xác minh chỉ số TDS đầu ra của {item['name']}.")
     if 'child_safe_lock' in fields:
         lock = attrs.get('child_safe_lock')
         parts.append(f"{item['name']} {'có' if lock else 'không có'} khóa trẻ em."
@@ -91,8 +97,8 @@ def safe_product_reply(state: TurnState) -> str | None:
         parts.append(f"Tính năng theo catalog của {item['name']}: {features}."
                      if isinstance(features, str) and re.search(r'(?i)\bapp\b', features)
                      else f"Em chưa có thông tin xác minh về app điều khiển của {item['name']}.")
-    from app.mcp_servers.mcp_shared.commerce_rules import _search_text
-    if re.search(r'\bgia\b|bao nhieu', _search_text(state.get('safe_text', ''))):
+    from app.mcp_servers.mcp_shared.consultation_followup import product_price_requested
+    if product_price_requested(state.get('safe_text', '')):
         price = safe_quote_reply(state)
         if price:
             parts.append(price)
@@ -219,7 +225,8 @@ def transaction_selection_mismatch(state: TurnState) -> bool:
 
 def safe_transaction_reply(state: TurnState) -> str | None:
     """Describe a completed write without causing another side effect."""
-    writes = [c for c in state.get("tool_calls", []) if c.get("name") == "order.create"]
+    writes = [c for c in state.get("tool_calls", []) if c.get("name") == "order.create"
+              or c.get('name') == 'order.update' and c.get('args', {}).get('action') in {'exchange_size', 'exchange_product'}]
     if not writes:
         return None
     uncertain = "Dạ, trạng thái đơn hàng cần được kiểm tra lại trước khi xác nhận ạ."
@@ -227,6 +234,14 @@ def safe_transaction_reply(state: TurnState) -> str | None:
         return uncertain
     call = writes[0]
     result = call.get("result", {})
+    if call['name'] == 'order.update':
+        args = call.get('args', {})
+        if ('error' in result or result.get('status') != 'pickup_scheduled'
+                or not isinstance(result.get('order_id'), str)
+                or any(result.get(k) != args.get(k) for k in ('order_id', 'action', 'new_variant_sku'))):
+            return uncertain
+        return mask_pii(f"Dạ, em đã ghi nhận yêu cầu đổi biến thể sang {result['new_variant_sku']} "
+                        f"cho đơn {result['order_id']}. Yêu cầu đang chờ thu hồi hàng cũ ạ.")
     if result.get("status") != "created" or not isinstance(result.get("order_id"), str):
         if result.get("error") in {"out_of_stock", "price_mismatch", "variant_selection_required",
                                    "invalid_payment", "invalid_qty", "cod_limit_exceeded"}:
@@ -283,7 +298,8 @@ def safe_basket_reply(state: TurnState) -> str | None:
         return 'Em chưa xác minh được khả năng đáp ứng thời hạn giao hàng mình yêu cầu ạ.'
     if reason == 'budget_basis_required':
         return 'Mức ngân sách mình nêu là cho mỗi sản phẩm hay tổng cả đơn ạ?'
-    answer = f"{len(units)} sản phẩm {', '.join(labels)} có tổng giá {total:,}đ.".replace(',', '.')
+    amount = f'{total:,}'.replace(',', '.')
+    answer = f"{len(units)} sản phẩm {', '.join(labels)} có tổng giá {amount}đ."
     if derive_consultation(state).purchase_intent:
         answer += (' Mình muốn thanh toán bằng phương thức nào ạ?' if args is None else
                    ' Mình đồng ý báo giá này để em lên đơn không ạ?')
@@ -313,6 +329,8 @@ def safe_quote_reply(state: TurnState) -> str | None:
     from app.agent.harness.policy import resolve_product_selection
     selected=resolve_product_selection(state,{'sku':focus}) if focus else None
     allowed={focus,selected.sku if selected and selected.status=='resolved' else None}
+    if selected and selected.status == 'resolved' and selected.sku != focus:
+        allowed = {selected.sku}
     quotes=[c for c in quotes if (not focus or c.get('args',{}).get('sku') in allowed) and c.get('args',{}).get('qty',1)==qty]
     if not quotes or len({c["args"]["sku"] for c in quotes}) != 1:return None
     quote = quotes[-1]
@@ -323,6 +341,11 @@ def safe_quote_reply(state: TurnState) -> str | None:
     from app.mcp_servers.mcp_shared.consultation import catalog_items,purchase_block_reason
     items=catalog_items(state)
     label=items.get(focus,items.get(sku,{})).get('name',sku)
+    if selected and selected.status == 'resolved':
+        parent = items.get(selected.parent_sku, {})
+        variant = next((v for v in parent.get('variants', []) if v.get('variant_sku') == sku), {})
+        label += ''.join(f' {cue} {variant[key]}' for key, cue in
+                         (('size', 'size'), ('color', 'màu')) if variant.get(key) is not None)
     answer=f"Dạ, giá hiện tại của {label} là {price:,}đ ạ.".replace(',', '.')
     d=derive_consultation(state)
     if d.purchase_intent and purchase_block_reason(state,{'sku':sku,'qty':qty,'price_vnd':price}) in {'offer_confirmation_required','budget_consent_required'}:
@@ -341,15 +364,18 @@ def safe_consultation_reply(state: TurnState) -> str | None:
     status_reply = safe_order_status_reply(state)
     if status_reply:
         return status_reply
+    basket_reply = safe_basket_reply(state)
+    from app.mcp_servers.mcp_shared.commerce_rules import _search_text
+    if basket_reply and re.search(r'tong (?:gia|tien)|gio hang', _search_text(state.get('safe_text', ''))):
+        return basket_reply
     product_reply = safe_product_reply(state)
     if product_reply:
         return product_reply
     from app.mcp_servers.mcp_shared.consultation import (
-        derive_consultation, consultation_missing_fields, current_quote, requested_quantity, _search_text)
+        derive_consultation, consultation_missing_fields, current_quote, requested_quantity)
     decision = derive_consultation(state)
     if decision.next_action == 'pause':
         return 'Dạ, em ghi nhận mình chưa mua lúc này. Khi cần mình liên hệ lại nhé.'
-    basket_reply = safe_basket_reply(state)
     if basket_reply:
         return basket_reply
     if decision.purchase_intent:
@@ -467,6 +493,7 @@ def safe_followup_reply(state: dict, task=None) -> str | None:
         topic = (r'\bhoàn tiền\b' if 'hoan tien' in query else
                  r'\bbảo hành mở rộng\b' if 'bao hanh' in query and re.search(r'mo rong|gia han', query) else
                  r'\bbảo hành\b' if 'bao hanh' in query else
+                 r'\bđiều kiện đổi trả\b' if re.search(r'tem mac|tem nhan', query) else
                  r'\bđổi\s+(?:trả|size|sản phẩm|mới)\b' if 'doi' in query else
                  r'\bphí\b' if 'phi' in query else None)
         if topic and re.search(r'phi (?:giao hang|van chuyen|ship)', query):
@@ -484,6 +511,9 @@ def safe_followup_reply(state: dict, task=None) -> str | None:
             # Document titles can mention refunds while the retrieved section
             # actually concerns COD confirmation or an unrelated rule.
             section = content.split('\n\n', 1)[-1]
+            # Chunking instructions belong to the source document, not customer advice.
+            section = '\n\n'.join(block for block in section.split('\n\n')
+                                    if not ('`chunk_id`' in block and 'Recall@k' in block))
             if topic and not re.search(topic, section, re.IGNORECASE):
                 continue
             if not re.search(r'\d|mien phi|khong bao hanh|khong ap dung|dieu kien|loi ky thuat', folded):
@@ -498,6 +528,9 @@ def safe_followup_reply(state: dict, task=None) -> str | None:
         if not paragraphs or len(' '.join(paragraphs)) > 1400:
             return 'Em chưa xác minh được thông tin chính sách đủ rõ để trả lời câu hỏi này. Mình cho em làm rõ điều kiện cần áp dụng nhé?'
         answer = 'Theo thông tin chính sách đã kiểm tra: ' + ' '.join(paragraphs)
+        if (re.search(r'thu hoi|buu ta', query) and re.search(r'may ngay|bao lau|thoi gian', query)
+                and not re.search(r'thu hoi|buu ta', _search_text(' '.join(paragraphs)))):
+            answer += ' Em chưa có thông tin xác minh thời gian bưu tá qua thu hồi sản phẩm.'
         if product_price_requested(state.get('safe_text', '')):
             price = safe_quote_reply(state)
             if price:

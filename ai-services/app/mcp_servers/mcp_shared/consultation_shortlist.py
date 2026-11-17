@@ -26,6 +26,10 @@ def _number(value):
 
 def consultation_active(state):
     decision = derive_consultation(state)
+    from app.mcp_servers.mcp_shared.consultation_followup import stock_requested, product_price_requested
+    text = state.get('safe_text', '')
+    if stock_requested(text) or product_price_requested(text) and re.search(r'\?|bao nhieu|kiem tra|bao gia', _search_text(text)):
+        return True
     if decision.next_action == 'pause':
         return False
     text = _search_text(state.get('safe_text', ''))

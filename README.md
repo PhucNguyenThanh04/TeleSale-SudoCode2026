@@ -1,11 +1,34 @@
 # TeleSale SudoCode 2026
 
+**Eval RAG độc lập:** xem [runner retrieval, generation và chấm offline](ai-services/rag_eval/README.md).
+Không chạy chung eval hội thoại; model/embedding thật chỉ chạy khi có `--allow-live`.
+
+**Eval ba cấu hình, duyệt knowledge trên frontend:** xem
+[eval thường hai cấu hình → duyệt/phát hành → file Full K1 riêng](ai-services/eval_harness/KNOWLEDGE_TRIPLET.md#luồng-duyệt-trên-frontend).
+
 **Bản nộp M1:** xem [hướng dẫn máy mới và lệnh BTC chấm chéo](docs/submission-runbook.md).
 CLI `run_eval.py` mặc định chat text; cần cấu hình model/Knowledge và không chạy
-đồng thời eval với demo trên cùng DB. Managed startup bên dưới cho phép dùng lại
-DB đã nạp BTC, với operational state sạch cho từng lượt.
+chat hoặc eval khác đồng thời trên cùng DB. Eval dùng hạ tầng đang chạy, reset
+runtime/memory trước mỗi cấu hình và giữ nguyên knowledge/BTC.
 
-**Khởi động demo/eval sạch, tự tạo/reset bảng cả backend và AI:**
+Một lệnh chạy **full + baseline → trace → scorer BTC → bảng so sánh và nghiệm thu
+hội thoại M1** (LIVE, cần cho phép gọi model/reset DB eval riêng):
+
+```bash
+PYTHONPATH=.:ai-services ai-services/.venv/bin/python -m eval_harness.run_official --btc-root ../BTC-Data-Vong1-TEAMS --scenarios ai-services/eval_harness/scenarios --expected-database telesale_eval_m1
+```
+
+Mặc định text; có thể đính kèm báo cáo ASR BTC/team đã lưu. Xem [lệnh và cách đọc
+kết quả](ai-services/eval_harness/README.md#lệnh-nghiệm-thu-hội-thoại-m1).
+`validated` không đồng nghĩa đã đạt M1; bảng cuối ghi rõ các điều kiện chưa đạt.
+
+Lệnh ngắn tương đương, không gọi Docker hoặc khởi động lại hệ thống:
+
+```bash
+AGENT_GUARDRAILS_ENABLED=true KNOWLEDGE_ENABLED=true python3 run_system.py eval --expected-database telesale -- --btc-root ../BTC-Data-Vong1-TEAMS --scenarios ai-services/eval_harness/scenarios
+```
+
+**Khởi động demo mới, tự tạo/reset bảng cả backend và AI:**
 [quy trình mới](docs/fresh-system-startup.md). Sau khi nạp BTC một lần:
 
 ```bash

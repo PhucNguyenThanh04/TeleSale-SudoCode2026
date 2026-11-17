@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "label_source": "synthetic_fixture_not_model_or_human_review",
+  "cases": [
+    {
+      "id": "fixture-1",
+      "scenario_id": "SYNTHETIC-TOOLS",
+      "call": "call_1",
+      "turn": 1,
+      "user_text_sha256": "c0f5f85f2b42f8995ad371dc20c386fdab3ebb7fc7149eadb546e23dd929987f",
+      "scored_tools": [
+        "inventory.check",
+        "order.create",
+        "order.update"
+      ],
+      "expected_calls": [
+        {
+          "name": "inventory.check",
+          "args_match": {
+            "sku": "SKU-DEMO-42-XAM"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fixture-2",
+      "scenario_id": "SYNTHETIC-TOOLS",
+      "call": "call_1",
+      "turn": 2,
+      "user_text_sha256": "18b6e1d577f5c3679602a39d2831b19b8e2d9cddbb8a929e76da78c3cae31551",
+      "scored_tools": [
+        "inventory.check",
+        "order.create",
+        "order.update"
+      ],
+      "expected_calls": []
+    },
+    {
+      "id": "fixture-3",
+      "scenario_id": "SYNTHETIC-TOOLS",
+      "call": "call_1",
+      "turn": 3,
+      "user_text_sha256": "fc095e1cf9172b968630769526e9006259ebd35024e9071c847a9500c7c7eed9",
+      "scored_tools": [
+        "inventory.check",
+        "order.create",
+        "order.update"
+      ],
+      "expected_calls": [
+        {
+          "name": "order.update",
+          "args_match": {
+            "order_id": "DEMO-ORDER",
+            "action": "exchange_size",
+            "new_variant_sku": "SKU-DEMO-41-DEN"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fixture-4",
+      "scenario_id": "SYNTHETIC-TOOLS",
+      "call": "call_1",
+      "turn": 4,
+      "user_text_sha256": "ab01c65567413f3b4216e287b715f636177bd8e085e91a1ea477286609988e16",
+      "scored_tools": [
+        "inventory.check",
+        "order.create",
+        "order.update"
+      ],
+      "expected_calls": [
+        {
+          "name": "inventory.check",
+          "args_match": {
+            "sku": "SKU-DEMO-42-XAM"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fixture-5",
+      "scenario_id": "SYNTHETIC-TOOLS",
+      "call": "call_1",
+      "turn": 5,
+      "user_text_sha256": "c65509e516f26b9de4fcffb7b2d80da8fede95ab325868cc7f07cc7f29e15b03",
+      "scored_tools": [
+        "inventory.check",
+        "order.create",
+        "order.update"
+      ],
+      "expected_calls": [
+        {
+          "name": "inventory.check",
+          "args_match": {
+            "sku": "SKU-DEMO-42-XAM"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fixture-6",
+      "scenario_id": "SYNTHETIC-TOOLS",
+      "call": "call_1",
+      "turn": 6,
+      "user_text_sha256": "ea3419c4cb6352e4d64a5a0bff4ded842e0b2d9ae1ca6ca144a8cf35c7f10212",
+      "scored_tools": [
+        "inventory.check",
+        "order.create",
+        "order.update"
+      ],
+      "expected_calls": []
+    }
+  ]
+}

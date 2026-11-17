@@ -3,12 +3,13 @@ import asyncio
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
 from app.auth import authenticated_socket, bind_start, current_user
 from app.schemas.chat import AITextTurnResponse
 from app.schemas.voice import Start
+from app.schemas.timeline import TimelineQuery, TimelineResponse
 
 router = APIRouter()
 
@@ -31,6 +32,28 @@ class MemoryUpdate(BaseModel):
     turn_saved: bool = False
     status: Literal['pending', 'completed', 'failed', 'not_applicable', 'unavailable'] = 'unavailable'
     changes: list[MemoryChange] = Field(default_factory=list)
+
+
+@router.post('/api/chat/timeline', response_model=TimelineResponse)
+async def memory_timeline(query: TimelineQuery, request: Request, response: Response,
+                          user=Depends(current_user)):
+    try:
+        start = bind_start(Start(event='start', channel=query.channel,
+                                 channel_identity='account-bound', on=query.on), user)
+    except ValueError:
+        raise HTTPException(403, 'Channel is not available for this account') from None
+    try:
+        upstream = await request.app.state.ai_http.post('/v1/chat/sessions/timeline', json={
+            **query.model_dump(mode='json'), 'channel_identity': start.channel_identity})
+        upstream.raise_for_status()
+        result = TimelineResponse.model_validate(upstream.json())
+        if (result.session_id != query.session_id or result.timeline.offset != query.offset
+                or result.timeline.limit != query.limit):
+            raise ValueError('Timeline identity or pagination changed')
+    except Exception:
+        raise HTTPException(503, 'Chưa tải được lịch sử tương tác. Vui lòng thử lại.') from None
+    response.headers['Cache-Control'] = 'no-store'
+    return result
 
 
 @router.websocket('/api/chat/stream')

@@ -20,9 +20,24 @@ from test_voice_browser import browser
 @pytest.fixture
 def text_site():
     calls = []
+    timeline = {'fail': False, 'status': 'available', 'queries': [], 'items': [
+        {'session_id': f'past-{n}', 'on': f'2026-10-{n:02}',
+         'channel': 'zalo_oa' if n % 2 else 'hotline',
+         'summary': 'Khách <img src=x onerror=alert(1)> cần hỏi người nhà' if n == 12 else f'Tư vấn lần {n}',
+         'outcome': 'hen_goi_lai', 'summary_status': 'ready'} for n in range(12, 0, -1)]}
 
     async def handler(request):
         payload = json.loads(request.content)
+        if request.url.path == '/v1/chat/sessions/timeline':
+            timeline['queries'].append(payload)
+            if timeline['fail']:
+                return httpx.Response(503, text='PRIVATE UPSTREAM ERROR')
+            items = timeline['items'] if timeline['status'] == 'available' else []
+            offset, limit = payload['offset'], payload['limit']
+            end = min(offset + limit, len(items))
+            return httpx.Response(200, json={'session_id': payload['session_id'], 'timeline': {
+                'status': timeline['status'], 'items': items[offset:end], 'offset': offset,
+                'limit': limit, 'total': len(items), 'next_offset': end if end < len(items) else None}})
         if request.url.path == '/v1/chat/sessions/prepare':
             return httpx.Response(200, json={'session_id': payload['session_id'],
                 'call_brief': {'is_returning': True, 'n_previous_sessions': 1,
@@ -70,7 +85,7 @@ def text_site():
         assert time.monotonic() < deadline
         time.sleep(.02)
     try:
-        yield f'http://127.0.0.1:{port}/chat', calls
+        yield f'http://127.0.0.1:{port}/chat', calls, timeline
     finally:
         server.should_exit = True
         thread.join(5)
@@ -78,7 +93,7 @@ def text_site():
 
 
 def test_chat_shows_brief_and_real_memory_updates_without_microphone(text_site, browser):
-    url, calls = text_site
+    url, calls, _ = text_site
     command, evaluate = browser
     command('Page.enable')
     command('Page.navigate', url=url)
@@ -133,3 +148,109 @@ def test_chat_shows_brief_and_real_memory_updates_without_microphone(text_site, 
         assert time.monotonic() < deadline
         time.sleep(.02)
     assert evaluate("fetch('/api/auth/me').then(r => r.status)") == 401
+
+
+def open_text_timeline(text_site, browser):
+    url, calls, timeline = text_site
+    command, evaluate = browser
+    command('Network.enable')
+    command('Network.setBlockedURLs', urls=['https://*'])  # local UI only; no external fonts
+    command('Page.enable')
+    command('Page.navigate', url=url)
+    deadline = time.monotonic() + 10
+    while not evaluate("!!document.querySelector('#login-form')"):
+        assert time.monotonic() < deadline
+        time.sleep(.02)
+    evaluate("document.querySelector('#username').value='offline'; document.querySelector('#password').value='browser-password'; document.querySelector('#login-form').requestSubmit()")
+    while not evaluate("!!document.querySelector('#identity')?.readOnly"):
+        assert time.monotonic() < deadline
+        time.sleep(.02)
+    command('Page.navigate', url=url)  # successful login currently opens the voice page
+    while not evaluate("!!document.querySelector('#timeline-items') && !!document.querySelector('#identity')?.readOnly"):
+        assert time.monotonic() < deadline
+        time.sleep(.02)
+    evaluate("""window.waitFor = predicate => new Promise((resolve, reject) => {
+      const started = Date.now(); const poll = () => {
+        if (predicate()) resolve(true);
+        else if (Date.now() - started > 5000) reject(Error(document.body.innerText));
+        else setTimeout(poll, 20);
+      }; poll();
+    }); document.querySelector('#scenario-date').value='2026-10-15';""")
+    assert evaluate("!!document.querySelector('#timeline-items')")
+    evaluate("document.querySelector('#connect').click(); waitFor(() => !document.querySelector('#send').disabled)")
+    return command, evaluate, calls, timeline
+
+
+def test_timeline_browser_pages_refreshes_cross_channel_and_survives_reload(text_site, browser, tmp_path):
+    command, js, calls, timeline = open_text_timeline(text_site, browser)
+    js("waitFor(() => document.querySelectorAll('#timeline-items li').length === 10)")
+    assert js("""(() => {
+      const panel = document.querySelector('#timeline-panel').getBoundingClientRect();
+      const container = document.querySelector('.conversation').getBoundingClientRect();
+      return panel.bottom <= container.bottom && panel.width >= container.width - 40;
+    })()""")
+    assert calls == []
+    assert 'Zalo OA' in js("document.querySelector('#timeline-items').innerText")
+    assert js("document.querySelectorAll('#timeline-items img').length") == 0
+    js("document.querySelector('#timeline-more').click(); waitFor(() => document.querySelectorAll('#timeline-items li').length === 12)")
+    assert js("document.querySelector('#timeline-more').hidden")
+    timeline['items'][0]['summary'] = 'Đã cập nhật sau lượt chat'
+    js("document.querySelector('#text').value='Xin tư vấn'; document.querySelector('#chat-form').requestSubmit(); waitFor(() => document.querySelector('#timeline-items').innerText.includes('Đã cập nhật sau lượt chat'))")
+    assert len(calls) == 1
+    old_session = timeline['queries'][-1]['session_id']
+    js("document.querySelector('#end').click(); waitFor(() => !document.querySelector('#connect').disabled)")
+    js("document.querySelector('#channel').value='zalo_oa'; document.querySelector('#channel').dispatchEvent(new Event('change')); document.querySelector('#connect').click(); waitFor(() => document.querySelectorAll('#timeline-items li').length === 10)")
+    assert timeline['queries'][-1]['session_id'] != old_session
+    assert timeline['queries'][-1]['channel_identity'] == USER['zalo_id']
+    assert len(calls) == 1
+    # Full page reload still fetches persistent server history, not browser-local items.
+    command('Page.navigate', url=text_site[0])
+    deadline = time.monotonic() + 5
+    while not js("!!document.querySelector('#identity')?.readOnly"):
+        assert time.monotonic() < deadline
+        time.sleep(.02)
+    js("document.querySelector('#scenario-date').value='2026-10-15'; document.querySelector('#connect').click()")
+    deadline = time.monotonic() + 5
+    while not js("document.querySelectorAll('#timeline-items li').length === 10"):
+        assert time.monotonic() < deadline
+        time.sleep(.02)
+    assert 'Đã cập nhật sau lượt chat' in js("document.querySelector('#timeline-items').innerText")
+    import base64
+    (tmp_path/'timeline.png').write_bytes(base64.b64decode(command('Page.captureScreenshot', captureBeyondViewport=True)['data']))
+
+
+def test_timeline_browser_error_retry_empty_and_stale_response(text_site, browser):
+    text_site[2]['fail'] = True
+    _, js, calls, timeline = open_text_timeline(text_site, browser)
+    js("waitFor(() => document.querySelector('#timeline-status').textContent.includes('Chưa tải được'))")
+    assert js("document.querySelectorAll('#timeline-items li').length") == 0
+    assert js("document.querySelector('#send').disabled") is False
+    timeline['fail'] = False
+    js("document.querySelector('#timeline-reload').click(); waitFor(() => document.querySelectorAll('#timeline-items li').length === 10)")
+    js("""const originalFetch = window.fetch; let holdOnce = true;
+      window.fetch = (url, options) => {
+        if (url === '/api/chat/timeline' && holdOnce) {
+          holdOnce = false; const request = JSON.parse(options.body);
+          return new Promise(resolve => window.releaseOldTimeline = () => resolve(new Response(JSON.stringify({
+            session_id: request.session_id, timeline: {status:'available',offset:0,limit:10,total:1,next_offset:null,
+              items:[{session_id:'old',on:'2026-10-01',channel:'hotline',summary:'STALE_OLD_SESSION',outcome:'khac',summary_status:'ready'}]}
+          }), {status:200})));
+        }
+        return originalFetch(url, options);
+      }; document.querySelector('#timeline-reload').click(); waitFor(() => !!window.releaseOldTimeline);""")
+    js("document.querySelector('#text').value='Chat khi lịch sử đang tải'; document.querySelector('#chat-form').requestSubmit(); waitFor(() => document.querySelectorAll('.message.agent').length === 1 && !document.querySelector('#send').disabled)")
+    assert len(calls) == 1  # pending history fetch never blocks a chat turn
+    js("""(async () => {
+      document.querySelector('#end').click();
+      await waitFor(() => !document.querySelector('#connect').disabled);
+      document.querySelector('#connect').click();
+      await waitFor(() => document.querySelectorAll('#timeline-items li').length === 10);
+    })()""")
+    js("releaseOldTimeline(); new Promise(resolve => setTimeout(resolve,100))")
+    assert 'STALE_OLD_SESSION' not in js("document.querySelector('#timeline-items').innerText")
+    timeline['status'] = 'not_applicable'
+    js("document.querySelector('#timeline-reload').click(); waitFor(() => document.querySelector('#timeline-status').textContent.includes('Chưa xác minh'))")
+    assert js("document.querySelectorAll('#timeline-items li').length") == 0
+    timeline['status'], timeline['items'] = 'available', []
+    js("document.querySelector('#timeline-reload').click(); waitFor(() => document.querySelector('#timeline-status').textContent.includes('Chưa có tương tác'))")
+    assert len(calls) == 1

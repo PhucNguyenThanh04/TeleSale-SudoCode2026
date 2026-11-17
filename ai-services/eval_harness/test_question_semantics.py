@@ -7,7 +7,7 @@ from eval_harness.extractor import extract_questions
     ("Mẫu có khóa trẻ em cho bé nhà mình, chị đã trao đổi với anh nhà chưa ạ?", ["blocker"]),
     ("Phòng 28m2 và nhà có trẻ nhỏ. Mình đã cân nhắc xong chưa ạ?", ["blocker"]),
     ("Nhà mình có trẻ nhỏ không ạ?", ["has_children"]),
-    ("Mình muốn lấy size và màu nào ạ?", ["size", "preferred_color"]),
+    ("Mình muốn lấy size và màu nào ạ?", ["size", "color"]),
     ("Lần trước mình xem phòng 28m2, hôm nay ngân sách khoảng bao nhiêu ạ?", ["budget_vnd"]),
     ("Mình xem mẫu giày nào ạ?", ["product_advised"]),
     ("Mẫu này có khóa trẻ em. Mình đã bàn với người nhà xong chưa ạ?", ["blocker"]),
@@ -53,7 +53,7 @@ def test_quoted_question_is_excluded():
 
 def test_markdown_multislot_and_real_repetition():
     from eval_harness.extractor import extract_questions
-    assert [q['slot'] for q in extract_questions('**Chị cho biết cỡ và màu muốn lấy nhé.**')] == ['size', 'preferred_color']
+    assert [q['slot'] for q in extract_questions('**Chị cho biết cỡ và màu muốn lấy nhé.**')] == ['size', 'color']
     assert len(extract_questions('Anh chọn size nào? Anh chọn size nào?')) == 2
 
 
@@ -92,3 +92,38 @@ def test_product_reference_without_interrogative_which():
     for text in ('Anh đang quan tâm mẫu Boreal đúng không?',
                  'Chị cho em xin tên máy hoặc mã sản phẩm nhé.'):
         assert [q['slot'] for q in extract_questions(text)] == ['product_advised']
+
+
+@pytest.mark.parametrize('text,expected', [
+    ('Em sẵn sàng hỗ trợ anh bất cứ lúc nào ạ.', []),
+    ('Chị chốt mẫu này để em lên đơn cho mình nhé?', [('product_advised', 'confirm')]),
+    ('Chị chọn mẫu nào để em lên đơn nhé?', [('product_advised', 'open')]),
+    ('Anh vẫn lấy size 42 màu đen nhé?', [('size', 'confirm'), ('color', 'confirm')]),
+    ('Chị muốn em lên đơn cho mình luôn không chị?', [('purchase_consent', 'open')]),
+    ('Anh muốn lấy mỗi loại một chiếc hay số lượng khác ạ?', [('quantity', 'open')]),
+    ('Anh muốn em hỗ trợ đổi sang size lớn hơn hay trả hàng ạ?', [('size', 'open')]),
+    ('Mức ngân sách này cho mỗi sản phẩm hay tổng cả đơn ạ?', [('budget_vnd', 'open')]),
+    ('Mình muốn em kiểm tra tồn kho phương án này không ạ?', [('stock_check_consent', 'open')]),
+    ('Anh cho em xin lý do trả hàng nhé.', [('return_reason', 'open')]),
+    ('Chị có yêu cầu đặc biệt nào cho máy không ạ?', [('product_requirements', 'open')]),
+])
+def test_requests_and_confirmations_without_inventing_known_profile_slots(text, expected):
+    from eval_harness.extractor import extract_detailed
+    result = extract_detailed(text)
+    assert [(q['slot'], q['type']) for q in result['questions']] == expected
+    assert not any(c['uncertainty'] for c in result['candidates'] if c['kind'] == 'question')
+
+
+@pytest.mark.parametrize('text,expected', [
+    ('Khi nào cần hỗ trợ hoặc muốn đặt hàng mẫu quạt Panasonic F-409, anh nhắn em nhé.', []),
+    ('Khi nào anh muốn đặt hàng mẫu quạt Panasonic F-409?', [('other', 'open')]),
+    ('Mình cho em làm rõ điều kiện cần áp dụng nhé?', [('other', 'open')]),
+    ('Anh có muốn em xử lý tiếp bây giờ không anh?', [('other', 'open')]),
+    ('Anh chốt lấy một máy luôn em lên đơn cho mình nhé?', [('purchase_consent', 'confirm')]),
+    ('Dạ anh, anh đang quan tâm đến mẫu Xiaomi 4 Pro đúng không ạ?', [('product_advised', 'confirm')]),
+])
+def test_remaining_saved_run_questions_have_explicit_roles(text, expected):
+    from eval_harness.extractor import extract_detailed
+    result = extract_detailed(text)
+    assert [(q['slot'], q['type']) for q in result['questions']] == expected
+    assert not any(c['uncertainty'] for c in result['candidates'] if c['kind'] == 'question')

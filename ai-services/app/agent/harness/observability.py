@@ -1,6 +1,7 @@
 """Operational logs for a chat turn; callers pass only non-sensitive metadata."""
 
 import logging
+import math
 from contextlib import contextmanager
 from contextvars import ContextVar
 import time
@@ -96,6 +97,24 @@ _DIAGNOSTIC_PAIRS = frozenset({("run_agent", "model_failed"), ("verify", "ground
 
 
 def safe_diagnostic_event(step, event, metadata):
+    if not isinstance(step, str) or not isinstance(event, str):
+        return None
+    node_timing = step in {'accept', 'retrieve_context', 'run_agent', 'verify', 'persist'} and event in {'completed', 'failed'}
+    if node_timing or (step, event) in {('run_agent', 'model_timing'), ('call_tool', 'tool_timing')}:
+        duration = metadata.get('duration_ms')
+        if (type(duration) not in (int, float) or duration < 0
+                or type(duration) is float and not math.isfinite(duration)):
+            return None
+        item = {'step': step, 'event': event, 'duration_ms': duration}
+        if event == 'tool_timing':
+            from app.agent.implementations.tool_names import MODEL_TOOL_NAMES
+            if not isinstance(metadata.get('tool'), str) or metadata['tool'] not in MODEL_TOOL_NAMES:
+                return None
+            item['tool'] = metadata['tool']
+        if event == 'failed':
+            kind = metadata.get('error_type')
+            item['error_type'] = kind if isinstance(kind, str) and kind in DIAGNOSTIC_ERRORS else 'other_error'
+        return item
     if (step, event) == ('execution', 'phase_result'):
         from app.agent.harness.execution_diagnostics import normalize_execution_event
         return {'step': step, 'event': event, **normalize_execution_event(metadata)}

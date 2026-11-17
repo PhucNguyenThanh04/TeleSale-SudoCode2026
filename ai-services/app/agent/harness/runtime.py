@@ -28,6 +28,7 @@ from app.constants import DEFAULT_MAX_TOOL_CALLS, DEFAULT_PROMPT_HISTORY_TURNS
 from app.schemas.agent import (PrepareSessionRequest, PrepareSessionResponse,
                                TextTurnRequest, TextTurnResponse, TurnMemoryRequest,
                                MemoryUpdate, VoicePlaybackRequest)
+from app.schemas.timeline import TimelineRequest, TimelinePage
 
 
 class AgentHarnessRuntime:
@@ -196,6 +197,43 @@ class AgentHarnessRuntime:
             return update
         except Exception:
             return MemoryUpdate()
+
+    async def memory_timeline(self, request: TimelineRequest) -> TimelinePage:
+        """Read public history only for an already bound session; never run inference."""
+        session_id = str(request.session_id)
+        if session_id not in self._session_identities:
+            raise ValueError('Session has not been prepared')
+        async with self._locks[session_id]:
+            fingerprint, bound = self._session_identities[session_id]
+            session = self._session_states.get(session_id)
+            if (fingerprint != identity_fingerprint(request) or session is None
+                    or session.on != request.on
+                    or request.verified_customer_id and request.verified_customer_id != bound.get('customer_id')
+                    or request.verified_phone and request.verified_phone != bound.get('customer_phone')):
+                raise ValueError('Timeline session identity conflict')
+            identity = deepcopy(bound)
+        if (identity.get('identity_status') != 'known' or not identity.get('customer_id')
+                or not getattr(self.memory, 'include_prior', True)):
+            return TimelinePage(status='not_applicable', offset=request.offset, limit=request.limit)
+        try:
+            async with asyncio.timeout(3):
+                result = await self.memory.read_timeline(session_id, identity['customer_id'], request.on.isoformat(),
+                    offset=request.offset, limit=request.limit, crm_sessions=identity.get('crm_sessions', []))
+            if not isinstance(result, dict) or 'error' in result:
+                raise RuntimeError('Timeline unavailable')
+            page = TimelinePage.model_validate(result)
+            if page.offset != request.offset or page.limit != request.limit:
+                raise RuntimeError('Timeline pagination changed')
+            from app.mcp_servers.mcp_shared.pii import mask_pii
+            for item in page.items:
+                summary = item.summary
+                name = identity.get('customer_name')
+                if name:
+                    summary = re.sub(r'(?<!\w)' + re.escape(name) + r'(?!\w)', '[TÊN ĐÃ ẨN]', summary, flags=re.I)
+                item.summary = mask_pii(summary)
+            return page
+        except Exception:
+            raise RuntimeError('Memory timeline unavailable') from None
 
     async def run(self, turn: TextTurnRequest) -> TextTurnResponse:
         from app.knowledge.context import selected_release, release_context

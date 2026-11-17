@@ -28,6 +28,14 @@ def test_quote_confirmation_is_allowed_once_but_repetition_is_redundant():
     assert result['total_questions'] == 2
 
 
+def test_color_question_uses_btc_slot_and_is_penalized_when_already_known():
+    from eval_harness.extractor import extract_questions
+    questions = extract_questions('Chị muốn chọn màu nào ạ?')
+    scenarios = {'CASE': {'calls': {'call_2': {'must_not_ask': ['color']}}}}
+    trace = {('CASE', 'call_2'): [{'turn': 1, 'questions': questions}]}
+    assert btc_scorer().repeat_question_rate(scenarios, trace)['redundant'] == 1
+
+
 @pytest.mark.parametrize("origin,action,passed", [
     ("earlier", "exchange_size", True),
     ("other_scenario", "exchange_size", False),

@@ -27,9 +27,18 @@
         <button id="send" type="submit" disabled>Gửi</button>
       </form>
     </section>
-    <section class="conversation" aria-labelledby="conversation-title">
+    <section class="conversation text-conversation" aria-labelledby="conversation-title">
       <h2 id="conversation-title">Nội dung trao đổi</h2>
       <div id="brief"></div>
+      <details id="timeline-panel" class="memory-timeline" open>
+        <summary>Lịch sử tương tác</summary>
+        <p id="timeline-status" role="status" aria-live="polite">Bắt đầu phiên để xem lịch sử.</p>
+        <ol id="timeline-items" aria-label="Các phiên tương tác đã lưu"></ol>
+        <div class="actions">
+          <button id="timeline-reload" type="button" disabled>Tải lại lịch sử</button>
+          <button id="timeline-more" type="button" hidden>Xem thêm</button>
+        </div>
+      </details>
       <div id="messages" role="log" aria-live="polite"></div>
     </section>
   </main>

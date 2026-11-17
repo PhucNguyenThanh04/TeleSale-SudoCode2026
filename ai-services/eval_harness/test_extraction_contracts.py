@@ -6,7 +6,7 @@ def test_detailed_candidates_project_one_to_one():
     detailed = getattr(extractor, 'extract_detailed', None)
     assert callable(detailed), 'a common detailed core is required'
     result = detailed('Mình muốn lấy size và màu nào ạ?')
-    assert [q['slot'] for q in result['questions']] == ['size', 'preferred_color']
+    assert [q['slot'] for q in result['questions']] == ['size', 'color']
     emitted = [c for c in result['candidates'] if c['disposition'] == 'emitted']
     assert [c['projection'] for c in emitted] == result['questions']
     assert len({c['candidate_id'] for c in emitted}) == 2

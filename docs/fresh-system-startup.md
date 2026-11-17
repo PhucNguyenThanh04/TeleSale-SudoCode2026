@@ -1,8 +1,10 @@
-# Mỗi lượt demo/eval là một hệ thống mới
+# Khởi động demo mới; eval trên hạ tầng đang chạy
 
-Đường chạy được quản lý là **`python run_system.py ...` từ root repo**. Lệnh này
-khởi tạo trong quá trình khởi động cả nhóm server, không yêu cầu chạy migration
-hay setup store riêng. Đừng mở thêm các server bằng lệnh cũ cùng lúc.
+Đường demo được quản lý là **`python run_system.py demo ...` từ root repo**.
+Nó khởi tạo cả nhóm server, không yêu cầu chạy migration hay setup store riêng.
+`run_system.py eval` chỉ gọi runner trên dịch vụ đã chạy, không dùng Docker hay
+bootstrap; runtime/memory vẫn reset độc lập trước mỗi cấu hình eval.
+Đừng mở thêm các server bằng lệnh cũ cùng lúc với managed demo.
 Launcher dùng host Linux/Ubuntu như môi trường hiện tại.
 
 ## 1. Dữ liệu BTC: nạp riêng
@@ -36,7 +38,7 @@ credentials/secret files vẫn theo hướng dẫn cài dependency của repo.
 - Secret files MCP/PostgreSQL và tokenizer asset được chuẩn bị như repo hiện có.
   Script startup tự chạy provision role sau khi tạo đủ bảng, không chạy bằng tay.
 
-Đây là đường fresh demo/eval, không chạy trên cấu hình production. Lệnh cần DB
+Đây là đường fresh demo, không chạy trên cấu hình production. Lệnh cần DB
 đích khai báo rõ. Backend và AI phải dùng cùng DB; không tự tạo một DB demo khác.
 
 ## 3. Demo: một lệnh
@@ -88,9 +90,9 @@ Redis, Qdrant vẫn có thể chạy; lần chạy launcher tiếp theo luôn t�
 Không dùng riêng `docker compose restart`/`uvicorn` để bắt đầu một demo mới: đó
 chỉ là thao tác service, không xác định ranh giới reset của cả hệ thống.
 
-## 4. Eval: cũng tự khởi tạo mới
+## 4. Eval: dùng hạ tầng đang chạy, reset memory mỗi cấu hình
 
-Một cặp official No-memory/Full:
+Khi model/DB/MCP đã chạy, chạy một cặp official No-memory/Full:
 
 ```bash
 python run_system.py eval --expected-database telesale -- \
@@ -100,7 +102,19 @@ python run_system.py eval --expected-database telesale -- \
   --out-root ai-services/eval_harness/results/fresh-full
 ```
 
-Ba cấu hình cùng vòng cải tiến knowledge:
+Lệnh eval kết thúc sau khi chấm và detect gap (nếu bật Knowledge), không điều
+khiển Docker, tạo boot, tạo tài khoản hay reset schema/knowledge. Cả hai cấu hình
+dùng cùng reset runtime/memory sau warmup; Full tích lũy memory giữa các cuộc
+gọi của nó. Knowledge/BTC được giữ nguyên; Full K1 cũng dùng cùng reset memory.
+Worker đang chạy có thể tiếp tục hoạt động: ID job nội bộ không bị dùng lại sau
+reset, nên claim cũ không thể ghi vào job mới. Các ID nghiệp vụ vẫn reset như trước.
+
+Với luồng duyệt thủ công, sau cặp thường hãy duyệt/phát hành trên frontend rồi
+chạy file `run_knowledge_eval.py --base-run RUN`. Dùng đúng lệnh in sau detect;
+giữ các dịch vụ đang chạy và không chạy lại fresh demo giữa hai bước.
+Chi tiết: [eval hai bước](../ai-services/eval_harness/KNOWLEDGE_TRIPLET.md#luồng-duyệt-trên-frontend).
+
+Thí nghiệm tự duyệt cũ vẫn quản lý riêng một boot mới:
 
 ```bash
 python run_system.py knowledge-eval --expected-database telesale -- \

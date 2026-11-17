@@ -6,6 +6,11 @@ const categories = {content:'Thiếu nội dung', retrieval:'Truy xuất chưa �
 const statuses = {new:'Mới phát hiện', triaged:'Đã phân loại', waiting_for_source:'Chờ nguồn', technical_followup:'Xử lý kỹ thuật', closed_correct_refusal:'Từ chối đúng', awaiting_verification:'Chờ kiểm chứng', resolved:'Đã giải quyết', draft:'Bản nháp', approved:'Đã duyệt', rejected:'Đã từ chối', ready:'Sẵn sàng'};
 let offset = 0, active = null, tab = 'gaps', generation = 0, busy = false;
 const selectedRevisions = new Map();
+const experimentRun = new URLSearchParams(window.location.search).get('run_id');
+if (experimentRun) {
+  const scope = el('p', `Thí nghiệm: ${experimentRun}. Chỉ duyệt các gap của lần chạy này; phát hành xong hãy chạy riêng lượt Full với knowledge mới.`, 'subtle-note');
+  scope.id = 'experiment-scope'; $('workspace').before(scope);
+}
 function el(tag, text, cls) { const node = document.createElement(tag); if (text != null) node.textContent = text; if (cls) node.className = cls; return node; }
 function badge(value) { return el('span', statuses[value] || categories[value] || value || 'Chưa có', 'badge' + (['technical','generation','technical_followup','insufficient_evidence','waiting_for_source'].includes(value) ? ' warn' : '')); }
 function note(parent, text, warning = false) { parent.append(el('p', text, 'subtle-note' + (warning ? ' warning-note' : ''))); }
@@ -36,6 +41,9 @@ async function perform(action) {
   finally { $('workspace').inert = false; busy = false; document.body.removeAttribute('aria-busy'); }
 }
 async function api(resource, params = {}, body) {
+  if (experimentRun && !params.item_id && ['gaps','events','revisions','regression_cases'].includes(resource)) {
+    params = {...params, run_id:experimentRun};
+  }
   const url = '/api/knowledge/' + resource + (body ? '' : '?' + new URLSearchParams(params));
   const response = await fetch(url, {method:body ? 'POST' : 'GET', headers:body ? {'Content-Type':'application/json'} : {}, ...(body ? {body:JSON.stringify(body)} : {})});
   if (!response.ok) { const error = new Error('Không thực hiện được yêu cầu.'); error.status = response.status; throw error; }
@@ -48,17 +56,28 @@ async function all(resource, params = {}) {
   do { result = await api(resource, {...params, offset:page, limit:100}); items.push(...result.items); page += 100; } while (page < result.total);
   return items;
 }
-async function bulkReview() {
+async function bulkReview(publish = false) {
   generation++;
   notice('Đang nạp toàn bộ bản nháp, nguồn và test…');
   const [drafts, gaps, sources, tests] = await Promise.all([
-    all('revisions', {status:'draft'}), all('gaps'), all('sources'), all('regression_cases')]);
+    all('revisions', publish ? {} : {status:'draft'}), all('gaps'), all('sources'), all('regression_cases')]);
+  const releaseState = publish ? await api('releases', {limit:1}) : null;
+  const base = releaseState?.active_release_id || null;
+  const retained = base ? (await record('releases', base)).manifest.items.map(r => r.id) : [];
   const eligible = new Set(gaps.filter(g => !['technical','generation','correct_refusal'].includes(g.category)).map(g => g.id));
-  const revisions = drafts.filter(r => eligible.has(r.gap_id));
-  const root = $('detail'); root.replaceChildren(el('h2', `Duyệt hết · ${revisions.length} bản nháp`));
+  const revisions = drafts.filter(r => eligible.has(r.gap_id) && !retained.includes(r.id)
+    && (r.status === 'draft' || publish && r.status === 'approved'));
+  const root = $('detail'); root.replaceChildren(el('h2', publish ? `Duyệt và phát hành · ${revisions.length} đề xuất` : `Duyệt hết · ${revisions.length} bản nháp`));
   note(root, 'Danh sách gồm mọi trang, không phụ thuộc bộ lọc gap. Chỉ duyệt bản nháp đã có nguồn và test; gap chưa có đề xuất cần được soạn riêng.');
   if (!revisions.length) { notice('Không có bản nháp phù hợp để duyệt.'); return; }
+  const choices = new Map();
+  if (publish) note(root, `Chọn các đề xuất muốn nhận. Một lần bấm sẽ duyệt, tạo chỉ mục và phát hành; giữ lại ${retained.length} bản đang phục vụ. Các bản đã duyệt nhưng chưa phát hành có thể được chọn để thử lại.`);
   for (const revision of revisions) {
+    if (publish) {
+      const choice = check(root, `Chọn: ${revision.question} · ${revision.id}`);
+      choice.dataset.revisionId = revision.id;
+      choices.set(revision.id, choice);
+    }
     const item = el('details'); item.append(el('summary', `${revision.question} · ${revision.id}`));
     details(item, 'Nội dung đã lưu', {question:revision.question, answer:revision.answer,
       aliases:revision.aliases, scope:revision.scope, source_review_note:revision.source_review_note});
@@ -69,7 +88,49 @@ async function bulkReview() {
   }
   const form = el('form', null, 'form-grid'); root.append(form);
   const reason = field(form, 'Lý do duyệt hàng loạt', '');
-  const reviewed = check(form, 'Tôi đã đối chiếu nội dung, nguồn và test của các bản nháp trong danh sách này.');
+  const reviewed = check(form, publish ? 'Tôi đã đối chiếu nội dung, nguồn và test của các mục đã chọn.' :
+    'Tôi đã đối chiếu nội dung, nguồn và test của các bản nháp trong danh sách này.');
+  if (publish) {
+    button(form, 'Duyệt và phát hành các mục đã chọn', async () => {
+      const chosen = revisions.filter(r => choices.get(r.id).checked);
+      if (!chosen.length) throw new Error('Chọn ít nhất một đề xuất để phát hành.');
+      if (!reason.value.trim()) throw new Error('Nhập lý do duyệt hàng loạt.');
+      if (!reviewed.checked) throw new Error('Cần xác nhận đã review nội dung, nguồn và test.');
+      const ids = [...new Set([...retained, ...chosen.map(r => r.id)])];
+      if (ids.length > 100) throw new Error('Mỗi release chứa tối đa 100 bản, bao gồm các bản đang phục vụ.');
+      let activationStarted = false;
+      try {
+        const current = await api('releases', {limit:1});
+        if ((current.active_release_id || null) !== base) throw new Error('Release đang hoạt động đã thay đổi. Làm mới danh sách trước khi duyệt.');
+        for (const [index, revision] of chosen.entries()) {
+          notice(`Đang duyệt ${index + 1}/${chosen.length} đề xuất…`);
+          if (revision.status === 'draft') {
+            const saved = await command('approve', {id:revision.id, content_hash:revision.content_hash,
+              reason:reason.value, approve_test:true});
+            Object.assign(revision, saved);
+            selectedRevisions.set(saved.id, saved);
+          }
+        }
+        notice('Đang tạo chỉ mục và kiểm tra nguồn, test…');
+        const release = await command('prepare_release', {revision_ids:ids, expected_active_id:base});
+        notice('Kiểm tra thành công. Đang kích hoạt knowledge mới…');
+        activationStarted = true;
+        await command('activate_release', {id:release.id, expected_active_id:base});
+        active = release.id; selectedRevisions.clear();
+        const summary = `Đã phát hành ${chosen.length} đề xuất · release ${release.id}.`;
+        root.replaceChildren(el('h2', 'Duyệt và phát hành thành công'), el('p', summary));
+        note(root, 'Knowledge mới đã hoạt động. Bạn có thể chạy file đánh giá Full với knowledge mới; các gap vẫn chờ kiểm chứng.');
+        button(root, 'Làm mới đề xuất', () => bulkReview(true), 'secondary');
+        notice(summary);
+      } catch (error) {
+        notice(activationStarted ? 'Chưa xác nhận được kết quả phát hành. Làm mới để kiểm tra release đang hoạt động.' :
+          'Chưa phát hành knowledge mới. Các bản đã duyệt được giữ lại để thử tiếp.');
+        throw error;
+      }
+    });
+    notice(`Đã nạp ${revisions.length} đề xuất. Chọn và đối chiếu trước khi duyệt, phát hành.`);
+    return;
+  }
   button(form, `Duyệt ${revisions.length} bản nháp`, async () => {
     if (!reason.value.trim()) throw new Error('Nhập lý do duyệt hàng loạt.');
     if (!reviewed.checked) throw new Error('Cần xác nhận đã review nội dung, nguồn và test.');
@@ -209,14 +270,22 @@ async function editor(gap, revision = null) {
 }
 async function releases() {
   const epoch = ++generation; notice('Đang tải các phiên bản…');
-  const [result, approved] = await Promise.all([all('releases'), all('revisions', {status:'approved'})]);
+  const [result, scopedApproved] = await Promise.all([all('releases'), all('revisions', {status:'approved'})]);
   const state = await api('releases', {limit:1}); if (epoch !== generation) return;
+  const current = experimentRun && state.active_release_id ? await record('releases', state.active_release_id) : null;
+  if (epoch !== generation) return;
+  const retained = current?.manifest?.items || [];
+  const retainedIds = new Set(retained.map(r => r.id));
+  const approved = [...retained, ...scopedApproved.filter(r => !retainedIds.has(r.id))];
+  for (const revision of retained) selectedRevisions.set(revision.id, revision);
   active = state.active_release_id; const root = $('releases-view'); root.replaceChildren(el('h2', 'Phát hành tri thức đã duyệt'), el('p', `Đang hoạt động: ${active || 'Chưa có release'}`, 'muted'));
   note(root, 'Duyệt nội dung không tự phát hành. Release mới chỉ chứa các bản được chọn; hãy giữ đủ nội dung muốn tiếp tục phục vụ. Phát hành xong vẫn cần eval trước/sau để xác minh gap.');
+  if (experimentRun) note(root, 'Các bản đang hoạt động được giữ lại. Chỉ thêm bản đã duyệt thuộc thí nghiệm này; sau khi phát hành, chạy file đánh giá Full với knowledge mới.');
   root.append(el('h3', 'Chọn bản đã duyệt'));
   const available = new Set(approved.map(r => r.id)); for (const id of selectedRevisions.keys()) if (!available.has(id)) selectedRevisions.delete(id);
   for (const revision of approved) {
-    const box = check(root, `${revision.question} · ${revision.id}`); box.checked = selectedRevisions.has(revision.id);
+    const box = check(root, `${revision.question || revision.id} · ${revision.id}`); box.checked = selectedRevisions.has(revision.id);
+    box.disabled = retainedIds.has(revision.id);
     box.addEventListener('change', () => box.checked ? selectedRevisions.set(revision.id, revision) : selectedRevisions.delete(revision.id));
   }
   if (!approved.length) note(root, 'Chưa có bản đề xuất đã duyệt. Quay lại tab Duyệt gap để xem nguồn và test.');
@@ -255,13 +324,13 @@ async function releaseDetail(root, release) {
   box.scrollIntoView({block:'nearest',behavior:'auto'});
 }
 $('refresh').addEventListener('click', () => perform(refresh));
-$('approve-all').addEventListener('click', () => perform(async () => {
+for (const [id, publish] of [['approve-all', false], ['approve-publish', true]]) $(id).addEventListener('click', () => perform(async () => {
   tab = 'gaps';
   for (const view of ['gaps','releases']) {
     $(view + '-tab').setAttribute('aria-selected', String(view === tab));
     $(view + '-view').hidden = view !== tab;
   }
-  await bulkReview();
+  await bulkReview(publish);
 }));
 $('status-filter').addEventListener('change', () => { offset = 0; perform(refresh); });
 $('previous').addEventListener('click', () => { offset = Math.max(0,offset - 30); perform(refresh); });

@@ -237,7 +237,7 @@
           "open"
         ],
         [
-          "preferred_color",
+          "color",
           "open"
         ]
       ],
@@ -255,7 +255,7 @@
           "kind": "question",
           "anchor": "Chị cho biết cỡ và màu muốn lấy nhé",
           "projection": [
-            "preferred_color",
+            "color",
             "open"
           ],
           "disposition": "emitted"

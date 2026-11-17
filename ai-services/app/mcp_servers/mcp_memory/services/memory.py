@@ -258,8 +258,12 @@ async def read(repo, customer_id: str | None, session_id: str,
         try:
             async with asyncio.timeout(2.0):
                 await repo.lock_key(conn, f"langmem:{customer_id}")
-                fact_versions = await projector.list_fact_versions(customer_id)
-                episode_versions = await projector.list_episode_versions(customer_id)
+                # Projection methods use independent connections; keep both reads
+                # inside the customer lock and join/cancel them before releasing it.
+                async with asyncio.TaskGroup() as reads:
+                    fact_read = reads.create_task(projector.list_fact_versions(customer_id))
+                    episode_read = reads.create_task(projector.list_episode_versions(customer_id))
+                fact_versions, episode_versions = fact_read.result(), episode_read.result()
                 revisions = {item.get("revision") for item in
                     [*fact_versions, *episode_versions]
                     if isinstance(item, dict)

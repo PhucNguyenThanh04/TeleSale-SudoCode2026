@@ -41,14 +41,14 @@ async def forward(request, method, path, **kwargs):
 @router.get('/{resource}')
 async def records(resource: str, request: Request, actor=Depends(reviewer), offset: int = 0,
                   limit: int = 30, status: str | None = None, source: str | None = None,
-                  item_id: str | None = None, gap_id: str | None = None):
+                  item_id: str | None = None, gap_id: str | None = None, run_id: str | None = None):
     if resource not in RESOURCES:
         raise HTTPException(404, 'Unknown review resource')
     if offset < 0 or not 1 <= limit <= 100:
         raise HTTPException(422, 'Invalid page')
     params = {'actor_id': actor, 'offset': offset, 'limit': limit}
     params.update({k: v for k, v in {'status': status, 'source': source, 'item_id': item_id,
-                                    'gap_id': gap_id}.items() if v is not None})
+                                    'gap_id': gap_id, 'run_id': run_id}.items() if v is not None})
     return await forward(request, 'GET', '/v1/knowledge/' + resource, params=params)
 
 

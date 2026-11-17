@@ -211,6 +211,19 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
             args["customer_phone"] = state["customer_phone"]
         else:
             return None
+        if name == 'order.update' and args.get('action') == 'exchange_product':
+            orders = [*(state.get('crm_orders') or []),
+                *[o for c in build_commerce_evidence(state) if c.get('name') == 'order.status'
+                  and 'error' not in c.get('result', {}) for o in c['result'].get('orders', [])]]
+            originals = {o.get('variant_sku') or o.get('sku') for o in orders
+                         if o.get('order_id') == requested_id} - {None}
+            items = [i for c in build_commerce_evidence(state) if c.get('name') == 'catalog.search'
+                     for i in c['result'].get('items', [])]
+            parent = next((i for i in items if any(v.get('variant_sku') == args.get('new_variant_sku')
+                           for v in i.get('variants', []))), None)
+            if parent and len(originals) == 1 and originals <= {
+                    parent['sku'], *(v.get('variant_sku') for v in parent.get('variants', []))}:
+                args['action'] = 'exchange_size'
     if name == "order.create":
         if state.get("identity_status") != "known":
             return None

@@ -158,8 +158,8 @@ def _restore(state):
                 merged.presented_offer = extend_presented_offer(recent[0], merged.presented_offer,
                                                                observations(state))
     named = _mentions(state.get('safe_text', ''), catalog_items(state))
-    if len(named) == 1:
-        parent = next(iter(named))
+    if len(named) == 1 or (merged.presented_offer and merged.selected_sku is None and merged.accepted_offer is None):
+        parent = next(iter(named)) if len(named) == 1 else None
         candidates = []
         for ep in [*state.get('episodes', []), current]:
             if not isinstance(ep, dict) or ep.get('customer_id', state['customer_id']) != state['customer_id']:
@@ -172,10 +172,19 @@ def _restore(state):
                     offer = PresentedOffer.model_validate(value)
                 except ValueError:
                     continue
-                if offer.sku == parent and offer.sources and all(
+                if (parent is None or offer.sku == parent) and offer.sources and all(
                         src.agent.customer_id == state['customer_id'] for src in offer.sources.values()):
                     candidates.append(offer)
         if candidates:
+            if parent is None:
+                source = merged.source_refs['presented_offer']
+                origin = {(source.session_id, source.source_turn_id)}
+                siblings = {o.sku for o in candidates if any(
+                    (s.agent.session_id, s.agent.source_turn_id) in origin for s in o.sources.values())}
+                if len(siblings) > 1:
+                    merged.presented_offer = None
+                    merged.recommended_sku = None
+                return merged
             dates = [str(o.on) for o in candidates]
             recent = [o for o in candidates if str(o.on) == max(dates)]
             # Contradictory same-day versions from different sessions have no order.
@@ -266,7 +275,9 @@ def _apply_customer(snap,text,items,focus,visible,ref,state,*,approval=False):
         if needed:
             snap.delegation = snap.delegation.model_copy(update={'constraints': {**snap.delegation.constraints, **needed}})
             snap.source_refs['delegation'] = ref
-        return focus
+        # A hypothetical can change the informational topic, never purchase consent.
+        mentioned = _mentions(text, items)
+        return next(iter(mentioned)) if len(mentioned) == 1 else focus
     amounts=customer_budget_amounts(text)
     if len(amounts)==1:
         snap.budget=SpendingLimit(limit_vnd=next(iter(amounts)),mode='hard' if re.search(r'toi da|khong vuot|khong qua|duoi',folded) else 'approx',
@@ -422,6 +433,13 @@ def derive_consultation(state: dict) -> ConsultationDecision:
         historical_calls = [*state.get('session_tool_calls', []), *state.get('tool_calls', [])]
         offers = derive_presented_offers(customer_id=state.get('customer_id'), session_id=sid,
                                         committed_turns=prefix, tool_calls=historical_calls)
+        spoken = {o.sku for o in offers if any(
+            src.agent.source_turn_id == ref.source_turn_id for src in o.sources.values())}
+        # A prior inquiry is focus, not a customer choice among offers just spoken.
+        if len(spoken) > 1 and snap.selected_sku is None:
+            focus = None
+            snap.recommended_sku = None
+            snap.source_refs['recommended_sku'] = _ref(state, ref.source_turn_id, 'agent', agent)
         relevant = [o for o in offers if o.sku == focus] if focus else offers
         # Latest conditions for one explicitly focused product may supersede old
         # conditions; multiple products never acquire focus from list order.
@@ -441,6 +459,7 @@ def derive_consultation(state: dict) -> ConsultationDecision:
             visible = _accepted_view(presented)
             focus = presented.sku
         elif len({o.sku for o in relevant}) > 1:
+            focus = None
             snap.presented_offer = None
             snap.source_refs['presented_offer'] = _ref(state, ref.source_turn_id, 'agent', agent)
             visible = None

@@ -26,11 +26,12 @@ def test_proxy_binds_actor_and_keeps_internal_token_off_browser():
         client.app.state.ai_http = httpx.AsyncClient(base_url='http://ai', headers={
             'X-AI-Internal-Token': 'server-secret'}, transport=httpx.MockTransport(handler))
         headers = {}
-        response = client.get('/api/knowledge/revisions?gap_id=G1&offset=30&actor_id=attacker', headers=headers)
+        response = client.get('/api/knowledge/revisions?gap_id=G1&offset=30&run_id=experiment&actor_id=attacker', headers=headers)
         assert response.status_code == 200
         assert response.headers['cache-control'] == 'no-store'
         assert seen[-1].url.params['actor_id'] == 'reviewer-1'
         assert seen[-1].url.params['gap_id'] == 'G1'
+        assert seen[-1].url.params['run_id'] == 'experiment'
         assert 'server-secret' not in response.text
         assert client.get('/api/knowledge/permissions', headers=headers).status_code == 404
         response = client.post('/api/knowledge/commands', headers=headers, json={

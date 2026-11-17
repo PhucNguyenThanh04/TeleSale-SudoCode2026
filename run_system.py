@@ -1,4 +1,4 @@
-"""Start a fresh demo/eval system, including managed table initialization."""
+"""Start a managed demo or evaluate using the existing services."""
 import os
 from pathlib import Path
 import sys

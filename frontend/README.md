@@ -18,6 +18,13 @@ Chat text M1 có tại `/chat` trên cùng gateway, không cần micro hoặc sp
 Memory pending được theo dõi nền, kết thúc/mở phiên mới để thử khách quay lại.
 Quy trình nghiệm thu và bàn giao ASR: [M1 acceptance](../docs/m1-acceptance.md).
 
+Chat có khối **Lịch sử tương tác**: ngày nghiệp vụ, kênh, tóm tắt và kết quả
+từng phiên của khách đã xác minh. Lịch sử tải riêng sau khi mở phiên, có “Xem
+thêm” và “Tải lại lịch sử”; cập nhật sau khi memory hoàn tất. Pending chưa có
+tóm tắt được ghi rõ, lỗi tải khác với lịch sử rỗng. Không lấy top-5 episode đã
+rank cho prompt làm toàn bộ lịch sử; không gọi LLM để tạo timeline. Chi tiết
+contract và kiểm chứng: [policy/timeline](../docs/policy-timeline-20261117.md).
+
 Tại thư mục gốc, khởi động speech và AI harness theo cấu hình hiện tại. Cấu hình
 `backend/.env` theo `backend/.env.example`, đặc biệt URL và token AI phải khớp
 harness. Sau đó:
@@ -120,6 +127,15 @@ Nhập lý do chung, xác nhận đã review rồi duyệt danh sách. Trang bá
 và mã bản lỗi để kiểm tra lại; gap chưa có đề xuất không được tự tạo đáp án.
 Các bản duyệt thành công được chọn trong tab Phát hành, chưa tự phát hành.
 Mỗi release chứa tối đa 100 bản; danh sách duyệt có thể lớn hơn giới hạn này.
+
+Nút **Duyệt và phát hành** mở danh sách đề xuất ngay trong tab Duyệt gap.
+Chọn các mục muốn nhận, đọc nội dung/nguồn/test, nhập lý do và xác nhận đã review,
+rồi bấm **Duyệt và phát hành các mục đã chọn**. Trang tự duyệt, chuẩn bị chỉ mục
+và kích hoạt release, giữ mọi revision đang phục vụ; không cần chuyển tab hay
+chọn lại. Với link có `run_id`, danh sách chỉ gồm đề xuất của thí nghiệm đó.
+Chỉ phát hành khi mọi bước đều thành công; bản đã duyệt nhưng chưa phát hành
+vẫn hiện trong danh sách để thử lại. Nếu chưa xác nhận được kết quả kích hoạt,
+làm mới để xem release đang hoạt động. Thao tác không tự chạy eval Full K1.
 
 Tab **Phát hành** chọn các bản approved → chuẩn bị release → mở manifest/checks
 → xác nhận phát hành hoặc khôi phục release cũ. Chuẩn bị có thể build hybrid

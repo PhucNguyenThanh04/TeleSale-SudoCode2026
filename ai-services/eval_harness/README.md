@@ -1,16 +1,86 @@
 # Benchmark Dataset & Eval Harness — AI TeleSale SudoCode 2026
 
-CLI so sánh **No memory K0 / Full K0 / Full K1** với duyệt knowledge tự động sau K0,
-không chạy baseline lần thứ tư: [hướng dẫn Knowledge Triplet](KNOWLEDGE_TRIPLET.md).
+Eval thường chạy **No memory K0 / Full K0** và detect gap khi đã bật Knowledge.
+Sau khi duyệt/phát hành trên frontend, chạy file riêng `run_knowledge_eval.py`
+để đánh giá **Full K1**: [hướng dẫn](KNOWLEDGE_TRIPLET.md#luồng-duyệt-trên-frontend).
+
+## Lệnh nghiệm thu hội thoại M1
+
+Từ root repo, một lệnh chạy full/baseline rồi dùng nguyên scorer BTC và in bảng
+so sánh. Đây là **LIVE**, cần cho phép chạy model và reset DB eval riêng trước:
+
+```bash
+PYTHONPATH=.:ai-services ai-services/.venv/bin/python -m eval_harness.run_official \
+  --btc-root ../BTC-Data-Vong1-TEAMS --scenarios ai-services/eval_harness/scenarios \
+  --expected-database telesale_eval_m1 --out-root ai-services/eval_harness/results
+```
+
+Mặc định là `text`; chỉ dùng `--delivery-mode voice` khi chủ động đánh giá voice.
+Giữ cùng model/tham số, seed, dữ liệu và knowledge release cho hai cấu hình.
+`python3 run_system.py eval --expected-database DB -- ...` gọi cùng runner trên
+hạ tầng đang chạy, không điều khiển Docker hay reset schema/knowledge. Mỗi cấu
+hình reset runtime/memory sau warmup và trước hội thoại; Full giữ memory giữa
+các cuộc gọi, No memory không đọc prior liên phiên. Full K1 dùng cùng reset đó.
+Runner lưu trace, BTC snapshot, hash/manifests, `btc_score.json`,
+`extraction_report.json` và `m1_conversation_acceptance.json`. Bảng A.6 có
+chênh lệch Full−Baseline bằng điểm phần trăm và mức giảm RQR tương đối do BTC tính.
+Baseline RQR bằng 0 không tự chứng minh giảm 40%.
+
+`validated` chỉ xác nhận pipeline/artifact. Cuối lệnh ghi riêng nghiệm thu hội
+thoại và từng check fail/missing, gồm extraction, guardrails, độ phủ, warmup,
+TSR/RQR/HR và latency. Kết luận này không thay nghiệm thu toàn bộ M1: còn dataset
+corpus, ASR, cải tiến hai vòng, UI/demo và hồ sơ nộp.
+
+Đính kèm báo cáo ASR đã chạy bằng cách thêm các cặp đường dẫn:
+
+```text
+--asr-btc-dataset /path/to/btc-audio --asr-btc-run /path/to/btc-asr-run
+--asr-team-dataset /path/to/team-audio --asr-team-run /path/to/team-asr-run
+```
+
+Mỗi run ASR cần `score.json`, `hypotheses.json`, `run.json`; dataset cần GT và
+audio. Các số được kiểm lại offline bằng scorer BTC, exact entity tiền/SĐT và
+hash trước khi lưu `asr_evidence.json`; không gọi ASR/model. Báo riêng BTC/team,
+không lấy trung bình WER hai nhóm. Cần đủ 12 hội thoại BTC và ≥20 file team;
+4 GT mẫu công khai không thay cho tập BTC đầy đủ. Không có báo cáo thì ghi chưa
+đo; thiếu audio/độ phủ/normalization/local metadata thì chưa đủ bằng chứng.
+Khi đọc lại, các đường dẫn nguồn phải còn truy cập được để kiểm hash; snapshot
+BTC hội thoại không thay cho gói ASR nguồn. Score bị sửa hoặc thiếu file đầu vào
+bị từ chối trước khi bắt đầu eval agent.
+
+Đọc lại bảng và kiểm nghiệm thu (offline, không gọi model/DB):
+
+```bash
+PYTHONPATH=.:ai-services ai-services/.venv/bin/python -m eval_harness.report_metrics /path/to/run
+```
+
+Có thể thêm `--btc-root` và các cặp `--asr-...` ở trên để xem báo cáo ASR ngoài
+mà không thay artifact hội thoại. Không tự công bố người đã review: fixture
+ngữ nghĩa là self-reviewed; BTC vẫn có thể kiểm tay 20 lượt. Candidate mơ hồ,
+claim có điều kiện hoặc chưa biểu diễn an toàn được giữ trong sidecar và vẫn
+đánh dấu `needs_review`, không bỏ để làm giảm HR/RQR.
+
+Chỉ chấm lại trace có sẵn bằng scorer BTC (offline):
+
+```bash
+PYTHONPATH=.:ai-services ai-services/.venv/bin/python -m eval.score_pair \
+  --scenarios /path/to/run/scenarios --full /path/to/run/full.jsonl \
+  --baseline /path/to/run/baseline.jsonl --btc-root /path/to/run/btc-release \
+  --out /path/to/new-score.json
+```
+
+Nếu thay extractor, dùng `reextract_trace --source-run ... --output-dir NEW
+--btc-root ...` (hướng dẫn chi tiết bên dưới). Nó giữ lời agent, tool, memory,
+latency và bản gốc; delta chỉ nói về phép trích, không phải agent đã cải thiện.
 
 ## Hợp đồng BTC tháng 11 và cập nhật database
 
-Các entrypoint chạy eval tạo snapshot đầy đủ từ `--btc-root` và bản vá
-`BTC-cap-nhat-11-2026/`: giữ catalog/policy/schema nền, thay đúng ba file BTC
-`eval/mock_tools.py`, `eval/reference_eval.py`, `schemas/tools.schema.json`.
-Không sửa hai thư mục nguồn. Snapshot chứa `btc_release.json` với hash từng
-file; report/manifest ghi `btc_contract`. Snapshot đã bị sửa bị từ chối khi
-tái sử dụng. Khi replay kết quả cũ, dùng đúng BTC root đã ghi trong artifact.
+Các entrypoint chạy eval tạo snapshot trực tiếp từ gói BTC đầy đủ truyền qua
+`--btc-root`, gồm scorer, mock tools và schema đã cập nhật. Không cần thư mục
+patch riêng và không sửa dữ liệu nguồn. Snapshot chứa `btc_release.json` với
+hash từng file, version `explicit_btc_root`; report/manifest ghi `btc_contract`.
+Gói thiếu file bắt buộc hoặc snapshot đã bị sửa bị từ chối. Khi replay kết quả
+cũ, dùng đúng BTC root đã ghi trong artifact; snapshot cũ vẫn giữ nguyên version.
 
 Trước khi triển khai code này, chạy migration bằng quy trình migration hiện có:
 
@@ -626,3 +696,18 @@ không sửa kết quả. Từ đợt sửa M1 2026-11-06, `run_official` tự i
 validated. Bảng ghi rõ mẫu số, ngưỡng, extraction cần review, độ phủ latency và
 WER/CER chưa đo trong eval text. Chi tiết sửa logic và chênh lệch sample:
 [`m1-repair-review-2026-11-06.md`](../docs/m1-repair-review-2026-11-06.md).
+
+## Tool-Call Accuracy và rollback offline
+
+Từ root repo, hai CLI mới chỉ kiểm trace/fixture, không gọi model hoặc DB:
+
+```bash
+PYTHONPATH=ai-services ai-services/.venv/bin/python -m eval_harness.tool_accuracy --trace ai-services/eval_harness/fixtures/tool_accuracy/trace.jsonl --labels ai-services/eval_harness/fixtures/tool_accuracy/labels.json --out ai-services/eval_harness/results/harness-evidence/tool-fixture-01
+PYTHONPATH=ai-services ai-services/.venv/bin/python -m eval_harness.knowledge_rollback --btc-root ../BTC-Data-Vong1-TEAMS --out ai-services/eval_harness/results/harness-evidence/rollback-01
+```
+
+TCA chấm đúng/thiếu/thừa tool và args trên **lượt có nhãn trong phạm vi khai báo**;
+50% của ví dụ là điểm fixture synthetic, không phải model. Rollback đi qua
+lifecycle/hybrid index/MCP thật với storage RAM, dense fixture và review mô phỏng;
+không activate release thật. Mỗi lệnh xuất JSON/Markdown và từ chối ghi đè.
+Xem [công thức, nhãn thật, giới hạn và bằng chứng](../../docs/harness-evidence-20261116.md).

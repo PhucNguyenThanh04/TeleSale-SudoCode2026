@@ -114,7 +114,7 @@ class EvalRunnerTest(unittest.TestCase):
                 encoding="utf-8"))
         self.assertEqual(count, len(rows))
         self.assertEqual(report["catalog_search"]["turns"], count)
-        self.assertEqual(report['btc_contract']['version'], 'BTC-11-2026')
+        self.assertEqual(report['btc_contract']['version'], 'explicit_btc_root')
         self.assertEqual(report['conversation_measurement']['delivery_mode'], 'text')
         self.assertFalse(report['conversation_measurement']['ttft_is_proxy'])
         self.assertTrue(all(request.delivery_mode == 'text' for request in runtime.requests))

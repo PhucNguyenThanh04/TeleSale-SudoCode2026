@@ -2,6 +2,8 @@
 
 Đây là mô tả implementation trong checkout, không phải bằng chứng đạt KPI runtime.
 Hướng dẫn chạy/nghiệm thu: [m1-acceptance.md](m1-acceptance.md).
+Tối ưu thao tác đọc/schema và timing từng bước: [chat-latency-20261115.md](chat-latency-20261115.md);
+chưa có phép đo live chứng minh TTFT sau tối ưu.
 
 ```mermaid
 flowchart TD

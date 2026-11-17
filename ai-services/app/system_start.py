@@ -1,4 +1,4 @@
-"""Own one fresh system boot; servers are started only after schema and policy are ready."""
+"""Manage fresh demos; ordinary eval uses the existing services and runner reset."""
 import argparse
 import asyncio
 import fcntl
@@ -228,20 +228,22 @@ def serve(args, settings, env):
                 child_env = backend_environment(env) if str(command[0]).startswith(str(ROOT/'backend')) else env
                 children.append(subprocess.Popen([str(x) for x in command], cwd=ROOT, env=child_env))
             wait_ports([settings.port, 8000], children)
-            print('Fresh demo ready: http://127.0.0.1:8000/chat', flush=True)
-            while True:
-                if any(p.poll() is not None for p in children):
-                    raise RuntimeError('A managed server exited; stop this boot and inspect its logs')
-                time.sleep(0.2)
-        else:
+        if args.mode != 'demo':
             module = 'eval_harness.knowledge_triplet' if args.mode == 'knowledge-eval' else 'eval_harness.run_official'
             command = list(args.command)
             if command[:1] == ['--']: command.pop(0)
             if args.resume:
                 command += ['--resume', str(args.resume)]
-            elif '--expected-database' not in command:
+            else:
                 command += ['--expected-database', args.expected_database]
             run([sys.executable, '-m', module, *command], env=env)
+            return
+        if children:
+            print('Fresh demo ready: http://127.0.0.1:8000/chat', flush=True)
+            while True:
+                if any(p.poll() is not None for p in children):
+                    raise RuntimeError('A managed server exited; stop this boot and inspect its logs')
+                time.sleep(0.2)
     finally:
         for child in children:
             if child.poll() is None: child.terminate()
@@ -251,6 +253,9 @@ def serve(args, settings, env):
 
 
 async def start(args, settings, env):
+    if args.mode == 'eval':
+        serve(args, settings, env)
+        return
     check_configuration(settings, args.mode)
     if args.resume:
         await require_ready(database_url(settings), env['SYSTEM_BOOT_ID'])
@@ -309,6 +314,8 @@ def main():
     p.add_argument('--sudo-docker', action='store_true', help='Use sudo only for Docker commands')
     args, command = p.parse_known_args()
     args.command = command
+    if '--manual-review' in command:
+        p.error('Use ordinary eval, then run_knowledge_eval.py --base-run RUN after frontend review; --manual-review was removed')
     if args.mode == 'knowledge-eval' and not args.resume:
         plan_parser = argparse.ArgumentParser(add_help=False)
         review_mode = plan_parser.add_mutually_exclusive_group()
@@ -329,9 +336,18 @@ def main():
     if args.mode != 'demo' and not args.resume:
         if not any(item == '--delivery-mode' or item.startswith('--delivery-mode=') for item in command):
             args.command += ['--delivery-mode', 'text']
-    settings = get_settings()
-    env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(ROOT/'ai-services'), str(ROOT)]), KNOWLEDGE_RELEASE_ID='')
+    env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(ROOT/'ai-services'), str(ROOT)]))
     env.pop('SYSTEM_STACK_OWNER', None)
+    if args.mode == 'eval':
+        try:
+            asyncio.run(start(args, None, env))
+        except KeyboardInterrupt:
+            pass
+        except subprocess.CalledProcessError as exc:
+            raise SystemExit(exc.returncode) from None
+        return
+    settings = get_settings()
+    env['KNOWLEDGE_RELEASE_ID'] = ''
     if args.resume:
         state = json.loads((args.resume/'experiment.json').read_text())
         boot_id = state.get('system_boot_id')

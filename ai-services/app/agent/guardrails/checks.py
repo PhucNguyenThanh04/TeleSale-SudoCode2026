@@ -20,7 +20,7 @@ from app.agent.memory.decision_makers import PERSON_PATTERN
 
 FALLBACK = "Dạ, hiện em chưa kiểm tra được thông tin này. Anh/chị vui lòng liên hệ tổng đài để được hỗ trợ ạ."
 
-_STOCK = re.compile(r"(?i)\b(?:còn hàng|có hàng|sẵn hàng|hết hàng)\b")
+_STOCK = re.compile(r"(?i)\b(?:còn hàng|có hàng|sẵn hàng|hết hàng|có sẵn trong kho)\b")
 _ORDER = re.compile(r"(?i)\bđã\s+(?:lên|tạo|đặt|chốt)\s+đơn\b")
 # A digit inside an area such as "25m2 trong" must not become "2 tr".
 _AMOUNT = re.compile(r"(?i)(?<!\w)(\d[\d.,]*)\s*(triệu|tr|nghìn|ngàn|k|đồng|đ|vnd|₫)")
@@ -407,7 +407,9 @@ def _unsupported_feature(candidate: str, successful: list[dict[str, Any]]) -> bo
     for sentence in re.split(r"[.!?](?!\d)", candidate):
         folded_sentence = _fold_text(sentence)
         features = list(_PRODUCT_FEATURE.finditer(folded_sentence))
-        if not features:
+        tds = (re.findall(r'(\d+(?:[.,]\d+)?)\s*ppm\b', folded_sentence)
+               if re.search(r'\btds\b', folded_sentence) else [])
+        if not features and not tds:
             continue
         named = []
         for item in catalog_items:
@@ -422,6 +424,10 @@ def _unsupported_feature(candidate: str, successful: list[dict[str, Any]]) -> bo
                 named.append(item)
         supported_items = named or (catalog_items if len(catalog_items) == 1 else [])
         if not supported_items:
+            return True
+        if tds and any(type((item.get('attributes') or {}).get('tds_output_ppm')) not in (int, float)
+                       or any(float(value.replace(',', '.')) != item['attributes']['tds_output_ppm']
+                              for value in tds) for item in supported_items):
             return True
         for feature in features:
             needle = re.sub(r"\s+", "", feature.group()).casefold().replace(",", ".")
@@ -668,6 +674,10 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     money_claims = _money_claims(money_candidate)
     from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus, product_alternatives_requested
     requested_skus = resolve_claim_skus(customer_text, successful)
+    if not requested_skus and re.search(r'tong (?:gia|tien)|gio hang|ca (?:hai|2)', _fold_text(customer_text)):
+        baskets = [call for call in successful if call.get('name') == 'pricing.quote_order']
+        if len(baskets) == 1:
+            requested_skus = {unit['sku'] for unit in baskets[0]['result'].get('units', [])}
     promotion_claim = re.search(r'khuyến mãi|ưu đãi|tặng|miễn phí|freeship|giảm giá', money_candidate, re.I)
     comparison = product_alternatives_requested(customer_text)
     from app.agent.harness.catalog_query import explicit_product_queries
@@ -723,7 +733,8 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
             if len(selected) != 1 or unverified_legacy_skus:
                 return FALLBACK, 'stock_sku_mismatch'
             stock = selected[0]['result'].get('in_stock')
-            if _STOCK.search(clause) and (stock is None or ('hết hàng' in clause.lower()) == stock):
+            negative_stock = bool(re.search(r'hết hàng|(?:không|chưa)\s+(?:còn hàng|có hàng|có sẵn trong kho)', clause, re.I))
+            if _STOCK.search(clause) and (type(stock) is not bool or negative_stock == stock):
                 return FALLBACK, 'stock_result_mismatch'
             if any(int(qty) != selected[0]['result'].get('qty') for qty in _STOCK_QTY.findall(clause)):
                 return FALLBACK, 'stock_quantity_mismatch'
@@ -762,6 +773,13 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
                     delivery_verified = False
         if not delivery_verified:
             return FALLBACK, "delivery_unverified"
+    if any(call['name'] == 'order.status' for call in successful):
+        # An order status does not establish its physical warehouse/carrier location.
+        for clause in re.split(r'[;!?\n]|\.(?!\d)', candidate):
+            folded = _fold_text(clause)
+            if (re.search(r'\bchua (?:duoc )?(?:ban giao|xuat kho|giao di)\b|\bvan con o kho\b', folded)
+                    and not re.search(r'\bneu\b', folded)):
+                return FALLBACK, 'order_status_unverified'
     if _ORDER_STATUS.search(candidate):
         status_results = [call["result"] for call in successful if call["name"] == "order.status"]
         if len(status_results) != 1 or not isinstance(status_results[0].get("orders"), list) \

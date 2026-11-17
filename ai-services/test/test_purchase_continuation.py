@@ -71,7 +71,7 @@ def test_completion_blocks_without_permission_and_does_not_retry_failed_write():
     asyncio.run(run())
 
 
-def test_actual_agent_completes_order_when_model_only_quotes():
+def test_actual_agent_completes_verified_order_before_invoking_model():
     from unittest.mock import patch
     from langchain_core.messages import AIMessage
     from app.agent.harness.agent_nodes import AgentNodes
@@ -89,7 +89,7 @@ def test_actual_agent_completes_order_when_model_only_quotes():
         with patch('app.agent.harness.agent_nodes.build_agent',return_value=agent),patch('app.agent.harness.agent_nodes.text_prompt',return_value='offline'):
             node=AgentNodes(None,gateway(calls),None,6,6)
             s.update(await node.run_agent(s));s.update(await node.verify_agent(s))
-        assert agent.count==1
+        assert agent.count==0
         assert [n for n,_ in calls]==['order.create']
         assert 'OD-OFFLINE' in s['agent_text']
     asyncio.run(run())

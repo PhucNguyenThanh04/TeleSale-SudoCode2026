@@ -84,7 +84,9 @@ def test_real_node_distinguishes_model_and_postprocess(failure):
          patch('app.agent.harness.agent_nodes.prompt_context', return_value={}), \
          patch('app.agent.harness.agent_nodes.prompt_messages', return_value=[]):
         with capture_diagnostic_events() as events:
-            asyncio.run(node.run_agent({'safe_text': 'xin chào', 'tool_calls': []}))
+            from datetime import date
+            asyncio.run(node.run_agent({'safe_text': 'xin chào', 'tool_calls': [],
+                'request': SimpleNamespace(on=date(2026, 10, 15))}))
     failed = [e for e in events if e.get('status') == 'failed']
     assert failed[0]['phase'] == ('model_invocation' if failure == 'model' else 'postprocess')
     assert execution_health([{'runtime_events': events}]) == 'degraded'

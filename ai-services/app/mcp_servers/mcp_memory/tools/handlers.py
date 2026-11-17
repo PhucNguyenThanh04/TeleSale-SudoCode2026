@@ -4,10 +4,11 @@ from fastmcp import FastMCP
 from fastmcp.server.auth import StaticTokenVerifier
 from pydantic import ValidationError
 
-from app.mcp_servers.mcp_memory.schemas import (ReadInput, WriteInput, TurnStatusInput,
+from app.mcp_servers.mcp_memory.schemas import (ReadInput, WriteInput, TurnStatusInput, TimelineInput,
                                                 validate_read_response)
 from app.mcp_servers.mcp_memory.services.memory import read, write
 from app.mcp_servers.mcp_memory.services.turn_status import read_turn_status
+from app.mcp_servers.mcp_memory.services.timeline import read_timeline
 from app.mcp_servers.mcp_memory.repos.langmem_projection import LangMemProjection
 from app.mcp_servers.mcp_shared.observability import (
     log_mcp_exception, log_mcp_validation, trace_mcp_call,
@@ -20,6 +21,10 @@ async def invoke(repo, name: str, args: dict) -> dict:
 
 async def _invoke(repo, name: str, args: dict) -> dict:
     try:
+        if name == "memory.timeline":
+            payload = TimelineInput.model_validate(args).model_dump(mode='json')
+            projector = LangMemProjection(repo.dsn) if hasattr(repo, 'dsn') else None
+            return await read_timeline(repo, **payload, projector=projector)
         if name == "memory.turn_status":
             payload = TurnStatusInput.model_validate(args).model_dump(mode="json")
             return await read_turn_status(repo, **payload)
@@ -62,5 +67,12 @@ def create_server(repo, token: str | None = None) -> FastMCP:
     async def memory_turn_status(customer_id: str | None, session_id: str,
                                  client_msg_id: str) -> dict:
         return await invoke(repo, "memory.turn_status", locals())
+
+    @mcp.tool(name="memory.timeline")
+    async def memory_timeline(customer_id: str | None, session_id: str, on: str,
+                              offset: int = 0, limit: int = 10,
+                              crm_sessions: list[dict] | None = None) -> dict:
+        return await invoke(repo, 'memory.timeline', {'customer_id': customer_id, 'session_id': session_id,
+            'on': on, 'offset': offset, 'limit': limit, 'crm_sessions': crm_sessions or []})
 
     return mcp

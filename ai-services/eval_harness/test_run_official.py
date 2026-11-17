@@ -16,6 +16,62 @@ def test_seed_fingerprint_must_match_across_configurations():
         require_same_seed("digest-a", "digest-b")
 
 
+@pytest.mark.parametrize('extra,mode', [([], 'text'), (['--delivery-mode', 'voice'], 'voice')])
+def test_cli_uses_m1_text_by_default_and_retains_explicit_voice(tmp_path, monkeypatch, extra, mode):
+    from eval_harness.run_official import main
+    (tmp_path / 'run.json').write_text(json.dumps({'status': 'validated'}))
+    monkeypatch.setattr('sys.argv', ['run_official', '--btc-root', str(tmp_path), *extra])
+    with patch('eval_harness.run_official.run_pair', new_callable=AsyncMock, return_value=tmp_path) as run, \
+         patch('eval_harness.report_metrics.render_run', return_value='offline test'):
+        main()
+    assert run.call_args.kwargs['delivery_mode'] == mode
+
+
+def test_incomplete_asr_options_fail_before_any_agent_run(tmp_path, monkeypatch):
+    from eval_harness.run_official import main
+    monkeypatch.setattr('sys.argv', ['run_official', '--btc-root', str(tmp_path),
+                                   '--asr-team-dataset', str(tmp_path)])
+    with patch('eval_harness.run_official.run_pair', new_callable=AsyncMock) as run:
+        with pytest.raises(SystemExit) as error:
+            main()
+    assert error.value.code == 2
+    run.assert_not_called()
+
+
+def test_cli_attaches_saved_asr_sources_without_running_asr(tmp_path, monkeypatch):
+    from eval_harness.run_official import main
+    from eval_harness.test_asr_evidence import asr_score
+    from eval_harness.test_official_pipeline import BTC
+    dataset, source = asr_score(tmp_path)
+    out = tmp_path / 'pair'; out.mkdir()
+    (out / 'run.json').write_text(json.dumps({'status': 'validated'}))
+    monkeypatch.setattr('sys.argv', ['run_official', '--btc-root', str(BTC),
+        '--asr-team-dataset', str(dataset), '--asr-team-run', str(source)])
+    with patch('eval_harness.run_official.run_pair', new_callable=AsyncMock, return_value=out), \
+         patch('eval_harness.report_metrics.render_run', return_value='offline test'):
+        main()
+    attached = json.loads((out / 'asr_evidence.json').read_text())
+    assert attached['groups']['team']['report']['input_integrity'] is True
+    assert attached['groups']['team']['report']['asr_evidence_ready'] is False
+
+
+def test_corrupt_asr_score_stops_before_agent_evaluation(tmp_path, monkeypatch):
+    from eval_harness.run_official import main
+    from eval_harness.test_asr_evidence import asr_score
+    from eval_harness.test_official_pipeline import BTC
+    dataset, source = asr_score(tmp_path)
+    score = json.loads((source / 'score.json').read_text())
+    score['official']['WER'] = 99
+    (source / 'score.json').write_text(json.dumps(score))
+    monkeypatch.setattr('sys.argv', ['run_official', '--btc-root', str(BTC),
+        '--asr-team-dataset', str(dataset), '--asr-team-run', str(source)])
+    with patch('eval_harness.run_official.run_pair', new_callable=AsyncMock) as run:
+        with pytest.raises(SystemExit) as error:
+            main()
+    assert error.value.code == 2
+    run.assert_not_called()
+
+
 @pytest.mark.parametrize('failure', [None, 'publish', 'missing', 'tampered', 'turn_missing', 'turn_tampered'])
 @pytest.mark.parametrize('baseline_first', [False, True])
 def test_conversation_run_does_not_execute_retired_rag(tmp_path, failure, baseline_first):
@@ -48,8 +104,8 @@ def test_conversation_run_does_not_execute_retired_rag(tmp_path, failure, baseli
     def fake_publish(scenarios, full, baseline, score, metadata, **kwargs):
         from eval_harness.extraction_report import summarize_extraction, sha256
         measurement = metadata['model_params']['conversation_measurement']
-        assert measurement['delivery_mode'] == 'voice'
-        assert measurement['ttft_is_proxy'] is True
+        assert measurement['delivery_mode'] == 'text'
+        assert measurement['ttft_is_proxy'] is False
         if failure == 'publish':
             raise OSError('synthetic publication failure')
         result = {'status': 'validated', 'manifests': {'full': {}, 'baseline_no_memory': {}}}
@@ -89,7 +145,7 @@ def test_conversation_run_does_not_execute_retired_rag(tmp_path, failure, baseli
     run = json.loads((out / "run.json").read_text(encoding="utf-8"))
     assert order == (['baseline', 'full'] if baseline_first else ['full', 'baseline'])
     assert run["status"] == ("failed" if failure else "validated")
-    assert run['conversation_measurement']['response_scope'] == 'transcript_to_complete_reply'
+    assert run['conversation_measurement']['response_scope'] == 'chat_to_complete_reply'
     assert "rag_summary" not in run
     assert not (out / "rag_retrieval.json").exists()
 
