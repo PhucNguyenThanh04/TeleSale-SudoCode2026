@@ -43,7 +43,9 @@ class NumberWordsTests(unittest.TestCase):
         cases = {"bốn triệu rưỡi": "4,5 triệu", "sáu trăm chín mươi nghìn": "690 nghìn",
                  "số không chín ba tám năm năm một hai bốn sáu": "số 0938551246", "máy chín lõi": "máy 9 lõi",
                  "bán có năm triệu bảy thôi": "bán có 5,7 triệu thôi", "bán có 5 triệu 7 thôi": "bán có 5,7 triệu thôi",
-                 "giá 5 triệu 490 nghìn": "giá 5,49 triệu", "giá 5 triệu 200": "giá 5,2 triệu"}
+                 "giá 5 triệu 490 nghìn": "giá 5,49 triệu", "giá 5 triệu 200": "giá 5,2 triệu",
+                 "giá 1 triệu 990.000 đồng": "giá 1,99 triệu đồng",
+                 "giảm 1 triệu, còn 990.000 đồng": "giảm 1 triệu, còn 990.000 đồng"}
         for spoken, written in cases.items():
             with self.subTest(spoken=spoken):
                 self.assertEqual(itn(spoken), written)
