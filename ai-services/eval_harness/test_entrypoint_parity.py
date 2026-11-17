@@ -74,7 +74,7 @@ def test_shared_runner_records_zero_event_and_runtime_failure_turns(tmp_path):
     out=tmp_path/'trace.jsonl'
     with pytest.raises(RuntimeError):
         asyncio.run(run_configuration(scenarios={'X':{'calls':{'call_1':{'customer_turns':['chào','lỗi']}}}},
-            config='full',runtime=Failing(),run_id='r',out=out,wait_for_jobs=AsyncMock(),capture_writes=AsyncMock(return_value={})))
+            config='full',runtime=Failing(),run_id='r',out=out,delivery_mode='voice',wait_for_jobs=AsyncMock(),capture_writes=AsyncMock(return_value={})))
     refs=verify_turn_diagnostics(out)
     assert refs['rows']==2
     rows=json.loads(out.with_suffix('.events.json').read_text())

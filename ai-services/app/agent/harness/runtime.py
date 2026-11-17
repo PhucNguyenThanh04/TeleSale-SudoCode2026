@@ -15,7 +15,6 @@ from langchain_core.language_models.chat_models import BaseChatModel
 
 from app.agent.graph import build_graph
 from app.agent.harness.agent_nodes import AgentNodes, MEMORY_UNAVAILABLE
-from app.agent.implementations import AgentKind
 from app.agent.memory.store import MemoryStore
 from app.agent.harness.observability import log_event
 from app.agent.harness.context import load_context
@@ -29,18 +28,18 @@ from app.schemas.agent import (PrepareSessionRequest, PrepareSessionResponse,
                                TextTurnRequest, TextTurnResponse, TurnMemoryRequest,
                                MemoryUpdate, VoicePlaybackRequest)
 from app.schemas.timeline import TimelineRequest, TimelinePage
+from app.agent.harness.streaming import GuardedStream, active_stream
 
 
 class AgentHarnessRuntime:
-    """Production runtime for the selected model/tool agent loop."""
+    """Deep Agent runtime with one streaming model/tool loop."""
 
     def __init__(self, llm: BaseChatModel, tools: ToolGateway, memory: MemoryStore,
                  max_tool_calls: int = DEFAULT_MAX_TOOL_CALLS,
                  prompt_history_turns: int = DEFAULT_PROMPT_HISTORY_TURNS,
                  clock: Callable[[], datetime] | None = None,
                  guardrails_enabled: bool = True,
-                 tracing: LangfuseTracing | None = None,
-                 agent_kind: AgentKind = "deep") -> None:
+                 tracing: LangfuseTracing | None = None) -> None:
         self.memory = memory
         self.tools = tools
         self.tracing = tracing
@@ -48,10 +47,10 @@ class AgentHarnessRuntime:
             log_event(None, "verify", "answer_check_disabled", level=logging.WARNING,
                       reason="cấu hình tắt kiểm tra bổ sung; kiểm tra bằng chứng vẫn chạy")
         self.nodes = AgentNodes(llm, tools, memory, max_tool_calls,
-                                prompt_history_turns, clock, agent_kind=agent_kind)
+                                prompt_history_turns, clock)
         self.graph = build_graph(llm, tools, memory, max_tool_calls,
                                  prompt_history_turns, clock, guardrails_enabled,
-                                 agent_kind, nodes=self.nodes)
+                                 nodes=self.nodes)
         self._locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._responses: dict[tuple[str, str], TextTurnResponse] = {}
         self._states: dict[tuple[str, str], TurnState] = {}
@@ -62,6 +61,7 @@ class AgentHarnessRuntime:
         self._clock = clock
         self._playback_tasks: dict[tuple[str, str], asyncio.Task] = {}
         self._playback_receipts: dict[tuple[str, str], tuple[int, bool]] = {}
+        self._stream_tasks: dict[asyncio.Task, GuardedStream] = {}
 
     async def _finalize_playback(self, key, played_chars: int, interrupted: bool):
         if key in self._playback_receipts:
@@ -105,6 +105,11 @@ class AgentHarnessRuntime:
             log_event(None, "playback", "commit_failed", error_type=type(exc).__name__)
 
     async def close(self):
+        streams = list(self._stream_tasks)
+        for stream in list(self._stream_tasks.values()):
+            stream.disconnect()
+        if streams:
+            await asyncio.gather(*streams, return_exceptions=True)
         tasks = list(self._playback_tasks.values())
         for task in tasks:
             task.cancel()
@@ -235,7 +240,54 @@ class AgentHarnessRuntime:
         except Exception:
             raise RuntimeError('Memory timeline unavailable') from None
 
+    async def stream(self, turn: TextTurnRequest):
+        if turn.delivery_mode != 'text':
+            raise ValueError('Streaming requires text delivery')
+        if not self.nodes.guardrails_enabled:
+            raise ValueError('Streaming requires answer guardrails')
+        stream = GuardedStream()
+
+        async def produce():
+            token = active_stream.set(stream)
+            try:
+                response = await self.run(turn)
+                if stream.state is None:  # A checked cached response; never re-execute tools.
+                    saved = self.state_for(turn)
+                    if saved is not None and not saved.get('agent_text'):
+                        stream.terminal({'event': 'error', 'code': 'turn_interrupted'})
+                        return
+                    await stream.finish(response.agent_text, saved or {})
+                stream.terminal({'event': 'done', **response.model_dump(mode='json')})
+            except Exception:
+                stream.terminal({'event': 'error', 'code': 'turn_failed'})
+            finally:
+                active_stream.reset(token)
+
+        task = asyncio.create_task(produce())
+        self._stream_tasks[task] = stream
+        task.add_done_callback(lambda finished: self._stream_tasks.pop(finished, None))
+        try:
+            async for event in stream.events():
+                yield {'session_id': str(turn.session_id), 'client_msg_id': str(turn.client_msg_id), **event}
+        finally:
+            # Do not cancel an in-flight write on a transport disconnect.
+            stream.disconnect()
+
     async def run(self, turn: TextTurnRequest) -> TextTurnResponse:
+        """Collect the guarded text stream, or generate voice awaiting its receipt."""
+        async def collect(text):
+            return True
+
+        token = None
+        if turn.delivery_mode == 'text' and active_stream.get() is None:
+            token = active_stream.set(GuardedStream(collect))
+        try:
+            return await self._run_with_release(turn)
+        finally:
+            if token is not None:
+                active_stream.reset(token)
+
+    async def _run_with_release(self, turn: TextTurnRequest) -> TextTurnResponse:
         from app.knowledge.context import selected_release, release_context
         if selected_release() or not getattr(self.tools, "transports", {}).get("knowledge"):
             return await self._run(turn)
@@ -249,6 +301,7 @@ class AgentHarnessRuntime:
                   input_mode=turn.input_mode, on=turn.on.isoformat())
         session_id = str(turn.session_id)
         key = (session_id, str(turn.client_msg_id))
+        stream = active_stream.get()
         async with self._locks[session_id]:
             fingerprint = identity_fingerprint(turn)
             bound = self._session_identities.get(session_id)
@@ -313,6 +366,11 @@ class AgentHarnessRuntime:
                          "session_tool_calls": prior_session_calls,
                          "tool_calls": initial_calls}, config=config,
                     )
+                    response_text = state['agent_text']
+                    if stream is not None:
+                        state['agent_text'] = await stream.finish(response_text, state)
+                        response_text = state['agent_text'] or response_text
+                        state.update(await self.nodes.persist_agent(state))
                     session.update(state)
                     if not state.get("tool_failed"):
                         self._session_tool_calls[session_id].extend(prepared_calls)
@@ -335,7 +393,7 @@ class AgentHarnessRuntime:
             response = TextTurnResponse(
                 client_msg_id=turn.client_msg_id,
                 session_id=turn.session_id,
-                agent_text=state["agent_text"],
+                agent_text=response_text,
                 needs_handoff=state.get("needs_handoff", False),
                 handoff_ticket_id=state.get("handoff_ticket_id"),
                 call_brief=state.get("call_brief"),
@@ -357,5 +415,5 @@ class AgentHarnessRuntime:
             return response
 
 
-# Keep the old import working for existing callers while configuration chooses the agent.
+# Existing integrations use this name for the same Deep Agent runtime.
 DeepHarnessRuntime = AgentHarnessRuntime

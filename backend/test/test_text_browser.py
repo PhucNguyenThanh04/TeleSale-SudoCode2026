@@ -15,6 +15,7 @@ from app.voice_main import create_app
 from app.auth import password_hash
 from gateway_fixture import USER
 from test_voice_browser import browser
+from test_text_gateway import streamed_response
 
 
 @pytest.fixture
@@ -47,10 +48,24 @@ def text_site():
                 'client_msg_id': payload['client_msg_id'], 'memory_update': {
                     'turn_saved': True, 'status': 'completed', 'changes': [
                         {'field': 'budget_vnd', 'action': 'updated', 'value': 5000000}]}})
-        assert request.url.path == '/v1/chat/turns'
+        assert request.url.path == '/v1/chat/turns/stream'
         assert payload['delivery_mode'] == 'text'
         calls.append(payload)
-        return httpx.Response(200, json={'session_id': payload['session_id'],
+        if timeline.get('stream_gate') is not None:
+            class Body(httpx.AsyncByteStream):
+                async def __aiter__(self):
+                    identity = {k: payload[k] for k in ('session_id', 'client_msg_id')}
+                    first = 'Đã kiểm tra <img src=x onerror=alert(1)>.'
+                    yield (json.dumps({'event':'delta', **identity, 'seq':1, 'text':first})+'\n').encode()
+                    assert await asyncio.to_thread(timeline['stream_gate'].wait, 10)
+                    if timeline.get('stream_truncated'):
+                        return
+                    suffix = ' Mình cần thêm thông tin nào?'
+                    yield (json.dumps({'event':'delta', **identity, 'seq':2, 'text':suffix})+'\n').encode()
+                    yield (json.dumps({'event':'done', **identity, 'agent_text':first+suffix,
+                        'memory_update':{'turn_saved':True, 'status':'completed'}})+'\n').encode()
+            return httpx.Response(200, stream=Body(), headers={'content-type':'application/x-ndjson'})
+        return streamed_response({'session_id': payload['session_id'],
             'client_msg_id': payload['client_msg_id'], 'agent_text': 'Dạ <b>xin chào</b>',
             'call_brief': {'is_returning': True, 'n_previous_sessions': 1,
                 'products_advised': [{'sku': 'SKU-ASTER', 'price_quoted_vnd': 900000}]},
@@ -217,6 +232,41 @@ def test_timeline_browser_pages_refreshes_cross_channel_and_survives_reload(text
     assert 'Đã cập nhật sau lượt chat' in js("document.querySelector('#timeline-items').innerText")
     import base64
     (tmp_path/'timeline.png').write_bytes(base64.b64decode(command('Page.captureScreenshot', captureBeyondViewport=True)['data']))
+
+
+def test_browser_displays_a_delta_before_done_in_one_safe_bubble(text_site, browser):
+    gate = threading.Event()
+    text_site[2]['stream_gate'] = gate
+    try:
+        _, js, calls, _ = open_text_timeline(text_site, browser)
+        js("document.querySelector('#text').value='Xin tư vấn'; document.querySelector('#chat-form').requestSubmit(); waitFor(() => document.querySelector('.message.agent p')?.textContent.includes('Đã kiểm tra'))")
+        assert not gate.is_set()
+        assert js("document.querySelector('#send').disabled") is True
+        assert js("document.querySelectorAll('.message.agent').length") == 1
+        assert js("document.querySelectorAll('#messages img').length") == 0
+        gate.set()
+        js("waitFor(() => !document.querySelector('#send').disabled)")
+        assert js("document.querySelectorAll('.message.agent').length") == 1
+        assert 'Mình cần thêm thông tin nào?' in js("document.querySelector('.message.agent p').textContent")
+        assert len(calls) == 1
+    finally:
+        gate.set()
+
+
+def test_browser_preserves_partial_text_and_reports_interrupted_stream(text_site, browser):
+    gate = threading.Event()
+    text_site[2].update(stream_gate=gate, stream_truncated=True)
+    try:
+        _, js, calls, _ = open_text_timeline(text_site, browser)
+        js("document.querySelector('#text').value='Xin tư vấn'; document.querySelector('#chat-form').requestSubmit(); waitFor(() => !!document.querySelector('.message.agent'))")
+        gate.set()
+        js("waitFor(() => !document.querySelector('#send').disabled)")
+        assert 'Phản hồi bị ngắt' in js("document.querySelector('#error').textContent")
+        assert 'Đã kiểm tra' in js("document.querySelector('.message.agent p').textContent")
+        assert js("document.querySelectorAll('.message.agent').length") == 1
+        assert len(calls) == 1
+    finally:
+        gate.set()
 
 
 def test_timeline_browser_error_retry_empty_and_stale_response(text_site, browser):

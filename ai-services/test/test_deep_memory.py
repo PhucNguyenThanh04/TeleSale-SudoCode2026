@@ -223,26 +223,24 @@ class DeepMemoryTest(unittest.IsolatedAsyncioTestCase):
         runtime = DeepHarnessRuntime(FakeToolModel(replies=[]), FakeGateway(), FakeMemory())
         self.assertEqual(set(runtime.graph.nodes), {
             "__start__", "accept", "retrieve_context",
-            "run_agent", "verify", "persist",
+            "run_agent", "verify",
         })
 
     async def test_identity_is_initialized_once_for_multiple_turns(self):
-        for agent_kind in ("deep", "react"):
-            with self.subTest(agent_kind=agent_kind):
-                session_id = uuid4()
-                gateway, memory = FakeGateway(), FakeMemory()
-                runtime = DeepHarnessRuntime(FakeToolModel(replies=[
-                    AIMessage(content="Dạ, em đã ghi nhận ạ."),
-                    AIMessage(content="Dạ, mình tiếp tục nhé."),
-                ]), gateway, memory, agent_kind=agent_kind)
-                first = turn("Tôi cần tư vấn", session_id)
-                second = turn("Tư vấn tiếp", session_id)
-                await runtime.run(first)
-                await runtime.run(second)
-                self.assertEqual([name for name, _ in gateway.calls], ["crm.get_customer"])
-                self.assertEqual(runtime.state_for(first)["customer_id"], "C001")
-                self.assertEqual(runtime.state_for(second)["customer_id"], "C001")
-                self.assertEqual(len(memory.turns[str(session_id)]), 2)
+        session_id = uuid4()
+        gateway, memory = FakeGateway(), FakeMemory()
+        runtime = DeepHarnessRuntime(FakeToolModel(replies=[
+            AIMessage(content="Dạ, em đã ghi nhận ạ."),
+            AIMessage(content="Dạ, mình tiếp tục nhé."),
+        ]), gateway, memory)
+        first = turn("Tôi cần tư vấn", session_id)
+        second = turn("Tư vấn tiếp", session_id)
+        await runtime.run(first)
+        await runtime.run(second)
+        self.assertEqual([name for name, _ in gateway.calls], ["crm.get_customer"])
+        self.assertEqual(runtime.state_for(first)["customer_id"], "C001")
+        self.assertEqual(runtime.state_for(second)["customer_id"], "C001")
+        self.assertEqual(len(memory.turns[str(session_id)]), 2)
 
     async def test_session_rejects_changed_channel_identity(self):
         session_id = uuid4()
@@ -334,6 +332,17 @@ class DeepMemoryTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(name == "catalog.search" for name in names[1:]))
         self.assertLessEqual(len(names[1:]), 2)
 
+
+
+class FakeStreamAgent:
+    """Values-only agent stream for node tests; the model stream is tested separately."""
+    def __init__(self, **response_options):
+        from unittest.mock import AsyncMock
+        self.response = AsyncMock(**response_options)
+
+    async def astream(self, inputs, *, config, stream_mode):
+        assert stream_mode == ['messages', 'values']
+        yield 'values', await self.response(inputs, config=config)
 
 
 if __name__ == "__main__":

@@ -34,7 +34,7 @@ def test_next_turn_does_not_wait_for_enrichment_and_final_artifacts_do():
         return {source: [{'key': 'room_area_m2', 'value': 25, 'op': 'set'}] for source in ids}
 
     rows = asyncio.run(run_scenario_call(Runtime(), 'X', 'call_1', {'customer_turns': ['a', 'b']},
-        date(2026, 10, 15), '0900000000', wait_for_jobs=wait, capture_writes=capture))
+        date(2026, 10, 15), '0900000000', wait_for_jobs=wait, capture_writes=capture, delivery_mode='voice'))
     assert events == ['response', 'commit', 'response', 'commit', 'enrichment', 'enrichment']
     assert all(row['memory_writes'][0]['value'] == 25 for row in rows)
     assert all(row['memory_enrichment_status'] == 'completed' for row in rows)
@@ -59,7 +59,7 @@ def test_background_wait_is_timed_separately_from_essential_commit(monkeypatch):
 
     monkeypatch.setattr('eval_harness.benchmark_runner.time.perf_counter', lambda: clock[0])
     rows = asyncio.run(run_scenario_call(Runtime(), 'X', 'call_1', {'customer_turns': ['a']},
-        date(2026, 10, 15), '0900000000', wait_for_jobs=wait, capture_writes=AsyncMock(return_value={})))
+        date(2026, 10, 15), '0900000000', wait_for_jobs=wait, capture_writes=AsyncMock(return_value={}), delivery_mode='voice'))
     assert rows[0]['latency']['response_ms'] == 125
     assert rows[0]['latency']['essential_commit_ms'] == 250
     assert rows[0]['latency']['background_finalize_ms'] == 4000

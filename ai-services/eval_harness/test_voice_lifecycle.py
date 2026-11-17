@@ -9,8 +9,7 @@ import pytest
 from eval_harness.benchmark_runner import run_scenario_call
 
 
-@pytest.mark.parametrize('agent_kind', ['deep', 'react'])
-def test_real_runtime_prepares_and_commits_full_playback_before_next_turn(monkeypatch, agent_kind):
+def test_real_runtime_prepares_and_commits_full_playback_before_next_turn(monkeypatch):
     monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / 'test'))
     from langchain_core.messages import AIMessage
     from app.agent.harness.runtime import AgentHarnessRuntime
@@ -46,7 +45,7 @@ def test_real_runtime_prepares_and_commits_full_playback_before_next_turn(monkey
             return await super().record_playback(request)
 
     model = FakeToolModel(replies=[AIMessage(content='Dạ, em nghe ạ.') for _ in range(2)])
-    runtime = Runtime(model, FakeGateway(), memory, agent_kind=agent_kind)
+    runtime = Runtime(model, FakeGateway(), memory)
 
     async def wait(source_id):
         events.append('worker')
@@ -55,7 +54,7 @@ def test_real_runtime_prepares_and_commits_full_playback_before_next_turn(monkey
     async def run():
         rows = await run_scenario_call(runtime, 'X', 'call_1',
             {'customer_turns_asr': ['chào', 'tiếp']}, date(2026, 10, 15), '0984726714',
-            wait_for_jobs=wait, diagnostics=diagnostics)
+            wait_for_jobs=wait, diagnostics=diagnostics, delivery_mode='voice')
         assert not runtime._playback_tasks
         assert len(memory.operations) == 2
         return rows
@@ -94,7 +93,7 @@ def test_phase_timings_exclude_prepare_playback_and_worker(monkeypatch):
 
     monkeypatch.setattr('eval_harness.benchmark_runner.time.perf_counter', lambda: clock[0])
     rows = asyncio.run(run_scenario_call(Runtime(), 'X', 'call_1',
-        {'customer_turns': ['chào', 'tiếp']}, date(2026, 10, 15), '0984726714', wait_for_jobs=wait))
+        {'customer_turns': ['chào', 'tiếp']}, date(2026, 10, 15), '0984726714', wait_for_jobs=wait, delivery_mode='voice'))
     assert events == ['prepare', 'response', 'playback', 'response', 'playback', 'worker', 'worker']
     assert [row['latency']['prepare_ms'] for row in rows] == [2000, 0]
     for row in rows:
@@ -113,7 +112,7 @@ def test_prepare_failure_stops_before_model():
 
     with pytest.raises(RuntimeError, match='session_preparation_unavailable'):
         asyncio.run(run_scenario_call(Runtime(), 'X', 'call_1', {'customer_turns': ['chào']},
-                                     date(2026, 10, 15), '0984726714'))
+                                     date(2026, 10, 15), '0984726714', delivery_mode='voice'))
 
 
 def test_playback_failure_keeps_response_and_stops_call(monkeypatch):
@@ -138,7 +137,7 @@ def test_playback_failure_keeps_response_and_stops_call(monkeypatch):
     monkeypatch.setattr('eval_harness.benchmark_runner.time.perf_counter', lambda: clock[0])
     with pytest.raises(RuntimeError, match='playback_failed'):
         asyncio.run(run_scenario_call(Runtime(), 'X', 'call_1',
-            {'customer_turns': ['chào', 'tiếp']}, date(2026, 10, 15), '0984726714', rows_out=rows))
+            {'customer_turns': ['chào', 'tiếp']}, date(2026, 10, 15), '0984726714', rows_out=rows, delivery_mode='voice'))
     assert len(rows) == 1
     assert rows[0]['agent_text'] == 'Dạ.'
     assert rows[0]['memory_error'] == 'playback_failed'
@@ -148,7 +147,7 @@ def test_playback_failure_keeps_response_and_stops_call(monkeypatch):
 
 def test_empty_call_does_not_prepare():
     assert asyncio.run(run_scenario_call(object(), 'X', 'call_1', {'customer_turns': []},
-                                        date(2026, 10, 15), '0984726714')) == []
+                                        date(2026, 10, 15), '0984726714', delivery_mode='voice')) == []
 
 
 def test_playback_uses_original_reply_before_trace_redaction():
@@ -167,7 +166,7 @@ def test_playback_uses_original_reply_before_trace_redaction():
             assert request.interrupted is False
 
     rows = asyncio.run(run_scenario_call(Runtime(), 'X', 'call_1', {'customer_turns': ['chào']},
-                                        date(2026, 10, 15), '0984726714'))
+                                        date(2026, 10, 15), '0984726714', delivery_mode='voice'))
     assert '0984726714' not in rows[0]['agent_text']
 
 
@@ -194,7 +193,7 @@ def test_preparation_identity_and_brief_match_the_call():
 
     rows = asyncio.run(run_scenario_call(Runtime(), 'X', 'call_2',
         {'customer_turns': ['chào', 'tiếp'], 'channel': 'zalo_oa', 'channel_identity': 'zalo-user',
-         'days_later': 2, 'input_mode': 'chat_teencode'}, date(2026, 10, 15), '0984726714'))
+         'days_later': 2, 'input_mode': 'chat_teencode'}, date(2026, 10, 15), '0984726714', delivery_mode='voice'))
     assert len(prepared) == 1
     assert rows[0]['call_brief_latency_ms'] == 750
     assert rows[1].get('call_brief_latency_ms') is None

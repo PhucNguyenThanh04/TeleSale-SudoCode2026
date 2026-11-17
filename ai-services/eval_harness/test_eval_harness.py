@@ -31,7 +31,7 @@ class TestEvalHarness(unittest.TestCase):
         import sys
 
         result = subprocess.run([sys.executable, "-m", "eval_harness.benchmark_runner",
-                                 "--agent", "deep", "--variant", "shadow",
+                                 "--variant", "shadow",
                                  "--scenarios", "/does/not/exist"],
                                 capture_output=True, text=True, check=False)
         self.assertNotEqual(result.returncode, 0)

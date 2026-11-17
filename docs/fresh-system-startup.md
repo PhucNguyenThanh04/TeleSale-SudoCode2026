@@ -96,7 +96,7 @@ Khi model/DB/MCP đã chạy, chạy một cặp official No-memory/Full:
 
 ```bash
 python run_system.py eval --expected-database telesale -- \
-  --delivery-mode text --agent deep --seed 7 \
+  --seed 7 \
   --scenarios ai-services/eval_harness/scenarios \
   --btc-root ../BTC-Data-Vong1-TEAMS \
   --out-root ai-services/eval_harness/results/fresh-full
@@ -118,7 +118,7 @@ Thí nghiệm tự duyệt cũ vẫn quản lý riêng một boot mới:
 
 ```bash
 python run_system.py knowledge-eval --expected-database telesale -- \
-  --delivery-mode text --agent deep --seed 7 \
+  --seed 7 \
   --scenarios ai-services/eval_harness/scenarios \
   --btc-root ../BTC-Data-Vong1-TEAMS \
   --actor local-reviewer --auto-review \

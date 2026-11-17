@@ -18,6 +18,14 @@ def preparation(request):
         'call_brief': {'is_returning': True, 'n_previous_sessions': 1}})
 
 
+def streamed_response(body):
+    identity = {k: body[k] for k in ('session_id', 'client_msg_id')}
+    events = [{'event': 'delta', **identity, 'seq': 1, 'text': body['agent_text']},
+              {'event': 'done', **body}]
+    return httpx.Response(200, content=''.join(json.dumps(e) + '\n' for e in events),
+                          headers={'content-type': 'application/x-ndjson'})
+
+
 def test_text_page_and_asset_are_served():
     with TestClient(create_app(VoiceSettings(_env_file=None))) as client:
         page = client.get('/chat')
@@ -37,10 +45,10 @@ def test_text_socket_keeps_session_identity_and_forwards_memory_without_playback
             return preparation(request)
         payload = json.loads(request.content)
         calls.append(payload)
-        assert request.url.path == '/v1/chat/turns'
+        assert request.url.path == '/v1/chat/turns/stream'
         assert payload['delivery_mode'] == 'text'
         assert payload['channel_identity'] == START['channel_identity']
-        return httpx.Response(200, json={'session_id': payload['session_id'],
+        return streamed_response({'session_id': payload['session_id'],
             'client_msg_id': payload['client_msg_id'], 'agent_text': 'Dạ.',
             'call_brief': {'is_returning': True, 'n_previous_sessions': 1},
             'memory_update': {'turn_saved': True, 'status': 'completed', 'changes': []}})
@@ -55,6 +63,7 @@ def test_text_socket_keeps_session_identity_and_forwards_memory_without_playback
             assert calls == []  # brief is ready before the first model turn
             for msg_id in ids:
                 socket.send_json({'event': 'text', 'client_msg_id': msg_id, 'text': 'Xin chào'})
+                assert socket.receive_json()['event'] == 'agent_delta'
                 reply = socket.receive_json()
                 assert reply['event'] == 'agent_reply'
                 assert reply['client_msg_id'] == msg_id
@@ -99,7 +108,7 @@ def test_wrong_response_identity_is_not_sent_to_browser():
         if request.url.path == '/v1/chat/sessions/prepare':
             return preparation(request)
         payload = json.loads(request.content)
-        return httpx.Response(200, json={'session_id': str(uuid4()),
+        return streamed_response({'session_id': str(uuid4()),
             'client_msg_id': payload['client_msg_id'], 'agent_text': 'Other customer'})
 
     with TestClient(create_app(VoiceSettings(_env_file=None))) as client:
@@ -116,7 +125,7 @@ def test_malformed_memory_result_does_not_crash_the_text_connection():
         if request.url.path == '/v1/chat/sessions/prepare':
             return preparation(request)
         payload = json.loads(request.content)
-        return httpx.Response(200, json={'session_id': payload['session_id'],
+        return streamed_response({'session_id': payload['session_id'],
             'client_msg_id': payload['client_msg_id'], 'agent_text': 'Dạ.',
             'memory_update': 'invalid'})
 
@@ -126,4 +135,5 @@ def test_malformed_memory_result_does_not_crash_the_text_connection():
             socket.send_json(START)
             socket.receive_json()
             socket.send_json({'event': 'text', 'client_msg_id': str(uuid4()), 'text': 'Hello'})
+            assert socket.receive_json()['event'] == 'agent_delta'
             assert socket.receive_json()['code'] == 'harness_failed'

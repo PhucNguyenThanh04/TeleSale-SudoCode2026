@@ -1,6 +1,8 @@
 """HTTP contract checks for the text-turn harness endpoint."""
 
 import unittest
+from unittest.mock import patch
+from pydantic import SecretStr
 
 import httpx
 from app.api.chat import get_harness
@@ -22,6 +24,9 @@ class _Harness:
 
 class ChatApiTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
+        token = patch.object(get_settings(), 'ai_internal_token', SecretStr('offline-api-token'))
+        token.start()
+        self.addCleanup(token.stop)
         async def fake_harness():
             return _Harness()
         app.dependency_overrides[get_harness] = fake_harness

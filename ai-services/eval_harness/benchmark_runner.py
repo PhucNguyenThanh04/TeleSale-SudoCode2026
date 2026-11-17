@@ -7,6 +7,7 @@ against the configured PostgreSQL database, four MCP servers and model.
 from __future__ import annotations
 
 from copy import deepcopy
+from contextlib import aclosing
 import argparse
 import asyncio
 import hashlib
@@ -27,7 +28,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from app.agent.factory import build_runtime
 from app.configs import Settings
 from app.mcp_servers.mcp_shared.config import database_url
-from app.schemas.agent import PrepareSessionRequest, TextTurnRequest, VoicePlaybackRequest
+from app.schemas.agent import PrepareSessionRequest, TextTurnRequest, TextTurnResponse, VoicePlaybackRequest
 
 from eval_harness.memory_recall import evaluate_memory_recall
 from eval_harness.reference_adapter import (facts_used, public_memory_writes,
@@ -55,19 +56,48 @@ CONVERSATION_MEASUREMENT = {
 }
 
 
-def conversation_measurement(delivery_mode='voice'):
+def conversation_measurement(delivery_mode='text'):
     if delivery_mode == 'voice':
         return deepcopy(CONVERSATION_MEASUREMENT)
     if delivery_mode != 'text':
         raise ValueError('unsupported_delivery_mode')
     return {
-        'lifecycle': 'prepare_session -> run(text, including persistence); drain_enrichment_at_call_end',
+        'lifecycle': 'prepare_session -> stream(text, guarded deltas and persistence) -> done; drain_enrichment_at_call_end',
         'delivery_mode': 'text', 'playback': 'not_applicable',
         'response_scope': 'chat_to_complete_reply',
         'excluded': ['prepare', 'memory_worker_wait', 'asr', 'tts', 'http_transport'],
-        'ttft_is_proxy': False,
-        'ttft_basis': 'nonstreaming_total_btc_rule_7',
+        'ttft_is_proxy': False, 'ttft_basis': 'streaming_guarded_answer_delta',
     }
+
+
+class StreamingMeasurementError(RuntimeError):
+    pass
+
+
+async def measured_stream(runtime, request, started):
+    first, answer, sequence = None, '', 1
+    async with aclosing(runtime.stream(request)) as stream:
+        async for event in stream:
+            if (not isinstance(event, dict) or any(event.get(key) != str(getattr(request, key))
+                    for key in ('client_msg_id', 'session_id'))):
+                raise StreamingMeasurementError('stream_identity_changed')
+            if event.get('event') == 'delta':
+                text = event.get('text')
+                if (type(event.get('seq')) is not int or event['seq'] != sequence
+                        or not isinstance(text, str) or not text):
+                    raise StreamingMeasurementError('invalid_stream_delta')
+                if first is None and text.strip():
+                    first = (time.perf_counter() - started) * 1000
+                answer += text
+                sequence += 1
+            elif event.get('event') == 'done':
+                response = TextTurnResponse.model_validate(event)
+                if first is None or response.agent_text != answer:
+                    raise StreamingMeasurementError('stream_answer_changed')
+                return response, first, sequence - 1
+            else:
+                raise StreamingMeasurementError('stream_failed')
+    raise StreamingMeasurementError('stream_missing_done')
 
 
 async def run_scenario_call(
@@ -88,7 +118,7 @@ async def run_scenario_call(
     rows_out: list[dict[str, Any]] | None = None,
     customer_name: str | None = None,
     safety_issues: list | None = None,
-    on_turn=None, diagnostics=None, delivery_mode='voice',
+    on_turn=None, diagnostics=None, delivery_mode='text',
 ) -> list[dict[str, Any]]:
     """Execute all turns of a single call in a scenario."""
     conversation_measurement(delivery_mode)
@@ -139,10 +169,14 @@ async def run_scenario_call(
         playback_error = None
         essential_not_ready = False
         usage_evidence = []
+        first_delta_ms, delta_count = None, 0
         try:
             with (capture_decisions(aliases=diagnostics.decision_aliases) if diagnostics is not None and decision_enabled() else nullcontext(None)) as decision_capture, capture_diagnostic_events() as runtime_events:
                 decision_emit("provenance", provenance=True)
-                resp = await runtime.run(turn_req)
+                if delivery_mode == 'text':
+                    resp, first_delta_ms, delta_count = await measured_stream(runtime, turn_req, t_start)
+                else:
+                    resp = await runtime.run(turn_req)
                 latency_ms = (time.perf_counter() - t_start) * 1000.0
                 # The browser acknowledges delivered characters before the same
                 # runtime method commits memory. Transcript eval assumes full delivery.
@@ -181,6 +215,8 @@ async def run_scenario_call(
                 call_brief_latency = (brief or {}).get("latency_ms")
 
         except Exception as exc:
+            if delivery_mode == 'text':
+                raise StreamingMeasurementError('stream_measurement_failed') from None
             if latency_ms is None:
                 latency_ms = (time.perf_counter() - t_start) * 1000.0
             runtime_error = type(exc).__name__
@@ -199,6 +235,9 @@ async def run_scenario_call(
         row["latency"].update(response_ms=int(latency_ms),
                               prepare_ms=prepare_ms if turn_idx == 1 else 0,
                               ttft_is_proxy=delivery_mode != 'text')
+        if delivery_mode == 'text':
+            row['latency'].update(ttft_ms=int(first_delta_ms), streaming=True,
+                                  answer_delta_count=delta_count, stream_completed=True)
         if playback_error is not None:
             row["memory_error"] = "playback_failed"
         elif essential_not_ready:
@@ -361,7 +400,7 @@ async def run_scenario_stream(
     capture_writes=None,
     on_row=None,
     trace: dict[tuple[str, str], list[dict[str, Any]]] | None = None,
-    safety_issues: list | None = None, on_turn=None, diagnostics=None, delivery_mode='voice',
+    safety_issues: list | None = None, on_turn=None, diagnostics=None, delivery_mode='text',
 ) -> dict[tuple[str, str], list[dict[str, Any]]]:
     """Run all scenarios through the harness runtime."""
     trace = trace if trace is not None else {}
@@ -480,8 +519,9 @@ async def warm_up_configuration(runtime, *, turns: int = 3) -> dict:
         print(f"[eval] warmup {index + 1}/{turns}", flush=True)
         with capture_diagnostic_events() as events:
             try:
-                await runtime.run(TextTurnRequest(client_msg_id=uuid4(), session_id=uuid4(),
-                    channel="hotline", channel_identity=None, input_mode="clean", on=date(2026, 10, 15), text="Xin chào, bạn có thể hỗ trợ gì?"))
+                request = TextTurnRequest(client_msg_id=uuid4(), session_id=uuid4(),
+                    channel="hotline", channel_identity=None, input_mode="clean", on=date(2026, 10, 15), text="Xin chào, bạn có thể hỗ trợ gì?")
+                await measured_stream(runtime, request, time.perf_counter())
             except Exception as exc:
                 error = safe_execution_error(exc, phase='preparation')
                 failure = RuntimeError('warmup_execution_unhealthy')
@@ -501,7 +541,7 @@ async def warm_up_configuration(runtime, *, turns: int = 3) -> dict:
 async def run_configuration(*, scenarios: dict[str, dict], config: str, runtime,
                             run_id: str, out: Path, wait_for_jobs, capture_writes,
                             on_row=None, on_turn=None, btc_root: Path | None = None, safety_issues: list | None = None,
-                            delivery_mode='voice') -> dict:
+                            delivery_mode='text') -> dict:
     conversation_measurement(delivery_mode)
     from eval_harness.scenario_contract import dataset_coverage
     if config == "baseline":
@@ -630,43 +670,9 @@ async def read_distillation_writes(dsn: str, source_ids: list[str]) -> dict[str,
         await conn.close()
 
 
-def print_cli_summary(agent_kind: str, results: dict[str, Any]) -> None:
-    """Print clean formatted benchmark table to stdout."""
-    sum_full = results["full_metrics"]
-    tsr = sum_full["tsr"]
-    mem = sum_full["memory"]
-    hallu = sum_full["hallucination"]
-    guard = sum_full["guardrails"]
-    diag = sum_full["diagnostics"]
-
-    print("\n" + "=" * 65)
-    print(f"   INTERNAL DIAGNOSTICS: AGENT '{agent_kind.upper()}'")
-    print("=" * 65)
-    print(f"Scenarios: {tsr['total']} | Total Turns Evaluated: {diag['total_turns_measured']}")
-    print("-" * 65)
-    print(f"  TSR (Task Success Rate) Overall : {tsr['tsr_overall_pct']}% ({tsr['passed']}/{tsr['total']}) [Target: ≥70%]")
-    hard = tsr.get("hard_cases", {})
-    print(f"  TSR Ca Khó (Hard Cases TSR)     : {hard.get('tsr_hard_cases_pct')}% ({hard.get('passed')}/{hard.get('total')})")
-    print(f"  RQR Full (Repeat Question Rate) : {mem['rqr_full_pct']}%")
-    if mem.get("rqr_baseline_pct") is not None:
-        print(f"  RQR Baseline                    : {mem['rqr_baseline_pct']}%")
-        print(f"  Δ RQR Giảm Tương Đối            : {mem.get('delta_rqr_relative_pct')}% [Target: ≥40%]")
-    print(f"  CCR (Context Carryover Rate)    : {mem['ccr_pct']}% ({mem['facts_carried']}/{mem['facts_required']})")
-    recall = sum_full.get("memory_recall") or {}
-    if recall.get("overall_recall_pct") is not None:
-        print(f"  Memory Recall / Precision       : {recall.get('overall_recall_pct')}% ({recall.get('matched')}/{recall.get('expected')}) / {recall.get('overall_precision_pct')}%")
-    print(f"  HR Giá & Khuyến Mãi             : {hallu['price_promo_hr_pct']}% [Target: ≤5%]")
-    print(f"  HR Tổng Quát                    : {hallu['hallucination_rate_pct']}%")
-    print(f"  Guardrail Violations (An toàn)  : {guard['total_violations']} [Target: 0]")
-    lat = diag.get("latency_ms", {})
-    print(f"  Độ trễ TB / p50 / p95 (ms)      : {lat.get('avg_ms')} / {lat.get('p50_ms')} / {lat.get('p95_ms')} ms [Target p95 ≤8s]")
-    print(f"  Số Tool Calls TB / Turn         : {diag.get('avg_tool_calls_per_turn')} (Thrashing: {diag.get('tool_thrashing_count')})")
-    print("=" * 65 + "\n")
-
-
 async def execute_configuration(*, settings, scenarios, config, run_id, out,
                                 btc_root, expected_database, release, runtime=None,
-                                worker_wait_seconds=180, on_turn=None, delivery_mode='voice'):
+                                worker_wait_seconds=180, on_turn=None, delivery_mode='text'):
     """One authorized live lifecycle, shared by both single-trace CLIs."""
     measurement = conversation_measurement(delivery_mode)
     if any(path.exists() for path in (Path(out), Path(out).with_suffix('.report.json'),
@@ -726,7 +732,7 @@ async def execute_configuration(*, settings, scenarios, config, run_id, out,
                for sid,sc in scenarios.items() for call,spec in sc['calls'].items()
                for h in spec.get('seed_history',[])]
     report.update(run_id=run_id, config=config, knowledge_release_id=release["release_id"], seed_history=history,
-                  knowledge_release=release, warmup_turns=3, streaming=False,
+                  knowledge_release=release, warmup_turns=3, streaming=delivery_mode == 'text',
                   conversation_measurement=measurement)
     from eval_harness.btc_release import release_metadata
     report['btc_contract'] = release_metadata(btc_root)
@@ -738,11 +744,9 @@ async def main() -> None:
     from eval_harness.scenario_contract import load_scenarios as checked_load
     from app.knowledge.context import capture_release
     parser = argparse.ArgumentParser(description="BTC text runner; live model and runtime reset")
-    parser.add_argument("--agent", choices=["deep", "react"], required=True)
     parser.add_argument("--config", choices=["full", "baseline", "baseline_no_memory", "both"], default="full")
     parser.add_argument("--variant", choices=["enabled"], default="enabled")
     parser.add_argument("--seed", type=int, default=7)
-    parser.add_argument('--delivery-mode', choices=('text', 'voice'), default='voice')
     parser.add_argument("--worker-wait-seconds", type=float, default=180)
     parser.add_argument("--scenarios", required=True, type=Path)
     parser.add_argument("--btc-root", required=True, type=Path)
@@ -764,7 +768,7 @@ async def main() -> None:
             parser.error("--limit-scenarios must be positive")
         scenarios = dict(list(scenarios.items())[:args.limit_scenarios])
     settings = Settings()
-    settings.agent_kind, settings.llm_seed = args.agent, args.seed
+    settings.llm_seed = args.seed
     release = (json.loads(os.environ["_EVAL_PINNED_RELEASE"]) if os.getenv("_EVAL_PINNED_RELEASE")
                else await capture_release(database_url(settings)))
     configurations = ["full", "baseline_no_memory"] if args.config == "both" else [
@@ -777,7 +781,7 @@ async def main() -> None:
             result = await execute_configuration(settings=settings, scenarios=scenarios, config=config,
                 run_id=(args.run_id or str(uuid4())) + "-" + suffix, out=trace,
                 btc_root=args.btc_root, expected_database=args.expected_database, release=release,
-                worker_wait_seconds=args.worker_wait_seconds, delivery_mode=args.delivery_mode)
+                worker_wait_seconds=args.worker_wait_seconds)
             if result["status"] != "completed":
                 raise RuntimeError("redaction_affects_scoring")
         except Exception as exc:

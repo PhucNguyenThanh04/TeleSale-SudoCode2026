@@ -54,7 +54,7 @@ def test_warmup_runs_real_graph_and_memory_contract_without_service_writes(monke
     gateway=WarmupGateway(inner)
     gateway.invoke=AsyncMock(wraps=gateway.invoke)
     runtime=AgentHarnessRuntime(FakeToolModel(replies=[AIMessage(content='Dạ, em nghe ạ.') for _ in range(3)]),
-        gateway,MCPMemoryStore(gateway),agent_kind='deep')
+        gateway,MCPMemoryStore(gateway))
     result=asyncio.run(warm_up_configuration(runtime))
     assert result=={'turns':3,'scored':False,'execution_health':'healthy'}
     commits=[c for c in gateway.invoke.call_args_list if c.args[0]=='memory.write']

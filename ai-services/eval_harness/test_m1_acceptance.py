@@ -1,4 +1,6 @@
 """Saved evidence must not become an M1 pass through missing or edited metadata."""
+from copy import deepcopy
+from eval_harness.test_support import LEGACY_TEXT_MEASUREMENT
 import json
 from pathlib import Path
 
@@ -139,8 +141,7 @@ def test_text_mode_and_guardrail_metadata_cannot_be_assumed(tmp_path):
 @pytest.mark.parametrize('unequal', [False, True])
 def test_nonstreaming_measurement_uses_btc_rule_7_and_requires_equal_times(tmp_path, unequal):
     from eval_harness.m1_acceptance import inspect_run
-    from eval_harness.benchmark_runner import conversation_measurement
-    saved_pair(tmp_path, conversation_measurement('text'), unequal_nonstreaming_times=unequal)
+    saved_pair(tmp_path, deepcopy(LEGACY_TEXT_MEASUREMENT), unequal_nonstreaming_times=unequal)
     report = inspect_run(tmp_path, btc_root=BTC)
     gates = checks(report)
     assert gates['m1_text_lifecycle']['status'] == 'pass'

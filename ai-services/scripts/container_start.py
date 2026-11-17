@@ -8,9 +8,6 @@ from dotenv import dotenv_values
 
 
 WORKER = {
-    'LLM_BACKEND', 'LOCAL_LLM_API_KEY', 'LOCAL_LLM_MODEL', 'LOCAL_LLM_BASE_URL',
-    'LOCAL_LLM_CONTEXT_WINDOW',
-    'LOCAL_LLM_TIMEOUT_SECONDS',
     'LLM_API_KEY', 'LLM_MODEL', 'LLM_BASE_URL', 'LLM_TIMEOUT_SECONDS',
     'LANGMEM_MODEL', 'LANGMEM_MAX_TOKENS', 'LANGFUSE_PROMPTS_ENABLED',
     'LANGFUSE_PUBLIC_KEY', 'LANGFUSE_SECRET_KEY', 'LANGFUSE_BASE_URL',
@@ -37,8 +34,7 @@ def main():
         raise SystemExit('Container command required')
     module = command[2] if len(command) >= 3 and command[1] == '-m' else ''
     environment = service_environment(module, Path('/config/service.env'), os.environ)
-    required = ((set() if environment.get('LLM_BACKEND') == 'local' else {'LLM_API_KEY'})
-                if module.endswith('.distiller_worker') else
+    required = ({'LLM_API_KEY', 'LLM_MODEL'} if module.endswith('.distiller_worker') else
                 {'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN'} if module.endswith('.mcp_knowledge.server') else set())
     missing = sorted(key for key in required if not environment.get(key, '').strip())
     if missing:

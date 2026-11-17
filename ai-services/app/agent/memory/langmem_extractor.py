@@ -6,23 +6,11 @@ from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langmem import create_memory_manager
-from pydantic import Field
 
 from app.agent.memory.customer_facts import _supplement_customer_facts
 from app.agent.prompts import MEMORY_PROMPT, text_prompt
 from app.mcp_servers.mcp_shared.pii import mask_pii
 from app.schemas.langmem import ProfileFactCandidate, CustomerCallEpisodeCandidate
-from app.schemas.langmem import TopicProposal
-from app.infarstructure.local_llm import LocalChatOpenAI
-
-
-class LocalTopicProposal(TopicProposal):
-    # Canonical consultation is derived by the worker, never by the local LLM.
-    consultation: None = None
-
-
-class LocalCallEpisodeCandidate(CustomerCallEpisodeCandidate):
-    topics: list[LocalTopicProposal] = Field(default_factory=list)
 
 
 _INSTRUCTIONS = (
@@ -99,8 +87,7 @@ async def extract_candidates(
     """Use LangMem to propose typed records without persistence side effects."""
     instructions = await asyncio.to_thread(text_prompt, MEMORY_PROMPT, _INSTRUCTIONS)
     manager = create_memory_manager(
-        model, schemas=[ProfileFactCandidate, LocalCallEpisodeCandidate
-                        if isinstance(model, LocalChatOpenAI) else CustomerCallEpisodeCandidate],
+        model, schemas=[ProfileFactCandidate, CustomerCallEpisodeCandidate],
         instructions=instructions, enable_deletes=False)
     safe_turns = []
     for idx, turn in enumerate(turns):

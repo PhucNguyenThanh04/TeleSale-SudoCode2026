@@ -53,8 +53,7 @@ class SessionPreparationTest(unittest.IsolatedAsyncioTestCase):
                                             for _ in range(3)])
         self.memory = ReturningMemory()
         self.gateway = QuoteGateway()
-        self.runtime = AgentHarnessRuntime(self.model, self.gateway, self.memory,
-                                           agent_kind="react")
+        self.runtime = AgentHarnessRuntime(self.model, self.gateway, self.memory)
         self.request = turn("Alo")
 
     async def prepare(self, request=None):
@@ -214,8 +213,7 @@ class SessionPreparationTest(unittest.IsolatedAsyncioTestCase):
                     return {"found": False}
                 return await super().invoke(name, args)
 
-        self.runtime = AgentHarnessRuntime(self.model, UnknownGateway(), FakeMemory(),
-                                           agent_kind="react")
+        self.runtime = AgentHarnessRuntime(self.model, UnknownGateway(), FakeMemory())
         prepared = await self.prepare()
         self.assertIsNone(prepared.call_brief)
         response = await self.runtime.run(self.request)

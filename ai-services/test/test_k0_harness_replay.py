@@ -367,8 +367,8 @@ def test_actual_agent_prepares_and_answers_owned_order_when_model_asks_for_id_ag
                     return {'orders': [{'order_id': 'OD-OFFLINE', 'status': 'shipping'}]}
                 return await super().invoke_trusted(name, args, *_args, **_kwargs)
         class Agent:
-            async def ainvoke(self, *_args, **_kwargs):
-                return {'messages': [AIMessage(content='Anh cho em xin mã đơn hàng nhé.')]}
+            async def astream(self, *_args, **_kwargs):
+                yield 'values', {'messages': [AIMessage(content='Anh cho em xin mã đơn hàng nhé.')]}
         gateway = Gateway()
         with patch('app.agent.harness.agent_nodes.build_agent', return_value=Agent()), \
              patch('app.agent.harness.agent_nodes.text_prompt', return_value='offline'):

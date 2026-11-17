@@ -1,3 +1,4 @@
+from test_deep_memory import FakeStreamAgent
 import asyncio
 import json
 from types import SimpleNamespace
@@ -27,14 +28,6 @@ def test_schema_failure_retains_safe_code_through_turn_diagnostics():
     assert '0912345678' not in json.dumps([event, summary])
 
 
-def test_local_tool_failure_code_is_not_lost_in_normalization():
-    from app.infarstructure.local_llm import LocalToolOutputError
-    from app.agent.harness.execution_diagnostics import safe_execution_error
-    error = LocalToolOutputError('local_tool_output_invalid', 'private-0912345678')
-    result = safe_execution_error(error, phase='model_invocation')
-    assert result['error_type'] == 'LocalToolOutputError'
-    assert result['error_code'] == 'local_tool_output_invalid'
-    assert '0912345678' not in json.dumps(result)
 
 
 @pytest.mark.parametrize('kind', ['parser', 'context'])
@@ -73,11 +66,11 @@ def test_safe_api_error_preserves_contract_without_body():
 def test_real_node_distinguishes_model_and_postprocess(failure):
     from app.agent.harness.agent_nodes import AgentNodes
     from app.agent.harness.execution_diagnostics import execution_health
-    agent = SimpleNamespace(ainvoke=AsyncMock(return_value={'messages': []}))
+    agent = FakeStreamAgent(return_value={'messages': []})
     if failure == 'model':
-        agent.ainvoke.side_effect = TimeoutError('private')
+        agent.response.side_effect = TimeoutError('private')
     else:
-        agent.ainvoke.return_value = None  # post-invoke result.get fails
+        agent.response.return_value = 42  # post-invoke result.get fails
     node = AgentNodes(None, None, None, 3, 3)
     with patch('app.agent.harness.agent_nodes.build_agent', return_value=agent), \
          patch('app.agent.harness.agent_nodes.text_prompt', return_value='offline'), \

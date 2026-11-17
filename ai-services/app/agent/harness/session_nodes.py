@@ -31,11 +31,16 @@ def product_question_fields(text: str) -> dict[str, str]:
                 'child_safe_lock': r'khoa (?:an toan )?tre em',
                 'app': r'\bapp\b|dieu khien.{0,20}dien thoai',
                 'tds': r'\btds\b'}
-    return {key: pattern for key, pattern in patterns.items() if re.search(pattern, folded)}
+    fields = {key: pattern for key, pattern in patterns.items() if re.search(pattern, folded)}
+    from app.mcp_servers.mcp_shared.consultation_followup import stock_requested
+    if stock_requested(text):
+        fields['stock'] = patterns['stock']
+    return fields
 
 
 def safe_order_status_reply(state: TurnState) -> str | None:
     from app.mcp_servers.mcp_shared.consultation_followup import order_status_requested
+    from app.mcp_servers.mcp_shared.commerce_rules import _search_text
     if not order_status_requested(state.get('safe_text', '')):
         return None
     calls = [c for c in state.get('tool_calls', []) if c.get('name') == 'order.status']
@@ -51,7 +56,17 @@ def safe_order_status_reply(state: TurnState) -> str | None:
              'delivered': 'đơn đã giao', 'cancelled': 'đã hủy đơn'}.get(order.get('status'))
     if not label or not order.get('order_id'):
         return None
-    return mask_pii(f"Em kiểm tra đơn {order['order_id']}: {label} ạ.")
+    answer = f"Em kiểm tra đơn {order['order_id']}: {label} ạ."
+    folded = _search_text(state.get('safe_text', ''))
+    if re.search(r'van don|tracking', folded):
+        tracking = order.get('tracking')
+        answer += (f" Mã vận đơn là {tracking}." if isinstance(tracking, str) and tracking else
+                   ' Em chưa có thông tin xác minh mã vận đơn.')
+    if re.search(r'don vi (?:giao hang|van chuyen)', folded):
+        carrier = order.get('carrier')
+        answer += (f" Đơn vị giao hàng là {carrier}." if isinstance(carrier, str) and carrier else
+                   ' Em chưa có thông tin xác minh đơn vị giao hàng trong kết quả tra cứu.')
+    return mask_pii(answer)
 
 
 def safe_product_reply(state: TurnState) -> str | None:
@@ -493,6 +508,7 @@ def safe_followup_reply(state: dict, task=None) -> str | None:
         topic = (r'\bhoàn tiền\b' if 'hoan tien' in query else
                  r'\bbảo hành mở rộng\b' if 'bao hanh' in query and re.search(r'mo rong|gia han', query) else
                  r'\bbảo hành\b' if 'bao hanh' in query else
+                 r'\bgiao (?:lại|không thành công)\b' if 'giao lai' in query else
                  r'\bđiều kiện đổi trả\b' if re.search(r'tem mac|tem nhan', query) else
                  r'\bđổi\s+(?:trả|size|sản phẩm|mới)\b' if 'doi' in query else
                  r'\bphí\b' if 'phi' in query else None)
@@ -528,6 +544,9 @@ def safe_followup_reply(state: dict, task=None) -> str | None:
         if not paragraphs or len(' '.join(paragraphs)) > 1400:
             return 'Em chưa xác minh được thông tin chính sách đủ rõ để trả lời câu hỏi này. Mình cho em làm rõ điều kiện cần áp dụng nhé?'
         answer = 'Theo thông tin chính sách đã kiểm tra: ' + ' '.join(paragraphs)
+        order_reply = safe_order_status_reply(state)
+        if order_reply:
+            answer = order_reply + ' ' + answer
         if (re.search(r'thu hoi|buu ta', query) and re.search(r'may ngay|bao lau|thoi gian', query)
                 and not re.search(r'thu hoi|buu ta', _search_text(' '.join(paragraphs)))):
             answer += ' Em chưa có thông tin xác minh thời gian bưu tá qua thu hồi sản phẩm.'

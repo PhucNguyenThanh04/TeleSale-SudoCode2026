@@ -14,11 +14,16 @@ from test_deep_memory import FakeGateway, FakeMemory, FakeToolModel, turn
 
 
 class MemoryUpdateApiTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        from pydantic import SecretStr
+        from unittest.mock import patch
+        self.enterContext(patch.object(get_settings(), 'ai_internal_token', SecretStr('offline-token')))
+
     async def test_chat_reports_pending_without_waiting_for_worker(self):
         request = turn("Alo")
         memory = FakeMemory()
         runtime = AgentHarnessRuntime(FakeToolModel(replies=[AIMessage(content="Dạ, em nghe ạ.")]),
-                                      FakeGateway(), memory, agent_kind="react")
+                                      FakeGateway(), memory)
         result = await runtime.run(request)
         self.assertEqual(result.memory_update.model_dump(),
             {"turn_saved": True, "status": "pending", "changes": []})
@@ -26,7 +31,7 @@ class MemoryUpdateApiTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_anonymous_chat_is_saved_without_claiming_long_term_memory(self):
         runtime = AgentHarnessRuntime(FakeToolModel(replies=[AIMessage(content="Dạ.")]),
-                                      FakeGateway(), FakeMemory(), agent_kind="react")
+                                      FakeGateway(), FakeMemory())
         result = await runtime.run(turn("Alo").model_copy(update={"channel_identity": None}))
         self.assertTrue(result.memory_update.turn_saved)
         self.assertEqual(result.memory_update.status, "not_applicable")

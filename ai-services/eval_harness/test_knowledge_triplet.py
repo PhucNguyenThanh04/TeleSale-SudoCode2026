@@ -53,7 +53,7 @@ def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tm
     (scenarios/'case.json').write_text(json.dumps({'scenario_id': 'LOCAL', 'calls': {'call_1': {
         'customer_turns': [row()['user_text']]}}}))
     args = Namespace(scenarios=scenarios, btc_root=tmp_path/'btc', expected_database='telesale',
-        agent='deep', seed=7, out_root=tmp_path/'runs', actor='simulated-reviewer', resume=None,
+         seed=7, out_root=tmp_path/'runs', actor='simulated-reviewer', resume=None,
         delivery_mode='text', worker_timeout=2, approval_plan=tmp_path/'plan.json')
     args.approval_plan.write_text(json.dumps(plan()))
     separate = automatic == 'separate'
@@ -135,7 +135,7 @@ def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tm
         activations.append('activated')
         if mode == 'interrupted_publication' and len(activations) == 1:
             raise RuntimeError('interrupted after activation')
-    def single(config, scenarios, agent, seed, run_id, out, **kwargs):
+    def single(config, scenarios, seed, run_id, out, **kwargs):
         assert config == 'full' and kwargs['release']['release_id'] == 'k1'
         calls.append('full_k1'); path=out/'full.diagnostics_full.jsonl'
         value = row('Cần giữ nguyên hộp.') | {'questions': [], 'claims': [],
@@ -316,7 +316,7 @@ def test_failed_pair_reports_its_cause_without_reading_missing_manifest(tmp_path
     asyncio.run(setup())
     r.database_identity = AsyncMock(return_value={'database': 'telesale'})
     args = Namespace(resume=None, approval_plan=None, scenarios=tmp_path/'scenarios', btc_root=tmp_path/'btc',
-        expected_database='telesale', agent='deep', seed=7, out_root=tmp_path/'runs', actor='reviewer',
+        expected_database='telesale',  seed=7, out_root=tmp_path/'runs', actor='reviewer',
         delivery_mode='text', worker_timeout=2)
     settings = SimpleNamespace(app_env='test', agent_guardrails_enabled=True, knowledge_enabled=True,
         model_dump=lambda **kw: {'model': 'offline'})

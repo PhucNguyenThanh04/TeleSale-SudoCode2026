@@ -15,8 +15,8 @@ from app.infarstructure.llm import build_llm
 
 
 class BuildLLMTest(unittest.TestCase):
-    def test_local_profile_routes_tools_and_streaming_without_cloud_credentials(self) -> None:
-        settings = Settings(_env_file=None, llm_backend="local", llm_api_key="cloud-secret",
+    def test_api_profile_routes_tools_and_streaming(self) -> None:
+        settings = Settings(_env_file=None, llm_api_key="cloud-secret",
                             llm_model="cloud-model", llm_base_url="https://cloud.example/v1",
                             langmem_model="cloud-memory", llm_max_tokens=200)
         llm = build_llm(settings)
@@ -27,11 +27,11 @@ class BuildLLMTest(unittest.TestCase):
             if json.loads(request.content).get("stream"):
                 chunks = [
                     {"id": "local-stream", "object": "chat.completion.chunk", "created": 0,
-                     "model": "Qwen/Qwen2.5-3B-Instruct-AWQ", "choices": [{"index": 0,
+                     "model": "cloud-model", "choices": [{"index": 0,
                          "delta": {"role": "assistant", "content": "Xin chào"},
                          "finish_reason": None}]},
                     {"id": "local-stream", "object": "chat.completion.chunk", "created": 0,
-                     "model": "Qwen/Qwen2.5-3B-Instruct-AWQ", "choices": [{"index": 0,
+                     "model": "cloud-model", "choices": [{"index": 0,
                          "delta": {}, "finish_reason": "stop"}]},
                 ]
                 body = "".join(f"data: {json.dumps(chunk)}\n\n" for chunk in chunks)
@@ -39,7 +39,7 @@ class BuildLLMTest(unittest.TestCase):
                     headers={"content-type": "text/event-stream"}, text=body + "data: [DONE]\n\n")
             return httpx.Response(200, request=request, json={
                 "id": "local-tool", "object": "chat.completion", "created": 0,
-                "model": "Qwen/Qwen2.5-3B-Instruct-AWQ", "choices": [{"index": 0,
+                "model": "cloud-model", "choices": [{"index": 0,
                     "message": {"role": "assistant", "content": None, "tool_calls": [{
                         "id": "local-stock", "type": "function", "function": {
                             "name": "check_stock", "arguments": '{"sku":"AC-01"}'}}]},
@@ -66,10 +66,10 @@ class BuildLLMTest(unittest.TestCase):
         self.assertEqual(streamed, "Xin chào")
         self.assertEqual(len(requests), 3)
         for request in requests:
-            self.assertEqual(str(request.url), "http://localhost:8081/v1/chat/completions")
-            self.assertEqual(request.headers["Authorization"], "Bearer local-vllm")
+            self.assertEqual(str(request.url), "https://cloud.example/v1/chat/completions")
+            self.assertEqual(request.headers["Authorization"], "Bearer cloud-secret")
             payload = json.loads(request.content)
-            self.assertEqual(payload["model"], "Qwen/Qwen2.5-3B-Instruct-AWQ")
+            self.assertEqual(payload["model"], "cloud-model")
             self.assertEqual(payload["max_completion_tokens"], 200)
             self.assertNotIn("reasoning_effort", payload)
         for request in requests[:2]:

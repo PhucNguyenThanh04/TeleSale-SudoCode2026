@@ -94,7 +94,7 @@ class RunnerFailureTests(unittest.IsolatedAsyncioTestCase):
                 "calls": {"call_1": {"customer_turns": ["Một", "Hai"]}}}]}),
                 encoding="utf-8")
             report = Path(folder) / "report.json"
-            args = ["benchmark_runner", "--agent", "deep", "--scenarios",
+            args = ["benchmark_runner", "--scenarios",
                     str(dataset), "--out", str(report), "--run-id", "case-run",
                     "--btc-root", str(Path(__file__).resolve().parents[3] / "BTC-Data-Vong1-TEAMS"),
                     "--expected-database", "offline"]

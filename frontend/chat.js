@@ -2,6 +2,7 @@ import { setupProfile } from './auth.js';
 const $ = id => document.getElementById(id);
 const fields = [$('channel'), $('identity'), $('scenario-date')];
 const panels = new Map();
+const replies = new Map();
 let socket = null;
 let busy = false;
 let timelineSession = null;
@@ -177,6 +178,7 @@ $('connect').addEventListener('click', () => {
   $('brief').replaceChildren();
   resetTimeline();
   panels.clear();
+  replies.clear();
   busy = true;
   controls(true);
   $('status').textContent = 'Đang kết nối…';
@@ -196,9 +198,18 @@ $('connect').addEventListener('click', () => {
       controls(true);
       $('status').textContent = 'Sẵn sàng trò chuyện';
       $('text').focus();
+    } else if (data.event === 'agent_delta') {
+      let article = replies.get(data.client_msg_id);
+      if (!article) {
+        article = message('agent', '');
+        replies.set(data.client_msg_id, article);
+      }
+      article.querySelector('p').textContent += data.text;
+      article.scrollIntoView({ block: 'nearest' });
+      $('status').textContent = 'Trợ lý đang trả lời…';
     } else if (data.event === 'agent_reply') {
       brief(data.call_brief);
-      const article = message('agent', data.agent_text);
+      const article = replies.get(data.client_msg_id) || message('agent', data.agent_text);
       const panel = document.createElement('div');
       panel.className = 'memory-update';
       article.append(panel);
@@ -215,7 +226,8 @@ $('connect').addEventListener('click', () => {
       if (panel) memory(panel, data.memory_update, data.tracking_finished);
       if (data.memory_update?.status === 'completed') loadTimeline();
     } else if (data.event === 'error') {
-      error(data.code === 'harness_failed' ? 'Trợ lý chưa xử lý được lượt này. Bạn có thể thử lại.' : 'Thông tin phiên hoặc tin nhắn chưa hợp lệ.');
+      error(replies.has(data.client_msg_id) ? 'Phản hồi bị ngắt. Nội dung đã nhận vẫn được giữ lại.'
+        : data.code === 'harness_failed' ? 'Trợ lý chưa xử lý được lượt này. Bạn có thể thử lại.' : 'Thông tin phiên hoặc tin nhắn chưa hợp lệ.');
       busy = false;
       controls(true);
       if (data.fatal) current.close();

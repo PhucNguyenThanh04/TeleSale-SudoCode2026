@@ -172,6 +172,10 @@ class BusinessTools:
 
     @tool_boundary
     async def _invoke_locked(self, name: str, proposed: dict[str, Any]) -> dict[str, Any]:
+        from app.agent.harness.streaming import active_stream
+        stream = active_stream.get()
+        if stream is not None and stream.published:
+            return {'error': 'answer_already_started'}
         raw = dict(proposed)
         if name == 'handoff.transfer' and (raw.get('brief') or {}).get('escalation_reason', 'khac') == 'khac':
             from app.mcp_servers.mcp_shared.consultation import consultation_missing_fields

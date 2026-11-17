@@ -64,7 +64,7 @@ PY
 | --- | --- |
 | `.env` | POSTGRES_USER, POSTGRES_DB=`telesale_eval_m1`, POSTGRES_PORT (ví dụ 5432) |
 | `ai-services/.env` | DATABASE_URL admin đúng DB đó cho runner/setup; AI_INTERNAL_TOKEN; MCP_INTERNAL_TOKEN khớp secret file; URL catalog/order/memory/knowledge trên localhost cổng 8011/8012/8013/8014 |
-| `ai-services/.env` | LLM_BACKEND + profile model, AGENT_GUARDRAILS_ENABLED=true, KNOWLEDGE_POLICY_CONFIG_FILE là đường dẫn tuyệt đối tới config đã review; KNOWLEDGE_POLICY_SOURCE_DIR là đường dẫn tuyệt đối tới policy/ BTC |
+| `ai-services/.env` | LLM_API_KEY/LLM_MODEL/LLM_BASE_URL + LANGMEM_MODEL, AGENT_GUARDRAILS_ENABLED=true, KNOWLEDGE_POLICY_CONFIG_FILE là đường dẫn tuyệt đối tới config đã review; KNOWLEDGE_POLICY_SOURCE_DIR là đường dẫn tuyệt đối tới policy/ BTC |
 | `backend/.env` | AI_SERVICE_URL=http://127.0.0.1:8001, AI_INTERNAL_TOKEN giống AI; AI_SERVICE_TIMEOUT_SECONDS=120 cho demo |
 | `ai-services/.env` | CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN; QDRANT_URL=http://127.0.0.1:6333 |
 | Knowledge workflow | KNOWLEDGE_DATABASE_URL là login reviewer, KNOWLEDGE_WORKER_DATABASE_URL là login worker riêng, KNOWLEDGE_ADMIN_DATABASE_URL chỉ cho setup/CLI grant; cùng DB với btc_source |
@@ -76,11 +76,11 @@ của host vào container. AI_INTERNAL_TOKEN khác MCP_INTERNAL_TOKEN. Với UI 
 [frontend README](../frontend/README.md). Trang mở trực tiếp, không cần mã UI;
 AI_INTERNAL_TOKEN vẫn dùng cho xác thực nội bộ giữa gateway và AI.
 
-Giữ nguyên một profile LLM cho full/baseline. Nếu local: host dùng
-LOCAL_LLM_BASE_URL=http://localhost:8081/v1, container worker dùng
-LOCAL_LLM_CONTAINER_BASE_URL=http://host.docker.internal:8081/v1. Server model phải
-được khởi động trước worker. Nếu API: LLM_BASE_URL/LLM_MODEL/LLM_API_KEY và
+Giữ nguyên profile API cho full/baseline: LLM_BASE_URL/LLM_MODEL/LLM_API_KEY và
 LANGMEM_MODEL phải được ghi lại để tái lập; không tự đổi model giữa hai cấu hình.
+Deep Agent và streaming có guardrails là luồng text duy nhất. Eval pair, warmup
+và Full K1 cùng dùng luồng này. Không còn chọn local LLM, ReAct hoặc text không
+streaming. Voice/ASR vẫn được giữ cho demo và kiểm chứng M1 riêng.
 
 Tokenizer bắt buộc bị Git ignore; chuẩn bị **trước build MCP image**:
 
@@ -139,8 +139,8 @@ vào demo đang phục vụ. `--isolated-db` là xác nhận của người vậ
 tạo DB. Mỗi lần chọn output path mới; runner từ chối ghi đè kết quả.
 
 ```bash
-ai-services/.venv/bin/python run_eval.py --scenarios ../BTC-Data-Vong1-TEAMS/test_set/public_sample --btc-root ../BTC-Data-Vong1-TEAMS --config full --delivery-mode text --isolated-db --expected-database telesale_eval_m1 --out eval/runs/submission-01/full.jsonl
-ai-services/.venv/bin/python run_eval.py --scenarios ../BTC-Data-Vong1-TEAMS/test_set/public_sample --btc-root ../BTC-Data-Vong1-TEAMS --config baseline_no_memory --delivery-mode text --isolated-db --expected-database telesale_eval_m1 --out eval/runs/submission-01/baseline.jsonl
+ai-services/.venv/bin/python run_eval.py --scenarios ../BTC-Data-Vong1-TEAMS/test_set/public_sample --btc-root ../BTC-Data-Vong1-TEAMS --config full --isolated-db --expected-database telesale_eval_m1 --out eval/runs/submission-01/full.jsonl
+ai-services/.venv/bin/python run_eval.py --scenarios ../BTC-Data-Vong1-TEAMS/test_set/public_sample --btc-root ../BTC-Data-Vong1-TEAMS --config baseline_no_memory --isolated-db --expected-database telesale_eval_m1 --out eval/runs/submission-01/baseline.jsonl
 python3.12 eval/runs/submission-01/full.btc-release/eval/reference_eval.py --scenarios ../BTC-Data-Vong1-TEAMS/test_set/public_sample --trace eval/runs/submission-01/full.jsonl --baseline eval/runs/submission-01/baseline.jsonl
 ```
 
@@ -156,12 +156,14 @@ model/config/source seed/knowledge release. Để có manifest/score có hash v�
 run.json cuối cùng, ưu tiên paired runner:
 
 ```bash
-AGENT_GUARDRAILS_ENABLED=true PYTHONPATH=.:ai-services ai-services/.venv/bin/python -m eval_harness.run_official --delivery-mode text --scenarios ../BTC-Data-Vong1-TEAMS/test_set/public_sample --btc-root ../BTC-Data-Vong1-TEAMS --expected-database telesale_eval_m1 --out-root ai-services/eval_harness/results
+AGENT_GUARDRAILS_ENABLED=true PYTHONPATH=.:ai-services ai-services/.venv/bin/python -m eval_harness.run_official --scenarios ../BTC-Data-Vong1-TEAMS/test_set/public_sample --btc-root ../BTC-Data-Vong1-TEAMS --expected-database telesale_eval_m1 --out-root ai-services/eval_harness/results
 ```
 
-Quy tắc TTFT không streaming: TTFT=total theo mục 7 hướng dẫn BTC. Không dùng
-voice TTFT proxy để tuyên bố đạt chat M1. Ít nhất 100 lượt/cấu hình sau 3 warmup
-mới đủ quy mô p95. 7 sample chỉ là smoke; không thay thế bộ team/hidden.
+Text mặc định streaming có guardrails: TTFT tới delta trả lời đầu tiên đã qua
+kiểm tra; Total gồm hoàn tất nội dung và persistence. Báo cáo không streaming
+cũ vẫn theo mục 7 hướng dẫn BTC (`TTFT=Total`). Không dùng voice TTFT proxy để
+tuyên bố đạt chat M1. Ít nhất 100 lượt/cấu hình sau 3 warmup mới đủ quy mô p95.
+7 sample chỉ là smoke; không thay thế bộ team/hidden.
 
 ## 6. ASR và hồ sơ chứng minh
 
