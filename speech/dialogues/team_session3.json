@@ -1,0 +1,628 @@
+{
+  "description": "Phiên 3 cho 8/22 kịch bản T01-T22. Chỉ các ca có diễn biến nối tiếp được tiếp tục; từng call tạo WAV riêng, harness vẫn nhóm lịch sử dưới SC-Txx.",
+  "reference_date": "2026-10-15",
+  "call_date_range": [
+    "2026-10-22",
+    "2026-11-07"
+  ],
+  "tts_engine": "vieneu",
+  "normalization_rule": "NFC, chữ thường, bỏ dấu câu và gộp khoảng trắng khi chấm theo BTC.",
+  "dialogues": [
+    {
+      "id": "T01-S03",
+      "source_dialogue_id": "T01",
+      "session_index": 3,
+      "harness_ref": "SC-T01",
+      "call_date": "2026-10-28",
+      "split": "dev",
+      "customer_region": "nam",
+      "customer_gender": "m",
+      "agent_region": "bac",
+      "agent_gender": "f",
+      "noisy": false,
+      "note": "Phiên 3 nối tiếp T01-S02 qua kênh hotline; chỉ tạo audio riêng cho cuộc gọi này. Kịch bản được nhóm soạn, cần nghe rà transcript sau TTS.",
+      "turns": [
+        {
+          "idx": 1,
+          "speaker": "C",
+          "text": "alo em, anh là người đặt máy xiao mi smart bốn pro hôm trước. hộp mới giao tới rồi, anh muốn kiểm lại đơn với khoản thu trước khi khui.",
+          "tts_text": "Alo em, anh là người đặt máy xiao mi smart bốn pro hôm trước. hộp mới giao tới rồi, anh muốn kiểm lại đơn với khoản thu trước khi khui.",
+          "entities": {}
+        },
+        {
+          "idx": 2,
+          "speaker": "A",
+          "text": "dạ em chào anh. em sẽ kiểm tra đơn đã tạo, mình chưa tạo đơn mới trong cuộc gọi này ạ.",
+          "tts_text": "Dạ em chào anh. em sẽ kiểm tra đơn đã tạo, mình chưa tạo đơn mới trong cuộc gọi này ạ.",
+          "entities": {}
+        },
+        {
+          "idx": 3,
+          "speaker": "C",
+          "text": "anh mở thông tin đơn thấy tiền máy rồi mà chưa thấy dòng màng lọc tặng kèm. vậy món đó được giao chung hay shop gửi riêng vậy em?",
+          "tts_text": "Anh mở thông tin đơn thấy tiền máy rồi mà chưa thấy dòng màng lọc tặng kèm. vậy món đó được giao chung hay shop gửi riêng vậy em?",
+          "entities": {}
+        },
+        {
+          "idx": 4,
+          "speaker": "A",
+          "text": "dạ chương trình của đơn có tặng một màng lọc. hiện em chỉ xác nhận được nội dung đơn, chưa có thông tin kiện quà tách riêng. anh giữ lại phiếu và chụp tình trạng kiện để shop đối chiếu giúp em.",
+          "tts_text": "Dạ chương trình của đơn có tặng một màng lọc. hiện em chỉ xác nhận được nội dung đơn, chưa có thông tin kiện quà tách riêng. anh giữ lại phiếu và chụp tình trạng kiện để shop đối chiếu giúp em.",
+          "entities": {}
+        },
+        {
+          "idx": 5,
+          "speaker": "C",
+          "text": "phiếu giao ghi đúng tên máy, còn người giao nói anh chuyển thêm phí để nhận quà. khoản đó không có trong đơn thì anh không chuyển đúng không?",
+          "tts_text": "Phiếu giao ghi đúng tên máy, còn người giao nói anh chuyển thêm phí để nhận quà. khoản đó không có trong đơn thì anh không chuyển đúng không?",
+          "entities": {}
+        },
+        {
+          "idx": 6,
+          "speaker": "A",
+          "text": "dạ anh chỉ thanh toán khoản được ghi trong thông tin đơn đã xác nhận. em không thể xác nhận khoản thu ngoài phiếu; anh kiểm tra qua kênh chính thức của shop trước khi trả thêm ạ.",
+          "tts_text": "Dạ anh chỉ thanh toán khoản được ghi trong thông tin đơn đã xác nhận. em không thể xác nhận khoản thu ngoài phiếu; anh kiểm tra qua kênh chính thức của shop trước khi trả thêm ạ.",
+          "entities": {}
+        },
+        {
+          "idx": 7,
+          "speaker": "C",
+          "text": "anh chưa trả thêm gì hết. vậy em ghi nhận giúp anh là đã nhận máy, đang hỏi riêng phần quà, không phải báo thiếu máy nha.",
+          "tts_text": "Anh chưa trả thêm gì hết. vậy em ghi nhận giúp anh là đã nhận máy, đang hỏi riêng phần quà, không phải báo thiếu máy nha.",
+          "entities": {}
+        },
+        {
+          "idx": 8,
+          "speaker": "A",
+          "text": "dạ em ghi nhận anh đã nhận máy và cần shop kiểm tra phần quà tặng. em chưa ghi nhận thiếu sản phẩm chính hay tạo yêu cầu đơn mới ạ.",
+          "tts_text": "Dạ em ghi nhận anh đã nhận máy và cần shop kiểm tra phần quà tặng. em chưa ghi nhận thiếu sản phẩm chính hay tạo yêu cầu đơn mới ạ.",
+          "entities": {}
+        }
+      ],
+      "entities": {}
+    },
+    {
+      "id": "T03-S03",
+      "source_dialogue_id": "T03",
+      "session_index": 3,
+      "harness_ref": "SC-T03",
+      "call_date": "2026-11-03",
+      "split": "dev",
+      "customer_region": "bac",
+      "customer_gender": "m",
+      "agent_region": "bac",
+      "agent_gender": "f",
+      "noisy": false,
+      "note": "Phiên 3 nối tiếp T03-S02 qua kênh hotline; chỉ tạo audio riêng cho cuộc gọi này. Kịch bản được nhóm soạn, cần nghe rà transcript sau TTS.",
+      "turns": [
+        {
+          "idx": 1,
+          "speaker": "C",
+          "text": "chào em, anh gọi lại đơn máy lọc kang ga ru mười lõi. hôm trước em nói chưa có mã vận đơn, giờ nhà anh nhận máy rồi nhưng chưa thấy ai hướng dẫn lắp.",
+          "tts_text": "Chào em, anh gọi lại đơn máy lọc kang ga ru mười lõi. hôm trước em nói chưa có mã vận đơn, giờ nhà anh nhận máy rồi nhưng chưa thấy ai hướng dẫn lắp.",
+          "entities": {}
+        },
+        {
+          "idx": 2,
+          "speaker": "A",
+          "text": "dạ em kiểm tra thông tin đơn giúp anh. em sẽ tách việc giao máy và lịch lắp đặt, vì hai thông tin này không tự động là một ạ.",
+          "tts_text": "Dạ em kiểm tra thông tin đơn giúp anh. em sẽ tách việc giao máy và lịch lắp đặt, vì hai thông tin này không tự động là một ạ.",
+          "entities": {}
+        },
+        {
+          "idx": 3,
+          "speaker": "C",
+          "text": "trên hộp ghi đúng kang ga ru mười lõi. anh gọi theo số trên phiếu thì họ bảo chưa có lịch kỹ thuật, em kiểm tra xem đơn đang tới bước nào được không?",
+          "tts_text": "Trên hộp ghi đúng kang ga ru mười lõi. anh gọi theo số trên phiếu thì họ bảo chưa có lịch kỹ thuật, em kiểm tra xem đơn đang tới bước nào được không?",
+          "entities": {}
+        },
+        {
+          "idx": 4,
+          "speaker": "A",
+          "text": "dạ em thấy đơn đã được tiếp nhận. hiện em chưa có lịch kỹ thuật cụ thể để xác nhận ngày giờ lắp. em không muốn hẹn thay cho bộ phận kỹ thuật khi chưa có lịch ạ.",
+          "tts_text": "Dạ em thấy đơn đã được tiếp nhận. hiện em chưa có lịch kỹ thuật cụ thể để xác nhận ngày giờ lắp. em không muốn hẹn thay cho bộ phận kỹ thuật khi chưa có lịch ạ.",
+          "entities": {}
+        },
+        {
+          "idx": 5,
+          "speaker": "C",
+          "text": "vậy anh có tự nối đường nước tạm để thử máy trước được không? thợ sửa bếp nhà anh còn hai hôm nữa mới quay lại.",
+          "tts_text": "Vậy anh có tự nối đường nước tạm để thử máy trước được không? thợ sửa bếp nhà anh còn hai hôm nữa mới quay lại.",
+          "entities": {}
+        },
+        {
+          "idx": 6,
+          "speaker": "A",
+          "text": "dạ em chưa thể hướng dẫn đấu nối ngoài tài liệu của máy. anh nên chờ hướng dẫn lắp đặt đúng quy trình hoặc liên hệ đơn vị kỹ thuật; mình đừng vận hành khi chưa lắp đúng ạ.",
+          "tts_text": "Dạ em chưa thể hướng dẫn đấu nối ngoài tài liệu của máy. anh nên chờ hướng dẫn lắp đặt đúng quy trình hoặc liên hệ đơn vị kỹ thuật; mình đừng vận hành khi chưa lắp đúng ạ.",
+          "entities": {}
+        },
+        {
+          "idx": 7,
+          "speaker": "C",
+          "text": "anh chỉ muốn biết ai sẽ gọi và gọi qua kênh nào, chứ không cần em đặt lịch cố định khi chưa chắc.",
+          "tts_text": "Anh chỉ muốn biết ai sẽ gọi và gọi qua kênh nào, chứ không cần em đặt lịch cố định khi chưa chắc.",
+          "entities": {}
+        },
+        {
+          "idx": 8,
+          "speaker": "A",
+          "text": "dạ em ghi nhận anh cần bộ phận kỹ thuật liên hệ để hướng dẫn lịch lắp. khi có cập nhật, shop sẽ báo qua kênh đã đăng ký; hiện em chưa có giờ cụ thể.",
+          "tts_text": "Dạ em ghi nhận anh cần bộ phận kỹ thuật liên hệ để hướng dẫn lịch lắp. khi có cập nhật, shop sẽ báo qua kênh đã đăng ký; hiện em chưa có giờ cụ thể.",
+          "entities": {}
+        }
+      ],
+      "entities": {}
+    },
+    {
+      "id": "T06-S03",
+      "source_dialogue_id": "T06",
+      "session_index": 3,
+      "harness_ref": "SC-T06",
+      "call_date": "2026-11-04",
+      "split": "dev",
+      "customer_region": "bac",
+      "customer_gender": "m",
+      "agent_region": "nam",
+      "agent_gender": "f",
+      "noisy": false,
+      "note": "Phiên 3 nối tiếp T06-S02 qua kênh hotline; chỉ tạo audio riêng cho cuộc gọi này. Kịch bản được nhóm soạn, cần nghe rà transcript sau TTS.",
+      "turns": [
+        {
+          "idx": 1,
+          "speaker": "C",
+          "text": "alo em, đôi hike pro màu xám size bốn mươi mốt nhận rồi. anh mang thử trong nhà thấy phần mũi hơi chật, muốn hỏi đổi lên size bốn mươi hai được không.",
+          "tts_text": "Alo em, đôi hike pro màu xám size bốn mươi mốt nhận rồi. anh mang thử trong nhà thấy phần mũi hơi chật, muốn hỏi đổi lên size bốn mươi hai được không.",
+          "entities": {}
+        },
+        {
+          "idx": 2,
+          "speaker": "A",
+          "text": "dạ em kiểm tra đơn và chính sách đổi giúp anh. mình chưa gửi hàng đi hay tạo yêu cầu đổi mới cho tới khi xác nhận đúng biến thể ạ.",
+          "tts_text": "Dạ em kiểm tra đơn và chính sách đổi giúp anh. mình chưa gửi hàng đi hay tạo yêu cầu đổi mới cho tới khi xác nhận đúng biến thể ạ.",
+          "entities": {}
+        },
+        {
+          "idx": 3,
+          "speaker": "C",
+          "text": "anh chỉ mang thử trên nền sạch, chưa đi ra ngoài. tem với hộp còn đủ, nhưng anh lỡ bóc miếng dán ngoài hộp rồi.",
+          "tts_text": "Anh chỉ mang thử trên nền sạch, chưa đi ra ngoài. tem với hộp còn đủ, nhưng anh lỡ bóc miếng dán ngoài hộp rồi.",
+          "entities": {}
+        },
+        {
+          "idx": 4,
+          "speaker": "A",
+          "text": "dạ anh giữ giày, tem và phụ kiện như hiện trạng, đừng tiếp tục sử dụng ngoài trời. việc đủ điều kiện đổi cần shop kiểm tra theo chính sách và tình trạng thực tế ạ.",
+          "tts_text": "Dạ anh giữ giày, tem và phụ kiện như hiện trạng, đừng tiếp tục sử dụng ngoài trời. việc đủ điều kiện đổi cần shop kiểm tra theo chính sách và tình trạng thực tế ạ.",
+          "entities": {}
+        },
+        {
+          "idx": 5,
+          "speaker": "C",
+          "text": "màu xám size bốn mươi hai có sẵn không? nếu chưa có thì anh muốn biết trước rồi mới quyết định, không đổi qua màu khác đâu.",
+          "tts_text": "Màu xám size bốn mươi hai có sẵn không? nếu chưa có thì anh muốn biết trước rồi mới quyết định, không đổi qua màu khác đâu.",
+          "entities": {}
+        },
+        {
+          "idx": 6,
+          "speaker": "A",
+          "text": "dạ, em kiểm tra hôm nay thì đôi hike pro màu xám size bốn mươi hai còn hàng. em chưa tạo phiếu đổi; mình cần làm rõ các khoản áp dụng cho đơn cụ thể trước ạ.",
+          "tts_text": "Dạ, em kiểm tra hôm nay thì đôi hike pro màu xám size bốn mươi hai còn hàng. em chưa tạo phiếu đổi; mình cần làm rõ các khoản áp dụng cho đơn cụ thể trước ạ.",
+          "entities": {
+            "sku": "SKU-SN-TRK",
+            "size_new": 42,
+            "color": "xam",
+            "in_stock": true
+          }
+        },
+        {
+          "idx": 7,
+          "speaker": "C",
+          "text": "vậy em cứ kiểm tra tồn với điều kiện trước. anh chưa đồng ý tạo phiếu đổi cho tới khi biết rõ phí.",
+          "tts_text": "Vậy em cứ kiểm tra tồn với điều kiện trước. anh chưa đồng ý tạo phiếu đổi cho tới khi biết rõ phí.",
+          "entities": {}
+        },
+        {
+          "idx": 8,
+          "speaker": "A",
+          "text": "dạ em ghi nhận anh đang hỏi điều kiện và chưa yêu cầu tạo phiếu đổi. anh giữ nguyên giày cùng hộp để shop kiểm tra nếu đủ điều kiện ạ.",
+          "tts_text": "Dạ em ghi nhận anh đang hỏi điều kiện và chưa yêu cầu tạo phiếu đổi. anh giữ nguyên giày cùng hộp để shop kiểm tra nếu đủ điều kiện ạ.",
+          "entities": {}
+        }
+      ],
+      "entities": {
+        "sku": "SKU-SN-TRK",
+        "size_new": 42,
+        "color": "xam",
+        "in_stock": true
+      }
+    },
+    {
+      "id": "T09-S03",
+      "source_dialogue_id": "T09",
+      "session_index": 3,
+      "harness_ref": "SC-T09",
+      "call_date": "2026-10-22",
+      "split": "dev",
+      "customer_region": "bac",
+      "customer_gender": "m",
+      "agent_region": "nam",
+      "agent_gender": "f",
+      "noisy": false,
+      "note": "Phiên 3 nối tiếp T09-S02 qua kênh hotline; chỉ tạo audio riêng cho cuộc gọi này. Kịch bản được nhóm soạn, cần nghe rà transcript sau TTS.",
+      "turns": [
+        {
+          "idx": 1,
+          "speaker": "C",
+          "text": "alo em, anh nghe lịch gọi lại lúc mười giờ về máy lọc e pia pro. giờ anh rảnh rồi, em xem giúp anh mẫu đó đã có hàng lại chưa.",
+          "tts_text": "Alo em, anh nghe lịch gọi lại lúc mười giờ về máy lọc e pia pro. giờ anh rảnh rồi, em xem giúp anh mẫu đó đã có hàng lại chưa.",
+          "entities": {}
+        },
+        {
+          "idx": 2,
+          "speaker": "A",
+          "text": "dạ em chào anh. em kiểm tra tồn và giá theo hôm nay, vì thông tin lần trước có thể đã thay đổi ạ.",
+          "tts_text": "Dạ em chào anh. em kiểm tra tồn và giá theo hôm nay, vì thông tin lần trước có thể đã thay đổi ạ.",
+          "entities": {}
+        },
+        {
+          "idx": 3,
+          "speaker": "C",
+          "text": "phòng khách nhà anh khoảng ba mươi lăm mét vuông như lần trước. anh vẫn hỏi đúng e pia pro, chưa cần so lại mẫu khác.",
+          "tts_text": "Phòng khách nhà anh khoảng ba mươi lăm mét vuông như lần trước. anh vẫn hỏi đúng e pia pro, chưa cần so lại mẫu khác.",
+          "entities": {}
+        },
+        {
+          "idx": 4,
+          "speaker": "A",
+          "text": "dạ em đã ghi nhận đúng mẫu và diện tích phòng. em sẽ kiểm tra thông tin của e pia pro, không bắt anh nhắc lại dữ kiện đã có ạ.",
+          "tts_text": "Dạ em đã ghi nhận đúng mẫu và diện tích phòng. em sẽ kiểm tra thông tin của e pia pro, không bắt anh nhắc lại dữ kiện đã có ạ.",
+          "entities": {}
+        },
+        {
+          "idx": 5,
+          "speaker": "C",
+          "text": "nếu có hàng thì em báo giá hiện tại luôn giúp anh, mã giảm tháng mười hôm trước còn dùng được không?",
+          "tts_text": "Nếu có hàng thì em báo giá hiện tại luôn giúp anh, mã giảm tháng mười hôm trước còn dùng được không?",
+          "entities": {}
+        },
+        {
+          "idx": 6,
+          "speaker": "A",
+          "text": "dạ, e pia pro hôm nay còn hàng. mã air oct tháng mười vẫn còn hiệu lực, giá niêm yết bảy triệu chín trăm chín mươi nghìn, giảm ba trăm nghìn, còn bảy triệu sáu trăm chín mươi nghìn đồng ạ.",
+          "tts_text": "Dạ, e pia pro hôm nay còn hàng. mã air oct tháng mười vẫn còn hiệu lực, giá niêm yết bảy triệu chín trăm chín mươi nghìn, giảm ba trăm nghìn, còn bảy triệu sáu trăm chín mươi nghìn đồng ạ.",
+          "entities": {
+            "sku": "SKU-AP-PRO",
+            "in_stock": true,
+            "price_vnd": 7690000
+          }
+        },
+        {
+          "idx": 7,
+          "speaker": "C",
+          "text": "nếu giá tăng so với lần trước thì anh cứ nghe thôi, chưa đặt. anh muốn bàn lại với vợ trước khi quyết định.",
+          "tts_text": "Nếu giá tăng so với lần trước thì anh cứ nghe thôi, chưa đặt. anh muốn bàn lại với vợ trước khi quyết định.",
+          "entities": {}
+        },
+        {
+          "idx": 8,
+          "speaker": "A",
+          "text": "dạ được ạ. em chỉ tư vấn và không tạo đơn khi anh chưa xác nhận mua.",
+          "tts_text": "Dạ được ạ. em chỉ tư vấn và không tạo đơn khi anh chưa xác nhận mua.",
+          "entities": {}
+        }
+      ],
+      "entities": {
+        "sku": "SKU-AP-PRO",
+        "in_stock": true,
+        "price_vnd": 7690000
+      }
+    },
+    {
+      "id": "T13-S03",
+      "source_dialogue_id": "T13",
+      "session_index": 3,
+      "harness_ref": "SC-T13",
+      "call_date": "2026-11-05",
+      "split": "dev",
+      "customer_region": "bac",
+      "customer_gender": "m",
+      "agent_region": "nam",
+      "agent_gender": "f",
+      "noisy": false,
+      "note": "Phiên 3 nối tiếp T13-S02 qua kênh zalo_oa; chỉ tạo audio riêng cho cuộc gọi này. Kịch bản được nhóm soạn, cần nghe rà transcript sau TTS.",
+      "turns": [
+        {
+          "idx": 1,
+          "speaker": "C",
+          "text": "anh nhắn lại về máy lọc phòng ngủ hôm trước. ngân sách tối đa của anh vẫn như lần trước, giờ anh muốn xem đúng mẫu có khóa trẻ em.",
+          "tts_text": "Anh nhắn lại về máy lọc phòng ngủ hôm trước. ngân sách tối đa của anh vẫn như lần trước, giờ anh muốn xem đúng mẫu có khóa trẻ em.",
+          "entities": {}
+        },
+        {
+          "idx": 2,
+          "speaker": "A",
+          "text": "dạ em tiếp tục từ mức ngân sách và yêu cầu khóa trẻ em anh đã nêu. em sẽ tìm lại mẫu phù hợp và kiểm giá theo hôm nay ạ.",
+          "tts_text": "Dạ em tiếp tục từ mức ngân sách và yêu cầu khóa trẻ em anh đã nêu. em sẽ tìm lại mẫu phù hợp và kiểm giá theo hôm nay ạ.",
+          "entities": {}
+        },
+        {
+          "idx": 3,
+          "speaker": "C",
+          "text": "phòng ngủ hai mươi lăm mét vuông như lần trước. anh không muốn lấy mẫu cho phòng lớn vì vừa tốn tiền vừa chiếm chỗ.",
+          "tts_text": "Phòng ngủ hai mươi lăm mét vuông như lần trước. anh không muốn lấy mẫu cho phòng lớn vì vừa tốn tiền vừa chiếm chỗ.",
+          "entities": {}
+        },
+        {
+          "idx": 4,
+          "speaker": "A",
+          "text": "dạ em giữ diện tích phòng hai mươi lăm mét vuông và tiêu chí khóa trẻ em. em sẽ tìm mẫu phù hợp trong mức năm triệu rưỡi ạ.",
+          "tts_text": "Dạ em giữ diện tích phòng hai mươi lăm mét vuông và tiêu chí khóa trẻ em. em sẽ tìm mẫu phù hợp trong mức năm triệu rưỡi ạ.",
+          "entities": {}
+        },
+        {
+          "idx": 5,
+          "speaker": "C",
+          "text": "nếu có một mẫu hơi cao hơn ngân sách nhưng có đúng tính năng thì cứ báo riêng, đừng tự cộng phụ kiện vào giá nha em.",
+          "tts_text": "Nếu có một mẫu hơi cao hơn ngân sách nhưng có đúng tính năng thì cứ báo riêng, đừng tự cộng phụ kiện vào giá nha em.",
+          "entities": {}
+        },
+        {
+          "idx": 6,
+          "speaker": "A",
+          "text": "dạ, e pia y có khóa trẻ em và điều khiển qua ứng dụng. giá máy hiện tại là năm triệu hai trăm nghìn đồng, nằm trong ngân sách anh vừa nêu; em không tự thêm phụ kiện ạ.",
+          "tts_text": "Dạ, e pia y có khóa trẻ em và điều khiển qua ứng dụng. giá máy hiện tại là năm triệu hai trăm nghìn đồng, nằm trong ngân sách anh vừa nêu; em không tự thêm phụ kiện ạ.",
+          "entities": {
+            "sku": "SKU-AP-Y",
+            "price_vnd": 5200000
+          }
+        },
+        {
+          "idx": 7,
+          "speaker": "C",
+          "text": "anh muốn biết bảo hành mấy tháng với lõi thay có nằm trong bảo hành không. cái này ảnh hưởng tiền về sau.",
+          "tts_text": "Anh muốn biết bảo hành mấy tháng với lõi thay có nằm trong bảo hành không. cái này ảnh hưởng tiền về sau.",
+          "entities": {}
+        },
+        {
+          "idx": 8,
+          "speaker": "A",
+          "text": "dạ em sẽ đối chiếu thời hạn bảo hành thân máy và điều kiện với lõi lọc theo tài liệu sản phẩm. vật tư tiêu hao có thể có điều kiện riêng, em sẽ không gộp hai loại bảo hành ạ.",
+          "tts_text": "Dạ em sẽ đối chiếu thời hạn bảo hành thân máy và điều kiện với lõi lọc theo tài liệu sản phẩm. vật tư tiêu hao có thể có điều kiện riêng, em sẽ không gộp hai loại bảo hành ạ.",
+          "entities": {}
+        }
+      ],
+      "entities": {
+        "sku": "SKU-AP-Y",
+        "price_vnd": 5200000
+      }
+    },
+    {
+      "id": "T17-S03",
+      "source_dialogue_id": "T17",
+      "session_index": 3,
+      "harness_ref": "SC-T17",
+      "call_date": "2026-11-05",
+      "split": "dev",
+      "customer_region": "bac",
+      "customer_gender": "m",
+      "agent_region": "bac",
+      "agent_gender": "f",
+      "noisy": false,
+      "note": "Phiên 3 nối tiếp T17-S02 qua kênh hotline; chỉ tạo audio riêng cho cuộc gọi này. Kịch bản được nhóm soạn, cần nghe rà transcript sau TTS.",
+      "turns": [
+        {
+          "idx": 1,
+          "speaker": "C",
+          "text": "chào em, anh gọi đơn giày run lai size bốn mươi mốt màu đen đặt hôm trước. anh nhận được tin nhắn xác nhận rồi, muốn kiểm xem đôi tất khuyến mãi có nằm chung đơn không.",
+          "tts_text": "Chào em, anh gọi đơn giày run lai size bốn mươi mốt màu đen đặt hôm trước. anh nhận được tin nhắn xác nhận rồi, muốn kiểm xem đôi tất khuyến mãi có nằm chung đơn không.",
+          "entities": {}
+        },
+        {
+          "idx": 2,
+          "speaker": "A",
+          "text": "dạ em kiểm tra đơn đã tạo và từng món được ghi nhận. em chưa tạo đơn mới trong cuộc gọi này ạ.",
+          "tts_text": "Dạ em kiểm tra đơn đã tạo và từng món được ghi nhận. em chưa tạo đơn mới trong cuộc gọi này ạ.",
+          "entities": {}
+        },
+        {
+          "idx": 3,
+          "speaker": "C",
+          "text": "trong tin nhắn chỉ thấy tên đôi giày với số tiền, không thấy tất. chương trình tặng tất lúc đặt có áp dụng cho đơn của anh không em?",
+          "tts_text": "Trong tin nhắn chỉ thấy tên đôi giày với số tiền, không thấy tất. chương trình tặng tất lúc đặt có áp dụng cho đơn của anh không em?",
+          "entities": {}
+        },
+        {
+          "idx": 4,
+          "speaker": "A",
+          "text": "dạ em sẽ đối chiếu nội dung đơn và khuyến mãi tại ngày đặt. em không thể khẳng định quà đã được thêm nếu kết quả đơn không thể hiện ạ.",
+          "tts_text": "Dạ em sẽ đối chiếu nội dung đơn và khuyến mãi tại ngày đặt. em không thể khẳng định quà đã được thêm nếu kết quả đơn không thể hiện ạ.",
+          "entities": {}
+        },
+        {
+          "idx": 5,
+          "speaker": "C",
+          "text": "nếu không có tất thì anh không cần đặt thêm đâu. anh chỉ muốn biết tin nhắn xác nhận có thiếu dòng hay không.",
+          "tts_text": "Nếu không có tất thì anh không cần đặt thêm đâu. anh chỉ muốn biết tin nhắn xác nhận có thiếu dòng hay không.",
+          "entities": {}
+        },
+        {
+          "idx": 6,
+          "speaker": "A",
+          "text": "dạ em hiểu, mình chỉ kiểm đơn hiện tại. nếu thiếu thông tin, shop sẽ hướng dẫn theo đúng chương trình tại thời điểm đặt; em không tự thêm món tính phí ạ.",
+          "tts_text": "Dạ em hiểu, mình chỉ kiểm đơn hiện tại. nếu thiếu thông tin, shop sẽ hướng dẫn theo đúng chương trình tại thời điểm đặt; em không tự thêm món tính phí ạ.",
+          "entities": {}
+        },
+        {
+          "idx": 7,
+          "speaker": "C",
+          "text": "rồi. em kiểm tra giúp trạng thái đơn đang giao hay còn ở kho, anh không cần hủy hay sửa gì hết.",
+          "tts_text": "Rồi. em kiểm tra giúp trạng thái đơn đang giao hay còn ở kho, anh không cần hủy hay sửa gì hết.",
+          "entities": {}
+        },
+        {
+          "idx": 8,
+          "speaker": "A",
+          "text": "dạ em sẽ tra trạng thái của đơn hiện tại. yêu cầu của anh là xem thông tin, không thay đổi đơn ạ.",
+          "tts_text": "Dạ em sẽ tra trạng thái của đơn hiện tại. yêu cầu của anh là xem thông tin, không thay đổi đơn ạ.",
+          "entities": {}
+        }
+      ],
+      "entities": {}
+    },
+    {
+      "id": "T21-S03",
+      "source_dialogue_id": "T21",
+      "session_index": 3,
+      "harness_ref": "SC-T21",
+      "call_date": "2026-11-02",
+      "split": "dev",
+      "customer_region": "nam",
+      "customer_gender": "f",
+      "agent_region": "bac",
+      "agent_gender": "f",
+      "noisy": false,
+      "note": "Phiên 3 nối tiếp T21-S02 qua kênh hotline; chỉ tạo audio riêng cho cuộc gọi này. Kịch bản được nhóm soạn, cần nghe rà transcript sau TTS.",
+      "turns": [
+        {
+          "idx": 1,
+          "speaker": "C",
+          "text": "alo em, chị là chủ tài khoản đây. hôm trước chồng chị gọi hỏi e pia pro, chị đã đọc lại phần tư vấn rồi và muốn xác nhận mua một máy.",
+          "tts_text": "Alo em, chị là chủ tài khoản đây. hôm trước chồng chị gọi hỏi e pia pro, chị đã đọc lại phần tư vấn rồi và muốn xác nhận mua một máy.",
+          "entities": {}
+        },
+        {
+          "idx": 2,
+          "speaker": "A",
+          "text": "dạ em chào chị. em sẽ kiểm tra lại giá, tồn và thông tin mẫu theo hôm nay rồi xác nhận từng phần trước khi tạo đơn ạ.",
+          "tts_text": "Dạ em chào chị. em sẽ kiểm tra lại giá, tồn và thông tin mẫu theo hôm nay rồi xác nhận từng phần trước khi tạo đơn ạ.",
+          "entities": {}
+        },
+        {
+          "idx": 3,
+          "speaker": "C",
+          "text": "đúng mẫu e pia pro cho phòng khách khoảng bốn mươi mét vuông. chị xác nhận thông tin này trong tài khoản của mình nha.",
+          "tts_text": "Đúng mẫu e pia pro cho phòng khách khoảng bốn mươi mét vuông. chị xác nhận thông tin này trong tài khoản của mình nha.",
+          "entities": {}
+        },
+        {
+          "idx": 4,
+          "speaker": "A",
+          "text": "dạ em xác nhận đúng e pia pro cho phòng khoảng bốn mươi mét vuông. giá hôm nay là bảy triệu chín trăm chín mươi nghìn đồng, mẫu còn hàng; mã air oct tháng mười đã hết hạn nên không áp dụng ạ.",
+          "tts_text": "Dạ em xác nhận đúng e pia pro cho phòng khoảng bốn mươi mét vuông. giá hôm nay là bảy triệu chín trăm chín mươi nghìn đồng, mẫu còn hàng; mã air oct tháng mười đã hết hạn nên không áp dụng ạ.",
+          "entities": {
+            "sku": "SKU-AP-PRO",
+            "price_vnd": 7990000,
+            "in_stock": true
+          }
+        },
+        {
+          "idx": 5,
+          "speaker": "C",
+          "text": "nếu tổng tiền đúng giá em vừa báo thì chị đồng ý lên đơn. chị xác nhận lại là một máy e pia pro thôi.",
+          "tts_text": "Nếu tổng tiền đúng giá em vừa báo thì chị đồng ý lên đơn. chị xác nhận lại là một máy e pia pro thôi.",
+          "entities": {}
+        },
+        {
+          "idx": 6,
+          "speaker": "A",
+          "text": "dạ em nhắc lại: một máy e pia pro, theo giá và tồn đã kiểm tra hôm nay, thanh toán cod, giao tới địa chỉ đã lưu. chị xác nhận lần cuối giúp em ạ.",
+          "tts_text": "Dạ em nhắc lại: một máy e pia pro, theo giá và tồn đã kiểm tra hôm nay, thanh toán cod, giao tới địa chỉ đã lưu. chị xác nhận lần cuối giúp em ạ.",
+          "entities": {}
+        },
+        {
+          "idx": 7,
+          "speaker": "C",
+          "text": "chị xác nhận đúng như vậy, em tạo đơn cho chị đi.",
+          "tts_text": "Chị xác nhận đúng như vậy, em tạo đơn cho chị đi.",
+          "entities": {}
+        },
+        {
+          "idx": 8,
+          "speaker": "A",
+          "text": "dạ em tạo đơn theo xác nhận của chị. mã đơn và khoản thu sẽ được gửi qua tài khoản chính thức để chị kiểm tra ạ.",
+          "tts_text": "Dạ em tạo đơn theo xác nhận của chị. mã đơn và khoản thu sẽ được gửi qua tài khoản chính thức để chị kiểm tra ạ.",
+          "entities": {}
+        }
+      ],
+      "entities": {
+        "sku": "SKU-AP-PRO",
+        "price_vnd": 7990000,
+        "in_stock": true
+      }
+    },
+    {
+      "id": "T22-S03",
+      "source_dialogue_id": "T22",
+      "session_index": 3,
+      "harness_ref": "SC-T22",
+      "call_date": "2026-11-07",
+      "split": "dev",
+      "customer_region": "nam",
+      "customer_gender": "m",
+      "agent_region": "bac",
+      "agent_gender": "f",
+      "noisy": false,
+      "note": "Phiên 3 nối tiếp T22-S02 qua kênh zalo_oa; chỉ tạo audio riêng cho cuộc gọi này. Kịch bản được nhóm soạn, cần nghe rà transcript sau TTS.",
+      "turns": [
+        {
+          "idx": 1,
+          "speaker": "C",
+          "text": "anh nhắn tiếp yêu cầu trả nồi chiên xiao mi hôm trước. bên giao đã lấy hàng rồi, anh có mã bàn giao nhưng app vẫn hiện đang xử lý.",
+          "tts_text": "Anh nhắn tiếp yêu cầu trả nồi chiên xiao mi hôm trước. bên giao đã lấy hàng rồi, anh có mã bàn giao nhưng app vẫn hiện đang xử lý.",
+          "entities": {}
+        },
+        {
+          "idx": 2,
+          "speaker": "A",
+          "text": "dạ em sẽ kiểm tra trạng thái yêu cầu hiện tại. mã bàn giao là thông tin theo dõi, chưa đồng nghĩa kho đã kiểm hàng xong ạ.",
+          "tts_text": "Dạ em sẽ kiểm tra trạng thái yêu cầu hiện tại. mã bàn giao là thông tin theo dõi, chưa đồng nghĩa kho đã kiểm hàng xong ạ.",
+          "entities": {}
+        },
+        {
+          "idx": 3,
+          "speaker": "C",
+          "text": "anh chưa nhập biểu mẫu hoàn tiền vì muốn chắc hàng đã về kho. em kiểm tra giúp anh có ghi nhận nhận hàng chưa nha.",
+          "tts_text": "Anh chưa nhập biểu mẫu hoàn tiền vì muốn chắc hàng đã về kho. em kiểm tra giúp anh có ghi nhận nhận hàng chưa nha.",
+          "entities": {}
+        },
+        {
+          "idx": 4,
+          "speaker": "A",
+          "text": "dạ em kiểm tra trạng thái nhận lại hàng trong hệ thống. nếu chưa có xác nhận kho, em sẽ nói rõ là đang chờ chứ không báo hoàn tất ạ.",
+          "tts_text": "Dạ em kiểm tra trạng thái nhận lại hàng trong hệ thống. nếu chưa có xác nhận kho, em sẽ nói rõ là đang chờ chứ không báo hoàn tất ạ.",
+          "entities": {}
+        },
+        {
+          "idx": 5,
+          "speaker": "C",
+          "text": "có người nhắn bảo hàng về kho rồi nhưng phải chuyển phí xử lý trước mới được hoàn. anh chưa bấm vào link đó.",
+          "tts_text": "Có người nhắn bảo hàng về kho rồi nhưng phải chuyển phí xử lý trước mới được hoàn. anh chưa bấm vào link đó.",
+          "entities": {}
+        },
+        {
+          "idx": 6,
+          "speaker": "A",
+          "text": "dạ anh đừng chuyển tiền theo tin nhắn ngoài kênh đã xác minh. mình kiểm tra yêu cầu trong tài khoản hoặc liên hệ shop qua kênh chính thức trước ạ.",
+          "tts_text": "Dạ anh đừng chuyển tiền theo tin nhắn ngoài kênh đã xác minh. mình kiểm tra yêu cầu trong tài khoản hoặc liên hệ shop qua kênh chính thức trước ạ.",
+          "entities": {}
+        },
+        {
+          "idx": 7,
+          "speaker": "C",
+          "text": "nếu trạng thái chưa cập nhật thì anh chờ thêm, không tạo phiếu trả thứ hai. em cứ giữ yêu cầu cũ giúp anh.",
+          "tts_text": "Nếu trạng thái chưa cập nhật thì anh chờ thêm, không tạo phiếu trả thứ hai. em cứ giữ yêu cầu cũ giúp anh.",
+          "entities": {}
+        },
+        {
+          "idx": 8,
+          "speaker": "A",
+          "text": "dạ em ghi nhận anh muốn theo dõi yêu cầu cũ, không tạo phiếu mới. thời gian hoàn chỉ tính sau khi kho nhận và kiểm tra hàng theo quy trình ạ.",
+          "tts_text": "Dạ em ghi nhận anh muốn theo dõi yêu cầu cũ, không tạo phiếu mới. thời gian hoàn chỉ tính sau khi kho nhận và kiểm tra hàng theo quy trình ạ.",
+          "entities": {}
+        }
+      ],
+      "entities": {}
+    }
+  ]
+}
