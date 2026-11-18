@@ -107,6 +107,26 @@ def test_named_shoe_stock_variant_is_prepared_without_model_loops(reference):
     asyncio.run(run())
 
 
+def test_budget_search_returns_verified_shortlist_without_model_roundtrip(reference):
+    from test_m1_round2_runtime import runtime_for, turns
+    runtime, repo = runtime_for(reference, [])
+    async def run():
+        try:
+            with patch('app.agent.harness.agent_nodes.build_agent', side_effect=AssertionError('unnecessary model')):
+                replies, states = await turns(runtime, [
+                    'Chào em, anh đang tìm máy lọc không khí cho phòng ngủ 25 mét vuông '
+                    'trong tầm giá 3 triệu đổ lại, bên em có mẫu nào phù hợp?',
+                ], '2026-11-05')
+            answer = replies[0].agent_text
+            assert 'Xiaomi Smart 4 Lite' in answer and '2.990.000' in answer, answer
+            assert '25 m²' in answer
+            assert any(c['name'] == 'pricing.get_quote' for c in states[0]['tool_calls'])
+            assert not repo.orders
+        finally:
+            await runtime.close()
+    asyncio.run(run())
+
+
 def test_prepared_price_objection_does_not_wait_for_model_to_repeat_evidence():
     from test_consultation_followup import consultation_state, quoted, FollowupGateway
     current = quoted(consultation_state('Aster Air bên kia bán 4590k, sao bên em đắt hơn?'),

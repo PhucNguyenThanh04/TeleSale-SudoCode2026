@@ -18,6 +18,15 @@ def _parent(products: list[dict], sku: str) -> tuple[dict | None, dict | None]:
                 return product, variant
     return None, None
 
+
+def _promotion_applies(product: dict, variant: dict | None, promo: dict) -> bool:
+    return any(target == '*' or target == product['sku']
+               or variant is not None and target == variant['variant_sku']
+               or target.startswith('category:') and (
+                   product['category'] == target.split(':', 1)[1]
+                   or product['category'].startswith(target.split(':', 1)[1] + '/'))
+               for target in promo['applies_to'])
+
 def _region(address: str | None) -> str:
     value = (address or "").lower()
     if any(x in value for x in ("hcm", "hồ chí minh", "sài gòn", "bình dương", "đồng nai", "cần thơ", "vũng tàu", "long an", "tiền giang", "an giang", "kiên giang")):
@@ -61,8 +70,6 @@ def _catalog(products: list[dict], args: dict) -> dict:
                   if length == max((n for n, _ in prefixes), default=0)}
     model_terms = {term for term in query_terms if any(char.isdigit() for char in term)
                    or term in {'pro', 'lite', 'mini', 'max', 'plus', 'ultra'}} if len(brands) == 1 else set()
-    available_terms = set().union(*(tokens(p['name']) for p in products if p.get('brand') in brands))
-    model_terms &= available_terms
     for p in products:
         if args.get("sku") and p["sku"] != args["sku"] and not any(v["variant_sku"] == args["sku"] for v in p.get("variants", [])):
             continue
@@ -125,12 +132,7 @@ def quote(products: list[dict], promos: list[dict], args: dict,
     for pr in promos:
         if pr['promo_code'] in exclude:
             continue
-        targets = pr["applies_to"]
-        applicable_skus = {item["sku"] for item in products
-                           if "*" in targets or item["sku"] in targets or any(
-                               t.startswith("category:") and item["category"].startswith(t.split(":", 1)[1])
-                               for t in targets)}
-        if p["sku"] not in applicable_skus:
+        if not _promotion_applies(p, v, pr):
             continue
         if not (pr["start"] <= on <= pr["end"]):
             if pr["end"] < on:
@@ -152,7 +154,7 @@ def quote(products: list[dict], promos: list[dict], args: dict,
         elif pr["type"] == "percent_second_item":
             others = [(_parent(products, other)[0], _parent(products, other)[1]) for other in basket]
             prices = [other[0]["list_price_vnd"] + (other[1]["price_delta_vnd"] if other[1] else 0)
-                      for other in others if other[0] and other[0]["sku"] in applicable_skus]
+                      for other in others if other[0] and _promotion_applies(other[0], other[1], pr)]
             discount = int(base * pr["discount_percent"] / 100) if prices and base < min(prices) else 0
             if discount == 0:
                 ineligible.append({"promo_code": pr["promo_code"], "reason": "not_cheapest_item_or_tie_use_quote_order"})
@@ -163,7 +165,7 @@ def quote(products: list[dict], promos: list[dict], args: dict,
     stackables = [(p, d) for p, d in candidates if p.get("stackable")]
     exclusive = [(p, d) for p, d in candidates if not p.get("stackable")]
     best = max(exclusive, key=lambda entry: entry[1], default=None)
-    final = base - (best[1] if best else 0)
+    final = max(0, base - (best[1] if best else 0) - sum(d for _, d in stackables))
     for pr, discount in stackables + ([best] if best else []):
         applied.append({"promo_code": pr["promo_code"], "type": pr["type"], "discount_vnd": discount,
                         **({"gift_sku": pr["gift_sku"]} if pr.get("gift_sku") else {})})
@@ -176,8 +178,8 @@ def quote(products: list[dict], promos: list[dict], args: dict,
 def quote_order(products: list[dict], promos: list[dict], args: dict,
                 owned_skus: set[str] | None = None,
                 once_used: set[tuple[str, str]] | None = None, *,
-                second_item_used: bool = False, tie_prefer_first: bool = False) -> dict:
-    """BTC November prices per physical unit; never multiply one discounted price by qty."""
+                used_today: set[str] | None = None, tie_prefer_first: bool = False) -> dict:
+    """Price each physical unit using promotion scope and conditions from the catalog."""
     lines = args.get('lines')
     if (not isinstance(lines, list) or not lines or any(
             not isinstance(line, dict) or not isinstance(line.get('sku'), str)
@@ -189,44 +191,64 @@ def quote_order(products: list[dict], promos: list[dict], args: dict,
         if product is None:
             return {'error': 'unknown_sku', 'sku': line['sku']}
         units.extend({'line': index, 'sku': line['sku'],
-                      'list_price_vnd': product['list_price_vnd'] + (variant['price_delta_vnd'] if variant else 0),
-                      'is_air': product['category'].startswith('gia-dung/may-loc-khong-khi')}
+                      'list_price_vnd': product['list_price_vnd'] + (variant['price_delta_vnd'] if variant else 0)}
                      for _ in range(line.get('qty', 1)))
-    second = next((promo for promo in promos if promo['type'] == 'percent_second_item'
-                   and promo['start'] <= args['on'] <= promo['end']), None)
-    air = [i for i, unit in enumerate(units) if unit['is_air']]
-    second_index = None
-    if second and len(air) >= 2 and not second_item_used:
-        cheapest = min(units[i]['list_price_vnd'] for i in air)
-        tied = [i for i in air if units[i]['list_price_vnd'] == cheapest]
-        second_index = min(tied) if tie_prefer_first else max(tied)
-    trade = next((promo for promo in promos if promo.get('conditions', {}).get('requires_owned_sku')), None)
-    trade_code = trade['promo_code'] if trade else None
-    excluded = (second['promo_code'],) if second else ()
+    seconds = [promo for promo in promos if promo['type'] == 'percent_second_item']
+    excluded = tuple(promo['promo_code'] for promo in seconds)
+    second_offers = {}
+    for promo in seconds:
+        if promo['promo_code'] in (used_today or set()):
+            continue
+        matching = [i for i, unit in enumerate(units)
+                    if _promotion_applies(*_parent(products, unit['sku']), promo)]
+        # Reuse single-product eligibility checks, including region, ownership,
+        # size and once-per-customer; only the basket selects the discounted unit.
+        eligible = {}
+        for i in matching:
+            candidate = quote(products, [{**promo, 'type': 'percent'}],
+                              {**args, 'sku': units[i]['sku'], 'qty': len(matching), 'basket_skus': []},
+                              owned_skus, once_used)
+            if candidate['applied_promos']:
+                eligible[i] = candidate['applied_promos'][0]
+        if len(eligible) < max(2, promo.get('conditions', {}).get('min_qty', 2)):
+            continue
+        cheapest = min(units[i]['list_price_vnd'] for i in eligible)
+        tied = [i for i in eligible if units[i]['list_price_vnd'] == cheapest]
+        index = min(tied) if tie_prefer_first else max(tied)
+        applied = {**eligible[index], 'type': promo['type']}
+        second_offers.setdefault(index, []).append((promo, applied))
+    trade_codes = [promo['promo_code'] for promo in promos
+                   if promo['type'] != 'percent_second_item'
+                   and promo.get('conditions', {}).get('requires_owned_sku')]
 
     def unit_quote(unit, exclude):
         return quote(products, promos, {**args, 'sku': unit['sku'], 'qty': 1, 'basket_skus': []},
                      owned_skus, once_used, exclude=exclude)
 
-    trade_index, best_gain = None, 0
-    if trade_code:
+    trade_indices = {}
+    for trade_code in trade_codes:
+        trade_index, best_gain = None, 0
         for i, unit in enumerate(units):
-            if i == second_index:
+            if i in second_offers:
                 continue
             gain = (unit_quote(unit, excluded + (trade_code,))['final_price_vnd']
                     - unit_quote(unit, excluded)['final_price_vnd'])
             if gain > best_gain:
                 trade_index, best_gain = i, gain
+        trade_indices[trade_code] = trade_index
     priced, stack = [], {}
+    stackable_codes = {promo['promo_code'] for promo in promos if promo.get('stackable')}
     for i, unit in enumerate(units):
-        q = unit_quote(unit, excluded + ((trade_code,) if trade_code and i != trade_index else ()))
-        final = q['final_price_vnd']
+        q = unit_quote(unit, excluded + tuple(code for code in trade_codes if trade_indices[code] != i))
         applied = [promo for promo in q['applied_promos'] if promo['type'] not in ('freeship', 'freecod')]
-        if i == second_index:
-            discount = int(unit['list_price_vnd'] * second['discount_percent'] / 100)
-            if discount >= unit['list_price_vnd'] - final:
-                final = unit['list_price_vnd'] - discount
-                applied = [{'promo_code': second['promo_code'], 'type': second['type'], 'discount_vnd': discount}]
+        for promo, benefit in second_offers.get(i, []):
+            if promo.get('stackable'):
+                applied.append(benefit)
+            else:
+                exclusive_discount = sum(p['discount_vnd'] for p in applied if p['promo_code'] not in stackable_codes)
+                if benefit['discount_vnd'] >= exclusive_discount:
+                    applied = [p for p in applied if p['promo_code'] in stackable_codes] + [benefit]
+        final = max(0, unit['list_price_vnd'] - sum(p['discount_vnd'] for p in applied))
         for promo in q['applied_promos']:
             if promo['type'] in ('freeship', 'freecod'):
                 stack[promo['promo_code']] = promo
@@ -240,5 +262,5 @@ def quote_order(products: list[dict], promos: list[dict], args: dict,
                         'line_total_vnd': sum(prices)})
     total = sum(unit['final_price_vnd'] for unit in priced)
     return {'units': priced, 'lines': grouped, 'total_vnd': total,
-            'order_promos': list(stack.values()), 'freeship': bool(stack.get('NAM-SHIP0')) or total >= 2_000_000,
+            'order_promos': list(stack.values()), 'freeship': any(p['type'] == 'freeship' for p in stack.values()) or total >= 2_000_000,
             'note': 'Khi giá trong một dòng khác nhau (VD 2 máy cùng SKU, 1 máy được giảm 50%), tạo đơn bằng mỗi máy một dòng qty=1.'}

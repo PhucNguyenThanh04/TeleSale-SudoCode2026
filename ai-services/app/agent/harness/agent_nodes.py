@@ -227,6 +227,9 @@ class AgentNodes(SessionNodes):
             prepared_reply = None
             if not derive_consultation(state).purchase_intent:
                 prepared_reply = safe_product_reply(state)
+                from app.mcp_servers.mcp_shared.consultation_shortlist import catalog_search_requested
+                if not prepared_reply and catalog_search_requested(state):
+                    prepared_reply = safe_catalog_reply(state)
                 if not prepared_reply and product_price_requested(state['safe_text']) and not product_question_fields(state['safe_text']):
                     prepared_reply = safe_quote_reply(state)
             if prepared_reply and _task_answer_complete(prepared_reply, state):

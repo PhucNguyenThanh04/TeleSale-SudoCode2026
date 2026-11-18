@@ -86,17 +86,16 @@ def resolve_product_selection(state: TurnState, args: dict[str, Any]) -> Product
         if agent_named:
             historical_focus = next(iter(agent_named)) if len(agent_named) == 1 else None
     customer_texts.append(folded(state.get('safe_text', '')))
-    for key, cue in (("size", r"(?:size|co|kich co)"), ("color", "mau")):
-        current = {}
+    from app.mcp_servers.mcp_shared.commerce_entities import variant_option_values
+    for key in ('size', 'color'):
+        current = set()
         for customer_text in customer_texts:
-            mentioned = {str(v.get(key)): v.get(key) for v in parent["variants"] if isinstance(v, dict)
-                         and v.get(key) is not None and re.search(
-                             r"\b" + cue + r"\s+" + re.escape(folded(v[key])) + r"(?!\w)", customer_text)}
+            mentioned = variant_option_values(customer_text, parent['variants'], key)
             if mentioned:
                 current = mentioned
         if len(current) > 1:
             return ProductSelection("selection_required", parent_sku=parent_sku, missing_fields=(key,))
-        selections[key] = next(iter(current.values())) if current else args.get(key)
+        selections[key] = next(iter(current)) if current else args.get(key)
         if selections[key] is None and sku == parent_sku:
             selections[key] = facts.get(key, facts.get("preferred_" + key, {})).get("value")
     variants = [v for v in parent["variants"] if isinstance(v, dict)
@@ -160,7 +159,8 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
         args = {key: value for key, value in args.items() if key in _READ_TOOL_ARGS[name]}
     if name in {"inventory.check", "pricing.get_quote"} and not isinstance(args.get("sku"), str):
         return None
-    if name == "pricing.get_quote" and not args["sku"].startswith("SKU-"):
+    if (name == "pricing.get_quote" and not args["sku"].startswith("SKU-")
+            and resolve_product_selection(state, args).status == 'catalog_required'):
         return None
     if name in DATED_TOOLS:
         args["on"] = request.on.isoformat()

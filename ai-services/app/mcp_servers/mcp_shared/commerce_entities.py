@@ -16,6 +16,17 @@ def allows_short_product_name(text: str, item: dict) -> bool:
     return bool(cue and re.search(r'(?<!\w)' + re.escape(cue) + r'(?!\w)', _search_text(text)))
 
 
+def variant_option_values(text: str, variants: list[dict], key: str) -> set[str]:
+    """Match literal catalog values, retaining the longest value at each cue."""
+    cue = r'\b(?:size|co|kich co)' if key == 'size' else r'\bmau'
+    matches = [(m.start(), m.end(), _search_text(str(v[key])))
+               for v in variants if isinstance(v, dict) and v.get(key) is not None
+               for m in re.finditer(cue + r'\s+' + re.escape(_search_text(str(v[key])))
+                                    + r'(?![\w-]|[.,]\d)', _search_text(text))]
+    return {value for start, end, value in matches
+            if not any(a == start and b > end for a, b, _ in matches)}
+
+
 def resolve_claim_skus(text: str, calls: list[dict], *, focus_sku: str | None = None) -> set[str]:
     folded = _search_text(text)
     items = {item['sku']: item for call in calls if call.get('name') == 'catalog.search'
@@ -49,17 +60,19 @@ def resolve_claim_skus(text: str, calls: list[dict], *, focus_sku: str | None = 
     if not parents:
         return {focus_sku} if focus_sku else set()
     result = set()
-    size = re.search(r'\bsize\s*(\d+|xs|s|m|l|xl|xxl)\b', folded)
-    color = re.search(r'\bmau\s+(den|trang|xam|do|xanh|navy|be)\b', folded)
     for parent in parents:
         variants = items[parent].get('variants') or []
         if not variants:
             result.add(parent)
             continue
+        options = {}
+        for key in ('size', 'color'):
+            values = variant_option_values(text, variants, key)
+            if values:
+                options[key] = values
         selected = [v for v in variants if isinstance(v, dict)
-                    and (not size or _search_text(str(v.get('size'))) == size[1])
-                    and (not color or _search_text(str(v.get('color', ''))) == color[1])]
-        if size or color:
+                    and all(_search_text(str(v.get(key, ''))) in values for key, values in options.items())]
+        if options:
             result.update(v['variant_sku'] for v in selected if v.get('variant_sku'))
         elif focus_sku and any(v.get('variant_sku') == focus_sku for v in variants):
             result.add(focus_sku)

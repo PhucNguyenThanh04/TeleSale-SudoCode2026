@@ -90,9 +90,8 @@ def build_commerce_evidence(state: dict, *, args: dict | None = None) -> list[di
     request = state.get('request')
     on = getattr(request, 'on', None)
     on = on.isoformat() if hasattr(on, 'isoformat') else str(on or '')
-    quantities = re.findall(r'(?<!\d)(\d+)\s*(?:chiec|cai|doi|bo|san pham)\b',
-                            _search_text(state.get('safe_text', '')))
-    desired_qty = (args or {}).get('qty', int(quantities[0]) if len(set(quantities)) == 1 else None)
+    from app.mcp_servers.mcp_shared.consultation import requested_quantity
+    desired_qty = (args or {}).get('qty', requested_quantity(state))
     selected = []
     for key, (index, call) in latest.items():
         if key in conflicts or not successful(call):

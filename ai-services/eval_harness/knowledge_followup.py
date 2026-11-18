@@ -38,7 +38,7 @@ async def prepare_review(base_run, repo, worker, settings, *, actor='local-revie
         'settings_digest': digest(settings.model_dump(mode='json')),
         'k0': str(base_run), 'k0_digest': core.tree_hash(base_run),
         'k0_release_id': metadata['knowledge_release']['release_id'],
-        'arguments': {'scenarios': str(base_run/'scenarios'), 'btc_root': str(base_run/'btc-release'),
+        'arguments': {'scenarios': str(base_run/'scenarios'), 'btc_root': str(run.get('btc_root', base_run/'btc-release')),
             'seed': params['seed'],
             'expected_database': expected, 'actor': actor, 'worker_timeout': timeout}}
     atomic_json(out/'experiment.json', state)

@@ -201,7 +201,7 @@ _BUDGET_CEILING = re.compile(
     rf"(?:la\s+)?(?P<amount>{_BUDGET_AMOUNT_FOLDED})\b")
 _REPORTED_PRICE_SUBJECT = re.compile(r"\b(?:shop|cua hang|ben kia|ben khac|doi thu)\b[^.!?;,]{0,32}"
                                      r"\b(?:bao gia|gia ban|gia)\b")
-_BUDGET_CUE = re.compile(r"\b(?:ngan sach|budget|muon chi|dinh chi|co the chi|chi tam|chi khoang)\b")
+_BUDGET_CUE = re.compile(r"\b(?:ngan sach|budget|muon chi|dinh chi|co the chi|chi tam|chi khoang|trong tam gia)\b")
 _PRICE_AFTER_BUDGET_CUE = re.compile(r"\b(?:gia|shop|cua hang|ben kia|ben khac|doi thu)\b")
 
 
@@ -777,7 +777,8 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         # An order status does not establish its physical warehouse/carrier location.
         for clause in re.split(r'[;!?\n]|\.(?!\d)', candidate):
             folded = _fold_text(clause)
-            if (re.search(r'\bchua (?:duoc )?(?:ban giao|xuat kho|giao di)\b|\bvan con o kho\b', folded)
+            if (re.search(r'\bchua (?:duoc )?(?:xac nhan va )?(?:ban giao|xuat kho|giao di)\b|'
+                          r'\bvan con o kho\b|\bchua cap nhat (?:thong tin|trang thai) hoan tat giao hang\b', folded)
                     and not re.search(r'\bneu\b', folded)):
                 return FALLBACK, 'order_status_unverified'
     if _ORDER_STATUS.search(candidate):

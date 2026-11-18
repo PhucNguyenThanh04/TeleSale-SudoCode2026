@@ -22,9 +22,11 @@ def _quantities(lines):
 
 
 def _spoken_quantities(text):
-    from app.agent.guardrails.checks import _spoken_integer
-    values = re.findall(r'(?<!\w)(\d+|mot|hai|ba|bon|nam|sau|bay|tam|chin|muoi)\s*(?:may|chiec|cai|san pham)\b', _search_text(text))
-    return {int(value) if value.isdigit() else _spoken_integer(value) for value in values}
+    from app.agent.guardrails.checks import _AREA_NUMBER_WORD, _spoken_integer
+    values = re.findall(rf'(?<![\w.,])(\d+|{_AREA_NUMBER_WORD}(?:\s+{_AREA_NUMBER_WORD}){{0,6}})'
+                        r'\s*(?:may|chiec|cai|doi|bo|san pham)\b', _search_text(text))
+    return {number for value in values
+            if (number := int(value) if value.isdigit() else _spoken_integer(value)) is not None}
 
 
 def current_basket_quote(state):

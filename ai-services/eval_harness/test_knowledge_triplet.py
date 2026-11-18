@@ -34,7 +34,7 @@ def test_changed_artifact_is_rejected_before_resume(tmp_path):
 @pytest.mark.parametrize('mode', ['complete', 'interrupted_publication', 'interrupted_review', 'no_gaps',
     'changed_k0', 'changed_k1', 'changed_review', 'changed_catalog', 'real_scoring', 'boot_replaced'])
 @pytest.mark.parametrize('automatic', [False, True])
-def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tmp_path, monkeypatch, mode, automatic, release_pin=''):
+def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tmp_path, monkeypatch, mode, automatic, release_pin='', external_snapshot=False):
     from eval_harness import knowledge_triplet as mod
     from unittest.mock import AsyncMock
     boot_check = AsyncMock()
@@ -67,7 +67,7 @@ def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tm
         'database_identity': {'database': 'telesale'}, 'seed_digest': 'seed', 'source_digest': 'code'}
     if separate: metadata['model_params'] = {'agent': 'deep', 'seed': 7}
     if mode == 'real_scoring':
-        metadata.update(seed_id='seed-7', model_id='offline', model_params={'temperature': 0}, tool_mode='mcp',
+        metadata.update(seed_id='seed-7', model_id='offline', model_params={'temperature': 0, 'seed': 7}, tool_mode='mcp',
             guardrails={'enabled': True}, hardware={'cpu': 'offline'}, started_at_utc='2026-11-13T00:00:00Z')
     async def pair(**kwargs):
         assert kwargs['baseline_first'] is True
@@ -99,9 +99,14 @@ def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tm
         else:
             (out/'full.manifest.json').write_text(json.dumps(metadata))
             (out/'btc_score.json').write_text(json.dumps({'system': {}, 'baseline': {}}))
-        (out/'run.json').write_text(json.dumps({'status': 'validated', 'execution_health': 'healthy',
+        run = {'status': 'validated', 'execution_health': 'healthy',
             'conversation_measurement': {'delivery_mode': 'text'},
-            'traces': {'full': 'full.jsonl', 'baseline_no_memory': 'baseline.jsonl'}}))
+            'traces': {'full': 'full.jsonl', 'baseline_no_memory': 'baseline.jsonl'}}
+        if external_snapshot:
+            snapshot = tmp_path / 'reused-btc-release'
+            (out/'btc-release').rename(snapshot)
+            run['btc_root'] = str(snapshot)
+        (out/'run.json').write_text(json.dumps(run))
         return out
     reviews = []
     async def review(*args, **kwargs):
@@ -137,6 +142,8 @@ def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tm
             raise RuntimeError('interrupted after activation')
     def single(config, scenarios, seed, run_id, out, **kwargs):
         assert config == 'full' and kwargs['release']['release_id'] == 'k1'
+        if external_snapshot:
+            assert kwargs['btc_root'] == tmp_path / 'reused-btc-release'
         calls.append('full_k1'); path=out/'full.diagnostics_full.jsonl'
         value = row('Cần giữ nguyên hộp.') | {'questions': [], 'claims': [],
             'customer_text': row()['user_text'], 'latency': {'total_ms': 10, 'ttft_ms': 10}}
@@ -186,6 +193,9 @@ def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tm
         from eval_harness import knowledge_followup as followup
         k0_run = asyncio.run(pair(out_root=args.out_root/'normal-eval', baseline_first=True))
         out = asyncio.run(followup.prepare_review(k0_run, r, r, settings, actor='simulated-reviewer'))
+        if external_snapshot:
+            checkpoint = json.loads((out/'experiment.json').read_text())
+            assert checkpoint['arguments']['btc_root'] == str(tmp_path / 'reused-btc-release')
     else:
         out = asyncio.run(mod.run_experiment(args, r, r, settings))
     if manual and mode == 'early_publish':

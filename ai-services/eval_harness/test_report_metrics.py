@@ -167,6 +167,20 @@ def test_report_distinguishes_validated_from_m1_acceptance(tmp_path):
     assert 'ASR' in output and 'cải tiến' in output
 
 
+def test_report_uses_recorded_external_btc_snapshot_for_acceptance(tmp_path):
+    from eval_harness.test_m1_acceptance import saved_pair
+    from eval_harness.test_official_pipeline import BTC
+    from eval_harness.report_metrics import render_run
+    run = saved_pair(tmp_path)
+    run['btc_root'] = str(BTC)
+    (tmp_path / 'run.json').write_text(json.dumps(run))
+    output = render_run(tmp_path)
+    assert 'Nghiệm thu hội thoại M1: CHƯA ĐẠT' in output
+    assert 'latency_sample_size: fail' in output
+    assert 'thiếu BTC snapshot' not in output
+    assert 'thiếu BTC snapshot' in render_run(tmp_path, btc_root=tmp_path / 'missing')
+
+
 def test_attached_asr_metrics_are_separate_and_insufficient_coverage_is_visible(tmp_path):
     from eval_harness.asr_evidence import collect_asr_evidence
     from eval_harness.test_asr_evidence import asr_score
