@@ -65,8 +65,7 @@ for _tool_name in ("inventory.check", "pricing.get_quote", "order.create"):
 _MODEL_TOOLS = frozenset(MODEL_TOOL_NAMES.values())
 
 _CATALOG_FIELD_DESCRIPTION = {
-    "category": ("Mã danh mục: gia-dung/may-loc-khong-khi, gia-dung/may-loc-nuoc, "
-                 "gia-dung/noi-chien, thoi-trang/giay, thoi-trang/ao-khoac, me-be. "
+    "category": ("Mã danh mục từ catalog, ví dụ gia-dung/may-loc-khong-khi hoặc thoi-trang/giay. "
                  "Không biết mã thì bỏ trống; giữ tên loại sản phẩm trong query."),
     "query": ("Từ khóa nhận diện sản phẩm trong tên, hãng, danh mục hoặc SKU; "
               "không chép nguyên câu hỏi hay mục đích sử dụng của khách."),
@@ -95,7 +94,7 @@ _TOOL_DESCRIPTION = {
                         "hoặc xử lý mua; không cần chỉ để trả lời tính năng sản phẩm."),
     "pricing.get_quote": (
         "Lấy giá cuối, khuyến mãi và freeship theo ngày cuộc gọi. "
-        "sku phải là mã SKU-...; nếu chỉ có tên sản phẩm, gọi catalog.search trước "
+        "sku phải là mã lấy nguyên từ catalog; nếu chỉ có tên sản phẩm, gọi catalog.search trước "
         "để lấy đúng sku từ kết quả. "
         "Gọi cho SKU sẽ tư vấn khi khách có ngân sách hoặc cần so giá; "
         "catalog.search chỉ cho giá niêm yết, không đủ để báo giá cuối."
@@ -503,6 +502,18 @@ class BusinessTools:
                     await self.invoke('catalog.search', {'query': query})
                     self.state.pop('consultation_scope', None)
         scope = consultation_scope(self.state)
+        if not scope.get('known') and not queries and catalog_search_requested(self.state):
+            from app.agent.harness.catalog_query import requested_catalog_category
+            category = requested_catalog_category(self.state.get('safe_text', ''))
+            attempted = any(c.get('name') == 'catalog.search' and c.get('args', {}).get('category') == category
+                            for c in self.state.get('tool_calls', []))
+            if category and not attempted and self.state.get('tool_count', 0) < self.max_tool_calls:
+                args = {'category': category}
+                area = shortlist_requirements(self.state).get('room_area_m2')
+                if type(area) in (int, float):
+                    args['min_room_area_m2'] = area
+                await self.invoke('catalog.search', args)
+                scope = consultation_scope(self.state)
         self.state['consultation_scope'] = scope
         if not scope.get('known'):
             # Do not turn a greeting into an unrestricted catalog search.
@@ -526,13 +537,22 @@ class BusinessTools:
         items = catalog_items(self.state)
         speech = _search_text(self.state.get('safe_text', ''))
         named = _mentions(self.state.get('safe_text', ''), items)
-        if (len(named) == 2 and re.search(r'tong gia|tong tien|gio hang', speech)
+        from app.mcp_servers.mcp_shared.consultation import requested_quantity
+        quantity = requested_quantity(self.state)
+        totals = {int(n) for n in re.findall(r'\b(\d+)\s*(?:mon|chiec|san pham)\b', speech)}
+        per_item = {int(n) for n in re.findall(r'\bmoi (?:mon|san pham)\s+(\d+)\b', speech)}
+        single_basket = len(named) == 1 and quantity is not None and quantity > 1
+        mixed_basket = (len(named) >= 2 and re.search(r'tong gia|tong tien|gio hang', speech)
+                        and (not totals or totals == {len(named)})
+                        and (not per_item or per_item == {1})
+                        and (per_item == {1} or totals == {len(named)}))
+        selections = {sku: resolve_product_selection(self.state, {'sku': sku}) for sku in named}
+        if ((single_basket or mixed_basket)
                 and not re.search(r'\b(?:hoac|hay)\b|so sanh', speech)
-                and not re.search(r'\b[3-9]\s*(?:mon|chiec|san pham)|moi (?:mon|san pham) [2-9]', speech)
-                and (re.search(r'(?:ca )?2 san pham|moi (?:mon|san pham) 1', speech))
-                and all(not items[sku].get('variants') for sku in named)):
+                and all(selection.status == 'resolved' for selection in selections.values())):
             from app.mcp_servers.mcp_shared.consultation import customer_order_options
-            args = {'lines': [{'sku': sku, 'qty': 1} for sku in sorted(named)]}
+            args = {'lines': [{'sku': selections[sku].sku, 'qty': quantity if single_basket else 1}
+                              for sku in sorted(named)]}
             options = customer_order_options(self.state) or {}
             if options.get('address'):
                 args['address'] = options['address']
@@ -540,7 +560,10 @@ class BusinessTools:
             if stock_requested(self.state.get('safe_text', '')):
                 for sku in sorted(named):
                     await self.prepare_requested_stock(sku)
-            await self.invoke('pricing.quote_order', args)
+            from app.mcp_servers.mcp_shared.basket import current_basket_quote
+            prior = current_basket_quote(self.state)
+            if prior is None or any(prior.get('args', {}).get(key) != args.get(key) for key in ('lines', 'address')):
+                await self.invoke('pricing.quote_order', args)
             return len(self.state.get('tool_calls', [])) > before
         from app.mcp_servers.mcp_shared.consultation_followup import product_price_requested, stock_requested
         focus = derive_consultation(self.state).focus_sku
@@ -551,7 +574,6 @@ class BusinessTools:
         selection = resolve_product_selection(self.state, {'sku': focus}) if focus else None
         # A parent quote can answer the price question before a variant is chosen;
         # purchase still requires the exact variant's quote and stock.
-        from app.mcp_servers.mcp_shared.consultation import requested_quantity
         quote_sku = selection.sku if selection and selection.status == 'resolved' else focus
         if (not decision.purchase_intent and product_price_requested(self.state.get('safe_text', ''))
                 and focus in items and selection.status in {'selection_required', 'resolved'}

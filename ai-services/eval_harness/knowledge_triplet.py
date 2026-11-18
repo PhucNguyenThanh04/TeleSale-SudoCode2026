@@ -239,6 +239,7 @@ async def run_experiment(args, repo, worker_repo, settings):
         if state['k0_digest'] != tree_hash(k0):
             raise ExperimentError('Frozen K0 artifacts changed')
         run = read_json(k0/'run.json')
+        btc_root = Path(run.get('btc_root', k0/'btc-release'))
         if run['status'] != 'validated' or run.get('execution_health') != 'healthy':
             raise ExperimentError(f"K0 must be validated and healthy: phase={run.get('phase')} "
                 f"code={run.get('error_code')} service={run.get('service')}; inspect {k0}/run.json")
@@ -268,7 +269,7 @@ async def run_experiment(args, repo, worker_repo, settings):
                 async with repo.transaction() as tx:
                     active = (await tx.get('active', 'current') or {}).get('release_id')
                 if active != base: raise ExperimentError('Active release changed since K0')
-                feedback = build_feedback(k0, btc_root=k0/'btc-release')
+                feedback = build_feedback(k0, btc_root=btc_root)
                 proposals = await propose(repo, worker_repo, full, feedback, actor=args.actor, run_id=out.name,
                     timeout=args.worker_timeout, score_sha256=sha(k0/'btc_score.json'), release_id=base)
                 atomic_json(out/'proposals.json', proposals)
@@ -349,13 +350,13 @@ async def run_experiment(args, repo, worker_repo, settings):
         if not trace.exists():
             print('[knowledge] C: full memory with published K1 (no fourth baseline)', flush=True)
             trace = _run_one('full', k0/'scenarios', args.seed, out.name+'-k1', k1,
-                btc_root=k0/'btc-release', expected_database=args.expected_database, release=release)
+                btc_root=btc_root, expected_database=args.expected_database, release=release)
         runner = read_json(trace.with_suffix('.report.json'))
         if (runner.get('status') != 'completed' or runner.get('safety_issues')
                 or runner.get('database_identity') != metadata['database_identity']
                 or runner.get('knowledge_release_id') != release['release_id']):
             raise ExperimentError('K1 execution invalid; refusing partial or mismatched evidence')
-        if audit_trace(k0/'scenarios', trace, 'full', btc_root=k0/'btc-release')['errors']:
+        if audit_trace(k0/'scenarios', trace, 'full', btc_root=btc_root)['errors']:
             raise ExperimentError('K1 trace audit failed')
         verify_report_turn_diagnostics(trace)
         if trace_execution_health(trace) != 'healthy': raise ExperimentError('K1 execution unhealthy')
@@ -365,18 +366,18 @@ async def run_experiment(args, repo, worker_repo, settings):
             raise ExperimentError('BTC seed changed during K1')
         score_path = k1/'btc_cross_release_score.json'
         if not score_path.exists():
-            score_pair(k0/'scenarios', trace, k0/run['traces']['baseline_no_memory'], score_path, btc_root=k0/'btc-release')
+            score_pair(k0/'scenarios', trace, k0/run['traces']['baseline_no_memory'], score_path, btc_root=btc_root)
         else:
             pins = read_json(score_path.with_suffix('.inputs.json'))
             if (pins.get('full_trace_sha256') != sha(trace) or pins.get('score_sha256') != sha(score_path)
                     or pins.get('baseline_trace_sha256') != sha(k0/run['traces']['baseline_no_memory'])
                     or pins.get('scenario_sha256') != _scenario_sha(k0/'scenarios')
-                    or pins.get('scorer_sha256') != sha(k0/'btc-release/eval/reference_eval.py')):
+                    or pins.get('scorer_sha256') != sha(btc_root/'eval/reference_eval.py')):
                 raise ExperimentError('Cross-release score provenance changed')
         fields = ('source_digest', 'seed_id', 'seed_digest', 'model_id', 'model_params', 'tool_mode',
                   'guardrails', 'database_identity', 'hardware')
         manifest = build_manifest(trace_path=trace, scenarios_dir=k0/'scenarios', config='full',
-            scorer_report_path=score_path, btc_root=k0/'btc-release', expected_database=args.expected_database,
+            scorer_report_path=score_path, btc_root=btc_root, expected_database=args.expected_database,
             app_env=settings.app_env, knowledge_release=release, started_at_utc=state['k1_started_at'],
             **{key: metadata[key] for key in fields if key in metadata})
         atomic_json(k1/'full.manifest.json', manifest)

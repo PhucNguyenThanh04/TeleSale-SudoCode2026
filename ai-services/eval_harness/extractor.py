@@ -57,7 +57,7 @@ SLOT_QUESTION_PATTERNS = [
     ("quantity", re.compile(r"số lượng|mỗi loại (?:một|\d+)", re.I)),
     ("stock_check_consent", re.compile(r"kiểm tra tồn kho", re.I)),
     ("return_reason", re.compile(r"lý do (?:cụ thể|trả hàng)", re.I)),
-    ("product_requirements", re.compile(r"yêu cầu đặc biệt", re.I)),
+    ("product_requirements", re.compile(r"yêu cầu (?:đặc biệt|cụ thể)", re.I)),
     ("customer_name", re.compile(r"(tên là gì|xin phép gọi anh/chị là|tên của anh/chị)", re.IGNORECASE)),
 ]
 
@@ -117,7 +117,8 @@ def _question_candidates(agent_text: str) -> list[dict]:
             continue
         narrative = "?" not in sentence and bool(re.search(
             r"(?:không|chưa) (?:có|còn|phát sinh).*\bnào\b|"
-            r"\bkhi nào\b.*(?:\bcứ\b|(?:anh|chị|mình) (?:báo|nhắn) em nhé)", sentence, re.I))
+            r"\bkhi nào\b.*(?:\bcứ\b|(?:anh|chị|mình) (?:báo|nhắn) em nhé)|"
+            r"cho em xin (?:một )?(?:chút|ít) thời gian để (?:tra cứu|kiểm tra)", sentence, re.I))
         if ("?" not in sentence and re.search(
                 r"(?:không|chưa) (?:tìm )?thấy(?: có)?.*\bnào\b", sentence, re.I)
                 and not re.search(r"cho (?:em|tôi|shop) (?:xin|biết)|vui lòng|cung cấp|xin (?:anh|chị)|"

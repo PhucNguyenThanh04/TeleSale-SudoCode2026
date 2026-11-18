@@ -14,7 +14,10 @@ def test_three_warmups_do_not_write_business_or_memory_data():
     async def respond(request):
         log_event({}, "execution", "phase_result", phase="model_invocation", status="succeeded")
         log_event({}, "execution", "phase_result", phase="postprocess", status="succeeded")
-    runtime=SimpleNamespace(run=AsyncMock(side_effect=respond))
+        return SimpleNamespace(agent_text='Dạ, em nghe ạ.', call_brief=None)
+    from eval_harness.test_support import VoiceLifecycleStub
+    runtime=VoiceLifecycleStub()
+    runtime.run=AsyncMock(side_effect=respond)
     result=asyncio.run(warm_up_configuration(runtime))
     assert result['turns']==3 and runtime.run.await_count==3
     requests=[c.args[0] for c in runtime.run.call_args_list]

@@ -118,6 +118,9 @@ def test_sourced_tds_is_answered_and_a_different_measurement_is_rejected():
     'nên vẫn chưa được bàn giao cho đơn vị vận chuyển',
     'nên vẫn chưa được xuất kho giao đi',
     'tức là vẫn còn ở kho và chưa được giao đi',
+    'nên vẫn chưa được xác nhận và bàn giao cho đơn vị vận chuyển',
+    'hệ thống chưa cập nhật thông tin hoàn tất giao hàng',
+    'hệ thống chưa cập nhật trạng thái hoàn tất giao hàng',
 ])
 def test_created_status_does_not_prove_physical_shipping_details(detail):
     evidence = [{'name': 'order.status', 'args': {'order_id': 'OD-TRACE'},
@@ -128,7 +131,12 @@ def test_created_status_does_not_prove_physical_shipping_details(detail):
                         evidence, 'Kiểm tra trạng thái đơn OD-TRACE giúp tôi.')[1] is None
 
 
-def test_shipping_detail_recovery_reports_only_the_verified_order_status():
+@pytest.mark.parametrize('draft', [
+    'Đơn OD-TRACE vẫn còn ở kho và chưa được giao đi.',
+    'Đơn OD-TRACE mới được tạo nên vẫn chưa được xác nhận và bàn giao cho đơn vị vận chuyển.',
+    'Đơn OD-TRACE chưa cập nhật thông tin hoàn tất giao hàng.',
+])
+def test_shipping_detail_recovery_reports_only_the_verified_order_status(draft):
     from app.agent.harness.agent_nodes import AgentNodes
     from test_commerce_evidence import state
 
@@ -136,7 +144,7 @@ def test_shipping_detail_recovery_reports_only_the_verified_order_status():
         current = state('Kiểm tra trạng thái đơn OD-TRACE giúp tôi.')
         current['tool_calls'] = [{'name': 'order.status', 'args': {'order_id': 'OD-TRACE'},
             'result': {'orders': [{'order_id': 'OD-TRACE', 'status': 'created'}]}}]
-        current['agent_draft'] = 'Đơn OD-TRACE vẫn còn ở kho và chưa được giao đi.'
+        current['agent_draft'] = draft
         result = await AgentNodes(None, None, None, 6, 6).verify_agent(current)
         assert 'đơn đã tạo' in result['agent_text']
         assert 'ở kho' not in result['agent_text']

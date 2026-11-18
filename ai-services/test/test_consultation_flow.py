@@ -62,6 +62,16 @@ def test_budget_ceiling_and_offer_scoped_consent():
     assert d.purchase_intent
 
 
+def test_customer_search_ceiling_and_room_survive_a_trailing_question():
+    from app.mcp_servers.mcp_shared.consultation import requirements
+    s = state('Anh đang tìm máy lọc cho phòng ngủ 25 mét vuông trong tầm giá 3 triệu đổ lại, bên em có mẫu nào phù hợp?')
+    assert requirements(s)['room_area_m2'] == 25
+    budget = decision(s).snapshot.budget
+    assert budget.limit_vnd == 3000000 and budget.mode == 'hard'
+    assert not decision(s).purchase_intent
+    assert 'room_area_m2' not in requirements(state('Máy này dùng cho phòng 60 mét vuông được không?'))
+
+
 def test_delegation_requires_unique_eligible_variant():
     s=quoted(state('Chọn giúp tôi một mẫu dưới 1 triệu rồi lên đơn.'))
     d=decision(s)
@@ -236,9 +246,9 @@ def test_actual_agent_prepares_quote_from_catalog_only_model_draft():
     gateway=SimpleNamespace(invoke_trusted=invoke)
     def build(kind,llm,business,prompt):
         class Agent:
-            async def ainvoke(self,*a,**kw):
+            async def astream(self,*a,**kw):
                 await business.invoke('catalog.search',{'min_room_area_m2':25,'max_price_vnd':1000000})
-                return {'messages':[AIMessage(content='Em tìm thấy Aster.')]}
+                yield 'values', {'messages':[AIMessage(content='Em tìm thấy Aster.')]}
         return Agent()
     with patch('app.agent.harness.agent_nodes.build_agent',side_effect=build),patch('app.agent.harness.agent_nodes.text_prompt',return_value='offline'):
         result=asyncio.run(AgentNodes(None,gateway,None,8,6).run_agent(s))

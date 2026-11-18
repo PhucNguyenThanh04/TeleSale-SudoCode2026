@@ -61,14 +61,14 @@ async def create(repo, session, args: dict, customer_id: str, phone: str) -> dic
         if not inv.get('in_stock') or inv.get('qty', 0) < quantity:
             return {'error': 'out_of_stock', **inv}
     same_day = await repo.same_day_orders(session, phone, args['on'])
-    used_today = any('AIR-2ND-50' in order['promos'] for order in same_day)
+    used_today = {code for order in same_day for code in order['promos']}
     extra = [{'sku': sku, 'qty': 1} for sku in args.get('basket_skus') or []] if not args.get('lines') else []
     customers = await repo.rows(session, 'customers')
     customer = next((c for c in customers if c['customer_id'] == customer_id), None)
     owned = {o['sku'] for o in customer.get('orders', []) if o.get('status') == 'delivered'} if customer else set()
     quoted = quote_order(products, await repo.rows(session, 'promotions'),
                          {**args, 'lines': lines + extra}, owned, await repo.used_promos(session),
-                         second_item_used=used_today, tie_prefer_first=bool(extra) and bool(same_day))
+                         used_today=used_today, tie_prefer_first=bool(extra) and bool(same_day))
     if 'error' in quoted:
         return quoted
     mine = [unit for unit in quoted['units'] if unit['line'] < len(lines)]

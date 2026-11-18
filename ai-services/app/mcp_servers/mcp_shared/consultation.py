@@ -87,8 +87,9 @@ def worse_terms(old, new):
 
 
 def requested_quantity(state):
-    found=re.findall(r'(?<!\d)(\d+)\s*(?:chiec|cai|doi|bo|san pham)\b',_search_text(state.get('safe_text','')))
-    return int(found[0]) if len(set(found))==1 else None
+    from app.mcp_servers.mcp_shared.basket import _spoken_quantities
+    found = _spoken_quantities(state.get('safe_text', ''))
+    return next(iter(found)) if len(found) == 1 else None
 
 
 def current_quote(state, sku, qty=1):
@@ -212,6 +213,9 @@ def _buy(text):
 
 
 def _requirement_changes(text):
+    if '?' in text:
+        # Keep declared needs before a separate request for advice.
+        text = re.split(r'[,;]\s*(?:bên em|shop|em)\b', text, maxsplit=1, flags=re.I)[0]
     folded=_search_text(text)
     if '?' in text:return {}
     changes={}
@@ -280,7 +284,7 @@ def _apply_customer(snap,text,items,focus,visible,ref,state,*,approval=False):
         return next(iter(mentioned)) if len(mentioned) == 1 else focus
     amounts=customer_budget_amounts(text)
     if len(amounts)==1:
-        snap.budget=SpendingLimit(limit_vnd=next(iter(amounts)),mode='hard' if re.search(r'toi da|khong vuot|khong qua|duoi',folded) else 'approx',
+        snap.budget=SpendingLimit(limit_vnd=next(iter(amounts)),mode='hard' if re.search(r'toi da|khong vuot|khong qua|duoi|do lai',folded) else 'approx',
             basis='total' if re.search(r'tong|ca don|tat ca',folded) else 'unit' if re.search(r'moi|don gia',folded) else 'unknown')
         snap.source_refs['budget']=ref
     if _negated(text) and re.search(r'chua mua|khong (?:mua|lay|chon)|dung (?:mua|lay)|huy|bo mau|doi y',folded):

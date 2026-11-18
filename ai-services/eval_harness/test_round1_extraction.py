@@ -121,3 +121,17 @@ def test_open_product_identity_question_remains_product_advised():
 def test_required_feature_and_budget_permission_are_not_profile_or_blocker(text, slot, kind):
     result = extract_detailed(text)
     assert [(q['slot'], q['type']) for q in result['questions']] == [(slot, kind)]
+
+
+def test_request_for_processing_time_is_narrative_not_customer_information():
+    result = extract_detailed('Chị cho em xin một chút thời gian để tra cứu chính xác thông tin này giúp chị ạ.')
+    assert result['questions'] == []
+    assert any(c['kind'] == 'question' and c['reason'] == 'narrative' for c in result['candidates'])
+    # A real delivery-time question must still be measured.
+    assert extract_detailed('Chị cho em biết thời gian muốn nhận hàng là khi nào ạ?')['questions']
+
+
+def test_open_product_requirements_question_has_a_resolved_slot():
+    result = extract_detailed('Chị có yêu cầu cụ thể nào thêm cho máy không ạ?')
+    assert [(q['slot'], q['type']) for q in result['questions']] == [('product_requirements', 'open')]
+    assert not any(c['uncertainty'] for c in result['candidates'])

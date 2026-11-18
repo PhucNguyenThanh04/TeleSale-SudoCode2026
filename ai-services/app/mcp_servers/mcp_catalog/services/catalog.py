@@ -55,7 +55,7 @@ async def get_quote_order(repo, session, args: dict) -> dict:
                 if payload.get('customer_phone') else [])
     return quote_order(await repo.rows(session, 'products'), await repo.rows(session, 'promotions'),
                        payload, owned, await repo.used_promos(session),
-                       second_item_used=any('AIR-2ND-50' in order['promos'] for order in same_day))
+                       used_today={code for order in same_day for code in order['promos']})
 
 
 async def get_quote(repo, session, args: dict) -> dict:

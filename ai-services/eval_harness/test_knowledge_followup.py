@@ -59,3 +59,9 @@ def test_pair_then_review_then_separate_full_file_runs_exactly_three_arms(tmp_pa
         assert 'KNOWLEDGE_RELEASE_ID=' not in output
     else:
         assert 'KNOWLEDGE_RELEASE_ID='+shlex.quote(release_pin) in output
+
+
+def test_followup_and_k1_scoring_use_the_recorded_external_btc_snapshot(tmp_path, monkeypatch):
+    from eval_harness.test_knowledge_triplet import test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models
+    test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(
+        tmp_path, monkeypatch, 'real_scoring', 'separate', external_snapshot=True)

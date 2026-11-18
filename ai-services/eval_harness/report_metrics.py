@@ -172,7 +172,7 @@ def render_run(directory: Path, *, btc_root: Path | None = None, asr_sources=Non
         lines.append('Chưa đủ ≥100 lượt/cấu hình để đánh giá p95 theo hướng dẫn BTC.')
     if run.get('extraction_status') != 'complete':
         lines.append('Extractor còn cần rà soát; không coi claim chưa phân giải là đúng.')
-    root = Path(btc_root) if btc_root is not None else directory/'btc-release'
+    root = Path(btc_root) if btc_root is not None else Path(run.get('btc_root', directory/'btc-release'))
     if (root/'eval/reference_eval.py').is_file():
         from eval_harness.m1_acceptance import inspect_run
         acceptance = inspect_run(directory, btc_root=root)

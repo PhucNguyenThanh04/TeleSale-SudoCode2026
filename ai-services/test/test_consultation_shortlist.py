@@ -54,6 +54,37 @@ class QuoteGateway:
 def clock(): return datetime(2026, 11, 5, tzinfo=timezone.utc)
 
 
+@pytest.mark.parametrize('text', [
+    'Anh tìm máy lọc không khí và máy lọc nước phù hợp.',
+    'Nếu anh tìm máy lọc không khí thì sao?',
+    'Anh chưa tìm máy lọc không khí lúc này.',
+    'Anh tìm máy lọc không khí SKU-UNKNOWN, giá bao nhiêu?',
+])
+def test_initial_category_read_requires_one_explicit_nonhypothetical_scope(text):
+    from test_commerce_evidence import state
+    current = state(text)
+    gateway = QuoteGateway()
+    asyncio.run(BusinessTools(gateway, current, 6, clock).prepare_consultation())
+    assert not any(args.get('category') or name == 'pricing.get_quote' for name, args in gateway.calls)
+
+
+def test_failed_initial_category_read_is_not_retried_in_the_same_turn():
+    from test_commerce_evidence import state
+    class UnavailableCatalog(QuoteGateway):
+        async def invoke(self, name, args):
+            self.calls.append((name, deepcopy(args)))
+            return {'error': 'unavailable'}
+    async def run():
+        current = state('Anh tìm máy lọc không khí phù hợp cho phòng 25m2.')
+        gateway = UnavailableCatalog()
+        tools = BusinessTools(gateway, current, 6, clock)
+        await tools.prepare_consultation()
+        await tools.prepare_consultation()
+        assert len(gateway.calls) == 1
+        assert gateway.calls[0][0] == 'catalog.search'
+    asyncio.run(run())
+
+
 def test_budget_followup_uses_previous_catalog_without_new_search():
     state = consultation_state()
     gateway = QuoteGateway()

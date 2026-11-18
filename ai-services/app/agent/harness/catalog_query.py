@@ -63,6 +63,13 @@ def canonical_catalog_category(category: str) -> str:
     return aliases.get(folded, category)
 
 
+def requested_catalog_category(text: str) -> str | None:
+    categories = {canonical_catalog_category(match[0]) for match in re.finditer(
+        r'\b(?:may loc khong khi|may loc nuoc|noi chien(?: khong dau)?|giay(?: sneaker| chay bo)?|ao khoac)\b',
+        _search_text(text))}
+    return next(iter(categories)) if len(categories) == 1 else None
+
+
 # a: automatic price search; m: model-proposed query; t: model cleanup trigger;
 # p: whole phrase removed from model-proposed queries before token filtering.
 QUERY_TERMS = {
