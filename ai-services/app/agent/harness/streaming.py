@@ -82,6 +82,12 @@ class GuardedStream:
         if not isinstance(content, str):
             return
         self._buffer += content
+        # A tool call can arrive after text chunks in the same model message.
+        # Wait for a final stop before allowing any customer-visible output.
+        if chunk.response_metadata.get('finish_reason') != 'stop':
+            return
+        if not _task_answer_complete(self._buffer.strip(), state):
+            return
         boundaries = list(_BOUNDARY.finditer(self._buffer))
         if not boundaries:
             return

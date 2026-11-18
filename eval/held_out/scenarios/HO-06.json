@@ -1,0 +1,79 @@
+{
+  "scenario_id": "HO-06",
+  "level": "M1",
+  "persona": "hai_nguoi_chung_sdt",
+  "hard_case": "bundle_partial_return_shared_phone_identity",
+  "customer_phone": "0958421083",
+  "customer_name": "Loan",
+  "honorific": "cô",
+  "notes": "Combo nguyên bộ và định danh Facebook của khách dùng chung số. Dùng fb.hải.186 của cô Loan để không lẫn với Dung cùng số; kiểm giới hạn đổi riêng một món trong combo.",
+  "calls": {
+    "call_1": {
+      "channel": "chat_fanpage",
+      "call_date": "2026-10-20",
+      "customer_turns": [
+        "Cô Loan nhắn từ Facebook này, cô muốn mua combo Spectra S1 kèm máy hâm sữa Fatz và túi trữ sữa cho cháu.",
+        "Combo đã có túi rồi thì có cộng thêm khuyến mãi của máy Spectra bán riêng không? Cô muốn lấy nguyên bộ.",
+        "Cô xác nhận combo giá 4.790.000đ, thanh toán COD, giao Hà Nội. Tạo một đơn nguyên combo giúp cô."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-BDL-MOM",
+        "order_id": "generated_by_order.create"
+      },
+      "must_carry_over": [],
+      "must_not_ask": [],
+      "ground_truth_facts": {
+        "price_vnd": 4790000
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "must_not_call_tools": [
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "args_match": {
+          "sku": "SKU-BDL-MOM",
+          "price_vnd": 4790000,
+          "payment": "COD"
+        }
+      },
+      "channel_identity": "fb.hải.186",
+      "days_later": 0
+    },
+    "call_2": {
+      "channel": "chat_fanpage",
+      "call_date": "2026-10-23",
+      "customer_turns": [
+        "Cô hỏi quy định cho combo nguyên bộ lần trước: nếu cháu chỉ không cần máy hâm sữa thì có được trả riêng món đó không?",
+        "Đây mới là câu hỏi giả sử, cô chưa yêu cầu trả cả bộ và chưa xác nhận đã nhận hàng.",
+        "Em giải thích phạm vi đổi trả của combo giúp cô; đừng tạo phiếu trả hay tách đơn ở bước này."
+      ],
+      "facts_established": {},
+      "must_carry_over": [
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "ground_truth_facts": {},
+      "success_if": {
+        "tool_called": null,
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "must_say_any": [
+          "không tách",
+          "không thể tách",
+          "nguyên bộ",
+          "toàn bộ"
+        ]
+      },
+      "channel_identity": "fb.hải.186",
+      "days_later": 3
+    }
+  }
+}

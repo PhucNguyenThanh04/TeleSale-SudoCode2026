@@ -42,7 +42,8 @@ def test_parent_resolves_only_unique_catalog_variant_and_keeps_scopes():
     current["scoped_facts"] = {"product": {"SKU-TEST": {"size": {
         "value": 40, "source_kind": "customer"}}, "SKU-OTHER": {"color": {
         "value": "trang", "source_kind": "customer"}}}}
-    assert catalog_variant(current, {"sku": "SKU-TEST"}) == "SKU-TEST-A"
+    assert catalog_variant(current, {"sku": "SKU-TEST"}) is None
+    assert catalog_variant(current, {"sku": "SKU-TEST", "size": 40}) == "SKU-TEST-A"
     context = prompt_context(current, 6)
     assert context["customer_facts"]["products"][0]["size"]["value"] == 40
     assert context["customer_facts"]["products"][1]["sku"] == "SKU-OTHER"
@@ -59,7 +60,8 @@ async def _repeat_reads():
         "items": [{"sku": "SKU-TEST", "variants": []}]}}]
     gateway = AsyncMock()
     gateway.invoke_trusted.return_value = {"sku": "SKU-TEST", "in_stock": True, "qty":10}
-    business = BusinessTools(gateway, current, 3, lambda: None)
+    business = BusinessTools(gateway, current, 3, lambda: None,
+                             authorize_write=AsyncMock(return_value=True))
     first = await business.invoke("inventory.check", {"sku": "SKU-TEST"})
     second = await business.invoke("inventory.check", {"sku": "SKU-TEST"})
     assert first == second
@@ -75,7 +77,7 @@ async def _repeat_reads():
     assert gateway.invoke_trusted.await_count == 3
 
 
-def test_ready_purchase_gets_one_continuation_but_unknown_customer_does_not():
+def test_ready_purchase_and_unknown_customer_both_reach_model_without_automatic_writes():
     async def run(identity, text="Lên đơn giúp tôi", session_quote=False):
         current = state()
         current["safe_text"] = text
@@ -113,9 +115,8 @@ def test_ready_purchase_gets_one_continuation_but_unknown_customer_does_not():
         writes = [call for call in node.tools.invoke_trusted.await_args_list if call.args[0]=='order.create']
         return agent.response.await_count, len(writes)
 
-    # Continuation now writes through BusinessTools instead of prompting the model again.
-    assert asyncio.run(run("known")) == (0, 1)
-    assert asyncio.run(run("known", session_quote=True)) == (0, 1)
+    assert asyncio.run(run("known")) == (1, 0)
+    assert asyncio.run(run("known", session_quote=True)) == (1, 0)
     assert asyncio.run(run("unknown")) == (1, 0)
     assert asyncio.run(run("known", "Chưa lên đơn nhé")) == (1, 0)
 
@@ -128,31 +129,31 @@ def test_invented_sku_is_not_sent_to_gateway_or_charged_to_budget():
         gateway = AsyncMock()
         business = BusinessTools(gateway, current, 3, lambda: None)
         result = await business.invoke("pricing.get_quote", {"sku": "SKU-INVENTED"})
-        assert result == {"error": "unverified_sku", "next_tool": "catalog.search"}
+        assert result["error"] == "catalog_required"
+        assert result["next_tool"] == "catalog.search"
         assert current["tool_count"] == 0
         gateway.invoke_trusted.assert_not_awaited()
     asyncio.run(run())
 
 
-def test_explicit_human_request_routes_without_model_and_checks_ticket():
+def test_model_handoff_checks_customer_authorization_and_records_ticket():
     async def run():
         current = state()
         current["safe_text"] = "Cho tôi gặp nhân viên tư vấn giúp nhé"
-        node = object.__new__(AgentNodes)
-        node.tools, node.llm = AsyncMock(), object()
-        node.tools.invoke_trusted.return_value = {"status": "queued", "ticket_id": "HT-TEST"}
-        node.max_tool_calls, node.prompt_history_turns = 5, 6
-        node.clock = lambda: datetime.now(timezone.utc)
-        with patch("app.agent.harness.agent_nodes.build_agent") as build:
-            result = await node.run_agent(current)
-        build.assert_not_called()
-        assert result["needs_handoff"] is True
-        assert result["handoff_ticket_id"] == "HT-TEST"
-        assert current["tool_calls"][0]["name"] == "handoff.transfer"
+        gateway = AsyncMock()
+        gateway.invoke_trusted.return_value = {"status":"queued", "ticket_id":"HT-TEST"}
+        business = BusinessTools(gateway, current, 5,
+            lambda: datetime.now(timezone.utc), authorize_write=AsyncMock(return_value=True))
+        result = await business.invoke('handoff.transfer', {
+            'brief': {'escalation_reason':'khach_yeu_cau_gap_nguoi'}})
+        assert result['ticket_id'] == 'HT-TEST'
+        assert current['needs_handoff'] is True
+        assert current['handoff_ticket_id'] == 'HT-TEST'
+        business.authorize_write.assert_awaited_once()
     asyncio.run(run())
 
 
-def test_k0_known_customer_status_lookup_uses_owned_identity_without_asking_again():
+def test_model_status_lookup_uses_owned_identity_without_asking_again():
     async def run():
         current = state()
         current['safe_text'] = 'Em ơi, anh hỏi tình trạng đơn mình đặt lần trước. Em tra giúp nhé.'
@@ -160,24 +161,22 @@ def test_k0_known_customer_status_lookup_uses_owned_identity_without_asking_agai
         gateway = AsyncMock()
         gateway.invoke_trusted.return_value = {'orders': [{'order_id': 'OD-OFFLINE', 'status': 'shipping'}]}
         tools = BusinessTools(gateway, current, 3, lambda: None)
-        assert await tools.prepare_order_status()
+        assert 'error' not in await tools.invoke('order.status', {})
         assert current['tool_calls'][-1]['args']['order_id'] == 'OD-OFFLINE'
-        await tools.prepare_order_status()
-        # The model may request the same lookup by phone after preparation.
+        # Repeated model reads reuse the current observation.
         await tools.invoke('order.status', {})
         assert gateway.invoke_trusted.await_count == 1
     asyncio.run(run())
 
 
-def test_k0_status_preparation_does_not_lookup_foreign_orders_or_unknown_customers():
+def test_status_boundary_rejects_foreign_orders_and_unknown_customers():
     async def run():
-        for identity, text in [('unknown', 'Em tra tình trạng đơn giúp tôi.'),
-                               ('known', 'Em tra đơn OD-FOREIGN giúp tôi.'),
-                               ('known', 'Đừng kiểm tra đơn giúp tôi.'),
-                               ('known', 'Nếu đặt đơn thì sao?')]:
+        for identity, requested in [('unknown', None), ('known', 'OD-FOREIGN')]:
             current = state()
-            current.update(identity_status=identity, safe_text=text, owned_order_ids=['OD-MINE'])
+            current.update(identity_status=identity, owned_order_ids=['OD-MINE'])
             gateway = AsyncMock()
-            assert not await BusinessTools(gateway, current, 3, lambda: None).prepare_order_status()
+            result = await BusinessTools(gateway, current, 3, lambda: None).invoke(
+                'order.status', {'order_id':requested} if requested else {})
+            assert 'error' in result
             gateway.invoke_trusted.assert_not_awaited()
     asyncio.run(run())

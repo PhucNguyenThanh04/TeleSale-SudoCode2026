@@ -1,14 +1,13 @@
 """Business tools and prompt shared by the selectable agent implementations."""
 
-from app.mcp_servers.mcp_shared.decision_diagnostics import (tool_boundary, phase_origin, emit as diagnostic_emit, active as diagnostic_active)
+from app.mcp_servers.mcp_shared.decision_diagnostics import (tool_boundary, emit as diagnostic_emit)
 
 
 import asyncio
+import hashlib
+import json
 import logging
-import re
 import time
-from app.mcp_servers.mcp_shared.commerce_rules import _search_text
-from app.mcp_servers.mcp_shared.commerce_evidence import build_commerce_evidence
 from datetime import datetime
 from typing import Any, Callable, Literal
 
@@ -71,6 +70,8 @@ _CATALOG_FIELD_DESCRIPTION = {
               "không chép nguyên câu hỏi hay mục đích sử dụng của khách."),
     "min_room_area_m2": "Diện tích phòng khách cần phục vụ, tính bằng m²; luôn giữ ràng buộc này.",
 }
+_ADDRESS_DESCRIPTION = ("Địa điểm khách cung cấp. Nếu context đã che địa chỉ, dùng nguyên "
+                        "[ĐỊA CHỈ ĐÃ ẨN]; harness chỉ khôi phục khi có nguồn khách cung cấp rõ ràng.")
 
 
 _TOOL_DESCRIPTION = {
@@ -79,9 +80,6 @@ _TOOL_DESCRIPTION = {
         "Lấy giá từ units; nếu cùng SKU có nhiều đơn giá thì order.create dùng mỗi máy một dòng qty=1. "
         "Nói rõ giỏ hàng, số lượng và tổng giá cho khách, rồi chờ khách đồng ý trước khi tạo đơn."
     ),
-    # Keep "no speculative retry" and "use attributes" together: removing
-    # retry wording alone gave 0/10 one-search turns, adding attributes alone
-    # gave 2/10, and the combined description gave 10/10.
     "catalog.search": (
         "Tìm sản phẩm theo tên, loại hoặc SKU. Giữ nguyên tên model/hãng khách nêu trong query; "
         "truyền giá tối đa và diện tích tối thiểu bằng các tham số riêng. "
@@ -119,8 +117,8 @@ _TOOL_DESCRIPTION = {
 
 # Schemas contain no customer state; tool coroutines below remain turn-local.
 _TOOL_SCHEMAS = {name: create_model(name.replace('.', '_').title() + 'Args', **{
-    field: (kind, Field(default=default, description=_CATALOG_FIELD_DESCRIPTION.get(field)
-                        if name == 'catalog.search' else None))
+    field: (kind, Field(default=default, description=(_ADDRESS_DESCRIPTION if field == 'address' else
+                        _CATALOG_FIELD_DESCRIPTION.get(field) if name == 'catalog.search' else None)))
     for field, (kind, default) in fields.items()}) for name, fields in _TOOL_FIELDS.items()}
 
 
@@ -154,14 +152,12 @@ class BusinessOnlyMiddleware(AgentMiddleware):
 
 class BusinessTools:
     def __init__(self, gateway: ToolGateway, state: TurnState, max_tool_calls: int,
-                 clock: Callable[[], datetime]) -> None:
+                 clock: Callable[[], datetime], *, authorize_write=None) -> None:
         self.gateway, self.state = gateway, state
         self.max_tool_calls, self.clock = max_tool_calls, clock
         self.lock = asyncio.Lock()
-        self._completion_checked = False
-        self._prepared_quote_skus = set()
-        self._followup_policy_attempts = set()
-        self._followup_order_attempts = set()
+        self.authorize_write = authorize_write
+        self._write_checks = {}
 
     async def invoke(self, name: str, proposed: dict[str, Any]) -> dict[str, Any]:
         from app.mcp_servers.mcp_shared.decision_diagnostics import origin, _ORIGIN
@@ -176,66 +172,14 @@ class BusinessTools:
         if stream is not None and stream.published:
             return {'error': 'answer_already_started'}
         raw = dict(proposed)
-        if name == 'handoff.transfer' and (raw.get('brief') or {}).get('escalation_reason', 'khac') == 'khac':
-            from app.mcp_servers.mcp_shared.consultation import consultation_missing_fields
-            if consultation_missing_fields(self.state) == ['delivery']:
-                return {'error': 'delivery_confirmation_required', 'next_action': 'ask_customer_delivery_confirmation'}
-        if name == "order.create" and self.state.get("identity_status") != "known":
-            return {"error": "identity_required"}
-        if name == 'order.update' and raw.get('action') == 'exchange_product':
-            owned = set(self.state.get('owned_order_ids', [])) | set(self.state.get('remembered_order_ids', []))
-            known = [o for o in self.state.get('crm_orders', [])
-                     if o.get('order_id') == raw.get('order_id') and (o.get('variant_sku') or o.get('sku'))]
-            if (raw.get('order_id') in owned and not known
-                    and not any(c.get('name') == 'order.status' and c.get('args', {}).get('order_id') == raw['order_id']
-                                for c in self.state.get('tool_calls', []))):
-                await self._invoke_locked('order.status', {'order_id': raw['order_id']})
-        basket_order = name == 'order.create' and raw.get('lines') is not None
-        if basket_order:
-            for prior in self.state.get('tool_calls', []):
-                if prior.get('name') == 'order.create' and prior.get('result', {}).get('status') == 'created':
-                    if all(prior.get('args', {}).get(key) == raw.get(key) for key in ('lines', 'payment', 'address')):
-                        return safe_tool_result(prior['result'])
-                    return {'error': 'purchase_already_completed'}
-        if name == 'order.create' and not basket_order:
-            from app.mcp_servers.mcp_shared.consultation import derive_consultation, purchase_block_reason
-            decision=derive_consultation(self.state)
-            if decision.purchase_intent and not decision.snapshot.selected_sku and raw.get('sku'):
-                # Read metadata to interpret customer speech; the proposed SKU is not consent.
-                if resolve_product_selection(self.state, raw).status == 'catalog_required':
-                    await self._invoke_locked('catalog.search', {'sku': raw['sku']})
-                    decision = derive_consultation(self.state)
-            if not decision.purchase_intent:
-                return {'error':'purchase_permission_required'}
-            if not decision.snapshot.selected_sku:
-                return {'error':'selection_required','missing_fields':['selection']}
-            for prior in self.state.get('tool_calls',[]):
-                if prior.get('name')=='order.create' and prior.get('result',{}).get('status')=='created':
-                    if all(prior.get('args',{}).get(k,1 if k=='qty' else None)==raw.get(k,1 if k=='qty' else None) for k in ('sku','qty','price_vnd')):
-                        return safe_tool_result(prior['result'])
-                    return {'error':'purchase_already_completed'}
-        if name == "order.create" and raw.get("sku"):
-            selection = resolve_product_selection(self.state, raw)
-            if selection.status == "catalog_required":
-                await self._invoke_locked("catalog.search", {"sku": raw["sku"]})
-                selection = resolve_product_selection(self.state, raw)
-            if selection.status != "resolved":
-                return {"error": selection.status, "missing_fields": list(selection.missing_fields),
-                        "next_tool": "catalog.search" if selection.status == "catalog_required" else None}
-        if (name in {"inventory.check", "pricing.get_quote"}
-                and any(raw.get(key) is not None for key in ("size", "color"))
-                and resolve_product_selection(self.state, raw).status == "catalog_required"):
-            return {"error": "catalog_required", "next_tool": "catalog.search"}
-        if name in {"inventory.check", "pricing.get_quote", "order.create"} and raw.get("sku"):
-            items = [item for call in build_commerce_evidence(self.state)
-                     if call.get("name") == "catalog.search"
-                     for item in call.get("result", {}).get("items", [])
-                     if isinstance(item, dict)]
-            known_skus = {item.get("sku") for item in items}
-            known_skus.update(variant.get("variant_sku") for item in items
-                              for variant in item.get("variants", []) if isinstance(variant, dict))
-            if known_skus and raw["sku"] not in known_skus:
-                return {"error": "unverified_sku", "next_tool": "catalog.search"}
+        if name not in ALLOWED_TOOLS:
+            return {'error': 'unknown_tool'}
+        try:
+            raw = _TOOL_SCHEMAS[name].model_validate(raw).model_dump(exclude_none=True)
+        except ValueError:
+            return {'error': 'invalid_tool_arguments'}
+        if name == 'order.create' and self.state.get('identity_status') != 'known':
+            return {'error': 'identity_required'}
         args = {key: value for key, value in raw.items() if value is not None}
         self.state["decision"] = Decision(action="tool", tool_name=name, tool_args=args)
         prepared = prepare_tool_call(self.state, self.clock)
@@ -244,33 +188,40 @@ class BusinessTools:
             if name == "pricing.get_quote" and isinstance(raw.get("sku"), str) \
                     and not raw["sku"].startswith("SKU-"):
                 return {"error": "sku_required", "next_tool": "catalog.search"}
-            if name in {"inventory.check", "pricing.get_quote", "order.create"}:
-                selection = resolve_product_selection(self.state, raw)
+            if (name in {"inventory.check", "pricing.get_quote"}
+                    or name == 'order.create' and raw.get('lines') is None):
+                selection = resolve_product_selection(self.state, raw, use_customer_context=False)
                 if selection.status != "resolved":
                     return {"error": selection.status, "missing_fields": list(selection.missing_fields),
                             "next_tool": "catalog.search" if selection.status == "catalog_required" else None}
             if name == "order.create":
                 return {"error": "purchase_evidence_required", "sku": catalog_variant(self.state, raw),
-                        "next_tools": ["inventory.check", "pricing.get_quote"],
+                        "next_tools": ["inventory.check", "pricing.quote_order" if raw.get('lines')
+                                       else "pricing.get_quote"],
                         "next_action": "Verify stock and quote for this exact SKU and quantity before create."}
             return {"error": "precondition_or_arguments"}
         _, args = prepared
         diagnostic_emit('tool_prepared', state=self.state, tool=name, args=args, status='allowed', context_present=bool(args.get('address')))
-        if name == 'order.create':
-            if basket_order:
-                from app.mcp_servers.mcp_shared.basket import basket_block_reason
-                reason = basket_block_reason(self.state, args)
-            else:
-                reason=purchase_block_reason(self.state,args)
-            if reason is not None:
-                log_event(self.state,'call_tool','blocked',reason=reason)
-                return {'error':reason}
         if name in {'order.create', 'order.update', 'schedule.callback', 'handoff.transfer'}:
             for cached in reversed(self.state.get('tool_calls', [])):
                 if cached.get('name') == name and cached.get('args') == args:
-                    # A timed-out write may already have committed. Replaying it
-                    # with a new operation key is unsafe within the same turn.
+                    # A timed-out write may already have committed. Reuse the
+                    # observed result without another write or authorization.
                     return safe_tool_result(cached['result'])
+            if self.authorize_write is None:
+                return {'error': 'customer_authorization_required'}
+            key = hashlib.sha256(json.dumps([name, args, self.state.get('tool_calls', [])],
+                sort_keys=True, default=str).encode()).hexdigest()
+            if key not in self._write_checks:
+                if len(self._write_checks) >= self.max_tool_calls:
+                    return {'error': 'write_authorization_limit'}
+                try:
+                    self._write_checks[key] = await self.authorize_write(name, args) is True
+                except Exception:
+                    self._write_checks[key] = False
+            if not self._write_checks[key]:
+                return {'error': 'customer_authorization_required',
+                        'next_action': 'Clarify the current customer request; do not repeat this write.'}
         if name in {"catalog.search", "inventory.check", "pricing.get_quote", "pricing.quote_order", "order.status"}:
             for cached in reversed(self.state.get("tool_calls", [])):
                 if cached.get("name") in {"order.create", "order.update"}:
@@ -286,8 +237,9 @@ class BusinessTools:
         self.state["tool_count"] = self.state.get("tool_count", 0) + 1
         log_tool_input("call_tool", name, args)
         request = self.state["request"]
-        operation_key = (f"{request.session_id}:{request.client_msg_id}:{name}:"
-                         f"{self.state['tool_count']}")
+        operation_key = f"{request.session_id}:{request.client_msg_id}:{name}"
+        if name == 'order.update':
+            operation_key += ':' + args['order_id']
         started = time.perf_counter()
         try:
             if hasattr(self.gateway, "invoke_trusted"):
@@ -327,313 +279,6 @@ class BusinessTools:
         if name == "order.create" and result.get("status") == "created" and result.get("order_id"):
             self.state.setdefault("owned_order_ids", []).append(result["order_id"])
         return safe_tool_result(result)
-
-    @phase_origin('continuation')
-    async def complete_purchase_if_ready(self) -> dict | None:
-        """One deterministic continuation through the existing write boundary."""
-        diagnostic_emit("continuation", state=self.state, status="not_evaluated")
-        from app.mcp_servers.mcp_shared.consultation import purchase_arguments, purchase_block_reason
-        async with self.lock:
-            writes = [c for c in self.state.get('tool_calls', []) if c.get('name') == 'order.create']
-            if writes:
-                result = writes[-1].get('result', {})
-                return safe_tool_result(result) if result.get('status') == 'created' else None
-            if self._completion_checked:
-                return None
-            from app.mcp_servers.mcp_shared.basket import current_basket_quote, basket_purchase_arguments, basket_block_reason
-            if current_basket_quote(self.state) is not None:
-                basket_args = basket_purchase_arguments(self.state)
-                if basket_args is None or basket_block_reason(self.state, basket_args, require_stock=False) is not None:
-                    return None
-                self._completion_checked = True
-                for sku in dict.fromkeys(line['sku'] for line in basket_args['lines']):
-                    if not any(call.get('name') == 'inventory.check' and call.get('args', {}).get('sku') == sku
-                               for call in build_commerce_evidence(self.state)):
-                        await self._invoke_locked('inventory.check', {'sku': sku})
-                return await self._invoke_locked('order.create', basket_args)
-            args = purchase_arguments(self.state)
-            diagnostic_emit('continuation', state=self.state, args=args or {}, status='not_evaluated' if args is None else 'unknown')
-            if args is None or purchase_block_reason(self.state, args) is not None:
-                return None
-            self._completion_checked = True
-            return await self._invoke_locked('order.create', args)
-
-    @phase_origin('preparation')
-    async def prepare_order_status(self) -> bool:
-        """Use verified ownership for an explicit lookup, never infer an order."""
-        from app.mcp_servers.mcp_shared.consultation_followup import order_status_requested
-        if (not order_status_requested(self.state.get('safe_text', ''))
-                or self.state.get('identity_status') != 'known'
-                or not self.state.get('customer_phone') or self.state.get('tool_failed')):
-            return False
-        if any(c.get('name') == 'order.status' for c in self.state.get('tool_calls', [])):
-            return False
-        owned = set(self.state.get('owned_order_ids', [])) | set(self.state.get('remembered_order_ids', []))
-        requested = set(re.findall(r'\bOD[A-Z0-9-]+\b', self.state.get('safe_text', '')))
-        if requested and (len(requested) != 1 or not requested <= owned):
-            return False
-        args = {'order_id': next(iter(requested or owned))} if requested or len(owned) == 1 else {}
-        before = len(self.state.get('tool_calls', []))
-        await self.invoke('order.status', args)
-        return len(self.state.get('tool_calls', [])) > before
-
-    @phase_origin('preparation')
-    async def prepare_requested_stock(self, focus) -> bool:
-        from app.mcp_servers.mcp_shared.consultation_followup import stock_requested
-        if not stock_requested(self.state.get('safe_text', '')):
-            return False
-        if not focus:
-            from app.mcp_servers.mcp_shared.consultation import _mentions, catalog_items
-            named = _mentions(self.state.get('safe_text', ''), catalog_items(self.state))
-            focus = next(iter(named)) if len(named) == 1 else None
-        if not focus:
-            from app.mcp_servers.mcp_shared.consultation_shortlist import consultation_scope
-            scope = consultation_scope(self.state)
-            focus = scope['skus'][0] if scope.get('known') and len(scope.get('skus', [])) == 1 else None
-        if not focus:
-            return False
-        selection = resolve_product_selection(self.state, {'sku': focus})
-        if selection.status != 'resolved' or self.state.get('tool_count', 0) >= self.max_tool_calls:
-            return False
-        if any(c.get('name') == 'inventory.check' and c.get('args', {}).get('sku') == selection.sku
-               for c in build_commerce_evidence(self.state)):
-            return False
-        await self.invoke('inventory.check', {'sku': selection.sku})
-        return True
-
-    @phase_origin('preparation')
-    async def prepare_followup(self, task) -> bool:
-        """Prepare information, including policy during a sales pause; never writes."""
-        from app.knowledge.context import selected_release
-        from app.mcp_servers.mcp_shared.consultation import derive_consultation
-        from app.mcp_servers.mcp_shared.consultation_followup import (
-            policy_arguments, policy_call_for_task, compatible_quote, product_price_requested, stock_requested,
-        )
-        before = len(self.state.get('tool_calls', []))
-        if task.kind == 'none' or self.state.get('tool_failed'):
-            return False
-        if task.kind == 'policy':
-            if task.missing_fields:
-                return False
-            if (task.order_id and policy_arguments(self.state, task) is None
-                    and task.order_id not in self._followup_order_attempts):
-                self._followup_order_attempts.add(task.order_id)
-                if self.state.get('tool_count', 0) < self.max_tool_calls:
-                    await self.invoke('order.status', {'order_id': task.order_id})
-            prepared = policy_arguments(self.state, task)
-            if prepared is None:
-                return len(self.state.get('tool_calls', [])) > before
-            key = (prepared['query'], prepared['on'], task.order_id, prepared.get('order_date'), selected_release())
-            if key not in self._followup_policy_attempts and policy_call_for_task(self.state, task) is None:
-                self._followup_policy_attempts.add(key)
-                if self.state.get('tool_count', 0) < self.max_tool_calls:
-                    args = {'query': task.policy_query}
-                    if task.order_id:
-                        args['order_id'] = task.order_id
-                    await self.invoke('policy.search', args)
-            # Price and stock questions are independent from purchase permission.
-            if not (product_price_requested(self.state.get('safe_text', ''))
-                    or stock_requested(self.state.get('safe_text', ''))):
-                return len(self.state.get('tool_calls', [])) > before
-            await self.prepare_consultation()
-            task.focus_sku = derive_consultation(self.state).focus_sku
-        focus = task.focus_sku
-        if not focus or self.state.get('tool_count', 0) >= self.max_tool_calls:
-            return len(self.state.get('tool_calls', [])) > before
-        if resolve_product_selection(self.state, {'sku': focus}).status == 'catalog_required':
-            await self.invoke('catalog.search', {'sku': focus})
-        await self.prepare_requested_stock(focus)
-        if task.kind == 'policy' and not product_price_requested(self.state.get('safe_text', '')):
-            return len(self.state.get('tool_calls', [])) > before
-        selection = resolve_product_selection(self.state, {'sku': focus})
-        if selection.status != 'resolved' or compatible_quote(self.state, focus) is not None:
-            return len(self.state.get('tool_calls', [])) > before
-        attempted = {c.get('args', {}).get('sku') for c in self.state.get('tool_calls', [])
-                     if c.get('name') == 'pricing.get_quote'} | self._prepared_quote_skus
-        if selection.sku in attempted or len(attempted) >= 2:
-            return len(self.state.get('tool_calls', [])) > before
-        from app.mcp_servers.mcp_shared.consultation import customer_order_options, requested_quantity
-        args = {'sku': selection.sku, 'qty': requested_quantity(self.state) or 1}
-        options = customer_order_options(self.state) or {}
-        if options.get('address'):
-            args['address'] = options['address']
-        if self.state.get('tool_count', 0) < self.max_tool_calls:
-            self._prepared_quote_skus.add(selection.sku)
-            await self.invoke('pricing.get_quote', args)
-        return len(self.state.get('tool_calls', [])) > before
-
-    @phase_origin('preparation')
-    async def prepare_consultation(self) -> bool:
-        """Bounded reads for a shared sourced shortlist; never grants selection."""
-        from app.mcp_servers.mcp_shared.consultation import derive_consultation
-        from app.mcp_servers.mcp_shared.consultation_shortlist import (
-            build_shortlist, consultation_active, consultation_scope, shortlist_requirements,
-            catalog_search_requested,
-        )
-        decision = derive_consultation(self.state)
-        if diagnostic_active():
-            diagnostic_emit('consultation_before', state=self.state,
-                snapshot=decision.snapshot.model_dump(mode='json'), decision=decision.model_dump(mode='json'))
-        if not consultation_active(self.state) or self.state.get('tool_failed'):
-            return False
-        if any(c.get('name') == 'order.create' for c in self.state.get('tool_calls', [])):
-            return False
-        before = len(self.state.get('tool_calls', []))
-        from app.agent.harness.catalog_query import explicit_product_queries
-        from app.mcp_servers.mcp_shared.consultation import _mentions, catalog_items
-        captured = self.state.get('consultation_scope') or {}
-        if captured.get('known') and not catalog_items(self.state):
-            # Restore metadata for the admitted scope before resolving spoken names.
-            for sku in captured.get('skus', [])[:2]:
-                if self.state.get('tool_count', 0) >= self.max_tool_calls:
-                    break
-                await self.invoke('catalog.search', {'sku': sku})
-        queries = explicit_product_queries(self.state.get('safe_text', ''))
-        if len(queries) <= 2:
-            for query in queries:
-                if (self.state.get('tool_count', 0) < self.max_tool_calls
-                        and not any(re.search(r'(?<![\w-])' + re.escape(_search_text(query)) + r'(?![\w-])',
-                                              _search_text(label))
-                            for item in catalog_items(self.state).values()
-                            for label in (item.get('name', ''), item.get('sku', '')))
-                        and not any(call.get('name') == 'catalog.search'
-                            and _search_text(call.get('args', {}).get('query', '')) == _search_text(query)
-                            for call in self.state.get('tool_calls', []))):
-                    await self.invoke('catalog.search', {'query': query})
-                    self.state.pop('consultation_scope', None)
-        scope = consultation_scope(self.state)
-        if not scope.get('known') and not queries and catalog_search_requested(self.state):
-            from app.agent.harness.catalog_query import requested_catalog_category
-            category = requested_catalog_category(self.state.get('safe_text', ''))
-            attempted = any(c.get('name') == 'catalog.search' and c.get('args', {}).get('category') == category
-                            for c in self.state.get('tool_calls', []))
-            if category and not attempted and self.state.get('tool_count', 0) < self.max_tool_calls:
-                args = {'category': category}
-                area = shortlist_requirements(self.state).get('room_area_m2')
-                if type(area) in (int, float):
-                    args['min_room_area_m2'] = area
-                await self.invoke('catalog.search', args)
-                scope = consultation_scope(self.state)
-        self.state['consultation_scope'] = scope
-        if not scope.get('known'):
-            # Do not turn a greeting into an unrestricted catalog search.
-            return False
-        from app.mcp_servers.mcp_shared.consultation import catalog_items
-        items = catalog_items(self.state)
-        focus = scope.get('focus_sku')
-        if not items or (focus and not any(focus == p['sku'] or any(
-                v.get('variant_sku') == focus for v in p.get('variants', [])) for p in items.values())):
-            if scope.get('category') and not focus:
-                args = {'category': scope['category']}
-                area = shortlist_requirements(self.state).get('room_area_m2')
-                if type(area) in (int, float):
-                    args['min_room_area_m2'] = area
-                await self.invoke('catalog.search', args)
-            else:
-                for sku in ([focus] if focus else scope.get('skus', [])[:2]):
-                    if self.state.get('tool_count', 0) >= self.max_tool_calls:
-                        break
-                    await self.invoke('catalog.search', {'sku': sku})
-        items = catalog_items(self.state)
-        speech = _search_text(self.state.get('safe_text', ''))
-        named = _mentions(self.state.get('safe_text', ''), items)
-        from app.mcp_servers.mcp_shared.consultation import requested_quantity
-        quantity = requested_quantity(self.state)
-        totals = {int(n) for n in re.findall(r'\b(\d+)\s*(?:mon|chiec|san pham)\b', speech)}
-        per_item = {int(n) for n in re.findall(r'\bmoi (?:mon|san pham)\s+(\d+)\b', speech)}
-        single_basket = len(named) == 1 and quantity is not None and quantity > 1
-        mixed_basket = (len(named) >= 2 and re.search(r'tong gia|tong tien|gio hang', speech)
-                        and (not totals or totals == {len(named)})
-                        and (not per_item or per_item == {1})
-                        and (per_item == {1} or totals == {len(named)}))
-        selections = {sku: resolve_product_selection(self.state, {'sku': sku}) for sku in named}
-        if ((single_basket or mixed_basket)
-                and not re.search(r'\b(?:hoac|hay)\b|so sanh', speech)
-                and all(selection.status == 'resolved' for selection in selections.values())):
-            from app.mcp_servers.mcp_shared.consultation import customer_order_options
-            args = {'lines': [{'sku': selections[sku].sku, 'qty': quantity if single_basket else 1}
-                              for sku in sorted(named)]}
-            options = customer_order_options(self.state) or {}
-            if options.get('address'):
-                args['address'] = options['address']
-            from app.mcp_servers.mcp_shared.consultation_followup import stock_requested
-            if stock_requested(self.state.get('safe_text', '')):
-                for sku in sorted(named):
-                    await self.prepare_requested_stock(sku)
-            from app.mcp_servers.mcp_shared.basket import current_basket_quote
-            prior = current_basket_quote(self.state)
-            if prior is None or any(prior.get('args', {}).get(key) != args.get(key) for key in ('lines', 'address')):
-                await self.invoke('pricing.quote_order', args)
-            return len(self.state.get('tool_calls', [])) > before
-        from app.mcp_servers.mcp_shared.consultation_followup import product_price_requested, stock_requested
-        focus = derive_consultation(self.state).focus_sku
-        await self.prepare_requested_stock(focus)
-        if stock_requested(self.state.get('safe_text', '')) and not product_price_requested(
-                self.state.get('safe_text', '')) and not decision.purchase_intent:
-            return len(self.state.get('tool_calls', [])) > before
-        selection = resolve_product_selection(self.state, {'sku': focus}) if focus else None
-        # A parent quote can answer the price question before a variant is chosen;
-        # purchase still requires the exact variant's quote and stock.
-        quote_sku = selection.sku if selection and selection.status == 'resolved' else focus
-        if (not decision.purchase_intent and product_price_requested(self.state.get('safe_text', ''))
-                and focus in items and selection.status in {'selection_required', 'resolved'}
-                and (requested_quantity(self.state) or 1) == 1
-                and quote_sku not in self._prepared_quote_skus
-                and not any(c.get('name') == 'pricing.get_quote' and c.get('args', {}).get('sku') == quote_sku
-                            for c in build_commerce_evidence(self.state))
-                and self.state.get('tool_count', 0) < self.max_tool_calls):
-            self._prepared_quote_skus.add(quote_sku)
-            from app.mcp_servers.mcp_shared.consultation import customer_order_options
-            args = {'sku': quote_sku, 'qty': 1}
-            options = customer_order_options(self.state) or {}
-            if options.get('address'):
-                args['address'] = options['address']
-            await self.invoke('pricing.get_quote', args)
-        # An explicit request to find alternatives must not stay pinned to the
-        # last recommendation. Discover within the sourced category and current budget.
-        items = catalog_items(self.state)
-        categories = {p.get('category') for p in items.values()
-                      if p['sku'] in scope.get('skus', [])} - {None, ''}
-        category = scope.get('category') or (next(iter(categories)) if len(categories) == 1 else None)
-        if category and catalog_search_requested(self.state):
-            args = {'category': category}
-            budget = derive_consultation(self.state).snapshot.budget
-            if budget.limit_vnd is not None:
-                args['max_price_vnd'] = budget.limit_vnd
-            area = shortlist_requirements(self.state).get('room_area_m2')
-            if type(area) in (int, float):
-                args['min_room_area_m2'] = area
-            if (self.state.get('tool_count', 0) < self.max_tool_calls
-                    and not any(c.get('name') == 'catalog.search'
-                        and all(c.get('args', {}).get(k) == v for k, v in args.items())
-                        for c in self.state.get('tool_calls', []))):
-                await self.invoke('catalog.search', args)
-            scope = {**scope, 'category': category, 'focus_sku': None}
-            self.state['consultation_scope'] = scope
-        # Newly fetched metadata can resolve a customer's previously explicit
-        # choice. Use that decision for stock preparation in this same turn.
-        decision = derive_consultation(self.state)
-        shortlist = build_shortlist(self.state, scope=scope)
-        for item in shortlist.items[:2]:
-            sku, qty = item['resolved_sku'], item['quote_qty']
-            attempted = {c.get('args', {}).get('sku') for c in self.state.get('tool_calls', [])
-                         if c.get('name') == 'pricing.get_quote'} | self._prepared_quote_skus
-            if item['quoted_price_vnd'] is None:
-                if sku in attempted or len(attempted) >= 2 or self.state.get('tool_count', 0) >= self.max_tool_calls:
-                    continue
-                self._prepared_quote_skus.add(sku)
-                args = {'sku': sku, 'qty': qty}
-                from app.mcp_servers.mcp_shared.consultation import customer_order_options
-                options = customer_order_options(self.state) or {}
-                if options.get('address'):
-                    args['address'] = options['address']
-                await self.invoke('pricing.get_quote', args)
-            if decision.purchase_intent and decision.snapshot.selected_sku in {item['sku'], sku}:
-                checked = build_commerce_evidence(self.state, args={'sku': sku, 'qty': qty})
-                if not any(c.get('name') == 'inventory.check' and c['result'].get('in_stock') is True
-                           and c['result'].get('qty', 0) >= qty for c in checked):
-                    await self.invoke('inventory.check', {'sku': sku})
-        return len(self.state.get('tool_calls', [])) > before
 
     def langchain_tools(self) -> list[StructuredTool]:
         validate_model_tool_names(_TOOL_FIELDS)

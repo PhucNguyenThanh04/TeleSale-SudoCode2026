@@ -5,7 +5,7 @@ import re
 _NUMERIC_PII = re.compile(r"(?<!\d)\d{9,14}(?!\d)")
 _EMAIL = re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")
 _ADDRESS = re.compile(
-    r"(?i)\b(?:địa chỉ|dia chi)(?:\s*[:\-]\s*[^\n.!?]+|"
+    r"(?i)\b(?:địa chỉ|dia chi)(?! ĐÃ ẨN\])(?:\s*[:\-]\s*[^\n.!?]+|"
     r"\s+(?!(?:cũ|cu|mới|moi|nhận|nhan|giao|của|cua|ở\s+đâu|o\s+dau|"
     r"nào|nao|để|de|và|va|giúp|giup|nhé|nhe|ạ|a|chưa|chua|không|khong)\b)[^\n.!?]+)"
 )

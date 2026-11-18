@@ -47,13 +47,16 @@ async def create_text_turn(
     turn: ChatRequest, request: Request, harness: AgentHarnessRuntime = Depends(get_harness)
 ) -> ChatResponse:
     expected = get_settings().ai_internal_token
-    if ((turn.verified_customer_id or turn.verified_phone) and not expected):
-        raise HTTPException(401, "Verified identity requires the internal token")
-    if expected and not hmac.compare_digest(
+    if not expected or not hmac.compare_digest(
         request.headers.get("X-AI-Internal-Token", ""), expected.get_secret_value()
     ):
         raise HTTPException(401, "Unauthorized AI caller")
-    return await chat(turn, runtime=harness)
+    try:
+        return await chat(turn, runtime=harness)
+    except ValueError:
+        raise HTTPException(409, "Session or turn identity conflict") from None
+    except RuntimeError:
+        raise HTTPException(503, "Turn processing unavailable") from None
 
 
 @router.post('/turns/stream')

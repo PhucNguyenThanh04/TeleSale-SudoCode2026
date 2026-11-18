@@ -1,0 +1,77 @@
+{
+  "scenario_id": "HO-08",
+  "level": "M1",
+  "persona": "khach_hoi_nhieu_khong_mua",
+  "hard_case": "water_source_revocation",
+  "customer_phone": "0910285940",
+  "customer_name": "Dũng",
+  "honorific": "anh",
+  "notes": "Đổi nguồn nước làm thay đổi tính phù hợp công nghệ. Ràng buộc nguồn nước được sửa rõ ràng; phải bỏ kết luận dựa trên giếng khoan ở phiên trước.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-20",
+      "customer_turns": [
+        "Anh dùng nước giếng khoan mà chỗ đặt máy chưa có điện, muốn máy UF Sunhouse vì không cần điện. Có hợp không?",
+        "Anh không đồng ý lấy UF nếu nó không xử lý đúng nguồn nước, cũng chưa thể lắp RO khi chưa có điện.",
+        "Em chỉ phân tích mâu thuẫn này, chưa chọn máy thay anh hay đặt hàng."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-WF-UF"
+      },
+      "must_carry_over": [],
+      "must_not_ask": [],
+      "ground_truth_facts": {},
+      "success_if": {
+        "tool_called": null,
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "must_say_any": [
+          "RO",
+          "giếng khoan"
+        ]
+      },
+      "channel_identity": "0910285940",
+      "days_later": 0
+    },
+    "call_2": {
+      "channel": "hotline",
+      "call_date": "2026-10-23",
+      "customer_turns": [
+        "Anh đã chuyển chỗ lắp sang căn hộ dùng nước máy đạt chuẩn, không dùng nguồn giếng khoan nữa. Chỗ đó vẫn không có ổ điện.",
+        "Với nguồn nước mới này, anh chọn UF Sunhouse không cần điện. Em kiểm tra giá và tồn đúng mẫu đã hỏi.",
+        "Anh xác nhận mua một máy giá 3.290.000đ, chuyển khoản ngân hàng, giao nội thành Hà Nội."
+      ],
+      "facts_established": {},
+      "must_carry_over": [
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "ground_truth_facts": {
+        "price_vnd": 3290000,
+        "in_stock": true
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "must_not_call_tools": [
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "args_match": {
+          "sku": "SKU-WF-UF",
+          "price_vnd": 3290000,
+          "payment": "bank"
+        }
+      },
+      "channel_identity": "0910285940",
+      "days_later": 3
+    }
+  }
+}

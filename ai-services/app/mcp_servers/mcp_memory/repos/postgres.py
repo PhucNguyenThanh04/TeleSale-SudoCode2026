@@ -146,11 +146,14 @@ class MemoryRepo:
 
     async def insert_turn(self, conn, session_id: str, number: int, customer_id: str | None,
                           channel: str, on, customer_text: str, agent_text: str,
-                          client_msg_id: str) -> None:
+                          client_msg_id: str, tool_observations: list[dict] | None = None,
+                          outcome: str = 'khac') -> None:
         await conn.execute("""INSERT INTO runtime.turns
-            (session_id,turn_no,customer_id,channel,on_date,customer_text,agent_text,client_msg_id)
-            VALUES($1,$2,$3,$4,$5,$6,$7,$8)""", UUID(session_id), number, customer_id,
-            channel, on, customer_text, agent_text, UUID(client_msg_id))
+            (session_id,turn_no,customer_id,channel,on_date,customer_text,agent_text,client_msg_id,
+             tool_observations,verified_outcome)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10)""", UUID(session_id), number, customer_id,
+            channel, on, customer_text, agent_text, UUID(client_msg_id),
+            json.dumps(tool_observations or [], ensure_ascii=False), outcome)
 
     async def attribute_anonymous_turns(self, conn, session_id: str,
                                         customer_id: str) -> list[dict]:
@@ -158,7 +161,7 @@ class MemoryRepo:
         rows = await conn.fetch("""UPDATE runtime.turns SET customer_id=$2,
             attributed_after_verification=TRUE
             WHERE session_id=$1 AND customer_id IS NULL
-            RETURNING turn_no,client_msg_id AS source_turn_id""",
+            RETURNING turn_no,client_msg_id AS source_turn_id,tool_observations,verified_outcome""",
             UUID(session_id), customer_id)
         return [dict(row) for row in rows]
 
@@ -214,7 +217,8 @@ class MemoryRepo:
     async def recent_session_turns(self, conn, session_id: str, customer_id: str,
                                    through_turn_no: int, limit: int = 5) -> list[dict]:
         rows = await conn.fetch("""SELECT t.client_msg_id,t.customer_text,t.agent_text,
-            t.on_date,t.channel,j.tool_observations,j.job_id,j.status AS memory_status FROM runtime.turns t
+            t.on_date,t.channel,COALESCE(j.tool_observations,t.tool_observations) AS tool_observations,
+            j.job_id,j.status AS memory_status FROM runtime.turns t
             LEFT JOIN runtime.langmem_distillation_jobs j ON j.session_id=t.session_id
                 AND j.source_turn_id=t.client_msg_id AND j.customer_id=t.customer_id
             WHERE t.session_id=$1 AND t.customer_id=$2 AND t.turn_no<=$3

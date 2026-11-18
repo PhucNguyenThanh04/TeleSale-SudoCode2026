@@ -18,14 +18,15 @@ def chunk(text, **kwargs):
     return AIMessageChunk(content=text, id='answer-1', **kwargs)
 
 
-def test_checked_answer_unit_is_published_while_later_tokens_are_pending():
+def test_answer_waits_for_message_completion_before_publication():
     async def run():
         stream, sink = collector()
         current = state('Tôi muốn hỏi về Aster, em có thể giúp gì?')
         await stream.feed(chunk('Em có thể kiểm tra giá và tồn kho giúp mình. '), current)
+        assert not sink.called
+        await stream.feed(chunk('Mình cần kiểm tra thông tin nào trước ạ?',
+                                response_metadata={'finish_reason':'stop'}), current)
         assert sink.await_count == 1
-        assert stream.published == 'Em có thể kiểm tra giá và tồn kho giúp mình.'
-        await stream.feed(chunk('Mình cần kiểm tra thông tin nào trước ạ?'), current)
         final = await stream.finish('Em có thể kiểm tra giá và tồn kho giúp mình. Mình cần kiểm tra thông tin nào trước ạ?', current)
         assert final == ''.join(c.args[0] for c in sink.await_args_list)
     asyncio.run(run())
@@ -46,6 +47,7 @@ def test_unsupported_facts_pii_internal_tokens_and_progress_ack_are_not_publishe
         current['tool_calls'] = [catalog(), quote(), stock()]
         for piece in [text[:10], text[10:]]:
             await stream.feed(chunk(piece), current)
+        await stream.feed(chunk('', response_metadata={'finish_reason':'stop'}), current)
         assert not sink.called
     asyncio.run(run())
 
@@ -57,7 +59,7 @@ def test_request_for_price_and_stock_does_not_emit_only_price():
         current['tool_calls'] = [catalog(), quote(), stock()]
         await stream.feed(chunk('Aster có giá 900.000đ. '), current)
         assert not sink.called
-        await stream.feed(chunk('Aster hiện còn hàng. '), current)
+        await stream.feed(chunk('Aster hiện còn hàng. ', response_metadata={'finish_reason':'stop'}), current)
         assert sink.await_count == 1
     asyncio.run(run())
 
@@ -89,7 +91,8 @@ def test_rejected_suffix_cannot_retract_or_corrupt_published_answer():
         stream, sink = collector()
         current = state('Aster giá bao nhiêu?')
         current['tool_calls'] = [catalog(), quote()]
-        await stream.feed(chunk('Aster có giá 900.000đ. '), current)
+        await stream.feed(chunk('Aster có giá 900.000đ. ',
+                                response_metadata={'finish_reason':'stop'}), current)
         published = stream.published
         assert published
         final = await stream.finish('Aster có giá 1.000.000đ.', current)
@@ -131,7 +134,7 @@ def test_sensitive_actions_and_incomplete_pii_stay_buffered(customer_text, answe
     asyncio.run(run())
 
 
-def test_complete_sourced_price_objection_can_stream_without_waiting_for_extra_prose():
+def test_complete_sourced_answer_can_stream_at_message_stop():
     from test_consultation_followup import consultation_state, quoted
     from app.agent.harness.session_nodes import safe_followup_reply
     async def run():
@@ -140,6 +143,6 @@ def test_complete_sourced_price_objection_can_stream_without_waiting_for_extra_p
                          promos=[{'type':'freecod', 'promo_code':'COD-ZERO', 'discount_vnd':0}])
         answer = safe_followup_reply(current)
         assert '5.200.000' in answer and 'COD' in answer
-        await stream.feed(chunk(answer+'\n\n'), current)
+        await stream.feed(chunk(answer+'\n\n', response_metadata={'finish_reason':'stop'}), current)
         assert sink.called and stream.published == answer
     asyncio.run(run())

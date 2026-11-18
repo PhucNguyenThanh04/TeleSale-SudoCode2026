@@ -1,0 +1,82 @@
+{
+  "scenario_id": "HO-05",
+  "level": "M1",
+  "persona": "khach_hoi_nhieu_khong_mua",
+  "hard_case": "future_promotion_boundary",
+  "customer_phone": "0960454146",
+  "customer_name": "Kiên",
+  "honorific": "anh",
+  "notes": "Không tiết lộ sale tương lai rồi áp dụng đúng ngày mở bán. Kiểm ranh giới trước/sau ngày bắt đầu sale; không phải gọi lại đòi giữ ưu đãi cũ đã hết hạn.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-11-10",
+      "customer_turns": [
+        "Anh hỏi giá Samsung AX40 ở thời điểm hôm nay, mua một máy thôi. Em báo giá hiện hành giúp anh.",
+        "Có chương trình nào chưa công bố cho ngày mai thì em có được báo trước cho anh không?",
+        "Hôm nay anh chỉ hỏi, chưa đặt và cũng chưa đồng ý chờ một chương trình cụ thể."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-SS-AX40"
+      },
+      "must_carry_over": [],
+      "must_not_ask": [],
+      "ground_truth_facts": {
+        "price_vnd": 6490000,
+        "promo_11-11_active": false
+      },
+      "success_if": {
+        "tool_called": "pricing.get_quote",
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "args_match": {
+          "sku": "SKU-SS-AX40"
+        },
+        "trace_must_not_match": [
+          "(?i)11[-/]11|15\\s*(?:%|phần trăm)|5[., ]?516[., ]?500"
+        ]
+      },
+      "channel_identity": "0960454146",
+      "days_later": 0
+    },
+    "call_2": {
+      "channel": "hotline",
+      "call_date": "2026-11-11",
+      "customer_turns": [
+        "Anh hỏi lại mẫu Samsung hôm qua. Hôm nay em kiểm tra giá mới, không cần giữ báo giá hôm trước.",
+        "Anh đồng ý giá tiền hàng 5.516.500đ nếu đó là giá chương trình đang có hiệu lực.",
+        "Chốt một máy đó, COD, giao Hà Nội; em xác minh tồn rồi tạo đơn nhé."
+      ],
+      "facts_established": {},
+      "must_carry_over": [
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "ground_truth_facts": {
+        "price_vnd": 5516500,
+        "promo_11-11_active": true
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "must_not_call_tools": [
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "args_match": {
+          "sku": "SKU-SS-AX40",
+          "price_vnd": 5516500,
+          "payment": "COD"
+        }
+      },
+      "channel_identity": "0960454146",
+      "days_later": 1
+    }
+  }
+}

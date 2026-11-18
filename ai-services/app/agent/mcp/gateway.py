@@ -43,8 +43,12 @@ class MCPGateway:
         pinned = pinned_release()
         if not self.transports.get("knowledge"):
             return {"release_id": BASE_ONLY, "manifest_hash": BASE_ONLY}
-        async with Client(self.transports["knowledge"], auth=self.token) as client:
-            response = await client.call_tool("eval.knowledge_release", {"release_id": pinned})
+        try:
+            async with asyncio.timeout(10):
+                async with Client(self.transports["knowledge"], auth=self.token) as client:
+                    response = await client.call_tool("eval.knowledge_release", {"release_id": pinned})
+        except Exception as exc:
+            raise RuntimeError("Knowledge release cannot be pinned") from exc
         result = response.data if isinstance(response.data, dict) else response.structured_content
         if response.is_error or not isinstance(result, dict) or "error" in result:
             raise RuntimeError("Knowledge release cannot be pinned")
@@ -83,8 +87,9 @@ class MCPGateway:
                                       "handoff.transfer", "memory.write"}:
             payload["operation_key"] = operation_key
         try:
-            async with Client(self.transports[group], auth=self.token) as client:
-                response = await client.call_tool(name, payload)
+            async with asyncio.timeout(10):
+                async with Client(self.transports[group], auth=self.token) as client:
+                    response = await client.call_tool(name, payload)
             if response.is_error:
                 return {"error": "mcp_tool_error"}
             result = response.data if isinstance(response.data, dict) else response.structured_content
@@ -114,8 +119,9 @@ class MCPGateway:
                 'include_supplements': enabled()})
             payload = request.model_dump(mode='json',exclude_none=True)
             payload['trusted_context'] = sign_policy_context(request,context,self.context_secret)
-            async with Client(transport,auth=self.token) as client:
-                response = await client.call_tool('policy.search',payload)
+            async with asyncio.timeout(10):
+                async with Client(transport,auth=self.token) as client:
+                    response = await client.call_tool('policy.search',payload)
             result = response.data if isinstance(response.data,dict) else response.structured_content
             return result if isinstance(result,dict) and not response.is_error else {
                 'error':'knowledge_unavailable','retrieval_status':'unavailable','evidence':[]}

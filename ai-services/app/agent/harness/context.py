@@ -39,34 +39,24 @@ def _build_brief_orders(state: TurnState, remembered_order_ids: list[str] | None
         variant = item.get("variant_sku") or item.get("sku")
         entry: dict[str, Any] = {
             "order_id": oid,
-            "status": str(item.get("status") or "created"),
+            "status": str(item.get("status") or "unknown"),
         }
         if isinstance(variant, str) and variant:
             entry["variant_sku"] = variant
         orders_by_id[oid] = entry
-    known_variant = None
-    for facts in (scoped_products or {}).values():
-        if isinstance(facts, dict) and isinstance(facts.get(Slot.VARIANT_SKU, {}).get("value"), str):
-            known_variant = facts[Slot.VARIANT_SKU]["value"]
-            break
     for oid in [*(state.get("owned_order_ids") or []), *(remembered_order_ids or [])]:
         if isinstance(oid, str) and oid and oid not in orders_by_id:
-            entry = {"order_id": oid, "status": "created"}
-            if known_variant:
-                entry["variant_sku"] = known_variant
-            orders_by_id[oid] = entry
+            orders_by_id[oid] = {"order_id": oid, "status": "unknown"}
     prof_oid = (profile or {}).get(Slot.ORDER_ID, {}).get("value")
     if isinstance(prof_oid, str) and prof_oid and prof_oid not in orders_by_id:
-        entry = {"order_id": prof_oid, "status": "created"}
-        if known_variant:
-            entry["variant_sku"] = known_variant
-        orders_by_id[prof_oid] = entry
+        orders_by_id[prof_oid] = {"order_id": prof_oid, "status": "unknown"}
     return list(orders_by_id.values())
 
 
 def prompt_context(state: TurnState, history_turns: int) -> dict[str, Any]:
-    customer_facts, sales_history = _split_facts(state.get("profile", {}))
-    scoped = state.get("scoped_facts", {})
+    on = state['request'].on
+    customer_facts, sales_history = _split_facts(state.get("profile", {}), on=on)
+    scoped = _safe_scoped_facts(state.get("scoped_facts", {}), on=on)
     rooms = scoped.get("room", {}) if isinstance(scoped, dict) else {}
     products = scoped.get("product", {}) if isinstance(scoped, dict) else {}
     if isinstance(rooms, dict) and rooms:
@@ -98,12 +88,7 @@ def prompt_context(state: TurnState, history_turns: int) -> dict[str, Any]:
                             else 'current_turn')}
         for call in build_commerce_evidence(state) if call['name'] != 'crm.get_customer'
     ]
-    from app.mcp_servers.mcp_shared.consultation import derive_consultation, consultation_missing_fields
-    from app.schemas.consultation import mask_consultation
-    consultation=derive_consultation(state).model_dump(mode='json')
-    consultation['missing_fields']=consultation_missing_fields(state)
     return {
-        "consultation": mask_consultation(consultation),
         "on": state["request"].on.isoformat(),
         "input_mode": state["request"].input_mode,
         "identity_status": state["identity_status"],
@@ -149,13 +134,23 @@ def _uuid_fact_source(value: Any) -> bool:
         return False
 
 
-def _split_facts(profile: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+def _split_facts(profile: dict[str, Any], *, on: date | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
     """Keep customer-stated limits separate from prices and actions by the shop."""
     sales_keys = TOOL_ONLY_SLOT_KEYS | {Slot.PRODUCT_ADVISED}
     customer, sales = {}, {}
     for key, fact in profile.items():
         if key not in PROFILE_SLOT_KEYS or not isinstance(fact, dict):
             continue
+        if fact.get('status', 'active') != 'active':
+            continue
+        if on is not None:
+            try:
+                if fact.get('valid_until') and date.fromisoformat(fact['valid_until']) < on:
+                    continue
+                if fact.get('on') and date.fromisoformat(fact['on']) > on:
+                    continue
+            except (ValueError, TypeError):
+                continue
         value = fact.get("value")
         types = SLOT_SPEC_BY_KEY[key].value_type
         types = types if isinstance(types, tuple) else (types,)
@@ -233,7 +228,7 @@ def _mask_context(value: Any, path: tuple[str, ...] = ()) -> Any:
     return value
 
 
-def _safe_scoped_facts(value: Any) -> dict[str, dict[str, dict[str, Any]]]:
+def _safe_scoped_facts(value: Any, *, on: date | None = None) -> dict[str, dict[str, dict[str, Any]]]:
     safe = {"product": {}, "room": {}}
     if not isinstance(value, dict):
         return safe
@@ -244,7 +239,7 @@ def _safe_scoped_facts(value: Any) -> dict[str, dict[str, dict[str, Any]]]:
         for scope_id, facts in groups.items():
             if not isinstance(scope_id, str) or mask_pii(scope_id) != scope_id:
                 continue
-            admitted, sales = _split_facts(facts if isinstance(facts, dict) else {})
+            admitted, sales = _split_facts(facts if isinstance(facts, dict) else {}, on=on)
             values = {**admitted, **sales}
             if values:
                 safe[scope_type][scope_id] = values
@@ -303,7 +298,7 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
     context_checkpoint("context_loaded", state, context)
     history = _mask_context(context.get("history", []), ("history",))
     profile = context.get("profile", {})
-    scoped_facts = _safe_scoped_facts(context.get("scoped_facts", {}))
+    scoped_facts = _safe_scoped_facts(context.get("scoped_facts", {}), on=state['request'].on)
     episodes = list(context.get("episodes", []))
     accepted = context.get("accepted_episodes") or []
     if customer_id and getattr(memory, "include_prior", True) and accepted:
@@ -350,7 +345,7 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
                     and state.get("identity_status") == "known")
     fresh_calls = []
     warnings = []
-    safe_customer, safe_sales = _split_facts(profile)
+    safe_customer, safe_sales = _split_facts(profile, on=state['request'].on)
     profile = {**safe_customer, **safe_sales}
     advised = safe_sales.get(Slot.PRODUCT_ADVISED, {}).get("value")
     scoped_products = scoped_facts["product"]
@@ -473,8 +468,8 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
         except (KeyError, TypeError, ValueError):
             pass
         all_fact_entries: list[tuple[str, dict[str, Any]]] = [
-            *[(k, v) for k, v in profile.items() if isinstance(v, dict)],
-            *[(f"{sku}:{k}", v) for sku, facts in scoped_products.items()
+            *[(k, v) for k, v in context.get('profile', {}).items() if isinstance(v, dict)],
+            *[(f"{sku}:{k}", v) for sku, facts in context.get('scoped_facts', {}).get('product', {}).items()
               if isinstance(facts, dict) for k, v in facts.items() if isinstance(v, dict)],
         ]
         for label, fact_item in all_fact_entries:

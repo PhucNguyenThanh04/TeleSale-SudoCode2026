@@ -1,0 +1,74 @@
+{
+  "scenario_id": "HO-02",
+  "level": "M1",
+  "persona": "khach_mua_nhieu_mon",
+  "hard_case": "three_units_one_discount_cod_limit",
+  "customer_phone": "0982141621",
+  "customer_name": "Quân",
+  "honorific": "anh",
+  "notes": "Ba máy khác giá và giới hạn COD. Kết hợp phân bổ ưu đãi cho ba SKU với đổi phương thức thanh toán, không nhân số ưu đãi theo số cặp.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-28",
+      "customer_turns": [
+        "Anh cần một AirPure X, một AirPure Y và một Samsung AX40, mỗi phòng một máy. Tính cả ba trong cùng một đơn.",
+        "Máy thứ hai giảm 50% thì máy thứ ba có được giảm thêm lần nữa không? Em báo tổng, anh chưa đặt.",
+        "Nếu tổng vượt mười triệu thì anh có được trả COD nguyên đơn không?"
+      ],
+      "facts_established": {
+        "product_advised": "SKU-AP-X"
+      },
+      "must_carry_over": [],
+      "must_not_ask": [],
+      "ground_truth_facts": {},
+      "success_if": {
+        "tool_called": "pricing.quote_order",
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "channel_identity": "0982141621",
+      "days_later": 0
+    },
+    "call_2": {
+      "channel": "hotline",
+      "call_date": "2026-10-29",
+      "customer_turns": [
+        "Vẫn ba máy ở lần trước, anh đổi sang chuyển khoản ngân hàng để giữ cùng một đơn.",
+        "Em báo lại giá từng máy và tổng tiền trước khi tạo. Anh chấp nhận tổng tiền hàng 14.135.000đ, giao Hà Nội.",
+        "Anh xác nhận mua đúng ba máy đó, một chiếc mỗi mẫu, thanh toán chuyển khoản; không tách đơn."
+      ],
+      "facts_established": {},
+      "must_carry_over": [
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "ground_truth_facts": {},
+      "success_if": {
+        "tool_called": "order.create",
+        "must_not_call_tools": [
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "args_match": {
+          "payment": "bank"
+        },
+        "also_ordered": [
+          "SKU-AP-X",
+          "SKU-AP-Y",
+          "SKU-SS-AX40"
+        ],
+        "total_match_vnd": 14135000
+      },
+      "channel_identity": "0982141621",
+      "days_later": 1
+    }
+  }
+}

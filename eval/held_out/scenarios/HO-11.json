@@ -1,0 +1,113 @@
+{
+  "scenario_id": "HO-11",
+  "level": "M1",
+  "persona": "khach_hoi_nhieu_khong_mua",
+  "hard_case": "delivery_region_revision",
+  "customer_phone": "0930048764",
+  "customer_name": "Hà",
+  "honorific": "chị",
+  "notes": "Địa chỉ mới làm mất freeship theo vùng. Đổi vùng giao hàng trong cùng nhu cầu, không dùng đầu số điện thoại hoặc địa chỉ cũ để giữ ưu đãi.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-20",
+      "customer_turns": [
+        "Chị muốn một quạt Senko TS16 gửi Cần Thơ. Em kiểm tra giá và chương trình vận chuyển theo nơi nhận.",
+        "Số điện thoại chị không dùng để đoán vùng nhé, địa chỉ giao mới là Cần Thơ.",
+        "Chị mới hỏi giá, chưa mua."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-FAN-SEN"
+      },
+      "must_carry_over": [],
+      "must_not_ask": [],
+      "ground_truth_facts": {
+        "price_vnd": 590000,
+        "freeship": true
+      },
+      "success_if": {
+        "tool_called": "pricing.get_quote",
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "args_match": {
+          "sku": "SKU-FAN-SEN"
+        }
+      },
+      "channel_identity": "0930048764",
+      "days_later": 0
+    },
+    "call_2": {
+      "channel": "hotline",
+      "call_date": "2026-10-21",
+      "customer_turns": [
+        "Chị sửa nơi nhận quạt thành nội thành Hà Nội, bỏ địa chỉ Cần Thơ. Mẫu và số lượng vẫn như cũ.",
+        "Với nơi nhận mới thì còn miễn ship theo chương trình miền Nam không? Chị chưa chốt.",
+        "Em phải tính lại điều kiện vận chuyển theo Hà Nội, không giữ ưu đãi cũ."
+      ],
+      "facts_established": {},
+      "must_carry_over": [
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "ground_truth_facts": {
+        "price_vnd": 590000,
+        "freeship": false
+      },
+      "success_if": {
+        "tool_called": "pricing.get_quote",
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "args_match": {
+          "sku": "SKU-FAN-SEN"
+        }
+      },
+      "channel_identity": "0930048764",
+      "days_later": 1
+    },
+    "call_3": {
+      "channel": "hotline",
+      "call_date": "2026-10-22",
+      "customer_turns": [
+        "Chị chốt một quạt đang trao đổi, nơi nhận cuối cùng là nội thành Hà Nội đã sửa, không phải Cần Thơ.",
+        "Chị đồng ý tiền hàng 590.000đ và phí vận chuyển nội thành theo chính sách; thanh toán COD.",
+        "Em xác nhận đúng địa chỉ mới rồi tạo đơn, đừng áp miễn ship miền Nam."
+      ],
+      "facts_established": {},
+      "must_carry_over": [
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "ground_truth_facts": {
+        "price_vnd": 590000,
+        "freeship": false
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "must_not_call_tools": [
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "args_match": {
+          "sku": "SKU-FAN-SEN",
+          "price_vnd": 590000,
+          "payment": "COD"
+        }
+      },
+      "channel_identity": "0930048764",
+      "days_later": 1
+    }
+  }
+}
