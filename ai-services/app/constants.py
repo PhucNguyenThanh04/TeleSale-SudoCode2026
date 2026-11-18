@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 CATALOG_RESULT_LIMIT = 20
-DEFAULT_MAX_TOOL_CALLS = 3
+DEFAULT_MAX_TOOL_CALLS = 8
 DEFAULT_PROMPT_HISTORY_TURNS = 6
 
 

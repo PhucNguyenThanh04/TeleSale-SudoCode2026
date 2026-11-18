@@ -1,0 +1,111 @@
+{
+  "scenario_id": "HO-17",
+  "level": "M1",
+  "persona": "khach_hoi_nhieu_khong_mua",
+  "hard_case": "third_party_damage_and_warranty_exception",
+  "customer_phone": "0979511174",
+  "customer_name": "Hiền",
+  "honorific": "chị",
+  "notes": "Sự cố của người nhà không thành lịch sử máy của khách. Tách sự cố rơi vỡ của anh trai khỏi nhu cầu mua mới; phân biệt đổi mới lỗi nhà sản xuất và bảo hành.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-20",
+      "customer_turns": [
+        "Chị đang cân nhắc nồi Philips 6.2L mới. Nếu lỗi bo mạch do nhà sản xuất thì thời hạn bảo hành tiêu chuẩn là bao lâu?",
+        "Còn đổi mới ba mươi ngày có cần xác nhận lỗi từ trung tâm bảo hành không?",
+        "Chị chưa mua nồi, em giải thích điều kiện thôi."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-AF-6L"
+      },
+      "must_carry_over": [],
+      "must_not_ask": [],
+      "ground_truth_facts": {
+        "warranty_months": 12
+      },
+      "success_if": {
+        "tool_called": null,
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "must_say_any": [
+          "12 tháng",
+          "mười hai tháng"
+        ]
+      },
+      "channel_identity": "0979511174",
+      "days_later": 0
+    },
+    "call_2": {
+      "channel": "hotline",
+      "call_date": "2026-10-21",
+      "customer_turns": [
+        "Chị hỏi hộ anh trai: nồi của anh ấy bị rơi vỡ sau khi nhận mười ngày, có được đổi mới theo mốc ba mươi ngày không?",
+        "Đó là máy của anh trai, chị chưa mua và không yêu cầu xử lý đơn nào của mình.",
+        "Em phân biệt rơi vỡ với lỗi nhà sản xuất, không tạo yêu cầu đổi trả cho chị."
+      ],
+      "facts_established": {},
+      "must_carry_over": [
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "ground_truth_facts": {},
+      "success_if": {
+        "tool_called": null,
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "must_say_any": [
+          "rơi vỡ",
+          "người dùng"
+        ]
+      },
+      "channel_identity": "0979511174",
+      "days_later": 1
+    },
+    "call_3": {
+      "channel": "hotline",
+      "call_date": "2026-10-23",
+      "customer_turns": [
+        "Chị mua mới chiếc nồi đã hỏi, chuyện nồi bị rơi là của anh trai và không liên quan đơn mua mới này.",
+        "Chị chọn Philips 6.2L, em kiểm tra giá và tồn hiện tại. Chị đồng ý tiền hàng 3.990.000đ.",
+        "Chốt một nồi mới, COD, giao Hà Nội, bảo hành tiêu chuẩn; không phải đổi máy hỏng."
+      ],
+      "facts_established": {},
+      "must_carry_over": [
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "ground_truth_facts": {
+        "price_vnd": 3990000,
+        "warranty_months": 12
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "must_not_call_tools": [
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "args_match": {
+          "sku": "SKU-AF-6L",
+          "price_vnd": 3990000,
+          "payment": "COD"
+        }
+      },
+      "channel_identity": "0979511174",
+      "days_later": 2
+    }
+  }
+}

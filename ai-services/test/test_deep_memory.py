@@ -126,14 +126,17 @@ class DeepMemoryTest(unittest.IsolatedAsyncioTestCase):
                 return await super().invoke(name, args)
 
         model = FakeToolModel(replies=[
-            AIMessage(content="", tool_calls=[{"name": "handoff.transfer",
+            AIMessage(content="", tool_calls=[{"name": "handoff_transfer",
                 "args": {"brief": {"escalation_reason": "khach_yeu_cau_gap_nguoi"}},
                 "id": "handoff_attempt"}]),
             AIMessage(content="Dạ, em đã chuyển yêu cầu đến nhân viên tư vấn ạ.")])
         runtime = DeepHarnessRuntime(model, Gateway(), FakeMemory())
-        response = await runtime.run(turn("Tôi muốn gặp nhân viên tư vấn"))
+        from unittest.mock import AsyncMock, patch
+        with patch('app.agent.harness.authorization.authorize_write', AsyncMock(return_value=True)):
+            response = await runtime.run(turn("Tôi muốn gặp nhân viên tư vấn"))
         self.assertFalse(response.needs_handoff)
         self.assertIn("chưa chuyển được", response.agent_text)
+        self.assertEqual(sum(name == 'handoff.transfer' for name, _ in runtime.tools.calls), 1)
 
     async def test_call_brief_latency_includes_identity_lookup(self):
         class SlowGateway(FakeGateway):

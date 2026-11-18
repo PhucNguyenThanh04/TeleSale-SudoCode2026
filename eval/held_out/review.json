@@ -1,0 +1,1128 @@
+{
+  "version": 1,
+  "authorship": "assistant-authored from BTC source; not independently human-reviewed",
+  "review_status": "human_review_pending",
+  "live_evaluation_performed": false,
+  "instructions": [
+    "BTC TSR is necessary but not sufficient: review every call against manual_checks before declaring semantic success.",
+    "Oracle checks replay reference BTC tools in memory only; they do not prove the agent can solve these scenarios.",
+    "Preferences, new delivery destinations and third-party hypotheticals are authored dialogue inputs, not claims about CRM seed.",
+    "Do not tune runtime, prompts, regexes or retrieval on this held-out set. Once used for tuning, retire it as held-out."
+  ],
+  "scenarios": {
+    "HO-01": {
+      "customer_id": "C016",
+      "title": "Hai máy giống nhau chỉ một máy được giảm một nửa",
+      "novelty": "Hai đơn vị cùng SKU trong một đơn; phải phân bổ khuyến mãi theo từng máy, không chỉ báo giá một chiếc.",
+      "source_sections": [
+        "KM-03",
+        "KM-05",
+        "FAQ-19"
+      ],
+      "catalog_skus": [
+        "SKU-AP-MINI"
+      ],
+      "manual_checks": {
+        "call_1": [
+          "Hai máy giá niêm yết 2.190.000đ/máy; đúng một máy còn 1.095.000đ, tổng 3.285.000đ.",
+          "Không áp giảm 50% cho cả hai, không tự đổi SKU hoặc tạo đơn khi đang hỏi giá."
+        ],
+        "call_2": [
+          "Tạo đúng một đơn có hai đơn vị AirPure Mini, tổng 3.285.000đ và COD.",
+          "Mỗi đơn vị phải giữ giá riêng từ quote_order; không tạo hai đơn riêng."
+        ]
+      },
+      "oracle_checks": [
+        {
+          "call": "call_1",
+          "function": "pricing_quote_order",
+          "args": {
+            "lines": [
+              {
+                "sku": "SKU-AP-MINI",
+                "qty": 2
+              }
+            ]
+          },
+          "expected": {
+            "total_vnd": 3285000
+          }
+        },
+        {
+          "call": "call_2",
+          "function": "order_create",
+          "args": {
+            "lines": [
+              {
+                "sku": "SKU-AP-MINI",
+                "qty": 1,
+                "price_vnd": 2190000
+              },
+              {
+                "sku": "SKU-AP-MINI",
+                "qty": 1,
+                "price_vnd": 1095000
+              }
+            ],
+            "payment": "COD",
+            "address": "Hà Nội"
+          },
+          "expected": {
+            "status": "created",
+            "total_vnd": 3285000
+          }
+        }
+      ]
+    },
+    "HO-02": {
+      "customer_id": "C018",
+      "title": "Ba máy khác giá và giới hạn COD",
+      "novelty": "Kết hợp phân bổ ưu đãi cho ba SKU với đổi phương thức thanh toán, không nhân số ưu đãi theo số cặp.",
+      "source_sections": [
+        "KM-03",
+        "KM-05",
+        "VC-03",
+        "QT-01"
+      ],
+      "catalog_skus": [
+        "SKU-AP-X",
+        "SKU-AP-Y",
+        "SKU-SS-AX40"
+      ],
+      "manual_checks": {
+        "call_1": [
+          "Chỉ AirPure X nhận giảm 50%: 2.445.000đ; AirPure Y 5.200.000đ; Samsung 6.490.000đ; tổng 14.135.000đ.",
+          "Không giảm thêm máy thứ ba; giải thích nguyên đơn trên 10 triệu không COD."
+        ],
+        "call_2": [
+          "Một đơn bank, đủ ba SKU, tổng 14.135.000đ; không giữ COD hoặc tự tách đơn.",
+          "Không trừ thêm AIR-2ND-50 trên AirPure Y hoặc Samsung."
+        ]
+      },
+      "oracle_checks": [
+        {
+          "call": "call_1",
+          "function": "pricing_quote_order",
+          "args": {
+            "lines": [
+              {
+                "sku": "SKU-AP-X",
+                "qty": 1
+              },
+              {
+                "sku": "SKU-AP-Y",
+                "qty": 1
+              },
+              {
+                "sku": "SKU-SS-AX40",
+                "qty": 1
+              }
+            ]
+          },
+          "expected": {
+            "total_vnd": 14135000
+          }
+        },
+        {
+          "call": "call_2",
+          "function": "order_create",
+          "args": {
+            "lines": [
+              {
+                "sku": "SKU-AP-X",
+                "qty": 1,
+                "price_vnd": 2445000
+              },
+              {
+                "sku": "SKU-AP-Y",
+                "qty": 1,
+                "price_vnd": 5200000
+              },
+              {
+                "sku": "SKU-SS-AX40",
+                "qty": 1,
+                "price_vnd": 6490000
+              }
+            ],
+            "payment": "bank",
+            "address": "Hà Nội"
+          },
+          "expected": {
+            "status": "created",
+            "total_vnd": 14135000
+          }
+        }
+      ]
+    },
+    "HO-03": {
+      "customer_id": "C020",
+      "title": "RUN-10 đã dùng vẫn còn ngày hiệu lực",
+      "novelty": "Ưu đãi hết quyền sử dụng của riêng khách sau đơn đầu, dù ngày chương trình chưa kết thúc.",
+      "source_sections": [
+        "KM-05",
+        "FAQ-14"
+      ],
+      "catalog_skus": [
+        "SKU-SN-RUN2-40-TRANG"
+      ],
+      "manual_checks": {
+        "call_1": [
+          "Đơn thứ nhất đúng biến thể, 1.521.000đ, RUN-10 chỉ dùng một lần cho khách này."
+        ],
+        "call_2": [
+          "Đơn mới thứ hai giá 1.690.000đ; không dùng lại RUN-10 dù ngày 21/10 chưa hết chương trình.",
+          "Không nhầm đây là lặp yêu cầu của đơn trước; người nhận mới không tạo thêm khách CRM."
+        ]
+      },
+      "oracle_checks": [
+        {
+          "call": "call_1",
+          "function": "order_create",
+          "args": {
+            "sku": "SKU-SN-RUN2-40-TRANG",
+            "price_vnd": 1521000,
+            "payment": "COD"
+          },
+          "expected": {
+            "status": "created",
+            "total_vnd": 1521000
+          }
+        },
+        {
+          "call": "call_2",
+          "function": "pricing_get_quote",
+          "args": {
+            "sku": "SKU-SN-RUN2-40-TRANG"
+          },
+          "expected": {
+            "final_price_vnd": 1690000,
+            "ineligible_promos": [
+              {
+                "promo_code": "RUN-10",
+                "reason": "once_per_customer"
+              }
+            ]
+          }
+        },
+        {
+          "call": "call_2",
+          "function": "order_create",
+          "args": {
+            "sku": "SKU-SN-RUN2-40-TRANG",
+            "price_vnd": 1690000,
+            "payment": "COD"
+          },
+          "expected": {
+            "status": "created",
+            "total_vnd": 1690000
+          }
+        }
+      ]
+    },
+    "HO-04": {
+      "customer_id": "C022",
+      "title": "Sửa size làm đảo điều kiện đủ khuyến mãi",
+      "novelty": "Đối chứng với SC15 trong benchmark: không kết thúc bằng mua nguyên giá size 43, mà sửa rõ sang size 42 còn ưu đãi; agent phải bỏ kết luận loại trừ và tính lại giá.",
+      "source_sections": [
+        "KM-05",
+        "SP-SN-01",
+        "FAQ-10"
+      ],
+      "catalog_skus": [
+        "SKU-SN-RUN2-43-XAM",
+        "SKU-SN-RUN2-42-XAM"
+      ],
+      "manual_checks": {
+        "call_1": [
+          "Giá size 43 là 1.740.000đ (phụ thu 50.000đ), không được RUN-10; tồn xám là 5."
+        ],
+        "call_2": [
+          "Khách sửa sang size 42 xám (tồn 2), được RUN-10 thành 1.521.000đ vì phiên trước mới hỏi giá, chưa sử dụng mã.",
+          "Không giữ size 43, phụ thu 50.000đ hoặc kết luận không đủ ưu đãi từ phiên cũ; không đổi màu xám."
+        ]
+      },
+      "oracle_checks": [
+        {
+          "call": "call_1",
+          "function": "inventory_check",
+          "args": {
+            "sku": "SKU-SN-RUN2-43-XAM"
+          },
+          "expected": {
+            "in_stock": true,
+            "qty": 5
+          }
+        },
+        {
+          "call": "call_1",
+          "function": "pricing_get_quote",
+          "args": {
+            "sku": "SKU-SN-RUN2-43-XAM"
+          },
+          "expected": {
+            "final_price_vnd": 1740000,
+            "ineligible_promos": [
+              {
+                "promo_code": "RUN-10",
+                "reason": "exclude_variant_size"
+              }
+            ]
+          }
+        },
+        {
+          "call": "call_2",
+          "function": "inventory_check",
+          "args": {
+            "sku": "SKU-SN-RUN2-42-XAM"
+          },
+          "expected": {
+            "in_stock": true,
+            "qty": 2
+          }
+        },
+        {
+          "call": "call_2",
+          "function": "order_create",
+          "args": {
+            "sku": "SKU-SN-RUN2-42-XAM",
+            "price_vnd": 1521000,
+            "payment": "COD"
+          },
+          "expected": {
+            "status": "created",
+            "total_vnd": 1521000
+          }
+        }
+      ]
+    },
+    "HO-05": {
+      "customer_id": "C024",
+      "title": "Không tiết lộ sale tương lai rồi áp dụng đúng ngày mở bán",
+      "novelty": "Kiểm ranh giới trước/sau ngày bắt đầu sale; không phải gọi lại đòi giữ ưu đãi cũ đã hết hạn.",
+      "source_sections": [
+        "FAQ-14",
+        "KM-01"
+      ],
+      "catalog_skus": [
+        "SKU-SS-AX40"
+      ],
+      "manual_checks": {
+        "call_1": [
+          "Báo 6.490.000đ hôm 10/11; không lộ mã, mức giảm hoặc giá sale chưa bắt đầu."
+        ],
+        "call_2": [
+          "Đến 11/11 mới áp 15%, giá 5.516.500đ; không trả lại giá cũ."
+        ]
+      },
+      "oracle_checks": [
+        {
+          "call": "call_1",
+          "function": "pricing_get_quote",
+          "args": {
+            "sku": "SKU-SS-AX40"
+          },
+          "expected": {
+            "final_price_vnd": 6490000
+          }
+        },
+        {
+          "call": "call_2",
+          "function": "order_create",
+          "args": {
+            "sku": "SKU-SS-AX40",
+            "price_vnd": 5516500,
+            "payment": "COD"
+          },
+          "expected": {
+            "status": "created",
+            "total_vnd": 5516500
+          }
+        }
+      ]
+    },
+    "HO-06": {
+      "customer_id": "C034",
+      "title": "Combo nguyên bộ và định danh Facebook của khách dùng chung số",
+      "novelty": "Dùng fb.hải.186 của cô Loan để không lẫn với Dung cùng số; kiểm giới hạn đổi riêng một món trong combo.",
+      "source_sections": [
+        "FAQ-18",
+        "FAQ-11",
+        "DT-02"
+      ],
+      "catalog_skus": [
+        "SKU-BDL-MOM",
+        "SKU-MB-PUMP1",
+        "SKU-MB-MON",
+        "SKU-MB-BAG"
+      ],
+      "manual_checks": {
+        "call_1": [
+          "Nhận diện C034/cô Loan qua Facebook, không đọc hồ sơ C035/Dung.",
+          "Mua SKU-BDL-MOM nguyên bộ, không nhân thêm ưu đãi của sản phẩm thành phần."
+        ],
+        "call_2": [
+          "Nêu combo không được tách để đổi trả một phần; không tự tạo order.update.",
+          "Không biến giả định nhận hàng thành trạng thái giao hàng đã xác minh."
+        ]
+      },
+      "oracle_checks": [
+        {
+          "call": "call_1",
+          "function": "order_create",
+          "args": {
+            "sku": "SKU-BDL-MOM",
+            "price_vnd": 4790000,
+            "payment": "COD"
+          },
+          "expected": {
+            "status": "created",
+            "total_vnd": 4790000
+          }
+        }
+      ]
+    },
+    "HO-07": {
+      "customer_id": "C025",
+      "title": "Tải trọng bắt buộc không được bỏ khi mẫu phù hợp hết hàng",
+      "novelty": "Giữ ràng buộc bé 18kg khi Joie hết hàng; không đổi sang Combi chỉ vì còn tồn.",
+      "source_sections": [
+        "SP-MB-02",
+        "FAQ-12",
+        "FAQ-17"
+      ],
+      "catalog_skus": [
+        "SKU-MB-STR1",
+        "SKU-MB-STR2"
+      ],
+      "manual_checks": {
+        "call_1": [
+          "Combi tối đa 15kg không đáp ứng bé 18kg; Joie tối đa 22kg và ngày 23/10 còn 2.",
+          "Không tự ghi trọng lượng bé thành trọng lượng của người mua."
+        ],
+        "call_2": [
+          "Joie hết từ 25/10; không hứa có hàng hay đặt Combi cho bé 18kg.",
+          "Nếu danh mục không có mẫu khác đủ điều kiện thì nói chưa có phương án đã xác minh."
+        ]
+      },
+      "oracle_checks": [
+        {
+          "call": "call_1",
+          "function": "inventory_check",
+          "args": {
+            "sku": "SKU-MB-STR1"
+          },
+          "expected": {
+            "in_stock": true,
+            "qty": 2
+          }
+        },
+        {
+          "call": "call_2",
+          "function": "inventory_check",
+          "args": {
+            "sku": "SKU-MB-STR1"
+          },
+          "expected": {
+            "in_stock": false,
+            "qty": 0
+          }
+        }
+      ]
+    },
+    "HO-08": {
+      "customer_id": "C026",
+      "title": "Đổi nguồn nước làm thay đổi tính phù hợp công nghệ",
+      "novelty": "Ràng buộc nguồn nước được sửa rõ ràng; phải bỏ kết luận dựa trên giếng khoan ở phiên trước.",
+      "source_sections": [
+        "FAQ-05",
+        "FAQ-06",
+        "SP-WF-01"
+      ],
+      "catalog_skus": [
+        "SKU-WF-UF"
+      ],
+      "manual_checks": {
+        "call_1": [
+          "UF chỉ cho nước máy đạt chuẩn; giếng khoan cần RO và RO cần điện.",
+          "Không khẳng định UF đáp ứng giếng khoan để cố chốt đơn."
+        ],
+        "call_2": [
+          "Chấp nhận nguồn nước mới do khách sửa; không tiếp tục ép RO vì nguồn giếng cũ.",
+          "Không coi không cần điện là đặc tính chung của mọi máy RO/UF."
+        ]
+      },
+      "oracle_checks": [
+        {
+          "call": "call_2",
+          "function": "order_create",
+          "args": {
+            "sku": "SKU-WF-UF",
+            "price_vnd": 3290000,
+            "payment": "bank",
+            "address": "Hà Nội"
+          },
+          "expected": {
+            "status": "created",
+            "total_vnd": 3290000
+          }
+        }
+      ]
+    },
+    "HO-09": {
+      "customer_id": "C027",
+      "title": "Phụ kiện của khách khác với câu hỏi hộ người nhà",
+      "novelty": "Hai chủ thể và hai máy trong một cuộc; lần mua sau phải theo máy của người gọi, không lấy sản phẩm của người được hỏi hộ.",
+      "source_sections": [
+        "SP-AIR-03",
+        "FAQ-16"
+      ],
+      "catalog_skus": [
+        "SKU-AP-PRO",
+        "SKU-SS-AX40",
+        "SKU-AP-FLT-P"
+      ],
+      "manual_checks": {
+        "call_1": [
+          "AirPure Pro dùng SKU-AP-FLT-P giá 990.000đ; shop chưa kinh doanh màng Samsung.",
+          "Không gán Samsung của em gái thành máy của khách hoặc thay màng Pro bằng màng X/Y."
+        ],
+        "call_2": [
+          "Chỉ đặt một SKU-AP-FLT-P; không mua Samsung, màng Samsung hoặc máy AirPure Pro nguyên chiếc."
+        ]
+      },
+      "oracle_checks": [
+        {
+          "call": "call_1",
+          "function": "catalog_search",
+          "args": {
+            "sku": "SKU-AP-FLT-P"
+          },
+          "expected": {
+            "total": 1
+          }
+        },
+        {
+          "call": "call_2",
+          "function": "order_create",
+          "args": {
+            "sku": "SKU-AP-FLT-P",
+            "price_vnd": 990000,
+            "payment": "COD"
+          },
+          "expected": {
+            "status": "created",
+            "total_vnd": 990000
+          }
+        }
+      ]
+    },
+    "HO-10": {
+      "customer_id": "C028",
+      "title": "Giả định mua và lời phủ định không phải đồng ý",
+      "novelty": "Cố ý có từ khóa lên đơn trong câu điều kiện/phủ định; chỉ được tra cứu, không ghi nhận đồng ý mua.",
+      "source_sections": [
+        "FAQ-15",
+        "SP-JK-01"
+      ],
+      "catalog_skus": [
+        "SKU-JK-WND-L-NAVY",
+        "SKU-JK-DWN-L-NAVY"
+      ],
+      "manual_checks": {
+        "call_1": [
+          "Không dùng câu nếu đồng ý làm sự đồng ý thật; không tạo đơn/callback."
+        ],
+        "call_2": [
+          "Tra Warmly L navy còn 6, giá 1.490.000đ; tuyệt đối không tạo đơn từ câu phủ định.",
+          "Bỏ phương án Windbreak cũ trong lựa chọn hiện tại, không xóa fact size/màu vẫn còn đúng."
+        ]
+      },
+      "oracle_checks": [
+        {
+          "call": "call_1",
+          "function": "pricing_get_quote",
+          "args": {
+            "sku": "SKU-JK-WND-L-NAVY"
+          },
+          "expected": {
+            "final_price_vnd": 690000
+          }
+        },
+        {
+          "call": "call_2",
+          "function": "inventory_check",
+          "args": {
+            "sku": "SKU-JK-DWN-L-NAVY"
+          },
+          "expected": {
+            "in_stock": true,
+            "qty": 6
+          }
+        },
+        {
+          "call": "call_2",
+          "function": "pricing_get_quote",
+          "args": {
+            "sku": "SKU-JK-DWN-L-NAVY"
+          },
+          "expected": {
+            "final_price_vnd": 1490000
+          }
+        }
+      ]
+    },
+    "HO-11": {
+      "customer_id": "C029",
+      "title": "Địa chỉ mới làm mất freeship theo vùng",
+      "novelty": "Đổi vùng giao hàng trong cùng nhu cầu, không dùng đầu số điện thoại hoặc địa chỉ cũ để giữ ưu đãi.",
+      "source_sections": [
+        "KM-08",
+        "VC-02"
+      ],
+      "catalog_skus": [
+        "SKU-FAN-SEN"
+      ],
+      "manual_checks": {
+        "call_1": [
+          "590.000đ và NAM-SHIP0 áp dụng do địa chỉ Cần Thơ, không do đầu số."
+        ],
+        "call_2": [
+          "Không áp NAM-SHIP0 ở Hà Nội; phí chuẩn nội thành 25.000đ, COD-0 chỉ miễn thu hộ."
+        ],
+        "call_3": [
+          "Order dùng Hà Nội, tiền hàng 590.000đ; không ghi COD-0 thành miễn ship."
+        ]
+      },
+      "oracle_checks": [
+        {
+          "call": "call_1",
+          "function": "pricing_get_quote",
+          "args": {
+            "sku": "SKU-FAN-SEN",
+            "address": "Cần Thơ"
+          },
+          "expected": {
+            "final_price_vnd": 590000,
+            "freeship": true
+          }
+        },
+        {
+          "call": "call_2",
+          "function": "pricing_get_quote",
+          "args": {
+            "sku": "SKU-FAN-SEN",
+            "address": "Hà Nội"
+          },
+          "expected": {
+            "final_price_vnd": 590000,
+            "freeship": false
+          }
+        },
+        {
+          "call": "call_3",
+          "function": "order_create",
+          "args": {
+            "sku": "SKU-FAN-SEN",
+            "price_vnd": 590000,
+            "payment": "COD",
+            "address": "Hà Nội"
+          },
+          "expected": {
+            "status": "created"
+          }
+        }
+      ]
+    },
+    "HO-12": {
+      "customer_id": "C033",
+      "title": "Khách CRM cũ đổi nhu cầu rồi đi qua hai mốc sale",
+      "novelty": "Lịch sử tháng 3 là Xiaomi, nhu cầu mới là Philips; qua cả trước, trong và sau sale 11/11 mà không mua ở giá cũ.",
+      "source_sections": [
+        "FAQ-07",
+        "FAQ-14"
+      ],
+      "catalog_skus": [
+        "SKU-AF-6L",
+        "SKU-AF-XM"
+      ],
+      "manual_checks": {
+        "call_1": [
+          "Dùng nhu cầu Philips mới; 3.990.000đ, không hồi sinh Xiaomi từ CRM ngày 29/03."
+        ],
+        "call_2": [
+          "Sale 15% đang hiệu lực, 3.391.500đ; chưa có sự đồng ý tạo đơn."
+        ],
+        "call_3": [
+          "Giá về 3.990.000đ sau 12/11; không tạo đơn giá sale hoặc tự áp giảm ngoài chương trình."
+        ]
+      },
+      "oracle_checks": [
+        {
+          "call": "call_1",
+          "function": "pricing_get_quote",
+          "args": {
+            "sku": "SKU-AF-6L"
+          },
+          "expected": {
+            "final_price_vnd": 3990000
+          }
+        },
+        {
+          "call": "call_2",
+          "function": "pricing_get_quote",
+          "args": {
+            "sku": "SKU-AF-6L"
+          },
+          "expected": {
+            "final_price_vnd": 3391500
+          }
+        },
+        {
+          "call": "call_3",
+          "function": "pricing_get_quote",
+          "args": {
+            "sku": "SKU-AF-6L"
+          },
+          "expected": {
+            "final_price_vnd": 3990000
+          }
+        }
+      ]
+    },
+    "HO-13": {
+      "customer_id": "C036",
+      "title": "Tính lại ngày giao khi khách trì hoãn qua ngày nghỉ",
+      "novelty": "Khác SC19 hẹn gọi lại: tính ETA từ ba ngày đặt giả định/thực tế khác nhau, qua Chủ nhật và nghỉ 26/10; không dùng ngày của một đơn chưa được tạo.",
+      "source_sections": [
+        "VC-01",
+        "LN-02",
+        "LN-03"
+      ],
+      "catalog_skus": [
+        "SKU-MB-PUMP2"
+      ],
+      "manual_checks": {
+        "call_1": [
+          "Theo ETA mock BTC, nếu đặt 23/10 Hà Nội thì dự kiến 27/10; bỏ Chủ nhật 25/10 và ngày nghỉ 26/10.",
+          "Không hứa nhận trước/trong 26/10, không tạo đơn/callback khi khách chưa đồng ý."
+        ],
+        "call_2": [
+          "Tính lại từ 24/10 thành 28/10, không giữ ETA 27/10 của ngày trước; hai phiên đều chưa có đơn.",
+          "Không tự tạo đơn, không gọi câu hỏi giả định là đơn mua đang tồn tại."
+        ],
+        "call_3": [
+          "Tạo đơn ngày 27/10, một Medela Swing Maxi 5.990.000đ COD; ETA mock là 29/10.",
+          "Ngày giao là dự kiến theo mock BTC; không khẳng định khách đã đặt/đã nhận hàng từ các lần hỏi trước."
+        ]
+      },
+      "oracle_checks": [
+        {
+          "call": "call_1",
+          "function": "_eta",
+          "args": {
+            "address": "Hà Nội"
+          },
+          "expected": "2026-10-27"
+        },
+        {
+          "call": "call_2",
+          "function": "_eta",
+          "args": {
+            "address": "Hà Nội"
+          },
+          "expected": "2026-10-28"
+        },
+        {
+          "call": "call_3",
+          "function": "order_create",
+          "args": {
+            "sku": "SKU-MB-PUMP2",
+            "price_vnd": 5990000,
+            "payment": "COD",
+            "address": "Hà Nội"
+          },
+          "expected": {
+            "status": "created",
+            "total_vnd": 5990000,
+            "estimated_delivery": "2026-10-29"
+          }
+        }
+      ]
+    },
+    "HO-14": {
+      "customer_id": "C038",
+      "title": "Ưu tiên bảo hành catalog và ngưỡng gói mở rộng",
+      "novelty": "Xiaomi có mâu thuẫn catalog/policy; gói gia hạn không được bán cho máy dưới ngưỡng giá.",
+      "source_sections": [
+        "BH-01",
+        "BH-05"
+      ],
+      "catalog_skus": [
+        "SKU-XM-4L"
+      ],
+      "manual_checks": {
+        "call_1": [
+          "Catalog của SKU-XM-4L ghi 24 tháng và BH-01 ưu tiên catalog; không trả 12 chỉ vì tên hãng."
+        ],
+        "call_2": [
+          "Giá Lite 2.990.000đ không vượt 3 triệu nên không đủ BH-05; không bán gói 8%."
+        ],
+        "call_3": [
+          "Chỉ đặt máy 2.990.000đ; giữ bảo hành chuẩn 24 tháng và không tính tiền gói không đủ điều kiện."
+        ]
+      },
+      "oracle_checks": [
+        {
+          "call": "call_1",
+          "function": "catalog_search",
+          "args": {
+            "sku": "SKU-XM-4L"
+          },
+          "expected": {
+            "total": 1,
+            "items": [
+              {
+                "sku": "SKU-XM-4L",
+                "attributes": {
+                  "warranty_months": 24
+                }
+              }
+            ]
+          }
+        },
+        {
+          "call": "call_3",
+          "function": "order_create",
+          "args": {
+            "sku": "SKU-XM-4L",
+            "price_vnd": 2990000,
+            "payment": "COD"
+          },
+          "expected": {
+            "status": "created"
+          }
+        }
+      ]
+    },
+    "HO-15": {
+      "customer_id": "C040",
+      "title": "Ghế ô tô: tải trọng và người sử dụng mới",
+      "novelty": "Không suy tương thích xe; thay người dùng 19kg bằng người dùng 12kg phải có lời khách xác nhận rõ.",
+      "source_sections": [
+        "FAQ-13",
+        "SP-MB-03"
+      ],
+      "catalog_skus": [
+        "SKU-MB-CAR"
+      ],
+      "manual_checks": {
+        "call_1": [
+          "Tải tối đa 18kg; không có thông tin tương thích từng xe, không bảo đảm lắp vừa mọi xe."
+        ],
+        "call_2": [
+          "Không khuyến nghị Chicco cho bé 19kg, không lấy mốc tuổi để vượt giới hạn tải."
+        ],
+        "call_3": [
+          "Theo người dùng mới 12kg đã được khách xác nhận; không gán cân nặng trẻ thành thông tin của người mua.",
+          "Không tuyên bố shop đã xác minh tương thích xe chỉ từ lời khách; tạo đúng ghế và giá."
+        ]
+      },
+      "oracle_checks": [
+        {
+          "call": "call_3",
+          "function": "order_create",
+          "args": {
+            "sku": "SKU-MB-CAR",
+            "price_vnd": 4990000,
+            "payment": "COD"
+          },
+          "expected": {
+            "status": "created"
+          }
+        }
+      ]
+    },
+    "HO-16": {
+      "customer_id": "C042",
+      "title": "Giảm số lượng theo ngân sách tổng rồi bỏ phụ kiện sai công nghệ",
+      "novelty": "Ngân sách tính cho cả đơn và giỏ được thu nhỏ; lõi RO không mặc nhiên là phụ kiện của UF.",
+      "source_sections": [
+        "SP-WF-01",
+        "SP-WF-02",
+        "FAQ-05"
+      ],
+      "catalog_skus": [
+        "SKU-WF-UF",
+        "SKU-WF-CORE"
+      ],
+      "manual_checks": {
+        "call_1": [
+          "Hai UF tổng 6.580.000đ vượt trần 4 triệu cả đơn; không tự đặt một phần hay nâng ngân sách."
+        ],
+        "call_2": [
+          "Không coi SKU-WF-CORE là phụ kiện UF chỉ vì cùng nhóm lọc nước.",
+          "Giữ số lượng hiện tại một UF, trần 4 triệu cho cả giỏ."
+        ],
+        "call_3": [
+          "Đơn chỉ một UF, 3.290.000đ; không giữ số lượng hai hoặc thêm SKU-WF-CORE từ phương án chưa đồng ý."
+        ]
+      },
+      "oracle_checks": [
+        {
+          "call": "call_1",
+          "function": "pricing_quote_order",
+          "args": {
+            "lines": [
+              {
+                "sku": "SKU-WF-UF",
+                "qty": 2
+              }
+            ]
+          },
+          "expected": {
+            "total_vnd": 6580000
+          }
+        },
+        {
+          "call": "call_3",
+          "function": "order_create",
+          "args": {
+            "sku": "SKU-WF-UF",
+            "qty": 1,
+            "price_vnd": 3290000,
+            "payment": "bank"
+          },
+          "expected": {
+            "status": "created",
+            "total_vnd": 3290000
+          }
+        }
+      ]
+    },
+    "HO-17": {
+      "customer_id": "C044",
+      "title": "Sự cố của người nhà không thành lịch sử máy của khách",
+      "novelty": "Tách sự cố rơi vỡ của anh trai khỏi nhu cầu mua mới; phân biệt đổi mới lỗi nhà sản xuất và bảo hành.",
+      "source_sections": [
+        "BH-01",
+        "BH-02",
+        "DT-05",
+        "DT-06"
+      ],
+      "catalog_skus": [
+        "SKU-AF-6L"
+      ],
+      "manual_checks": {
+        "call_1": [
+          "Bảo hành nồi 12 tháng; đổi mới 30 ngày cần xác nhận lỗi nhà sản xuất, không vô điều kiện."
+        ],
+        "call_2": [
+          "Rơi vỡ do người dùng thuộc loại trừ, không hứa đổi mới 30 ngày.",
+          "Không ghi chị đã mua/nhận/làm rơi nồi; không tạo order.update hoặc lấy đơn của người khác."
+        ],
+        "call_3": [
+          "Tạo đơn mua mới của khách, không xử lý như đổi nồi của anh trai hoặc từ chối vì sự cố người khác."
+        ]
+      },
+      "oracle_checks": [
+        {
+          "call": "call_3",
+          "function": "order_create",
+          "args": {
+            "sku": "SKU-AF-6L",
+            "price_vnd": 3990000,
+            "payment": "COD"
+          },
+          "expected": {
+            "status": "created"
+          }
+        }
+      ]
+    },
+    "HO-18": {
+      "customer_id": "C046",
+      "title": "Hai nhu cầu song song trên hai kênh",
+      "novelty": "Hỏi nồi chiên ở giữa hai phiên về máy lọc, rồi quay lại nhu cầu đầu; không lấy sản phẩm gần nhất làm lựa chọn mặc định.",
+      "source_sections": [
+        "FAQ-01",
+        "FAQ-07"
+      ],
+      "catalog_skus": [
+        "SKU-AP-MINI",
+        "SKU-AF-XM"
+      ],
+      "manual_checks": {
+        "call_1": [
+          "Nhận diện C046 qua Facebook; mở chủ đề máy lọc ở chỗ làm, chưa chốt."
+        ],
+        "call_2": [
+          "Cùng khách C046, giữ hai nhu cầu khác scope; không xóa lựa chọn AirPure Mini chỉ vì hỏi thêm nồi."
+        ],
+        "call_3": [
+          "Quay đúng thread AirPure Mini; không mua nồi hoặc cả hai món, không hỏi lại diện tích đã rõ."
+        ]
+      },
+      "oracle_checks": [
+        {
+          "call": "call_1",
+          "function": "pricing_get_quote",
+          "args": {
+            "sku": "SKU-AP-MINI"
+          },
+          "expected": {
+            "final_price_vnd": 2190000
+          }
+        },
+        {
+          "call": "call_2",
+          "function": "pricing_get_quote",
+          "args": {
+            "sku": "SKU-AF-XM"
+          },
+          "expected": {
+            "final_price_vnd": 1590000
+          }
+        },
+        {
+          "call": "call_3",
+          "function": "order_create",
+          "args": {
+            "sku": "SKU-AP-MINI",
+            "price_vnd": 2190000,
+            "payment": "COD"
+          },
+          "expected": {
+            "status": "created"
+          }
+        }
+      ]
+    },
+    "HO-19": {
+      "customer_id": "C048",
+      "title": "Ngân sách cả cặp quạt và sửa số lượng",
+      "novelty": "Khách giảm số lượng để giữ tính năng và tổng ngân sách; không tự đổi sang mẫu rẻ thiếu remote.",
+      "source_sections": [
+        "SP-FAN-01",
+        "FAQ-08"
+      ],
+      "catalog_skus": [
+        "SKU-FAN-DC1",
+        "SKU-FAN-SEN"
+      ],
+      "manual_checks": {
+        "call_1": [
+          "Hai Panasonic tổng 4.900.000đ vượt trần 2.500.000đ của cả giỏ.",
+          "Không tạo đơn hay tự bỏ yêu cầu remote để chốt Senko."
+        ],
+        "call_2": [
+          "Hai Senko tổng 1.180.000đ nhưng không có remote; hỏi phương án không phải đồng ý thay lựa chọn."
+        ],
+        "call_3": [
+          "Một Panasonic đúng nhu cầu remote và trong trần tổng; không tạo giỏ từ các phương án cũ."
+        ]
+      },
+      "oracle_checks": [
+        {
+          "call": "call_1",
+          "function": "pricing_quote_order",
+          "args": {
+            "lines": [
+              {
+                "sku": "SKU-FAN-DC1",
+                "qty": 2
+              }
+            ]
+          },
+          "expected": {
+            "total_vnd": 4900000
+          }
+        },
+        {
+          "call": "call_2",
+          "function": "pricing_quote_order",
+          "args": {
+            "lines": [
+              {
+                "sku": "SKU-FAN-SEN",
+                "qty": 2
+              }
+            ]
+          },
+          "expected": {
+            "total_vnd": 1180000
+          }
+        },
+        {
+          "call": "call_3",
+          "function": "order_create",
+          "args": {
+            "sku": "SKU-FAN-DC1",
+            "qty": 1,
+            "price_vnd": 2450000,
+            "payment": "COD"
+          },
+          "expected": {
+            "status": "created"
+          }
+        }
+      ]
+    },
+    "HO-20": {
+      "customer_id": "C050",
+      "title": "Không mượn quyền thu cũ của người khác",
+      "novelty": "Đối chứng âm của trade-in: khách không có đơn delivered máy cũ trong CRM, không được dùng quyền của người nhà.",
+      "source_sections": [
+        "KM-04",
+        "KM-09",
+        "FAQ-16"
+      ],
+      "catalog_skus": [
+        "SKU-AP-PRO",
+        "SKU-AP-X-2024"
+      ],
+      "manual_checks": {
+        "call_1": [
+          "C050 không có đơn delivered chứa SKU-AP-X-2024; chưa đủ quyền TRADE-IN-AP.",
+          "Không lấy đơn của C031 hoặc suy sở hữu từ câu hỏi về máy của em trai."
+        ],
+        "call_2": [
+          "Áp AIR-OCT 300.000đ thành 7.690.000đ; không áp TRADE-IN-AP 400.000đ hoặc cộng hai mã."
+        ],
+        "call_3": [
+          "Một AirPure Pro giá 7.690.000đ; không chuyển quyền sở hữu, đơn hàng hoặc ưu đãi giữa hai khách."
+        ]
+      },
+      "oracle_checks": [
+        {
+          "call": "call_2",
+          "function": "pricing_get_quote",
+          "args": {
+            "sku": "SKU-AP-PRO"
+          },
+          "expected": {
+            "final_price_vnd": 7690000,
+            "ineligible_promos": [
+              {
+                "promo_code": "TRADE-IN-AP",
+                "reason": "requires_owned_sku"
+              }
+            ]
+          }
+        },
+        {
+          "call": "call_3",
+          "function": "order_create",
+          "args": {
+            "sku": "SKU-AP-PRO",
+            "price_vnd": 7690000,
+            "payment": "COD"
+          },
+          "expected": {
+            "status": "created",
+            "total_vnd": 7690000
+          }
+        }
+      ]
+    }
+  }
+}

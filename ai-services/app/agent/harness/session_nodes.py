@@ -232,7 +232,7 @@ def transaction_selection_mismatch(state: TurnState) -> bool:
     from app.agent.harness.policy import resolve_product_selection
     for call in state.get("tool_calls", []):
         if call.get("name") == "order.create" and call.get("result", {}).get("status") == "created":
-            selection = resolve_product_selection(state, call.get("args", {}))
+            selection = resolve_product_selection(state, call.get("args", {}), use_customer_context=False)
             if selection.status != "catalog_required" and selection.sku != call.get("args", {}).get("sku"):
                 return True
     return False
@@ -240,21 +240,39 @@ def transaction_selection_mismatch(state: TurnState) -> bool:
 
 def safe_transaction_reply(state: TurnState) -> str | None:
     """Describe a completed write without causing another side effect."""
-    writes = [c for c in state.get("tool_calls", []) if c.get("name") == "order.create"
-              or c.get('name') == 'order.update' and c.get('args', {}).get('action') in {'exchange_size', 'exchange_product'}]
+    writes = [c for c in state.get("tool_calls", []) if c.get("name") in {
+        'order.create', 'order.update', 'schedule.callback', 'handoff.transfer'}]
     if not writes:
         return None
-    uncertain = "Dạ, trạng thái đơn hàng cần được kiểm tra lại trước khi xác nhận ạ."
+    uncertain = "Dạ, trạng thái thao tác cần được kiểm tra lại trước khi xác nhận ạ."
     if len(writes) != 1:
         return uncertain
     call = writes[0]
     result = call.get("result", {})
+    if 'error' in result or result.get('ok') is False or result.get('success') is False:
+        return uncertain
+    if call['name'] == 'schedule.callback':
+        if not result.get('callback_id') or not isinstance(result.get('callback_at'), str):
+            return uncertain
+        return mask_pii(f"Dạ, em đã đặt lịch gọi lại vào {result['callback_at']} cho mình.")
+    if call['name'] == 'handoff.transfer':
+        if result.get('status') == 'failed':
+            return 'Dạ, em chưa chuyển được yêu cầu. Anh/chị vui lòng liên hệ tổng đài để được hỗ trợ ạ.'
+        if result.get('status') != 'queued' or not result.get('ticket_id'):
+            return uncertain
+        return 'Dạ, em đã chuyển yêu cầu đến nhân viên phụ trách để tiếp nhận ạ.'
     if call['name'] == 'order.update':
         args = call.get('args', {})
-        if ('error' in result or result.get('status') != 'pickup_scheduled'
-                or not isinstance(result.get('order_id'), str)
+        if (not isinstance(result.get('order_id'), str)
                 or any(result.get(k) != args.get(k) for k in ('order_id', 'action', 'new_variant_sku'))):
             return uncertain
+        if args.get('action') == 'update_address' and result.get('status') == 'updated':
+            return mask_pii(f"Dạ, em đã ghi nhận yêu cầu cập nhật nơi giao cho đơn {result['order_id']}.")
+        if result.get('status') != 'pickup_scheduled':
+            return uncertain
+        if args.get('action') == 'return':
+            return mask_pii(f"Dạ, em đã ghi nhận yêu cầu trả hàng cho đơn {result['order_id']}. "
+                            "Yêu cầu đang chờ thu hồi hàng ạ.")
         return mask_pii(f"Dạ, em đã ghi nhận yêu cầu đổi biến thể sang {result['new_variant_sku']} "
                         f"cho đơn {result['order_id']}. Yêu cầu đang chờ thu hồi hàng cũ ạ.")
     if result.get("status") != "created" or not isinstance(result.get("order_id"), str):

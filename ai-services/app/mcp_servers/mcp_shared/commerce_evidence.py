@@ -67,14 +67,21 @@ def current_customer_address(state: dict) -> str | None:
 
 def build_commerce_evidence(state: dict, *, args: dict | None = None) -> list[dict]:
     """Latest compatible reads + current noncommercial calls, without mutating either list."""
-    current = state.get('tool_calls', [])
-    prior = state.get('session_tool_calls', [])
-    observations = [c for c in [*prior, *current] if isinstance(c, dict) and _bound(c, state)]
+    current = [c for c in state.get('tool_calls', []) if isinstance(c, dict) and _bound(c, state)]
+    prior = [c for c in state.get('session_tool_calls', []) if isinstance(c, dict) and _bound(c, state)]
+    observations = [*prior, *current]
+    completed = [i for i, call in enumerate(prior)
+                 if isinstance(call, dict) and _bound(call, state)
+                 and call.get('name') == 'order.create'
+                 and call.get('result', {}).get('status') == 'created']
+    quote_barrier = max(completed, default=-1)
     latest = {}
     conflicts = set()
     for index, call in enumerate(observations):
         name = call.get('name')
         if name not in COMMERCIAL_TOOLS:
+            continue
+        if name in {'pricing.get_quote', 'pricing.quote_order'} and index <= quote_barrier:
             continue
         proposed = call.get('args') or {}
         key = (name, _signature(proposed) if name == 'catalog.search' else proposed.get('sku'))

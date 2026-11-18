@@ -47,7 +47,8 @@ class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
     async def test_runtime_migration_can_be_reapplied(self):
         migration_dir = Path(__file__).resolve().parents[1] / "migrations"
         migrations = [migration_dir / name for name in (
-            '0001_current_memory_schema.sql', '0004_memory_job_order.sql')]
+            '0001_current_memory_schema.sql', '0004_memory_job_order.sql',
+            '0005_durable_turn_evidence.sql')]
         async with self.repo.transaction() as conn:
             session = uuid4()
             await conn.execute("""INSERT INTO runtime.turns
@@ -374,6 +375,8 @@ class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
                 "0001_current_memory_schema.sql").read_text())
             await connection.execute((migration_dir /
                 "0004_memory_job_order.sql").read_text())
+            await connection.execute((migration_dir /
+                "0005_durable_turn_evidence.sql").read_text())
         finally:
             await connection.close()
         self.repo = MemoryRepo(self.dsn)

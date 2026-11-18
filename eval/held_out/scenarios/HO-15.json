@@ -1,0 +1,112 @@
+{
+  "scenario_id": "HO-15",
+  "level": "M1",
+  "persona": "khach_hoi_nhieu_khong_mua",
+  "hard_case": "beneficiary_revision_and_unknown_fit",
+  "customer_phone": "0925822018",
+  "customer_name": "Quỳnh",
+  "honorific": "chị",
+  "notes": "Ghế ô tô: tải trọng và người sử dụng mới. Không suy tương thích xe; thay người dùng 19kg bằng người dùng 12kg phải có lời khách xác nhận rõ.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-20",
+      "customer_turns": [
+        "Chị muốn tìm hiểu ghế Chicco, có chắc lắp vừa mọi xe gia đình không hay cần kiểm tra từng xe?",
+        "Em cho biết giới hạn cân nặng trong tài liệu, đừng tự đoán theo tuổi hoặc theo tên mẫu xe.",
+        "Chị mới hỏi thông tin, chưa chọn mua."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-MB-CAR"
+      },
+      "must_carry_over": [],
+      "must_not_ask": [],
+      "ground_truth_facts": {},
+      "success_if": {
+        "tool_called": null,
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "must_say_any": [
+          "18 kg",
+          "18kg",
+          "18 ký",
+          "18 cân"
+        ]
+      },
+      "channel_identity": "0925822018",
+      "days_later": 0
+    },
+    "call_2": {
+      "channel": "hotline",
+      "call_date": "2026-10-21",
+      "customer_turns": [
+        "Bé lớn nhà chị đã 19kg, vậy ghế đang trao đổi có còn đáp ứng giới hạn không?",
+        "Nếu vượt tải thì chị không mua ghế này cho bé lớn, dù bé vẫn chưa đủ bốn tuổi.",
+        "Em chỉ giải thích, chưa tạo đơn hay đề xuất bỏ qua giới hạn cân nặng."
+      ],
+      "facts_established": {},
+      "must_carry_over": [
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "ground_truth_facts": {},
+      "success_if": {
+        "tool_called": null,
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "must_say_any": [
+          "18 kg",
+          "18kg",
+          "18 ký",
+          "18 cân"
+        ]
+      },
+      "channel_identity": "0925822018",
+      "days_later": 1
+    },
+    "call_3": {
+      "channel": "hotline",
+      "call_date": "2026-10-23",
+      "customer_turns": [
+        "Chị đổi người dùng: ghế này sẽ mua cho cháu hai tuổi nặng 12kg, không phải bé lớn 19kg ở lần trước.",
+        "Chị đã tự kiểm tra vị trí lắp theo hướng dẫn xe; em chỉ xác nhận tải trọng rồi kiểm tra giá và tồn ghế.",
+        "Chị chốt một ghế Chicco cho cháu 12kg giá 4.990.000đ, COD, giao Hà Nội."
+      ],
+      "facts_established": {},
+      "must_carry_over": [
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "ground_truth_facts": {
+        "price_vnd": 4990000
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "must_not_call_tools": [
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "args_match": {
+          "sku": "SKU-MB-CAR",
+          "price_vnd": 4990000,
+          "payment": "COD"
+        }
+      },
+      "channel_identity": "0925822018",
+      "days_later": 2
+    }
+  }
+}

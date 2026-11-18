@@ -46,6 +46,9 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
     items = [item for c in successful if c.get("name") == "catalog.search"
              for item in c["result"].get("items", []) if isinstance(item, dict)]
     quotes = [c for c in successful if c.get("name") == "pricing.get_quote"]
+    order_ids = {str(row['order_id']) for call in successful
+                 for row in [call['result'], *call['result'].get('orders', [])]
+                 if isinstance(row, dict) and row.get('order_id')}
     # A complete attributed policy section explains general conditions; it does
     # not assert that a promotion has been applied to this customer's order.
     from app.agent.guardrails.policy_grounding import policy_evidence_for_answer
@@ -67,7 +70,7 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
         if "?" in clause or re.search(r"\b(?:lan truoc|truoc day)\b", folded) and not re.search(r"\b(?:hien|hom nay|dang)\b", folded):
             continue
         codes = {code for code in re.findall(r"\b[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+\b", clause)
-                 if not code.startswith(("SKU-", "OD-"))}
+                 if not code.startswith(("SKU-", "OD-")) and code not in order_ids}
         if not codes and not re.search(r"\b(?:khuyen mai|uu dai|giam|tang|bieu|freeship|mien phi (?:ship|van chuyen))\b", commercial):
             continue
         if any(call.get('name') == 'pricing.quote_order' for call in successful):

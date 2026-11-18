@@ -113,7 +113,9 @@ CREATE TABLE IF NOT EXISTS runtime.turns (
 );
 ALTER TABLE runtime.turns
     ADD COLUMN IF NOT EXISTS client_msg_id uuid,
-    ADD COLUMN IF NOT EXISTS attributed_after_verification boolean NOT NULL DEFAULT FALSE;
+    ADD COLUMN IF NOT EXISTS attributed_after_verification boolean NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS tool_observations jsonb NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS verified_outcome text NOT NULL DEFAULT 'khac';
 CREATE INDEX IF NOT EXISTS memory_turns_customer_idx
     ON runtime.turns(customer_id, on_date DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS turns_session_client_msg_id_idx

@@ -1,0 +1,84 @@
+{
+  "scenario_id": "HO-04",
+  "level": "M1",
+  "persona": "khach_hoi_nhieu_khong_mua",
+  "hard_case": "excluded_size_and_selection_revision",
+  "customer_phone": "0957990659",
+  "customer_name": "Bảo",
+  "honorific": "anh",
+  "notes": "Sửa size làm thay đổi quyền khuyến mãi, không giữ kết luận của biến thể cũ. Phiên 1 hỏi size 43 bị loại RUN-10; phiên 2 khách sửa rõ sang size 42, lúc này được giảm 10% và phải tra lại đúng biến thể.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-20",
+      "customer_turns": [
+        "Anh quan tâm RunLite 2 Pro size 43 màu xám, em xem có hàng và báo giá của đúng size đó.",
+        "Anh thấy quảng cáo giảm mười phần trăm, sao size lớn lại có phụ thu? Đừng lấy giá size 42 để báo anh.",
+        "Anh chưa mua, ghi nhận size 43 thôi, màu xám mới là phương án tham khảo."
+      ],
+      "facts_established": {
+        "size": "43",
+        "color": "xám",
+        "product_advised": "SKU-SN-RUN2-43-XAM"
+      },
+      "must_carry_over": [],
+      "must_not_ask": [],
+      "ground_truth_facts": {
+        "price_vnd": 1740000,
+        "promo_RUN-10_active": false
+      },
+      "success_if": {
+        "tool_called": "pricing.get_quote",
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "args_match": {
+          "sku": "SKU-SN-RUN2-43-XAM"
+        }
+      },
+      "channel_identity": "0957990659",
+      "days_later": 0
+    },
+    "call_2": {
+      "channel": "hotline",
+      "call_date": "2026-10-21",
+      "customer_turns": [
+        "Anh sửa lựa chọn: không lấy size 43 nữa, chuyển xuống size 42, vẫn màu xám. Em bỏ phương án cỡ lớn ở lần trước.",
+        "Với size mới thì RUN-10 còn loại trừ anh không, hay phải tính lại giá? Anh mới hỏi giá hôm trước, chưa dùng mã để mua đơn nào.",
+        "Anh đồng ý một đôi size 42 màu xám giá 1.521.000đ, COD, giao Hà Nội. Xác nhận chốt size mới, không phải size 43."
+      ],
+      "facts_established": {
+        "size": "42",
+        "product_advised": "SKU-SN-RUN2-42-XAM"
+      },
+      "must_carry_over": [
+        "color"
+      ],
+      "must_not_ask": [
+        "color"
+      ],
+      "ground_truth_facts": {
+        "price_vnd": 1521000,
+        "promo_RUN-10_active": true
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "must_not_call_tools": [
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "args_match": {
+          "sku": "SKU-SN-RUN2-42-XAM",
+          "price_vnd": 1521000,
+          "payment": "COD"
+        }
+      },
+      "channel_identity": "0957990659",
+      "days_later": 1
+    }
+  }
+}

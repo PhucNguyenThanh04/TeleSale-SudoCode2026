@@ -27,10 +27,10 @@ class MemoryRepo(ReadRepo):
     async def next_turn(self, conn, sid):
         return await self.turn_count(conn, sid) + 1
 
-    async def insert_turn(self, conn, sid, number, cid, channel, on, customer, agent, tid):
+    async def insert_turn(self, conn, sid, number, cid, channel, on, customer, agent, tid, tool_observations=None, outcome="khac"):
         self.sessions.setdefault(sid, {'owner': cid, 'turns': []})['turns'].append({
             'client_msg_id': tid, 'customer_text': customer, 'agent_text': agent,
-            'on_date': on.isoformat(), 'channel': channel, 'tool_observations': []})
+            'on_date': on.isoformat(), 'channel': channel, 'tool_observations': tool_observations or []})
 
     async def enqueue_distillation(self, conn, sid, cid, tid, calls, *args, **kwargs):
         self.sequence += 1

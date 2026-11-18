@@ -167,8 +167,10 @@ def admit_episode_candidate(
                 upd['consultation']=snapshot
         for field in ("customer_goal", "advice_given", "next_step"):
             ev = getattr(topic, field, None)
+            customer_evidence = '' if field == 'advice_given' else customer_source
+            agent_evidence = '' if field == 'customer_goal' else agent_source
             if ev is not None and _valid_narrative(
-                    ev.text, ev.evidence_quote, customer_source, agent_source):
+                    ev.text, ev.evidence_quote, customer_evidence, agent_evidence):
                 upd[field] = ev.text
                 upd.setdefault("narrative_evidence_quotes", {})[field] = ev.evidence_quote
         for item in topic.open_items:
@@ -219,7 +221,7 @@ def admit_episode_candidate(
             goal_quote = (candidate.customer_goal.evidence_quote
                           if hasattr(candidate.customer_goal, "evidence_quote")
                           else goal_text)
-            if _valid_narrative(goal_text, goal_quote, customer_source, agent_source):
+            if _valid_narrative(goal_text, goal_quote, customer_source, ''):
                 upd["customer_goal"] = goal_text
                 upd.setdefault("narrative_evidence_quotes", {})["customer_goal"] = goal_quote
         if additions:

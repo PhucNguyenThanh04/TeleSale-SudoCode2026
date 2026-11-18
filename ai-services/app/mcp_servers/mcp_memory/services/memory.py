@@ -17,7 +17,6 @@ from app.mcp_servers.mcp_shared.memory_retrieval import rank_episodes, resolved_
 
 _FACT_KEY = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
 _SCOPE_ID = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
-_ANONYMOUS_TURN_META: dict[tuple[str, str], tuple[list[dict], str]] = {}
 _PRODUCT_KEYS = {Slot.PRODUCT_ADVISED, Slot.PRICE_QUOTED_VND, Slot.PROMO_CODE,
                  Slot.PROMO_EXPIRY, Slot.IN_STOCK, Slot.VARIANT_SKU,
                  Slot.SIZE, Slot.COLOR, Slot.PREFERRED_SIZE,
@@ -427,8 +426,10 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
                 for prior in earlier:
                     if prior.get("source_turn_id"):
                         prior_id = str(prior["source_turn_id"])
-                        prior_obs, prior_outcome = _ANONYMOUS_TURN_META.pop(
-                            (session_id, prior_id), ([], "khac"))
+                        prior_obs = prior.get('tool_observations') or []
+                        if isinstance(prior_obs, str):
+                            prior_obs = json.loads(prior_obs)
+                        prior_outcome = prior.get('verified_outcome') or 'khac'
                         if prior_outcome != "khac":
                             await repo.enqueue_distillation(conn, session_id, customer_id,
                                 prior_id, prior_obs, prior_outcome, turn_no=prior["turn_no"])
@@ -438,7 +439,7 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
             number = await repo.next_turn(conn, session_id)
             await repo.insert_turn(conn, session_id, number, customer_id,
                                    channel, on, customer_text, agent_text,
-                                   str(source_turn_id))
+                                   str(source_turn_id), observations, outcome)
             from app.knowledge.config import enabled
             if enabled() and hasattr(repo, "enqueue_knowledge_event"):
                 await repo.enqueue_knowledge_event(conn, data, session_id, customer_id)
@@ -453,10 +454,6 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
                     diagnostic_emit('memory_enqueue', component='memory', status='enqueued',
                         state={'customer_id': customer_id, 'request': SimpleNamespace(
                             session_id=session_id, client_msg_id=source_turn_id)})
-            else:
-                if len(_ANONYMOUS_TURN_META) > 500:
-                    _ANONYMOUS_TURN_META.clear()
-                _ANONYMOUS_TURN_META[(session_id, str(source_turn_id))] = (observations, outcome)
         if operation_key:
             await repo.finish_operation(conn, operation_key, result)
         return result

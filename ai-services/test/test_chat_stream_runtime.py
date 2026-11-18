@@ -3,7 +3,8 @@ import asyncio
 from typing import Any
 
 import pytest
-from langchain_core.messages import AIMessageChunk
+from langchain_core.messages import AIMessage, AIMessageChunk
+from unittest.mock import AsyncMock, patch
 from langchain_core.outputs import ChatGenerationChunk
 
 from app.agent.harness.runtime import AgentHarnessRuntime
@@ -21,7 +22,8 @@ class StreamingModel(FakeToolModel):
         yield ChatGenerationChunk(message=AIMessageChunk(
             content='Em có thể tư vấn các sản phẩm trong danh mục. '))
         await self.release.wait()
-        yield ChatGenerationChunk(message=AIMessageChunk(content='Mình muốn tìm hiểu loại sản phẩm nào ạ?'))
+        yield ChatGenerationChunk(message=AIMessageChunk(content='Mình muốn tìm hiểu loại sản phẩm nào ạ?',
+            response_metadata={'finish_reason':'stop'}))
 
 
 def setup():
@@ -55,17 +57,18 @@ def test_collected_reply_uses_the_same_streaming_model_core(delivery_mode):
     asyncio.run(run())
 
 
-def test_first_checked_delta_precedes_model_end_and_done_follows_persistence():
+def test_delta_waits_for_complete_message_and_done_follows_persistence():
     async def run():
         model, memory, runtime = setup()
         request = turn('Em có thể hỗ trợ gì?')
         stream = runtime.stream(request)
         try:
-            first = await asyncio.wait_for(anext(stream), 3)
-            assert first['event'] == 'delta' and first['text']
-            assert not model.release.is_set()
-            assert not memory.turns
+            pending = asyncio.create_task(anext(stream))
+            await asyncio.wait_for(model.started.wait(), 3)
+            assert not pending.done() and not memory.turns
             model.release.set()
+            first = await asyncio.wait_for(pending, 3)
+            assert first['event'] == 'delta' and first['text']
             rest = [event async for event in stream]
             assert rest[-1]['event'] == 'done'
             answer = first['text'] + ''.join(e['text'] for e in rest if e['event'] == 'delta')
@@ -86,6 +89,7 @@ def test_disconnect_saves_only_emitted_prefix_and_retry_does_not_run_model_again
         request = turn('Em có thể hỗ trợ gì?')
         stream = runtime.stream(request)
         try:
+            model.release.set()
             first = await asyncio.wait_for(anext(stream), 3)
             await stream.aclose()
             model.release.set()
@@ -165,7 +169,7 @@ def test_later_business_tool_cannot_change_published_evidence_or_write():
     asyncio.run(run())
 
 
-def test_stream_uses_openai_compatible_sse_before_provider_response_finishes():
+def test_openai_sse_waits_for_stop_before_publication():
     import json
     import httpx
     from langchain_openai import ChatOpenAI
@@ -173,6 +177,7 @@ def test_stream_uses_openai_compatible_sse_before_provider_response_finishes():
     async def run():
         release = asyncio.Event()
         calls = []
+        started = asyncio.Event()
 
         class Body(httpx.AsyncByteStream):
             async def __aiter__(self):
@@ -181,6 +186,7 @@ def test_stream_uses_openai_compatible_sse_before_provider_response_finishes():
                         'created':1, 'model':'offline', 'choices':[{'index':0,
                             'delta':{'role':'assistant', 'content':text}, 'finish_reason':finish}]}) + '\n\n').encode()
                 yield frame('Em có thể tư vấn sản phẩm trong danh mục. ')
+                started.set()
                 await release.wait()
                 yield frame('Mình cần tư vấn loại nào ạ?', 'stop')
                 yield b'data: [DONE]\n\n'
@@ -199,9 +205,12 @@ def test_stream_uses_openai_compatible_sse_before_provider_response_finishes():
             request = turn('Em có thể hỗ trợ gì?')
             stream = runtime.stream(request)
             try:
-                first = await asyncio.wait_for(anext(stream), 3)
-                assert first['event'] == 'delta' and not release.is_set()
+                pending = asyncio.create_task(anext(stream))
+                await asyncio.wait_for(started.wait(), 3)
+                assert not pending.done()
                 release.set()
+                first = await asyncio.wait_for(pending, 3)
+                assert first['event'] == 'delta'
                 rest = [e async for e in stream]
                 assert rest[-1]['event'] == 'done' and len(calls) == 1
                 assert memory.turns[str(request.session_id)][0]['agent'] == rest[-1]['agent_text']
@@ -224,12 +233,16 @@ def test_disconnect_during_callback_settles_once_and_zero_delivery_retry_is_expl
                     return {'callback_id':'CB-STREAM', 'callback_at':args['callback_at']}
                 return await super().invoke(name, args)
         gateway, memory = Gateway(), FakeMemory()
-        runtime = AgentHarnessRuntime(FakeToolModel(replies=[]), gateway, memory)
+        model = FakeToolModel(replies=[AIMessage(content='', tool_calls=[{
+            'name':'schedule_callback','args':{'callback_at':'2026-10-16T10:00'},'id':'callback-1'}]),
+            AIMessage(content='Em đã đặt lịch gọi lại cho mình.')])
+        runtime = AgentHarnessRuntime(model, gateway, memory)
         request = turn('Em đặt lịch gọi lại cho anh ngày mai lúc 10 giờ nhé.')
         stream = runtime.stream(request)
-        consumer = asyncio.create_task(anext(stream))
-        try:
+        with patch('app.agent.harness.authorization.authorize_write', AsyncMock(return_value=True)):
+            consumer = asyncio.create_task(anext(stream))
             await asyncio.wait_for(entered.wait(), 3)
+        try:
             consumer.cancel()
             with pytest.raises(asyncio.CancelledError): await consumer
             release.set()

@@ -169,12 +169,13 @@ class MemoryUpdateContract(unittest.IsolatedAsyncioTestCase):
 
             async def insert_turn(self, _conn, session_id, number, customer_id,
                                   channel, on, customer_text, agent_text,
-                                  client_msg_id=None):
+                                  client_msg_id=None, tool_observations=None, outcome="khac"):
                 self.rows.setdefault(session_id, []).append({
                     "turn_no": number, "customer_id": customer_id,
                     "channel": channel, "on_date": on,
                     "customer_text": customer_text, "agent_text": agent_text,
-                    "client_msg_id": client_msg_id,
+                    "client_msg_id": client_msg_id, "tool_observations":tool_observations or [],
+                    "verified_outcome":outcome,
                 })
 
             async def enqueue_distillation(self, _conn, session_id, customer_id,

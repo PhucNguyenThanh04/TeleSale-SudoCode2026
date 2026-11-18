@@ -37,22 +37,31 @@ def test_unverified_policy_rights_are_blocked_even_with_optional_checks_disabled
 
 def test_operational_policy_failure_has_generic_customer_message():
     import asyncio
-    from app.agent.harness.agent_nodes import AgentNodes
-    state={'safe_text':'bảo hành?', 'agent_draft':'Cloudflare hết quota ạ.',
-        'tool_calls':[{'name':'policy.search','args':{},'result':{
-            'retrieval_status':'unavailable','error':'knowledge_unavailable','evidence':[]}}]}
-    result=asyncio.run(AgentNodes(None,None,None,5,3).verify_agent(state))
-    assert result['agent_text']=='Tạm thời chưa tra cứu được thông tin, vui lòng thử lại sau.'
+    from app.agent.guardrails.checks import FALLBACK
+    from test_text_harness_contract import turn_state, nodes
+    state = turn_state('Chính sách bảo hành thế nào?')
+    state.update(agent_draft='Cloudflare hết quota ạ.',
+        tool_calls=[{'name':'policy.search','args':{},'result':{
+            'retrieval_status':'unavailable','error':'knowledge_unavailable','evidence':[]}}])
+    node, _ = nodes()
+    from langchain_core.messages import AIMessage
+    node.llm.ainvoke.return_value = AIMessage(content=FALLBACK)
+    result = asyncio.run(node.verify_agent(state))
+    assert result['agent_text'] == FALLBACK
+    assert node.llm.ainvoke.await_count == 1
 
 
-def test_mixed_tool_failure_preserves_supported_answer():
+def test_mixed_tool_failure_can_repair_the_current_answer_using_supported_evidence():
     import asyncio
-    from app.agent.harness.agent_nodes import AgentNodes
-    from test_promotion_recovery import _state
-    state=_state()
+    from langchain_core.messages import AIMessage
+    from test_text_harness_contract import turn_state, old_lamp_reads, nodes
+    state = turn_state('Đèn bàn Aurora giá bao nhiêu?')
+    state.update(agent_draft='Đèn bàn Aurora giá 500000đ.', tool_calls=old_lamp_reads(state))
     state['tool_calls'].append({'name':'policy.search','args':{},'result':{
         'retrieval_status':'unavailable','error':'knowledge_unavailable','evidence':[]}})
-    result=asyncio.run(AgentNodes(None,None,None,5,3).verify_agent(state))
-    assert 'Máy lọc A' in result['agent_text']
-    assert 'Tạm thời chưa tra cứu được thông tin, vui lòng thử lại sau.' in result['agent_text']
+    node, _ = nodes()
+    node.llm.ainvoke.return_value = AIMessage(content='Đèn bàn Aurora giá 199000đ.')
+    result = asyncio.run(node.verify_agent(state))
+    assert result['agent_text'] == 'Đèn bàn Aurora giá 199000đ.'
+    assert node.llm.ainvoke.await_count == 1
     assert 'quota' not in result['agent_text']

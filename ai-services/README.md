@@ -45,6 +45,10 @@ no live model evaluation is performed by this migration.
 
 ### Submission runtime
 
+The [text harness contract and repair notes](docs/text-harness-contract.md) describe
+model-led tool execution, write authorization, publication timing and migration 0005.
+
+
 The submission uses Deep Agent with an OpenAI-compatible API and guarded text
 streaming. Configure `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` and optionally
 `LANGMEM_MODEL`; keep the same profile for Full and baseline. Local LLM support
@@ -123,8 +127,8 @@ The brief on every returning-customer turn is rebuilt from current memory and cu
 the existing brief rules, including orders, open blockers, known slots and stale
 warnings. The preliminary prepare response is not spoken or substituted for it.
 
-`SessionState` keeps an owner/date/full-or-baseline scoped context view and the
-current consultation decision across turns. A fresh memory read replaces that
+`SessionState` keeps an owner/date/full-or-baseline scoped context view across
+turns. Historical consultation annotations do not authorize tool writes. A fresh memory read replaces that
 view; failed reads invalidate it. Committed tool observations rebuild evidence
 after a process restart, including failed-read barriers that invalidate stale
 quotes. Prepared reads are attributed to their consuming turn when committed;
@@ -135,7 +139,7 @@ Working memory is read synchronously from `runtime.turns` for every turn in
 the same session; recent customer and agent turns are passed to the model with
 their conversation roles and do not wait for LangMem distillation.
 When `AGENT_GUARDRAILS_ENABLED=false`, the outer graph returns the Deep Agent's
-draft reply without `check_answer` or catalog fallback. PII masking, MCP tool
+draft reply without optional `check_answer`; mandatory grounding still applies. PII masking, MCP tool
 preconditions, identity checks, and memory evidence validation still apply.
 Missing MCP URLs or token are a configuration error at runtime startup. Chat response caching remains process-local; writes through the MCP
 services use PostgreSQL operation keys. A PostgreSQL LangGraph checkpointer is
