@@ -387,3 +387,32 @@ Oracle entity (trích từ lời thoại chuẩn) đạt 100% trên D01–D04, n
 Cũng nên tăng `order_id` theo cách tương tự (đọc "ô đê" + số theo hàng hoặc từng chữ số), vì đây cũng là entity khớp tuyệt đối.
 
 Khi báo cáo nên tách riêng 3 chỉ số: `phone` accuracy, `money` accuracy (gồm `price_vnd`, `budget_vnd`, `*_fee_vnd`, `min_free_ship_vnd`, `competitor_price_vnd`) và `order_id` accuracy, mỗi chỉ số ghi kèm số mẫu.
+
+
+# Bổ sung 5: 120 hội thoại, một công cụ TTS (VieNeu), run `team-all-vieneu-baseline-v3` (19/11/2026)
+
+Tạo lại toàn bộ audio bằng VieNeu-TTS 3.8.4 (v3 Turbo) để cả bộ dùng chung một model TTS: phiên 1 (22 cuộc), phiên 2 (22), phiên 3 (8) và 68 cuộc của 17 khách mới T30–T46 (`speech/dialogues/team_new_customers.json`). whisper-turbo, cpu/int8, bản chấm BTC tháng 11, lexicon và bộ luật hiện hành (đã gồm sửa "1 triệu 990.000"). Mỗi lượt đọc sạch được Whisper large-v3 nghe lại, lượt lệch trên 10% tạo lại 3 bản (xem `work/KET-QUA-AUDIO-ASR.md` trong gói bàn giao).
+
+| Cấu hình | WER | CER | Entity (520) |
+| :---- | ----: | ----: | ----: |
+| B0 | 21.5 | 17.5 | 65.2 |
+| B1 | 10.8 | 7.4 | 71.3 |
+| B2 | 8.4 | 5.2 | 78.1 |
+
+Oracle entity 93.1. B2 theo nhóm:
+
+| Nhóm | Số file | WER | CER | Entity |
+| :---- | ----: | ----: | ----: | ----: |
+| Sạch | 89 | 7.0 | 4.1 | 80.7 |
+| Nhiễu | 31 | 12.5 | 8.3 | 70.8 |
+| Phiên 1 synthetic | 11 | 10.0 | 6.6 | 76.8 |
+| Phiên 1 clone (bản xem trước) | 11 | 10.1 | 5.9 | 72.9 |
+| Phiên 2 | 22 | 7.6 | 5.0 | 74.6 |
+| Phiên 3 | 8 | 5.4 | 3.1 | 83.3 |
+| Khách mới T30–T46 | 68 | 8.8 | 5.3 | 80.1 |
+
+- **Số tiền** (B2): 113/149 đúng. **Mã đơn:** 4/4. **Số điện thoại:** 1/2 (vẫn chưa đủ mẫu, xem Bổ sung 4).
+- Dữ liệu BTC D01–D04 đọc bằng VieNeu, chạy riêng (`btc-vieneu-baseline-v1`): B2 WER 10.7, CER 5.8, Entity 75.9 (4 hội thoại, 29 entity; chỉ để tham khảo).
+- Không so trực tiếp với các bảng trên: khác công cụ TTS, khác máy, khác bản chấm.
+- Chưa ai nghe audio bằng tai. Nhiễu vẫn là nhiễu hồng tổng hợp 10 dB, chỉ trộn vào lượt khách.
+- Sửa kèm theo: `vi_numbers.py` ("N triệu DDD.000" → một số tiền, PR 30), nhãn phiên 2–3 (bỏ `size_new` ở T06-S02/T17-S02, "air piu" → "e pia", PR 34), giọng khách T21-S02 từ Trung sang Nam.
