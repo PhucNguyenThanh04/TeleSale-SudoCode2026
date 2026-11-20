@@ -1,4 +1,3 @@
-"""One administrative boot transaction; application data never lives in btc_source."""
 from pathlib import Path
 import asyncio
 
@@ -6,7 +5,7 @@ import asyncpg
 
 
 class BootError(ValueError):
-    """Static startup diagnostics safe to show without database credentials."""
+    pass
 
 
 async def require_ready(dsn, boot_id):
@@ -36,7 +35,6 @@ class BootDatabase:
         try:
             if await self.connection.fetchval('SELECT current_database()') != self.expected_database:
                 raise BootError('Startup database does not match expected database')
-            # A blocking SELECT holds a snapshot and deadlocks concurrent store indexes.
             while not await self.connection.fetchval('SELECT pg_try_advisory_lock(714222, 1)'):
                 await asyncio.sleep(0.1)
             if not await self.connection.fetchval("SELECT to_regclass('btc_source.customers')"):
@@ -76,4 +74,4 @@ class BootDatabase:
         self.ready = True
 
     async def __aexit__(self, *exc):
-        await self.connection.close()  # Releases the session advisory lock, including on failures.
+        await self.connection.close()

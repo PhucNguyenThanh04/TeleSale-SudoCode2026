@@ -1,6 +1,3 @@
--- Current AI-service tables. Apply after the backend runtime schema migration.
--- LangGraph creates runtime.store and runtime.store_migrations via its own setup().
--- This migration preserves current rows and removes only empty legacy tables.
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS runtime.tool_operations (
@@ -110,8 +107,6 @@ DROP TABLE IF EXISTS runtime.pending_facts;
 DROP TABLE IF EXISTS runtime.facts;
 DROP TABLE IF EXISTS runtime.episodes;
 
--- These legacy schemas must be empty. PostgreSQL refuses to discard objects
--- accidentally left in them because no CASCADE is used.
 DROP SCHEMA IF EXISTS ai_memory;
 DROP SCHEMA IF EXISTS langmem_store;
 DROP SCHEMA IF EXISTS public;

@@ -1,4 +1,3 @@
-"""Three-arm experiment orchestration must not spend a fourth model run."""
 import asyncio
 import json
 from argparse import Namespace
@@ -241,7 +240,6 @@ def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tm
             'reason': 'Reviewer checked source and regression test.'}))
         new_revision_id = approved['id']
         asyncio.run(cmd(r, 'human', 'prepare_release', {'revision_ids': ['old-revision', new_revision_id]}))
-        # Simulate a separate frontend reviewer publishing; the runner must never do it.
         asyncio.run(cmd(r, 'human', 'activate_release', {'id': 'k1'}))
         async def forbidden(*args, **kwargs): pytest.fail('manual runner cannot approve/prepare/activate')
         monkeypatch.setattr(mod, 'command', forbidden)

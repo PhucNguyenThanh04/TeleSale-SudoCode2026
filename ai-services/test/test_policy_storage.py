@@ -22,7 +22,7 @@ def test_verify_rejects_metadata_tampering_even_when_hash_fields_match(field,val
             'snapshot_hash':digest([row.model_dump(mode='json')])}}
         try:
             await upsert_bm25(index, release,[row],[HybridVector(dense=[1,0],sparse_indices=[1],sparse_values=[1])],config=config)
-            await index.verify(release,config,chunks=[row])  # Present null expiry is valid.
+            await index.verify(release,config,chunks=[row])
             ids=[point_id('r',row.chunk_id)]
             if remove:
                 await client.delete_payload('tamper',[field],ids)

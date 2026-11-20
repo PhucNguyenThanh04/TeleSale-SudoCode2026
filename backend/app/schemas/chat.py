@@ -1,4 +1,3 @@
-"""HTTP contract for a text turn in a simulated trusted call channel."""
 
 from datetime import date
 from typing import Annotated, Literal
@@ -45,7 +44,6 @@ class ChatResponse(BaseModel):
 
 
 class AITextTurnResponse(BaseModel):
-    """Response from the text-turn AI service endpoint."""
 
     client_msg_id: UUID
     session_id: UUID
@@ -56,7 +54,6 @@ class AITextTurnResponse(BaseModel):
 
 
 class VerifyIdentityRequest(BaseModel):
-    """An authenticated operator attests an out-of-band customer check."""
 
     customer_id: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
     phone: PhoneNumber

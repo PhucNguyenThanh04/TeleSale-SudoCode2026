@@ -1,4 +1,3 @@
-"""Provider argument spellings must not invalidate an otherwise authorized order."""
 import asyncio
 
 import pytest

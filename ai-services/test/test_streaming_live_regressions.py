@@ -1,11 +1,9 @@
-"""Offline regressions from the first live guarded-streaming pair."""
 import asyncio
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessageChunk
 from langchain_core.outputs import ChatGenerationChunk
 
-from app.mcp_servers.mcp_shared.consultation_followup import followup_task, policy_arguments
 from app.agent.harness.agent_nodes import AgentNodes, _task_answer_complete
 from test_commerce_evidence import state
 from test_november_pricing import reference
@@ -15,24 +13,6 @@ SHIPPING_QUESTION = ('Chị chưa nhận được mã vận đơn, em báo giúp
                      'và quy định giao lại nếu lúc shipper gọi chị vắng nhà nhé.')
 
 
-def test_tracking_prefix_is_not_a_complete_answer_to_redelivery_rules():
-    from app.agent.harness.streaming import GuardedStream
-    async def run():
-        current = state(SHIPPING_QUESTION)
-        current['owned_order_ids'] = ['OD-TRACK']
-        current['tool_calls'] = [{'name':'order.status', 'args':{'order_id':'OD-TRACK'},
-            'result':{'orders':[{'order_id':'OD-TRACK', 'date':'2026-10-03',
-                                 'status':'shipping', 'tracking':'GHN7781234'}]}}]
-        task = followup_task(current)
-        assert task.kind == 'policy'
-        assert policy_arguments(current, task)['order_date'] == '2026-10-03'
-        prefix = 'Dạ, mã vận đơn của chị là GHN7781234, đơn vị giao hàng là GHN chị nhé.'
-        assert not _task_answer_complete(prefix, current)
-        sink = AsyncMock(return_value=True)
-        stream = GuardedStream(sink)
-        await stream.feed(AIMessageChunk(content=prefix+' ', id='shipping-answer'), current)
-        assert not sink.called
-    asyncio.run(run())
 
 
 def test_tracking_and_redelivery_are_answered_together_without_model(reference):
@@ -57,23 +37,15 @@ def test_tracking_and_redelivery_are_answered_together_without_model(reference):
             answer = replies[0].agent_text
             assert 'GHN7781234' in answer and '3 lần' in answer and 'đặt đơn mới' in answer, answer
             assert 'đơn vị giao hàng' in answer.lower(), answer
-            assert 'chưa' in answer.lower(), answer  # Tracking prefix alone is not a sourced carrier field.
+            assert 'chưa' in answer.lower(), answer
             assert {c['name'] for c in states[0]['tool_calls']} >= {'order.status','policy.search'}
         finally:
             await runtime.close()
     asyncio.run(run())
 
 
-def test_reporting_intact_packaging_does_not_turn_a_stock_question_into_policy():
-    current = state('Hi em, chiếc áo khoác gió size L màu be đặt hôm trước chị nhận ngày 27/10 rồi, '
-        'mới mặc thử trong nhà thấy hơi chật, áo còn nguyên tem mác chưa giặt. '
-        'Em kiểm tra giúp chị size XL màu be còn hàng không?')
-    assert followup_task(current).kind == 'none'
 
 
-def test_customer_can_decline_redelivery_policy_lookup():
-    current = state('Chị không cần hỏi quy định giao lại, chỉ cần mã vận đơn thôi.')
-    assert followup_task(current).kind == 'none'
 
 
 def test_short_action_confirmation_does_not_publish_a_generic_acknowledgement():

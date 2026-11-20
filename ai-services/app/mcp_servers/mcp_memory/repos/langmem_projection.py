@@ -1,4 +1,3 @@
-"""Customer-scoped long-term knowledge in LangGraph AsyncPostgresStore."""
 
 import json
 from datetime import date
@@ -11,7 +10,6 @@ from app.mcp_servers.mcp_shared.pii import mask_pii
 
 
 def store_dsn(dsn: str) -> str:
-    """Force unqualified LangGraph DDL and DML into the runtime schema."""
     url = make_url(dsn.replace("postgresql+asyncpg://", "postgresql://", 1))
     query = dict(url.query)
     query["options"] = "-csearch_path=runtime"
@@ -24,11 +22,9 @@ _OPAQUE_FIELDS = {"session_id", "source_turn_id", "source", "scope_id",
 
 
 def _safe(value: Any, field: str = "") -> Any:
-    if field=='consultation' and isinstance(value,dict):
-        from app.schemas.consultation import mask_consultation
-        return mask_consultation(value)
     if isinstance(value, dict):
-        return {key: _safe(item, key) for key, item in value.items()}
+        return {key: _safe(item, key) for key, item in value.items()
+                if key not in {'consultation', 'offer_candidates', 'basket_offers'}}
     if isinstance(value, list):
         return [_safe(item, field) for item in value]
     if isinstance(value, str):
@@ -50,7 +46,6 @@ def _revision(value: dict) -> int:
 
 
 def select_facts(versions: list[dict], completed: set[int] | None = None) -> list[dict]:
-    """Choose the newest visible version of each customer/scope/slot."""
     latest = {}
     for item in versions:
         if not isinstance(item, dict) or item.get("schema_version") != 1:
@@ -112,7 +107,6 @@ class LangMemProjection:
                         source_turn_id: str, on: str,
                         facts: list[dict], *, revision: int = 0,
                         completed_revisions: set[int] | None = None) -> list[dict]:
-        """Append a job version; unfinished writes cannot replace completed data."""
         namespace = self.fact_namespace(customer_id)
         written = []
         async with AsyncPostgresStore.from_conn_string(self.dsn, index=None) as store:
@@ -171,6 +165,19 @@ class LangMemProjection:
                 written.append(entry)
         return written
 
+    async def discard_fact_revision(self, customer_id: str, revision: int) -> int:
+        if type(revision) is not int or revision < 1:
+            raise ValueError('A positive job revision is required')
+        namespace = self.fact_namespace(customer_id)
+        deleted = 0
+        async with AsyncPostgresStore.from_conn_string(self.dsn, index=None) as store:
+            for item in await _search_all(store, namespace):
+                if (item.namespace == namespace and isinstance(item.value, dict)
+                        and _revision(item.value) == revision):
+                    await store.adelete(namespace, item.key)
+                    deleted += 1
+        return deleted
+
     async def list_fact_versions(self, customer_id: str) -> list[dict]:
         namespace = self.fact_namespace(customer_id)
         async with AsyncPostgresStore.from_conn_string(self.dsn, index=None) as store:
@@ -208,7 +215,6 @@ class LangMemProjection:
 
     async def compact_customer(self, customer_id: str,
                                completed_revisions: set[int]) -> int:
-        """Delete superseded completed fact and episode revisions while keeping latest."""
         if not customer_id or not completed_revisions:
             return 0
         deleted = 0

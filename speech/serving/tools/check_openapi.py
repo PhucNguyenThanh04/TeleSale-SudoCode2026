@@ -1,4 +1,3 @@
-"""Check the deployed public Swagger contract without credentials."""
 
 import json
 from urllib.request import ProxyHandler, Request, build_opener

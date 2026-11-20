@@ -1,4 +1,3 @@
-"""Deterministic Vietnamese-preserving BM25 term weights; Qdrant applies IDF."""
 from collections import Counter
 import math
 import re
@@ -55,6 +54,5 @@ class BM25Encoder:
 
 
 def document_text(chunk):
-    # Shared by corpus statistics, vectors and read-only verification.
     from app.mcp_servers.mcp_shared.pii import mask_pii
     return mask_pii(chunk.content+'\n'+'\n'.join(chunk.search_aliases))

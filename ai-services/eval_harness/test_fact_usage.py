@@ -1,4 +1,3 @@
-"""Cross-session use must have valid provenance and scope, not just a matching literal."""
 from eval_harness.test_support import VoiceLifecycleStub
 import pytest
 from eval_harness.reference_adapter import facts_used, _source_session_id
@@ -42,7 +41,7 @@ def test_exact_catalog_variant_demonstrates_size_color_use(result):
     calls = [{'name': 'inventory.check', 'args': {'sku': 'SKU-HIKE-41-XAM'}, 'result': result}]
     expected = [] if 'error' in result else ['color', 'size']
     assert facts_used('Dạ.', calls, {}, scoped, 'now', catalog_calls=[variant_catalog()]) == expected
-    assert facts_used('Dạ.', calls, {}, scoped, 'now') == []  # Never parse a made-up SKU suffix.
+    assert facts_used('Dạ.', calls, {}, scoped, 'now') == []
     calls[0]['args']['sku'] = 'SKU-HIKE-42-XAM'
     assert 'size' not in facts_used('Dạ.', calls, {}, scoped, 'now', catalog_calls=[variant_catalog()])
     scoped['product'] = {'SKU-OTHER': {'size': fact(41), 'color': fact('xám')}}

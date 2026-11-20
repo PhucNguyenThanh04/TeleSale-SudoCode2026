@@ -1,4 +1,3 @@
-"""Reviewer-controlled triage and provenance-preserving merge/split."""
 from app.knowledge.events.evidence import safe_text
 from app.knowledge.services.permissions import require_permission
 from app.knowledge.schemas import CATEGORIES, Conflict, KnowledgeError, Missing, identifier, timestamp

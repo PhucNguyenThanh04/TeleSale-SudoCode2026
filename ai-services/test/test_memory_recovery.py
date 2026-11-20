@@ -1,4 +1,3 @@
-"""Regression coverage for session memory and recoverable read failures."""
 from test_deep_memory import FakeStreamAgent
 import unittest
 from unittest.mock import AsyncMock, patch
@@ -7,7 +6,6 @@ from uuid import uuid4
 from langchain_core.messages import AIMessage, HumanMessage
 from app.agent.harness import context as memory_context
 from app.agent.harness.context import load_context
-from app.agent.harness.agent_nodes import MEMORY_UNAVAILABLE
 from app.agent.harness.agent_nodes import AgentNodes
 from app.agent.harness.runtime import AgentHarnessRuntime
 from test_deep_memory import FakeGateway, FakeMemory, FakeToolModel, turn
@@ -71,21 +69,22 @@ class MemoryRecoveryTest(unittest.IsolatedAsyncioTestCase):
             "Máy vừa nói có khuyến mãi không?"])
         self.assertNotIn("session_history", messages[0].content)
 
-    async def test_memory_errors_skip_model_without_handoff_promise(self):
+    async def test_memory_errors_use_llm_explanation_without_business_tools(self):
         for raises in (False, True):
             with self.subTest(raises=raises):
                 memory = FakeMemory()
                 memory.read_context = AsyncMock(return_value={"error": "tool_unavailable"})
                 if raises:
                     memory.read_context.side_effect = RuntimeError("private details")
-                model = FakeToolModel(replies=[])
+                reply = "Em chưa thể xử lý yêu cầu lúc này, mình vui lòng thử lại sau."
+                model = FakeToolModel(replies=[AIMessage(content=reply)])
                 runtime = AgentHarnessRuntime(model, FakeGateway(), memory, guardrails_enabled=False)
                 request = turn("Xin chào")
                 with self.assertLogs("app.agent", level="WARNING") as logs:
                     response = await runtime.run(request)
-                self.assertEqual(response.agent_text, MEMORY_UNAVAILABLE)
+                self.assertEqual(response.agent_text, reply)
                 self.assertFalse(response.needs_handoff)
-                self.assertEqual(model.seen, [])
+                self.assertEqual(len(model.seen), 1)
                 self.assertNotIn("private details", str(logs.output))
                 self.assertEqual(runtime.state_for(request)["memory_failure"], "memory.read")
 

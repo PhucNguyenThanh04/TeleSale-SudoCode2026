@@ -1,4 +1,3 @@
--- Run after the BTC source import. Runtime conversations stay separate from btc_source.
 CREATE SCHEMA IF NOT EXISTS app_runtime;
 
 CREATE TABLE IF NOT EXISTS app_runtime.chat_sessions (

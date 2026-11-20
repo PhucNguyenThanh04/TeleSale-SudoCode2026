@@ -1,4 +1,3 @@
-"""Missing promotion evidence is refreshed, never borrowed from old quotes."""
 from test_deep_memory import FakeStreamAgent
 import asyncio
 from datetime import date, datetime, timezone

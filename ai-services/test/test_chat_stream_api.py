@@ -1,4 +1,3 @@
-"""Authenticated NDJSON output with safe terminal events; no external model."""
 import asyncio
 import json
 from uuid import uuid4

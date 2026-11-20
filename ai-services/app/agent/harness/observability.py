@@ -1,4 +1,3 @@
-"""Operational logs for a chat turn; callers pass only non-sensitive metadata."""
 
 import logging
 import math
@@ -90,7 +89,6 @@ DIAGNOSTIC_REASONS = frozenset(VALUE_LABELS) | {
 DIAGNOSTIC_ERRORS = frozenset({"TimeoutError", "RuntimeError", "ValueError", "TypeError", "KeyError",
     "OSError", "ConnectionError", "APIError", "APIConnectionError", "APITimeoutError",
     "RateLimitError", "HTTPStatusError", "ConnectError", "ReadTimeout", "GraphRecursionError", "other_error"}) | ERROR_TYPES
-DIAGNOSTIC_RECOVERIES = frozenset({"safe_transaction_reply", "safe_quote_reply", "safe_promotion_reply", "safe_catalog_reply", "safe_consultation_reply"})
 _DIAGNOSTIC_PAIRS = frozenset({("run_agent", "model_failed"), ("verify", "grounding_checked"),
     ("verify", "answer_checked"), ("verify", "recovery_attempted"), ("verify", "recovery_unavailable"),
     ("verify", "recovery_rejected"), ("verify", "recovery_succeeded"), ("verify", "recovery_exhausted")})
@@ -127,14 +125,11 @@ def safe_diagnostic_event(step, event, metadata):
         item['reason'] = metadata['reason'] if isinstance(metadata['reason'],str) and metadata['reason'] in DIAGNOSTIC_REASONS else 'unknown_reason'
     if 'error_type' in metadata:
         item['error_type'] = metadata['error_type'] if isinstance(metadata['error_type'],str) and metadata['error_type'] in DIAGNOSTIC_ERRORS else 'other_error'
-    if isinstance(metadata.get('recovery'),str) and metadata['recovery'] in DIAGNOSTIC_RECOVERIES:
-        item['recovery'] = metadata['recovery']
     return item
 
 
 @contextmanager
 def capture_diagnostic_events():
-    """Context-local, content-free observation; independent of log verbosity."""
     events = []
     token = _DIAGNOSTIC_EVENTS.set(events)
     try:
@@ -154,7 +149,6 @@ def _display_value(key: str, value: Any) -> str:
 
 
 def configure_agent_logging(level: str) -> None:
-    """Make agent events visible for both ASGI and direct Python entrypoints."""
     if not any(getattr(handler, "_agent_handler", False) for handler in logger.handlers):
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
@@ -166,7 +160,6 @@ def configure_agent_logging(level: str) -> None:
 
 def log_event(_turn: TextTurnRequest | TurnState, step: str, event: str,
               *, level: int = logging.INFO, **metadata: Any) -> None:
-    """Log readable workflow events; the turn is deliberately not rendered."""
     events = _DIAGNOSTIC_EVENTS.get()
     if events is not None:
         item = safe_diagnostic_event(step, event, metadata)
@@ -198,12 +191,10 @@ def log_tool_input(step: str, name: str, args: dict[str, Any]) -> None:
 
 def log_tool_output(state: TurnState, step: str, name: str,
                     result: dict[str, Any]) -> None:
-    """Show business fields from a tool result, never CRM profile or identifiers."""
     _write_payload(step, "tool_output", {"tool": name, "result": safe_tool_output(name, result)})
 
 
 def trace_node(name: str) -> Callable:
-    """Log node boundaries without placing customer content in the trace."""
     def decorate(fn: Callable[..., Awaitable[dict[str, Any]]]) -> Callable:
         @wraps(fn)
         async def wrapped(self: Any, state: TurnState) -> dict[str, Any]:

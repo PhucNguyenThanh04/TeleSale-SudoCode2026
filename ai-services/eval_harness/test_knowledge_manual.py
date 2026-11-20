@@ -1,4 +1,3 @@
-"""Manual review uses real offline worker and review services, without model calls."""
 import asyncio
 from copy import deepcopy
 

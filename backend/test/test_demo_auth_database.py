@@ -1,4 +1,3 @@
-"""Explicit PostgreSQL integration, all writes rolled back; no AI calls."""
 import os
 from uuid import uuid4
 
@@ -18,7 +17,6 @@ async def test_seed_hashes_passwords_preserves_existing_accounts_and_enforces_pr
     transaction = connection.transaction()
     await transaction.start()
     try:
-        # Fixture customers live only within the rolled-back transaction.
         prefix = 'auth-test-' + uuid4().hex
         for number in (1, 2):
             await connection.execute('''INSERT INTO btc_source.customers

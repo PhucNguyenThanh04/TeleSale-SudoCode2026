@@ -1,4 +1,3 @@
-"""Build immutable hybrid generations outside the approval/CAS transaction."""
 from app.knowledge.config import qdrant_url
 import time
 from app.knowledge.services.permissions import require_permission
@@ -168,7 +167,6 @@ async def validate_hybrid_release(tx,release):
 
 async def build_configured_policy_release(repo, revision_ids, expected_active_id, actor_id, *,
                                            source_dir=None, metadata_path=None, config_path=None):
-    """Explicit administrative build; called only by a reviewer prepare operation."""
     import json
     from pathlib import Path
     from qdrant_client import AsyncQdrantClient

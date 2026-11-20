@@ -1,11 +1,9 @@
-"""Compact, evidence-backed session state for a returning customer's brief."""
 
 from app.mcp_servers.mcp_shared.pii import mask_pii
 
 
 def build_episode_summary(confirmed_facts: list[dict], recent_turns: list[dict],
                           max_chars: int, *, episode_state: dict | None = None) -> str:
-    """Describe what happened between facts; facts and turns remain separate records."""
     if max_chars < 1:
         raise ValueError("max_chars must be positive")
     topics = (episode_state or {}).get("topics", [])

@@ -1,9 +1,3 @@
-"""Cloudflare synchronous dense embeddings; retry belongs to PolicyDependencies.
-
-Contract: developers.cloudflare.com/workers-ai/models/bge-m3/ (text input).
-Error codes: developers.cloudflare.com/workers-ai/platform/errors/ (3036, 3040).
-No response body, request headers or text are retained in operational errors.
-"""
 import asyncio
 import math
 import re
@@ -65,7 +59,6 @@ class CloudflareEmbeddingClient:
         self.config, self.clock = config, clock
         self._url = f'https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{config.model_name}'
         self._token = token
-        # httpx INFO logs URLs only; do not log requests, headers or raw errors here.
         self._client = client or httpx.AsyncClient(follow_redirects=False)
 
     async def embed(self, texts, *, deadline):

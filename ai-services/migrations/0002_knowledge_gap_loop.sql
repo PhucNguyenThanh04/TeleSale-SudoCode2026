@@ -1,4 +1,3 @@
--- Knowledge lifecycle is independent of runtime eval resets. Apply as administrator.
 CREATE SCHEMA IF NOT EXISTS knowledge;
 CREATE TABLE IF NOT EXISTS knowledge.events (id text PRIMARY KEY, data jsonb NOT NULL CHECK (jsonb_typeof(data)='object'));
 CREATE TABLE IF NOT EXISTS knowledge.gaps (id text PRIMARY KEY, data jsonb NOT NULL CHECK (jsonb_typeof(data)='object'));

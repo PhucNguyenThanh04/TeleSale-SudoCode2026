@@ -1,4 +1,3 @@
-"""Turn-linked diagnosis of BTC reference-evaluator failures."""
 
 import argparse
 import json

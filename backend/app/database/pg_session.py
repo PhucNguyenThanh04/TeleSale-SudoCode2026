@@ -1,4 +1,3 @@
-"""PostgreSQL engine and request-scoped SQLAlchemy sessions."""
 
 from collections.abc import AsyncIterator
 
@@ -16,12 +15,10 @@ def create_pg_sessionmaker(engine: AsyncEngine) -> async_sessionmaker[AsyncSessi
 
 
 async def check_postgres(engine: AsyncEngine) -> None:
-    """Fail startup promptly if PostgreSQL is unavailable."""
     async with engine.connect() as connection:
         await connection.execute(text("SELECT 1"))
 
 
 async def get_pg_session(request: Request) -> AsyncIterator[AsyncSession]:
-    """FastAPI dependency; closes each session after its request."""
     async with request.app.state.pg_sessionmaker() as session:
         yield session

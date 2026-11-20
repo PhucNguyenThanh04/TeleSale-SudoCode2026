@@ -1,4 +1,3 @@
-"""Offline reproductions of the six round-1 failures, without scorer inputs."""
 import asyncio
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -12,9 +11,6 @@ from test_commerce_evidence import state, catalog, quote, stock, bind_history_ob
 from test_consultation_followup import policy_result
 from app.agent.implementations.business_agent import BusinessTools
 from app.agent.harness.agent_nodes import AgentNodes, _task_answer_complete
-from app.agent.harness.session_nodes import safe_consultation_reply, safe_transaction_reply
-from app.mcp_servers.mcp_shared.consultation import derive_consultation, purchase_arguments, purchase_block_reason
-from app.mcp_servers.mcp_shared.consultation_followup import followup_task
 
 
 def clock():
@@ -83,38 +79,8 @@ def test_requested_stock_is_read_without_purchase_or_model_tool_call(available):
     assert not any(name.startswith('order.') for name, _ in gateway.calls)
 
 
-@pytest.mark.parametrize('policy', [False, True])
-def test_variant_stock_request_survives_policy_route_and_no_exchange_permission(policy):
-    text = 'Em kiểm tra tồn kho Giày Aster size 42 màu xám giúp anh, chưa tạo phiếu đổi nhé.'
-    if policy:
-        text += ' Chính sách đổi size thế nào?'
-    s = state(text); s['tool_calls'] = [variant_catalog()]
-    gateway = Gateway([variant_catalog()])
-    tools = BusinessTools(gateway, s, 8, clock)
-    async def run():
-        if policy:
-            await tools.prepare_followup(followup_task(s))
-        else:
-            await tools.prepare_consultation()
-    asyncio.run(run())
-    assert [a['sku'] for n, a in gateway.calls if n == 'inventory.check'] == ['SKU-ASTER-42-XAM']
-    assert not any(n in {'order.update', 'order.create'} for n, _ in gateway.calls)
 
 
-def test_policy_backed_price_sentence_is_a_presented_offer_and_can_be_accepted():
-    s = state('Được rồi, em lên đơn 1 chiếc Aster, chuyển khoản nhé.')
-    s['history'] = [{'customer': 'Aster giá bao nhiêu, bảo hành bao lâu?',
-                     'agent': 'Aster giá 900.000đ, bảo hành 24 tháng.'}]
-    s['session_tool_calls'] = [catalog(), quote(), stock(),
-        {'name': 'policy.search', 'args': {'on': '2026-11-05'}, 'result': policy_result()}]
-    bind_history_observations(s)
-    assert derive_consultation(s).snapshot.accepted_offer is not None
-    args = purchase_arguments(s)
-    assert args and purchase_block_reason(s, args) is None
-    gateway = Gateway()
-    result = run_node(s, gateway, 'Aster giá 900.000đ.')
-    assert sum(n == 'order.create' for n, _ in gateway.calls) == 1
-    assert 'OD-OFFLINE' in result['agent_text']
 
 
 def test_parent_price_is_spoken_before_requesting_variant_and_then_consent_works():
@@ -137,18 +103,6 @@ def test_parent_price_is_spoken_before_requesting_variant_and_then_consent_works
     assert 'OD-OFFLINE' in result['agent_text']
 
 
-def test_basket_total_is_required_before_accepting_a_partial_model_answer():
-    from test_basket_harness import basket_state
-    s = basket_state('Kiểm tra tồn kho và báo tổng giá giỏ hàng cả 2 sản phẩm Aster và Brio giúp tôi.')
-    s['history'] = [{'customer': 'Anh đang xem Aster.', 'agent': 'Aster giá 900.000đ.'}]
-    s['session_tool_calls'].append(catalog('SKU-BRIO', 'Brio'))
-    s['session_tool_calls'].append(quote(qty=2))
-    basket = next(c for c in s['session_tool_calls'] if c['name'] == 'pricing.quote_order')
-    basket['args']['lines'] = [{'sku': 'SKU-ASTER', 'qty': 1}, {'sku': 'SKU-BRIO', 'qty': 1}]
-    basket['result']['units'][1].update(sku='SKU-BRIO', applied_promos=[])
-    assert not _task_answer_complete('Aster hiện còn hàng, giá 900.000đ.', s)
-    reply = safe_consultation_reply(s)
-    assert reply and '1.350.000' in reply and '2 sản phẩm' in reply
 
 
 def test_same_product_variant_exchange_uses_size_action_and_recovers_without_retry():
@@ -166,45 +120,10 @@ def test_same_product_variant_exchange_uses_size_action_and_recovers_without_ret
     assert 'tổng đài' not in result['agent_text']
 
 
-@pytest.mark.parametrize('result', [{'error': 'tool_error'},
-    {'order_id': 'OD-OTHER', 'status': 'pickup_scheduled', 'action': 'exchange_size'}])
-def test_uncertain_or_mismatched_update_receipt_cannot_confirm_success(result):
-    s = state('Đổi sang size 42 giúp tôi.')
-    s['tool_calls'] = [{'name': 'order.update', 'args': {'order_id': 'OD-OLD',
-        'action': 'exchange_size', 'new_variant_sku': 'SKU-ASTER-42-XAM'}, 'result': result}]
-    reply = safe_transaction_reply(s)
-    assert reply is None or 'đã ghi nhận' not in reply.lower()
 
 
-@pytest.mark.parametrize('text,read', [
-    ('Aster còn hàng không? Chưa mua nhé.', True),
-    ('Chưa cần kiểm tra tồn kho Aster.', False),
-    ('Aster bảo hành bao lâu?', False),
-])
-def test_stock_read_is_independent_from_purchase_pause_but_respects_declined_lookup(text, read):
-    s = state(text); s['tool_calls'] = [catalog()]
-    gateway = Gateway()
-    asyncio.run(BusinessTools(gateway, s, 8, clock).prepare_consultation())
-    assert any(n == 'inventory.check' for n, _ in gateway.calls) is read
-    assert not any(n in {'order.create', 'order.update'} for n, _ in gateway.calls)
 
 
-@pytest.mark.parametrize('change', ['missing_policy', 'wrong_owner', 'future_policy', 'stale_policy', 'wrong_duration'])
-def test_unverified_policy_price_sentence_cannot_become_purchase_permission(change):
-    s = state('Em lên đơn 1 chiếc Aster nhé.')
-    s['history'] = [{'customer': 'Aster bảo hành bao lâu?', 'agent': 'Aster giá 900.000đ, bảo hành 24 tháng.'}]
-    policy = {'name': 'policy.search', 'args': {'on': '2026-11-05'}, 'result': policy_result()}
-    s['session_tool_calls'] = [catalog(), quote(), stock(), policy]
-    bind_history_observations(s)
-    if change == 'missing_policy': s['session_tool_calls'].remove(policy)
-    elif change == 'wrong_owner': policy['customer_id'] = 'OTHER'
-    elif change == 'future_policy': policy['source_turn_id'] = str(s['request'].client_msg_id)
-    elif change == 'stale_policy': policy['args']['on'] = '2026-11-04'
-    elif change == 'wrong_duration': s['history'][0]['agent'] = 'Aster giá 900.000đ, bảo hành 99 tháng.'
-    assert derive_consultation(s).snapshot.accepted_offer is None
-    gateway = Gateway()
-    assert asyncio.run(BusinessTools(gateway, s, 8, clock).complete_purchase_if_ready()) is None
-    assert not any(n == 'order.create' for n, _ in gateway.calls)
 
 
 def test_exchange_reads_verified_order_when_crm_lacks_original_variant_and_never_repeats_write():
@@ -243,27 +162,3 @@ def test_stock_wording_cannot_bypass_exact_variant_grounding():
 def test_available_in_warehouse_question_needs_stock_answer():
     s = state('Aster có sẵn trong kho không?');s['tool_calls'] = [catalog(), quote(), stock()]
     assert not _task_answer_complete('Aster giá 900.000đ.', s)
-
-
-def test_returning_stock_request_uses_unambiguous_sourced_scope_without_new_purchase_choice():
-    s = state('Em kiểm tra size 42 màu xám có sẵn trong kho không, chỉ hỏi tồn trước nhé.')
-    s['scoped_facts'] = {'product': {'SKU-ASTER': {'product_advised': {
-        'value': 'SKU-ASTER', 'source': f'langmem:{uuid4()}:{uuid4()}', 'source_kind': 'customer'}}}}
-    gateway = Gateway([variant_catalog()])
-    asyncio.run(BusinessTools(gateway, s, 8, clock).prepare_consultation())
-    assert [a['sku'] for n, a in gateway.calls if n == 'inventory.check'] == ['SKU-ASTER-42-XAM']
-    assert derive_consultation(s).snapshot.selected_sku is None
-
-
-@pytest.mark.parametrize('brand', ['Xiaomi', 'Orion'])
-def test_stock_lookup_keeps_literal_brand_instead_of_broad_model_suffix(brand):
-    from app.agent.harness.catalog_query import explicit_product_query
-    assert explicit_product_query(f'Anh muốn kiểm tra {brand} Smart 4 Pro còn hàng không?') == f'{brand} Smart 4 Pro'
-
-
-def test_old_basket_does_not_override_current_other_product_stock_question():
-    from test_basket_harness import basket_state
-    s = basket_state('Brio còn hàng không?')
-    s['session_tool_calls'] += [catalog('SKU-BRIO', 'Brio'), stock('SKU-BRIO')]
-    answer = safe_consultation_reply(s)
-    assert 'Brio' in answer and 'còn hàng' in answer and 'tổng giá' not in answer

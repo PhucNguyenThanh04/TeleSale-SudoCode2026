@@ -1,4 +1,3 @@
-"""Thin policy tools: validate, authenticate request context, call evidence service."""
 from contextlib import asynccontextmanager
 from fastmcp import FastMCP
 from fastmcp.server.auth import StaticTokenVerifier
@@ -45,7 +44,6 @@ def create_server(service, token=None, *, context_secret=None):
             except PolicyInputError:
                 return {'error':'invalid_args','evidence':[]}
             return result.model_dump(mode='json',exclude_none=True)
-        # Signed context/query are deliberately excluded from free-form logs.
         return await trace_mcp_call('knowledge','policy.search',{'on':on,'top_k':top_k},run)
 
     @server.tool(name='eval.knowledge_release')

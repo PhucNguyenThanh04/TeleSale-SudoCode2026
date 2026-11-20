@@ -1,4 +1,3 @@
-"""Durable independent collection; injected adapters keep offline tests offline."""
 import hashlib
 import json
 import time
@@ -57,7 +56,7 @@ async def collect(root, out, retriever, generator=None, *, top_k=5,
     separate_output(out, root)
     if not 5 <= top_k <= 10:
         raise ValueError('top_k must be between 5 and 10 for BTC @3/@5')
-    load_cases(root, context_path)  # Validate before creating output or calling services.
+    load_cases(root, context_path)
     out = Path(out)
     out.mkdir(parents=True, exist_ok=False)
     manifest = {'schema_version': 1, 'kind': 'collection', 'status': 'interrupted',
@@ -112,7 +111,6 @@ async def collect(root, out, retriever, generator=None, *, top_k=5,
                         row['generation_ms'] = round((time.perf_counter() - start) * 1000, 3)
                     row['status'] = 'ok'
                 except Exception as exc:
-                    # Provider exception messages may contain credentials or customer data.
                     row['error'] = phase + '_failed'
                     row['error_type'] = type(exc).__name__
                     if phase == 'retrieval':

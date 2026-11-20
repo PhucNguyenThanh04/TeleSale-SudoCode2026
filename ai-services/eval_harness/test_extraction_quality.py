@@ -1,4 +1,3 @@
-"""Self-reviewed language labels; matching never uses scenario truth or scores."""
 import json
 from pathlib import Path
 from eval_harness.extractor import extract_detailed
@@ -12,11 +11,6 @@ def normalize(text):
 
 
 def measure(cases):
-    """Match by frozen speech anchor and occurrence order, never predicted label.
-
-    Same-span atomic requests (size/color, price/offer) use their frozen ordinal.
-    Missing/extra candidates are detection errors, mismatched fields are separate.
-    """
     counts = dict(expected=0, detected=0, matched=0, false_positive=0, false_negative=0,
                   classification_errors=0, field_value_type_errors=0, disposition_errors=0, qualifier_errors=0)
     errors = []

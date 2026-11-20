@@ -1,4 +1,3 @@
-"""Executable contract for correction and four-product conversations."""
 
 import importlib.util
 import unittest
@@ -46,7 +45,6 @@ def btc_mock():
 
 
 def active_room_constraints(customer_facts):
-    """Project scoped, active room facts without counting transcript mentions."""
     found = []
 
     def visit(value):

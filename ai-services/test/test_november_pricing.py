@@ -1,10 +1,10 @@
-"""Offline differential checks against the November BTC reference implementation."""
 import json
 from pathlib import Path
 from types import ModuleType
 
 import pytest
 from app.mcp_servers.mcp_shared import commerce_rules
+from write_authorization_fixtures import WRITE_TEST_SECRET, scripted_write_args, scripted_write_context
 
 ROOT = Path(__file__).resolve().parents[2]
 BTC = ROOT.parent / 'BTC-Data-Vong1-TEAMS'
@@ -12,7 +12,6 @@ BTC = ROOT.parent / 'BTC-Data-Vong1-TEAMS'
 
 @pytest.fixture
 def reference():
-    # The supplied BTC package includes the November reference code and catalog.
     module = ModuleType('november_mock')
     module.__file__ = str(BTC / 'eval/mock_tools.py')
     source = BTC / 'eval/mock_tools.py'
@@ -192,11 +191,12 @@ def test_multiline_order_persists_unit_prices_and_replay(reference):
     lines = [{'sku': unit['sku'], 'qty': 1, 'price_vnd': unit['final_price_vnd']} for unit in q['units']]
     args = {'customer_phone': repo.phone, 'lines': lines, 'payment': 'bank', 'on': '2026-10-15',
             'source_channel': 'hotline', 'source_identity': repo.phone, 'operation_key': 'one-order'}
+    args = scripted_write_args('order.create', args, customer_id='C001')
     async def run():
-        first = await invoke(repo, 'order.create', args)
+        first = await invoke(repo, 'order.create', args, context_secret=WRITE_TEST_SECRET)
         assert first.get('status') == 'created', first
         assert first['total_vnd'] == q['total_vnd']
-        assert await invoke(repo, 'order.create', args) == first
+        assert await invoke(repo, 'order.create', args, context_secret=WRITE_TEST_SECRET) == first
     asyncio.run(run())
     assert len(repo.orders) == 1
     assert repo.orders[0]['lines'] == lines
@@ -214,9 +214,10 @@ def test_basket_order_rejects_invalid_transaction_without_side_effects(reference
         lines[1]['price_vnd'] += 1
     if change == 'aggregate_stock':
         reference.INV.append({'sku': 'SKU-AP-PRO', 'date': '2026-10-15', 'qty': 1})
-    result = asyncio.run(invoke(repo, 'order.create', {'customer_phone': repo.phone, 'lines': lines,
+    args = scripted_write_args('order.create', {'customer_phone': repo.phone, 'lines': lines,
         'payment': 'COD' if change == 'cod' else 'bank', 'on': '2026-10-15',
-        'source_channel': 'hotline', 'source_identity': repo.phone}))
+        'source_channel': 'hotline', 'source_identity': repo.phone}, customer_id='C001')
+    result = asyncio.run(invoke(repo, 'order.create', args, context_secret=WRITE_TEST_SECRET))
     assert result.get('error') == error, result
     assert repo.orders == [] and repo.used == set()
 
@@ -236,7 +237,8 @@ def test_split_orders_only_discount_one_unit_per_customer_day(reference):
         for price in (regular, discounted, regular):
             args = {**common, 'price_vnd': price}
             expected = reference.order_create(**{k: v for k, v in args.items() if not k.startswith('source_')})
-            actual = await invoke(repo, 'order.create', args)
+            signed = scripted_write_args('order.create', args, customer_id='C001')
+            actual = await invoke(repo, 'order.create', signed, context_secret=WRITE_TEST_SECRET)
             assert actual.get('status') == expected.get('status') == 'created', actual
             assert actual['total_vnd'] == expected['total_vnd']
     asyncio.run(run())
@@ -251,9 +253,11 @@ def test_same_sku_aggregate_price_cannot_hide_wrong_per_unit_prices(reference):
     prices = [unit['final_price_vnd'] for unit in q['units']]
     prices[0] -= 1
     prices[1] += 1
-    result = asyncio.run(invoke(repo, 'order.create', {'customer_phone': repo.phone,
+    args = scripted_write_args('order.create', {'customer_phone': repo.phone,
         'lines': [{'sku': 'SKU-AP-PRO', 'qty': 1, 'price_vnd': price} for price in prices],
-        'payment': 'bank', 'on': '2026-10-15', 'source_channel': 'hotline', 'source_identity': repo.phone}))
+        'payment': 'bank', 'on': '2026-10-15', 'source_channel': 'hotline', 'source_identity': repo.phone},
+        customer_id='C001')
+    result = asyncio.run(invoke(repo, 'order.create', args, context_secret=WRITE_TEST_SECRET))
     assert result.get('error') == 'price_mismatch'
     assert repo.orders == []
 
@@ -266,9 +270,12 @@ def test_multiline_order_through_actual_mcp_server(reference):
     q = reference.pricing_quote_order([{'sku': 'SKU-AP-PRO', 'qty': 2}])
     args = {'customer_phone': repo.phone, 'payment': 'bank', 'on': '2026-10-15',
             'lines': [{'sku': u['sku'], 'qty': 1, 'price_vnd': u['final_price_vnd']} for u in q['units']]}
-    gateway = MCPGateway(None, create_server(repo), None)
+    context, args = scripted_write_context('order.create', args, customer_id='C001')
+    gateway = MCPGateway(None, create_server(repo, context_secret=WRITE_TEST_SECRET), None,
+                         context_secret=WRITE_TEST_SECRET)
     result = asyncio.run(gateway.invoke_trusted('order.create', args, 'C001',
-        channel='hotline', channel_identity=repo.phone, operation_key='mcp-lines'))
+        channel='hotline', channel_identity=repo.phone, operation_key=args['operation_key'],
+        write_context=context))
     assert result.get('status') == 'created', result
     assert result['total_vnd'] == q['total_vnd']
     assert repo.orders[0]['lines'] == args['lines']

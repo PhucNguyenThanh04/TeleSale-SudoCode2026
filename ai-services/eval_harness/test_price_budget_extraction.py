@@ -1,4 +1,3 @@
-"""Money roles are determined by speech, never the expected scenario price."""
 import pytest
 
 from eval_harness.extractor import extract_claims

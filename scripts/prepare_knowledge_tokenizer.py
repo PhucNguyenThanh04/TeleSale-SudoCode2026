@@ -1,4 +1,3 @@
-"""Verify the ignored BGE tokenizer, or explicitly download its pinned bytes."""
 import argparse
 import hashlib
 import json
@@ -36,7 +35,7 @@ def prepare(config_path, target, *, download=False):
                 checksum.update(chunk); output.write(chunk)
         if checksum.hexdigest() != expected:
             raise ValueError('Downloaded tokenizer checksum mismatch')
-        os.link(temporary, target)  # Exclusive publication; a concurrent setup cannot be overwritten.
+        os.link(temporary, target)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
@@ -44,7 +43,7 @@ def prepare(config_path, target, *, download=False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Verify the ignored BGE tokenizer, or explicitly download its pinned bytes.')
     parser.add_argument('--config', type=Path, default=ROOT/'config/policy-runtime.json')
     parser.add_argument('--download', action='store_true', help='Allow HTTPS download during setup only')
     args = parser.parse_args()

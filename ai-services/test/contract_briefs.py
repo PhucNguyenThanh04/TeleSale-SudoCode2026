@@ -1,4 +1,3 @@
-"""BTC brief shapes and evidence boundaries, using synthetic non-sample cases."""
 
 import json
 import unittest

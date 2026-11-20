@@ -1,4 +1,3 @@
-"""Standalone demo entrypoint: uvicorn app.voice_main:app --app-dir backend."""
 
 from contextlib import asynccontextmanager
 from pathlib import Path

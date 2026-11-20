@@ -1,4 +1,3 @@
-"""Complete an already verified memory erasure request across both stores."""
 
 import asyncio
 import sys

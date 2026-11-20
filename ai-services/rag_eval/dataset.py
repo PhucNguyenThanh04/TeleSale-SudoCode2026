@@ -1,4 +1,3 @@
-"""BTC inputs and explicit component fixtures; labels never enter runtime input."""
 import importlib.util
 import json
 import shutil

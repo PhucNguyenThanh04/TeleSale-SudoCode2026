@@ -1,4 +1,3 @@
-"""Knowledge management use cases shared by API and administrative CLI."""
 from app.knowledge.events.evidence import safe_text
 from app.knowledge.services.permissions import require_permission
 from app.knowledge.schemas import Conflict, KnowledgeError, Missing, digest
@@ -81,7 +80,6 @@ async def command(repo, actor_id, action, p):
                 raise KnowledgeError('Expected assertions and variations required')
             from app.knowledge.services.revisions import _draft
             old = await tx.get('revisions', case['id'])
-            # Editing reviewed test creates a new revision; released snapshots stay immutable.
             new = await _draft(tx, actor_id, old['gap_id'], old)
             updated = await tx.get('regression_cases', new['id'])
             updated['expected'] = {'answer': safe_text(p['expected'].get('answer', '')),
@@ -100,7 +98,6 @@ async def command(repo, actor_id, action, p):
                 raise Conflict('Verification does not match gap release')
             if not run.get('complete') or not run.get('comparability_valid'):
                 raise KnowledgeError('Complete comparable verification required')
-            # A reviewer must inspect per-case evidence, not just an aggregate delta.
             if not p.get('reason', '').strip() or p.get('resolved') is not True:
                 raise KnowledgeError('Explicit resolution decision and reason required')
             gap.update(status='resolved', verification_run_id=run['id'],

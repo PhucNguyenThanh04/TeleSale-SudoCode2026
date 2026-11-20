@@ -1,5 +1,3 @@
-# AI service configuration for the first text-to-text implementation phase.
-# *_env values name variables in ai-services/.env; no API key is stored here.
 service:
   name: ai-services
   interface: http

@@ -1,4 +1,3 @@
-"""Incomplete benchmark traces must remain diagnostic artifacts, not scores."""
 
 from eval_harness.test_support import VoiceLifecycleStub
 import json

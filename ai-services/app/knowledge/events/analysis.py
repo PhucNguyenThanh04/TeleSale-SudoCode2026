@@ -1,4 +1,3 @@
-"""Conservative offline analysis; all groupings and drafts need review."""
 import re
 from app.knowledge.schemas import CATEGORIES, KnowledgeError
 
@@ -20,8 +19,6 @@ async def analyze_event(evidence, source_catalog, model=None):
               'suggested_source_ids': [s['chunk_id'] for s in matches],
               'source_review': 'Full public corpus searched; reviewer must verify applicability.'}
     if model:
-        # The injected adapter is responsible for structured model invocation;
-        # only masked evidence and public sources enter this boundary.
         result = await model(evidence, matches)
     if not isinstance(result, dict) or result.get('category') not in CATEGORIES:
         raise KnowledgeError('Invalid analysis output')

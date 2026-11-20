@@ -1,4 +1,3 @@
-"""Backend-owned customer sessions and text messages."""
 
 from datetime import date, datetime
 from typing import Literal
@@ -9,7 +8,7 @@ from .common import Channel, Outcome
 
 
 class SessionCreate(BaseModel):
-    customer_id: str | None = None  # Remains unset until identity is resolved.
+    customer_id: str | None = None
     channel: Channel
     call_date: date
     channel_identity: str | None = None

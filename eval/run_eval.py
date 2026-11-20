@@ -1,4 +1,3 @@
-"""BTC-compatible single-trace CLI using the canonical conversation runner."""
 import argparse
 import asyncio
 import json
@@ -21,7 +20,6 @@ from eval_harness.official_pipeline import atomic_json
 
 
 def _trace_args(args):
-    """Compatibility export; masking is owned by the canonical adapter."""
     return _safe_tool_calls([{'name':'diagnostic.tool','args':args}])[0]['args']
 
 

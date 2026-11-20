@@ -1,12 +1,7 @@
-"""Lifecycle no-ops for tests whose runtime doubles only model answer content.
-
-Real preparation, playback persistence and history are covered in test_voice_lifecycle.
-"""
 
 
 class VoiceLifecycleStub:
     async def stream(self, request):
-        """Protocol adapter for content-only doubles; real streaming has separate tests."""
         from app.schemas.agent import TextTurnResponse, MemoryUpdate
         response = await self.run(request)
         identity = {'client_msg_id': str(request.client_msg_id), 'session_id': str(request.session_id)}
@@ -24,7 +19,6 @@ class VoiceLifecycleStub:
         pass
 
 
-# Immutable historical contract, used only to verify old reports still load.
 LEGACY_TEXT_MEASUREMENT = {
     'lifecycle': 'prepare_session -> run(text, including persistence); drain_enrichment_at_call_end',
     'delivery_mode': 'text', 'playback': 'not_applicable',

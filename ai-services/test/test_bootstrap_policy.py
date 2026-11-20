@@ -1,4 +1,3 @@
-"""A fresh knowledge database can reuse BTC vectors but not old gap content."""
 import asyncio
 import pytest
 

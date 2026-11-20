@@ -1,5 +1,3 @@
-# ASR benchmark B0/B1/B2 (speech/README.md §10). Chạy từ gốc repo:
-#   powershell -ExecutionPolicy Bypass -File scripts\asr_benchmark.ps1 [-Device cuda|cpu] [-Tag v2]
 param(
     [string]$Device = "cuda",
     [string]$Tag = (Get-Date -Format "yyyyMMdd-HHmm"),
@@ -14,12 +12,10 @@ if (-not (Test-Path $py)) {
     py -3.12 -m venv .venv-speech
     & .\.venv-speech\Scripts\pip install -r speech\requirements.txt "av==18.1.0" nvidia-cublas-cu12 "nvidia-cudnn-cu12==9.*"
 }
-# DLL CUDA cài qua pip không tự vào PATH trên Windows
 $nv = Resolve-Path ".\.venv-speech\Lib\site-packages\nvidia"
 $env:PATH = "$nv\cublas\bin;$nv\cudnn\bin;$env:PATH"
 $ct = if ($Device -eq "cuda") { "float16" } else { "int8" }
 
-# Audio proxy bằng edge-tts (cần mạng, có cache). BTC chưa phát audio thật.
 $ds = "speech\data\datasets"
 $sets = @(
     @{ out = "btc-edge";          args = @("--dialogues", "btc") },

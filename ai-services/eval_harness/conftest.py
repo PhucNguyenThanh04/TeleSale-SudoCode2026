@@ -1,4 +1,3 @@
-"""Safe defaults even when focused harness tests are run directly."""
 import os
 from pathlib import Path
 import socket

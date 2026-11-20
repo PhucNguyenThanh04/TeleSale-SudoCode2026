@@ -1,4 +1,3 @@
-"""Bounded asynchronous dense encoder. Startup never calls the provider."""
 import asyncio
 import hashlib
 import math

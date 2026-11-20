@@ -1,64 +1,24 @@
-# TELESALE / BACKEND - text-first runtime dependency specification
-# Research date: 2026-09-27. Target: CPython 3.12, preferably Linux containers.
-# Install in a virtual environment separate from ai-service.
-# Scope: identity/CRM, calls/sessions, catalog/pricing/orders, UI API, auth.
-# LangChain, MCP servers and Qdrant access belong to the AI deployment.
-#
-# These version ranges are not a lockfile; resolve and test them before deployment.
-# Before sharing an environment, run from the repository root:
-# uv pip compile backend/requirements.txt --python-version 3.12 --generate-hashes -o backend/requirements.lock.txt
-# uv venv --python 3.12 backend/.venv
-# uv pip sync --python backend/.venv/bin/python backend/requirements.lock.txt
-# uv pip check --python backend/.venv/bin/python
-# Windows: use backend/.venv/Scripts/python.exe instead.
 
-# HTTP API, ASGI server, validation and environment-based settings.
 fastapi>=0.141.1,<0.142
 uvicorn[standard]>=0.35,<1
 pydantic>=2.12,<3
 pydantic-settings>=2.10,<3
 
-# Business data and migrations through SQLAlchemy's asyncpg dialect.
-# DSN for SQLAlchemy: postgresql+asyncpg://...
-# Use create_async_engine and one AsyncSession per request/task.
 SQLAlchemy[asyncio]>=2.0.54,<2.1
 alembic>=1.16,<2
 asyncpg>=0.30,<1
 
-# Cache, session locks, Streams/outbox consumers; use redis.asyncio.
-# This is a client package. Run Redis server separately.
 redis>=6.4,<9
 
-# Async backend -> AI-service requests and streamed response proxying.
 httpx>=0.28.1,<0.29
 websockets>=14,<17
 
-# File uploads (datasets/audio); not an audio inference dependency.
 python-multipart>=0.0.20,<0.1
 
-# Password hashing for future operator accounts. Never trust customer_id from an LLM or browser.
 pwdlib[argon2]>=0.2,<1
 PyJWT>=2.10,<3
 
-# Structured logs and application metrics. Redact PII before logging.
 structlog>=25.1,<27
 
-# Validate organizer JSON schemas; timezone data for Asia/Ho_Chi_Minh.
 jsonschema[format]>=4.23,<5
 tzdata>=2025.2,<2027
-
-# NOT installed by this file:
-# PostgreSQL/Redis/Qdrant servers: provision separately (e.g. Docker Compose).
-# Phase 2 backend additions: livekit-api (room/token/dispatch/webhook control),
-# boto3 (if S3-compatible audio/artifact storage is selected).
-# Development tools belong in a separate dev environment/profile:
-# pytest, pytest-asyncio, respx, ruff, pip-audit.
-# Avoid Celery initially; durable jobs can use a PostgreSQL outbox + worker.
-# Redis alone is not a durable job implementation; implement retries/acks.
-
-# Primary sources consulted:
-# https://pypi.org/project/fastapi/
-# https://docs.sqlalchemy.org/en/20/dialects/postgresql.html
-# https://docs.sqlalchemy.org/en/20/dialects/postgresql.html#module-sqlalchemy.dialects.postgresql.asyncpg
-# https://redis.readthedocs.io/en/stable/examples/asyncio_examples.html
-# https://docs.astral.sh/uv/pip/compile/

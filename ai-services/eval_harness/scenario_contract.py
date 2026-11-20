@@ -1,4 +1,3 @@
-"""Offline BTC input validation; answer labels never become runtime requests."""
 import json
 import re
 from datetime import date, timedelta
@@ -118,7 +117,6 @@ def dataset_coverage(scenarios: dict[str, dict]) -> dict:
 
 
 def snapshot_scenarios(scenarios: dict[str, dict], out: Path) -> Path:
-    """Materialize exactly the selected inputs for the directory-only BTC scorer."""
     out.mkdir(parents=True, exist_ok=False)
     for index, sc in enumerate(scenarios.values()):
         (out / f'{index:04d}.json').write_text(json.dumps(sc, ensure_ascii=False, indent=2) + '\n')

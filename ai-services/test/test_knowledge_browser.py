@@ -1,4 +1,3 @@
-"""Browser smoke of the real console against a synthetic, credential-free API."""
 import re
 import shutil
 import subprocess

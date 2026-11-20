@@ -1,4 +1,3 @@
-"""Read-only compatibility checks before a costly BTC evaluation run."""
 
 import argparse
 import ast
@@ -49,7 +48,6 @@ def _redacted_matcher_fields(value: Any, expected: Any) -> bool:
 
 def inspect_eval_inputs(scenarios_dir: Path, btc_root: Path,
                         trace_path: Path | None = None) -> dict[str, Any]:
-    """Report scorer contract risks without modifying scenarios or traces."""
     allowed_outcomes = _outcomes(btc_root)
     supports_aliases = _supports_order_aliases(btc_root)
     tool_schema = json.loads((btc_root / "schemas" / "tools.schema.json").read_text(

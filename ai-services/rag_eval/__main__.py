@@ -1,4 +1,3 @@
-"""python -m rag_eval: independent collection, replay, judging and comparison."""
 import argparse
 import asyncio
 import sys
@@ -98,7 +97,6 @@ def main(argv=None):
         print('Interrupted; completed rows retained. Inspect manifest and trace before a new run.', file=sys.stderr)
         return 130
     except Exception as exc:
-        # Settings/provider exceptions may include secret values; never print their repr.
         print(f'RAG eval failed ({type(exc).__name__}); check paths, credentials, pinned dependencies and artifact integrity. '
               'See retained manifest/trace if output was created.', file=sys.stderr)
         return 2

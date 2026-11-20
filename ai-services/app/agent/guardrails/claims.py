@@ -1,4 +1,3 @@
-"""Separate narrowly recognized lookup/clarification speech from factual claims."""
 
 import re
 
@@ -21,7 +20,6 @@ _NON_ASSERTION = re.compile(
 
 
 def assertion_text(text: str) -> str:
-    """Keep other clauses even when a lookup or clarification precedes them."""
     parts = re.split(r"([?!;]|\.(?!\d)|\n|\bnhưng\b|\bvà\b)", text,
                      flags=re.IGNORECASE)
     kept = []

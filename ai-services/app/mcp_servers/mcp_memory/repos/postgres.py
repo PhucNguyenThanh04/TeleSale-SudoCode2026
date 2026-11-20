@@ -1,4 +1,3 @@
-"""PostgreSQL storage operations for turns and LangMem jobs."""
 from app.knowledge.config import enabled
 
 import asyncio
@@ -41,7 +40,6 @@ class MemoryRepo:
             await self.pool.close()
 
     async def database_identity(self) -> dict:
-        """Report the database reached by this pool, without exposing credentials."""
         async with self.transaction() as conn:
             row = await conn.fetchrow(
                 "SELECT current_database() AS database, inet_server_addr()::text AS host, inet_server_port() AS port, "
@@ -157,7 +155,6 @@ class MemoryRepo:
 
     async def attribute_anonymous_turns(self, conn, session_id: str,
                                         customer_id: str) -> list[dict]:
-        """Bind only this session's earlier anonymous turns after trusted identity."""
         rows = await conn.fetch("""UPDATE runtime.turns SET customer_id=$2,
             attributed_after_verification=TRUE
             WHERE session_id=$1 AND customer_id IS NULL
@@ -204,7 +201,6 @@ class MemoryRepo:
             json.dumps(proposals, ensure_ascii=False))
 
     async def distillation_claim_current(self, conn, job_id: int, attempt: int) -> bool:
-        # Hold the job row until this transaction publishes proposals/projection.
         return bool(await conn.fetchval('''SELECT status='leased' AND attempts=$2
             FROM runtime.langmem_distillation_jobs WHERE job_id=$1 FOR UPDATE''', job_id, attempt))
 

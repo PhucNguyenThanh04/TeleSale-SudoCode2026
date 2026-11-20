@@ -1,4 +1,3 @@
-"""Catalog business rules independent of FastMCP and SQL transport."""
 from app.mcp_servers.mcp_shared.commerce_rules import _catalog, _inventory, _delivery, quote, quote_order
 
 
@@ -65,7 +64,6 @@ async def get_quote(repo, session, args: dict) -> dict:
     result = quote(products, promotions,
                    payload, owned, await repo.used_promos(session))
     if "error" not in result:
-        # Read-only estimate uses exactly the same calendar as order.create.
         stock = _inventory(products, await repo.rows(session, "inventory_events"), args["sku"], args["on"])
         if stock.get("in_stock") and stock.get("qty", 0) >= args.get("qty", 1):
             result["estimated_delivery"] = _delivery(args["on"], args.get("address"))

@@ -1,4 +1,3 @@
-"""Internal knowledge API; no endpoint is exposed as a model tool."""
 import hmac
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field

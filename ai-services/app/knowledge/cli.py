@@ -1,4 +1,3 @@
-"""Administrative knowledge lifecycle; policy-prepare explicitly encodes with a cached local model."""
 from app.knowledge.config import qdrant_url
 from app.knowledge.config import configured_url
 import argparse
@@ -67,7 +66,6 @@ async def execute(args):
                 if not args.out:
                     raise KnowledgeError('--out required')
                 export = {table: await tx.rows(table) for table in sorted(TABLES-{'permissions', 'erasures', 'backend_outbox'})}
-                # Evidence and test drafts have already passed field-path masking.
                 args.out.parent.mkdir(parents=True, exist_ok=True)
                 with args.out.open('x', encoding='utf-8') as stream:
                     json.dump(export, stream, ensure_ascii=False, indent=2)
@@ -77,7 +75,7 @@ async def execute(args):
 
 
 def main():
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(description='Administrative knowledge lifecycle; policy-prepare explicitly encodes with a cached local model.')
     p.add_argument('action', choices=['grant', 'revoke', 'export', 'policy-prepare', 'policy-activate', 'policy-rollback', 'policy-revoke'])
     p.add_argument('--actor', required=True)
     p.add_argument('--out', type=Path)

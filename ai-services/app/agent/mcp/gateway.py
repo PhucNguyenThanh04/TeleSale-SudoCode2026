@@ -1,4 +1,3 @@
-"""Single MCP tool boundary with an injectable protocol."""
 from app.knowledge.config import enabled, pinned_release
 
 import asyncio
@@ -22,7 +21,6 @@ class MCPGateway:
         self.context_secret = context_secret or token
 
     async def database_identity(self, service: str) -> dict[str, Any]:
-        """Read the database actually reached by one configured MCP endpoint."""
         if service not in self.transports:
             return {"error": "unknown_service"}
         try:
@@ -63,7 +61,8 @@ class MCPGateway:
                              channel: str | None = None,
                              channel_identity: str | None = None,
                              operation_key: str | None = None,
-                             policy_context: Any = None) -> dict[str, Any]:
+                             policy_context: Any = None,
+                             write_context: Any = None) -> dict[str, Any]:
         if name == "policy.search":
             return await self._policy_search(args, policy_context)
         group = "memory" if name.startswith("memory.") else (
@@ -78,6 +77,7 @@ class MCPGateway:
         payload.pop("source_channel", None)
         payload.pop("source_identity", None)
         payload.pop("operation_key", None)
+        payload.pop('trusted_authorization', None)
         if (name in {"pricing.get_quote", "pricing.quote_order", "order.create", "order.status",
                      "order.update", "schedule.callback", "handoff.transfer"}
                 and channel and channel_identity):
@@ -86,6 +86,19 @@ class MCPGateway:
         if operation_key and name in {"order.create", "order.update", "schedule.callback",
                                       "handoff.transfer", "memory.write"}:
             payload["operation_key"] = operation_key
+        from app.mcp_servers.mcp_order.write_authorization import (
+            WRITE_TOOLS, AuthorizedWriteContext, sign_write_authorization)
+        if name in WRITE_TOOLS:
+            if (not isinstance(write_context, AuthorizedWriteContext)
+                    or write_context.customer_id != customer_id
+                    or write_context.source_channel != channel
+                    or write_context.source_identity != channel_identity):
+                return {'error': 'write_authorization_required'}
+            try:
+                payload['trusted_authorization'] = sign_write_authorization(
+                    name, payload, write_context, self.context_secret)
+            except PermissionError:
+                return {'error': 'write_authorization_required'}
         try:
             async with asyncio.timeout(10):
                 async with Client(self.transports[group], auth=self.token) as client:

@@ -1,4 +1,3 @@
-"""Evaluations enter the existing feedback queue with source hashes and review gates."""
 import asyncio
 import json
 from pathlib import Path

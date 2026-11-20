@@ -1,4 +1,3 @@
-"""Validate benchmark scenario files against BTC specification and catalog data."""
 
 import argparse
 import json
@@ -21,7 +20,6 @@ DATE_REGEX = re.compile(r"^202[6-9]-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])
 
 
 def load_btc_catalogs():
-    """Load valid SKUs, promotions, tools, and personas from BTC data."""
     valid_skus = set()
     product_prices = {}
     if PRODUCTS_PATH.exists():
@@ -67,10 +65,8 @@ def load_btc_catalogs():
 
 def validate_scenario(data: dict, valid_skus: set, valid_promos: set,
                       valid_tools: set, valid_personas: set) -> list[str]:
-    """Validate a single scenario dict; return list of error strings."""
     errors = []
 
-    # Required top-level fields
     for field in ("scenario_id", "persona", "calls"):
         if field not in data:
             errors.append(f"Missing top-level required field: '{field}'")
@@ -81,7 +77,6 @@ def validate_scenario(data: dict, valid_skus: set, valid_promos: set,
 
     persona = data.get("persona")
     if persona and valid_personas and persona not in valid_personas:
-        # Warning/informational or relaxed check if persona is a custom descriptive string
         pass
 
     phone = data.get("customer_phone")
@@ -104,7 +99,6 @@ def validate_scenario(data: dict, valid_skus: set, valid_promos: set,
             errors.append(f"{call_name} must be a dictionary")
             continue
 
-        # Turns validation
         turns = call.get("customer_turns") or call.get("customer_turns_asr")
         if not isinstance(turns, list) or not turns:
             errors.append(f"{call_name}: missing or empty 'customer_turns'")
@@ -113,7 +107,6 @@ def validate_scenario(data: dict, valid_skus: set, valid_promos: set,
                 if not isinstance(turn, str) or not turn.strip():
                     errors.append(f"{call_name}: turn {idx+1} is empty or not string")
 
-        # Date validation
         call_date = call.get("call_date")
         if call_date:
             if not isinstance(call_date, str) or not DATE_REGEX.fullmatch(call_date):
@@ -128,12 +121,10 @@ def validate_scenario(data: dict, valid_skus: set, valid_promos: set,
         if days_later is not None and (type(days_later) is not int or days_later < 0):
             errors.append(f"{call_name}: 'days_later' must be non-negative integer")
 
-        # Channel validation
         channel = call.get("channel", "hotline")
         if channel not in ("hotline", "chat_fanpage", "zalo_oa", "web_chat", "other"):
             errors.append(f"{call_name}: invalid channel '{channel}'")
 
-        # SKU check in facts_established
         facts_est = call.get("facts_established", {})
         if isinstance(facts_est, dict):
             sku = facts_est.get("product_advised")
@@ -146,7 +137,6 @@ def validate_scenario(data: dict, valid_skus: set, valid_promos: set,
             if promo and valid_promos and promo not in valid_promos:
                 errors.append(f"{call_name}: 'promo_code' '{promo}' not found in promotions catalog")
 
-        # success_if validation
         success_if = call.get("success_if")
         if success_if and isinstance(success_if, dict):
             tool_called = success_if.get("tool_called")

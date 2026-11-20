@@ -1,8 +1,3 @@
-"""Offline corpus/scoring utilities for the retired custom memory baseline.
-
-The historical live runner used fact_candidates and fact_extraction_mode=fallback.
-Production memory now uses LangMem; these scores must not represent that pipeline.
-"""
 import argparse
 import json
 import re
@@ -13,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "ai-services"))
-from app.agent.guardrails.checks import mask_pii  # noqa: E402
+from app.agent.guardrails.checks import mask_pii
 
 RETIRED_REASON = (
     "Legacy memory baseline retired: fact_candidates/fallback no longer exists. "
@@ -73,7 +68,6 @@ def _metrics(tp: int, fp: int, fn: int) -> dict:
 
 
 def score_keys(rows: list[dict]) -> dict:
-    """Score a correct slot name even when its value differs."""
     tp = fp = fn = 0
     for row in rows:
         expected, predicted = set(row["expected_slots"]), set(row["predicted_slots"])
@@ -91,7 +85,6 @@ def _fold(value: str) -> str:
 
 
 def _blocker_value(value: object) -> object:
-    """Narrow scorer-only normalization for the same spouse decision blocker."""
     if not isinstance(value, str):
         return value
     folded = _fold(value)
@@ -115,17 +108,15 @@ def score_normalized_blocker(rows: list[dict]) -> dict:
 
 def candidate_diagnostics(customer_text: str, tool_calls: list[dict],
                           agent_proposals: list[dict], extractor_proposals: list[dict]) -> dict:
-    """Reject obsolete acceptance diagnostics instead of inventing a replacement validator."""
     raise RuntimeError(RETIRED_REASON)
 
 
 async def evaluate(cases: list[dict]) -> dict:
-    """Fail before settings/model initialization; do not benchmark a retired runtime path."""
     raise RuntimeError(RETIRED_REASON)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Offline corpus/scoring utilities for the retired custom memory baseline.\n\nThe historical live runner used fact_candidates and fact_extraction_mode=fallback.\nProduction memory now uses LangMem; these scores must not represent that pipeline.\n')
     parser.add_argument("--dataset", type=Path, default=ROOT / "eval/memory_facts_v1.jsonl")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--limit", type=int)

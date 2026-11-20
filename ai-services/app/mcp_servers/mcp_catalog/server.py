@@ -1,4 +1,3 @@
-"""mcp-catalog process entrypoint."""
 
 from app.configs import get_settings
 from app.mcp_servers.mcp_catalog.repos.postgres import CatalogRepo

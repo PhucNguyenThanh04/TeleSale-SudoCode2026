@@ -1,4 +1,3 @@
-"""Integration checks for the eval-only runtime data reset."""
 
 import os
 import sys
@@ -208,7 +207,6 @@ class OfflineResetScopeTests(unittest.IsolatedAsyncioTestCase):
 
 @pytest.mark.parametrize('order', [('baseline_no_memory','full'), ('full','baseline_no_memory')])
 def test_three_arms_reset_identically_and_keep_memory_between_calls(tmp_path, monkeypatch, order):
-    """Exercise the actual lifecycle and reset SQL with an in-memory DB transport."""
     import asyncio
     from contextlib import asynccontextmanager
     from datetime import datetime, timezone

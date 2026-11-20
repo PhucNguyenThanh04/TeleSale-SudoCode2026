@@ -1,4 +1,3 @@
-"""Compare fixed-suite rounds without changing BTC's authoritative metrics."""
 from app.knowledge.config import configured_url
 import argparse
 import asyncio
@@ -42,7 +41,7 @@ def compare_runs(round0, round1):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description="Compare fixed-suite rounds without changing BTC's authoritative metrics.")
     parser.add_argument('--round0', type=Path, required=True)
     parser.add_argument('--round1', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)

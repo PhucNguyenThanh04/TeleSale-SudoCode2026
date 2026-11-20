@@ -137,7 +137,6 @@ function renderCallBrief(brief) {
     row('Đơn hàng', [order.order_id, order.variant_sku, orderStates[order.status] || order.status]
       .filter(Boolean).join(' · '));
   }
-  // Open items come only from the brief's resolved lists, never stale profile blockers.
   for (const blocker of brief.open_blockers || []) row('Băn khoăn còn mở', blocker);
   for (const question of brief.open_questions || []) row('Câu hỏi còn mở', question);
   const knownFields = new Set(['room_area_m2', 'budget_vnd', 'has_children',
@@ -320,7 +319,6 @@ async function startCall() {
   $('messages').replaceChildren();
   showState('connecting');
   try {
-    // Resume in the button gesture, before waiting for microphone permission.
     call.context = new AudioContext();
     await call.context.resume();
     if (active !== call) return;

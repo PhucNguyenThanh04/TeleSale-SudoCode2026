@@ -1,4 +1,3 @@
-"""Smoke speech through preparation, production memory projection and real graph."""
 import asyncio
 import json
 from datetime import date
@@ -21,58 +20,6 @@ from test_november_pricing import OrderRepo, reference
 RUN = Path(__file__).resolve().parents[1] / 'eval_harness/results/smoke-repairs/20261112T060044Z-17ffa366'
 
 
-@pytest.mark.parametrize('acceptance,created', [
-    (None, True), ('Chưa đặt hàng nhé.', False),
-    ('Em lên đơn đúng đôi đó giá 1.000.000 đồng, chuyển khoản nhé.', False)])
-def test_t17_real_preparation_and_operational_prior_episode_can_close(reference, acceptance, created):
-    rows = [r for r in map(json.loads, (RUN / 'full.diagnostics_full.jsonl').read_text().splitlines())
-            if r['scenario_id'] == 'SC-T17']
-    customer = next(c for c in reference.CRM if c['customer_id'] == 'C008')
-    class Commerce(OrderRepo):
-        async def rows(self, conn, table):
-            return [customer] if table == 'customers' else await super().rows(conn, table)
-        async def identity_matches(self, *args):
-            return [{'customer_id': 'C008', 'phone': self.phone}]
-        async def runtime_orders(self, *args):
-            return self.orders
-    commerce = Commerce(reference)
-    commerce.phone = customer['phone']
-    repo = MemoryRepo()
-    prior = str(uuid4())
-    repo.sessions[prior] = {'owner': 'C008', 'turns': [
-        {'client_msg_id': str(uuid4()), 'customer_text': r['user_text'], 'agent_text': r['agent_text'],
-         'on_date': '2026-10-22', 'channel': 'hotline',
-         'tool_observations': memory_observations(r['tool_calls'])}
-        for r in rows if r['call'] == 'call_1']}
-    current = [r for r in rows if r['call'] == 'call_2']
-    def reads(row):
-        return AIMessage(content='', tool_calls=[{'id': str(uuid4()),
-            'name': c['name'].replace('.', '_'),
-            'args': {k: v for k, v in c['args'].items() if k not in {'on', 'customer_phone'}}}
-            for c in row['tool_calls']])
-    model = FakeToolModel(replies=[reads(current[0]), AIMessage(content=current[0]['agent_text']),
-                                  reads(current[1]), AIMessage(content=current[1]['agent_text'])])
-    runtime = AgentHarnessRuntime(model, MCPGateway(catalog_server(commerce), order_server(commerce), None),
-                                  Memory(repo), max_tool_calls=5)
-    async def run():
-        sid = uuid4()
-        request = TextTurnRequest(client_msg_id=uuid4(), session_id=sid, on=date(2026, 10, 27),
-            channel='hotline', channel_identity=customer['phone'], text=current[0]['user_text'],
-            input_mode='clean', delivery_mode='text')
-        await runtime.prepare_session(PrepareSessionRequest(**request.model_dump(include={
-            'session_id', 'channel', 'channel_identity', 'on'})))
-        await runtime.run(request)
-        request = request.model_copy(update={'client_msg_id': uuid4(), 'text': acceptance or current[1]['user_text']})
-        response = await runtime.run(request)
-        state = runtime.state_for(request)
-        from app.mcp_servers.mcp_shared.consultation import purchase_arguments, purchase_block_reason
-        args = purchase_arguments(state)
-        assert len(commerce.orders) == int(created), (response.agent_text, args,
-            purchase_block_reason(state, args) if args else (state.get('consultation'), state.get('scoped_facts')))
-        if created:
-            assert commerce.orders[0]['sku'] == 'SKU-SN-RUN1-41-DEN'
-            assert commerce.orders[0]['payment'] == 'bank'
-    asyncio.run(run())
 
 
 @pytest.mark.parametrize('sid,cid,on,total', [

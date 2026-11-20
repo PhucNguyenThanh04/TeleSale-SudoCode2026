@@ -1,4 +1,3 @@
-"""Offline latency contracts: remove repeated work without changing business evidence."""
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timezone

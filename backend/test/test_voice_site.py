@@ -1,4 +1,3 @@
-"""The call UI and worklet must be served by the voice gateway itself."""
 from fastapi.testclient import TestClient
 
 from app.configs import VoiceSettings

@@ -1,4 +1,3 @@
-"""Transport adapters for continuous speech input and VieNeu SSE output."""
 
 import asyncio
 import json

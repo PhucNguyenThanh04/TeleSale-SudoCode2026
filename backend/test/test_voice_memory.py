@@ -1,4 +1,3 @@
-"""Memory polling must not delay audio or mix updates between voice turns."""
 
 import asyncio
 
@@ -34,7 +33,7 @@ async def test_memory_completes_for_original_turn_while_next_turn_is_active():
         await speech.sockets[0].event("transcript_final", text="phòng 25m2")
         first = await browser.until("agent_reply")
         assert first["memory_update"]["status"] == "pending"
-        await browser.until("audio_complete")  # No persistence before playback.
+        await browser.until("audio_complete")
         await browser.command({"event": "playback_finished", "turn_id": first["turn_id"]})
         await browser.until("state", state="listening")
         await asyncio.wait_for(entered.wait(), 2)

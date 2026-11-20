@@ -1,4 +1,3 @@
-"""Offline call preparation and first real-turn evidence boundaries."""
 
 import unittest
 import asyncio

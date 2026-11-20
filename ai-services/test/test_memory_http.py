@@ -1,4 +1,3 @@
-"""Opt-in tests: point MEMORY_TEST_URL at an isolated MCP memory database."""
 import os
 import unittest
 from uuid import uuid4
@@ -19,7 +18,6 @@ class MemoryHTTPTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["memory_writes"][0]["value"], 25)
         self.assertEqual(await memory.commit_turn(session, "customer", "Phòng 25 m²",
                          "Đã ghi nhận", "2026-10-15", "hotline", message, [fact]), result)
-        # New adapter models a restarted process; all state comes from MCP.
         restarted = MCPMemoryStore(gateway, namespace=memory.namespace)
         same = await restarted.read_context(session, "customer")
         self.assertEqual(same["history"][0]["customer"], "Phòng 25 m²")

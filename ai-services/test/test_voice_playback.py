@@ -1,4 +1,3 @@
-"""Voice persistence reflects delivered text without repeating business execution."""
 
 import unittest
 from unittest.mock import patch

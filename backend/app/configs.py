@@ -1,4 +1,3 @@
-"""Backend configuration loaded from backend/.env and environment variables."""
 
 from functools import lru_cache
 from pathlib import Path
@@ -38,12 +37,10 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    """Return one validated settings object per process."""
     return Settings()
 
 
 class VoiceSettings(BaseSettings):
-    """Demo gateway settings; database and JWT key enable account authentication."""
 
     model_config = SettingsConfigDict(
         env_file=_ENV_FILE, env_file_encoding="utf-8", extra="ignore", case_sensitive=False,

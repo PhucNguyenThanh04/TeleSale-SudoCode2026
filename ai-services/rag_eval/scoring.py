@@ -1,4 +1,3 @@
-"""Offline BTC scoring, diagnostics and comparisons. No model/settings imports."""
 import math
 import re
 import statistics
@@ -132,7 +131,6 @@ def score_run(run, out, *, judgments=None, judge_identity=None, human_labels=Non
         details.append(detail)
     out.mkdir(parents=True, exist_ok=False)
     write_json(out / 'rag_results.json', exported)
-    # Execute only the explicitly supplied trusted BTC source, never replace its formulas.
     raw_btc = load_module(run / 'btc/eval/reference_eval.py').rag_eval(
         run / 'btc/rag/qa_labeled.json', out / 'rag_results.json')
     btc = dict(raw_btc)

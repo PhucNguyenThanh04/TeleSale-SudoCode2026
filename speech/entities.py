@@ -1,8 +1,3 @@
-"""Trích entity từ transcript dạng viết (sau ITN) theo khóa của ``asr/ground_truth.json`` BTC.
-
-Luật dựa vào cấu trúc câu telesale (từ ngữ cảnh + đơn vị), không dựa vào câu mẫu cụ thể.
-Entity cấp hội thoại gộp theo thứ tự lượt: giá trị nói sau ghi đè giá trị nói trước.
-"""
 from __future__ import annotations
 
 import re
@@ -13,9 +8,6 @@ from .textutil import fold
 
 REFERENCE_DATE = date(2026, 10, 15)
 
-# ---------------------------------------------------------------------------
-# Catalog → SKU
-# ---------------------------------------------------------------------------
 
 _MATCH_TOKEN_RE = re.compile(r"[a-z]+(?:&[a-z]+)*|\d+")
 _TOKEN_SYNONYMS = {"lit": "l"}
@@ -30,10 +22,10 @@ _AFTER_WINDOW = 6
 @dataclass(frozen=True)
 class Product:
     sku: str
-    brand: str                # token hãng đã gấp dấu, ví dụ "airpure"
-    model: tuple[str, ...]    # token sau tên hãng: ("smart", "4", "pro")
-    prefix: tuple[str, ...]   # token trước tên hãng: ("may", "loc", "khong", "khi")
-    accessory: bool = False   # phụ kiện/combo: chỉ nhận khi phía trước có "màng", "lõi", "combo"…
+    brand: str
+    model: tuple[str, ...]
+    prefix: tuple[str, ...]
+    accessory: bool = False
 
 
 def match_tokens(text: str) -> list[str]:
@@ -77,12 +69,11 @@ def _pick(scored: list[tuple[tuple, str]]) -> str | None:
         return None
     scored.sort(key=lambda item: item[0], reverse=True)
     if len(scored) > 1 and scored[0][0] == scored[1][0]:
-        return None  # mơ hồ: thà bỏ trống còn hơn đoán sai
+        return None
     return scored[0][1]
 
 
 def find_skus(text: str, catalog: tuple[Product, ...], last_brand: str | None = None) -> tuple[list[str], str | None]:
-    """Các SKU được nhắc trong câu theo thứ tự xuất hiện, và hãng nhắc gần nhất (giữ qua các lượt)."""
     by_brand: dict[str, list[Product]] = {}
     for product in catalog:
         by_brand.setdefault(product.brand, []).append(product)
@@ -97,7 +88,6 @@ def find_skus(text: str, catalog: tuple[Product, ...], last_brand: str | None = 
             scored = [(s, p.sku) for p in by_brand[tok] if (s := _score(p, before, after))]
             sku = _pick(scored)
         elif tok in _TRIGGERS and last_brand and i + 1 < len(tokens) and tokens[i + 1] not in by_brand:
-            # "mẫu x", "bản pro": không nhắc lại tên hãng, khớp đủ model của hãng vừa nói.
             nxt = tokens[i + 1:i + 4]
             scored = []
             for p in by_brand[last_brand]:
@@ -112,9 +102,6 @@ def find_skus(text: str, catalog: tuple[Product, ...], last_brand: str | None = 
     return found, last_brand
 
 
-# ---------------------------------------------------------------------------
-# Tiền
-# ---------------------------------------------------------------------------
 
 _SCALE = {"tỷ": 10**9, "tỉ": 10**9, "triệu": 10**6, "tr": 10**6, "nghìn": 10**3, "ngàn": 10**3, "k": 10**3}
 _NOT_MONEY_AFTER = (r"ngày|tháng|năm|tuổi|lõi|mét|m|lít|l|%|giờ|phút|cái|máy|đôi|chiếc|người|lần|size|"
@@ -131,7 +118,6 @@ _AMOUNT_RE = re.compile(
 )
 _CLAUSE_BREAK_RE = re.compile(
     r"(?<!\d)[,;](?!\d)|[.?!](?!\d)|\s(?:mà|nhưng|so với|trong khi|với lại)\s"
-    # "còn" nối hai vế ("giá 5 triệu còn bên kia…"), trừ khi là động từ: "không còn hàng", "còn size 40 không".
     r"|(?<!không)(?<!vẫn)(?<!chưa)(?<!đang)\scòn\s(?!(?:hàng|size|màu|máy|không|nữa|lại)\b)")
 _MONEY_KINDS = (
     ("competitor_price_vnd", re.compile(
@@ -142,7 +128,6 @@ _MONEY_KINDS = (
     ("bulky_fee_vnd", re.compile(r"phụ thu|phụ phí|cồng kềnh")),
     ("exchange_fee_vnd", re.compile(r"phí đổi|đổi (?:size|màu|hàng|sản phẩm|mẫu)\b.*(?:mất|phí|tốn)")),
     ("shipping_fee_vnd", re.compile(r"phí (?:ship|vận chuyển|giao)|tiền (?:ship|vận chuyển)|ship (?:mất|hết|là)")),
-    # Giá sau giảm là giá, không phải tiền giảm: "giá sau khi giảm là 5 triệu", "áp voucher xong còn …".
     ("price_vnd", re.compile(
         r"sau (?:khi )?(?:được )?(?:giảm|trừ|áp|chiết khấu|khuyến mãi|ưu đãi)|(?:giảm|trừ|áp\b.*) xong")),
     ("discount_vnd", re.compile(r"giảm|bớt|chiết khấu|voucher|\btrừ\b")),
@@ -178,7 +163,7 @@ def _amount_value(m: re.Match) -> int | None:
         value += int(m.group("sub")) * _SCALE[m.group("subscale")]
     elif m.group("tail"):
         tail = m.group("tail")
-        value += int(tail) * scale / 10 ** len(tail)  # "5 triệu 2" = 5,2 triệu; "5 triệu 200" = 5,2 triệu
+        value += int(tail) * scale / 10 ** len(tail)
     return round(value)
 
 
@@ -196,9 +181,6 @@ def _money_kind(text: str, start: int, end: int) -> str:
     return "price_vnd"
 
 
-# ---------------------------------------------------------------------------
-# Các entity khác
-# ---------------------------------------------------------------------------
 
 _PHONE_RE = re.compile(r"(?<![\d.,])(?:\+84|0)(?:[\s.-]?\d){8,10}(?!\d)")
 _ORDER_RE = re.compile(r"\bod[\s-]?(\d{4,})\b", re.I)
@@ -248,7 +230,6 @@ _IN_RE = re.compile(r"còn hàng|có sẵn|sẵn hàng|có hàng|vẫn còn (?:s
 _EXCHANGE_ACTION_RE = re.compile(r"\bđổi (?:size|màu|hàng|sản phẩm|mẫu|sang|lên|qua)\b")
 _FREE_RE = re.compile(r"miễn phí|không (?:mất|tính|thu) phí|free\b|0 đồng")
 _QUESTION_END_RE = re.compile(
-    # Không có "à": ASR hay nghe "ạ" thành "à" ("dạ còn hàng à"); câu hỏi "à" thật thì Whisper thường đặt "?".
     r"(?:\b(?:không|chưa|hả|nhỉ|sao|chứ)\b(?:\s+(?:anh|chị|em|ạ|vậy|thế|nhé|nha|bạn|ha|mình))*)\s*$")
 
 
@@ -389,14 +370,12 @@ def _confirmed(m: re.Match, following: str) -> str:
 
 
 def _resolve_confirmations(turns: list[str]) -> list[str]:
-    """Câu đọc lại để xác nhận ("…thanh toán COD đúng không ạ?") mà được đáp "đúng rồi" thì coi là câu khẳng định."""
     return [_TAG_QUESTION_RE.sub(lambda m: _confirmed(m, following), text)
             for text, following in zip(turns, [*turns[1:], ""])]
 
 
 def extract_entities(turns: list[str], catalog: tuple[Product, ...] = (),
                      reference_date: date = REFERENCE_DATE) -> tuple[dict, list[dict]]:
-    """``turns``: câu dạng viết theo thứ tự thời gian → (entity cấp hội thoại, entity từng lượt)."""
     state = _State()
     per_turn = [_turn_entities(text, state, catalog, reference_date) for text in _resolve_confirmations(turns)]
     merged: dict = {}

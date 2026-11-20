@@ -7,7 +7,6 @@ order_password="$(cat /run/secrets/mcp_order_password)"
 memory_password="$(cat /run/secrets/mcp_memory_password)"
 knowledge_password="$(cat /run/secrets/mcp_knowledge_password)"
 
-# Passwords are generated as hex, which makes SQL interpolation unambiguous.
 for password in "$catalog_password" "$order_password" "$memory_password" "$knowledge_password"; do
     case "$password" in
         *[!0-9a-f]*|"") echo 'MCP database passwords must be nonempty hex strings' >&2; exit 1 ;;

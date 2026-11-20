@@ -1,4 +1,3 @@
-"""Giả lập kênh thoại, phân giọng TTS, ghép hội thoại có mốc thời gian và lọc ảo giác ASR (không gọi mạng/model)."""
 import json
 import tempfile
 import unittest
@@ -85,7 +84,7 @@ class VoiceTests(unittest.TestCase):
 
             def infer(self, text: str, voice: str, **kwargs):
                 FakeVieneu.call = (self.mode, text, voice, kwargs)
-                return tone(440, seconds=0.5).repeat(3)  # 24 000 mẫu = 0,5 s ở 48 kHz
+                return tone(440, seconds=0.5).repeat(3)
 
         with mock.patch.dict("sys.modules", {"vieneu": mock.Mock(Vieneu=FakeVieneu)}), \
                 mock.patch.dict(tts._VIENEU_MODELS, clear=True):
@@ -105,7 +104,7 @@ class SynthDatasetTests(unittest.TestCase):
 
         def fake_engine(text: str, params: dict) -> np.ndarray:
             calls.append((text, params["voice"]))
-            return np.full(800 * len(text), 0.5, dtype=np.float32)  # 0,05 s mỗi ký tự
+            return np.full(800 * len(text), 0.5, dtype=np.float32)
 
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(tts.ENGINES, {"edge": fake_engine}):
             out, cache = Path(tmp) / "ds", Path(tmp) / "cache"
@@ -153,7 +152,6 @@ class SynthDatasetTests(unittest.TestCase):
         for segment in clean_segments:
             start, end = (round(segment[key] * SR) for key in ("start", "end"))
             a, b = clean[start:end], noisy[start:end]
-            # Allow the final peak normalization to apply a common gain.
             a, b = a / np.max(np.abs(a)), b / np.max(np.abs(b))
             if segment["speaker"] == "A":
                 np.testing.assert_allclose(a, b, atol=2e-4)
@@ -174,7 +172,7 @@ class SynthDatasetTests(unittest.TestCase):
         self.assertEqual(manifest["ground_truth_sha256"], gt_hash)
         self.assertEqual(written["ground_truth_sha256"], gt_hash)
         self.assertEqual([d["id"] for d in written["dialogues"]], ["T9"])
-        self.assertNotIn("clips", written)  # chỉ engine files mới ghi danh sách clip
+        self.assertNotIn("clips", written)
         self.assertNotIn(tmp, json.dumps(written, ensure_ascii=False))
 
 

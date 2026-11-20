@@ -1,4 +1,3 @@
-"""BTC product, promotion, inventory and price quote contracts."""
 
 from datetime import date
 from typing import Any, Literal
@@ -141,6 +140,3 @@ class PriceQuote(BaseModel):
     ineligible_promos: list[IneligiblePromotion] = Field(default_factory=list)
     not_applied_exclusive: list[str] = Field(default_factory=list)
     freeship: bool = False
-
-    # The mock tool also returns _internal_price_floor_vnd. Pydantic ignores it:
-    # it is not part of the agent/customer-facing quote contract.

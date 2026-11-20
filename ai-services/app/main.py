@@ -1,4 +1,3 @@
-"""ASGI entrypoint for the text AI service."""
 from app.knowledge.config import configured_url
 
 from contextlib import asynccontextmanager

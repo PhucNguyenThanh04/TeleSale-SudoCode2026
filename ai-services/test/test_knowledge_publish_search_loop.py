@@ -1,4 +1,3 @@
-"""Real review, hybrid build and policy.search; offline storage/embedding only."""
 import asyncio
 import pytest
 from datetime import date

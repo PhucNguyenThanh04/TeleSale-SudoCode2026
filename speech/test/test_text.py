@@ -1,4 +1,3 @@
-"""Chuẩn hóa transcript Việt-Anh: đọc số, ITN, từ điển thuật ngữ và hai dạng spoken/written."""
 import re
 import unittest
 from pathlib import Path
@@ -106,12 +105,10 @@ class LexiconTests(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertEqual(canonicalize(text, self.lexicon), text)
         self.assertNotIn("HikePro", canonicalize("chị lấy hai pro nhé", self.lexicon))
-        # Ground truth BTC D04: "giày run lai hai pro" là RunLite 2 Pro, nên "hai pro" không được tự thành HikePro.
         self.assertNotIn("HikePro", canonicalize("giày run lai hai pro", self.lexicon))
 
     @unittest.skipUnless(BTC_DIR, "cần dữ liệu BTC (BTC_DATA_DIR)")
     def test_every_latin_word_in_catalog_names_has_a_lexicon_entry(self):
-        # Từ tiếng Việt viết không dấu và chữ cái đơn (BTC giữ "x", "y" trong ground truth) không cần mục riêng.
         allowed = {"cho", "phao", "thao", "thay", "xe"}
         known = {t.lower() for entry in self.lexicon.entries for t in tokenize(entry["canonical"])}
         missing = set()
@@ -125,7 +122,6 @@ class LexiconTests(unittest.TestCase):
 
 class NormalizeTests(unittest.TestCase):
     def assert_round_trip(self, sentence: str):
-        """ASR nghe đúng từng chữ thì dạng nói không được đổi chữ nào (nếu không WER bị phạt oan)."""
         self.assertEqual(normalize_text(sentence).spoken, btc_norm(sentence))
 
     def test_written_form_uses_digits_and_canonical_names(self):

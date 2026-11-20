@@ -1,4 +1,3 @@
-"""Hand-labeled synthetic examples for the BTC trace fields we generate."""
 
 import json
 from pathlib import Path
@@ -83,13 +82,11 @@ def test_trace_preserves_valid_tool_names_and_exact_business_args():
                      raw_calls, [], [], 100, None, "clean", customer_name="Hoa")
     for call in row["tool_calls"]:
         assert call["name"] in VALID_BTC_TOOLS, f"Invalid tool name: {call['name']}"
-    # Verify exact business arguments are NOT masked
     order_call = row["tool_calls"][0]
     assert order_call["name"] == "order.create"
     assert order_call["args"]["sku"] == "SKU-AP-Y"
     assert order_call["args"]["price_vnd"] == 5200000
     assert order_call["args"]["payment"] == "COD"
-    # Verify PII is masked or dropped
     assert order_call["args"]["customer_phone"] == "[SỐ ĐÃ ẨN]"
     assert order_call["args"]["customer_name"] == "[TÊN ĐÃ ẨN]"
     assert order_call["args"]["address"] == "[PII ĐÃ ẨN]"

@@ -1,4 +1,3 @@
-"""Restore only a verified BTC-only index; never restore reviewed supplements."""
 from app.knowledge.policy.source import parse_policy_sources
 from app.knowledge.schemas import digest, timestamp
 from app.knowledge.services.publish import build_policy_release

@@ -1,4 +1,3 @@
-"""Check OpenAI-compatible requests without contacting a live model."""
 
 import asyncio
 import json

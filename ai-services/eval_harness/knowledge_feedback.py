@@ -1,4 +1,3 @@
-"""Import failures only from complete, provenance-checked BTC runs (offline)."""
 from app.knowledge.config import configured_url
 import argparse
 import asyncio
@@ -83,7 +82,7 @@ async def import_run(repo, run_dir):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__)
+    ap = argparse.ArgumentParser(description='Import failures only from complete, provenance-checked BTC runs (offline).')
     ap.add_argument('--run', type=Path, required=True)
     args = ap.parse_args()
     from app.knowledge.repos.postgres import KnowledgeRepo

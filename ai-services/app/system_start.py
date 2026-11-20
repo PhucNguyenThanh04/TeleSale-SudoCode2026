@@ -1,4 +1,3 @@
-"""Manage fresh demos; ordinary eval uses the existing services and runner reset."""
 import argparse
 import asyncio
 import fcntl
@@ -28,7 +27,7 @@ MCP = ('mcp-catalog', 'mcp-order', 'mcp-memory', 'mcp-knowledge', 'langmem-worke
 
 
 class StartupError(ValueError):
-    """Static operator diagnostics; provider/SQL exception strings stay private."""
+    pass
 
 
 async def fingerprint_btc_source(dsn):
@@ -74,7 +73,6 @@ def check_configuration(settings, mode):
     if not settings.knowledge_policy_config_file or not settings.knowledge_policy_config_file.is_file():
         raise StartupError('KNOWLEDGE_POLICY_CONFIG_FILE required')
     if mode == 'demo':
-        # Validate required account settings without printing their values or writing DB rows.
         code = ('from app.seed_demo_users import SeedSettings\n'
                 'from pydantic import ValidationError\n'
                 'try:\n'
@@ -167,7 +165,6 @@ async def setup_logins(boot, settings):
         role = quoted(url.username)
         if not await conn.fetchval('SELECT 1 FROM pg_roles WHERE rolname=$1', url.username):
             if not url.password: raise StartupError('A password is required to initialize an application DB login')
-            # PostgreSQL formats values/identifiers; credentials never enter process arguments.
             sql = await conn.fetchval('SELECT format(\'CREATE ROLE %I LOGIN PASSWORD %L\', $1::text, $2::text)', url.username, url.password)
             await conn.execute(sql)
         if url.username != await conn.fetchval('SELECT current_user'):
@@ -302,12 +299,11 @@ async def start(args, settings, env):
 
 
 def startup_lock_path():
-    # storage/ can belong to Docker's root user; keep the host lock in the checkout.
     return ROOT/'.system-start.lock'
 
 
 def main():
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(description='Manage fresh demos; ordinary eval uses the existing services and runner reset.')
     p.add_argument('mode', choices=['demo', 'eval', 'knowledge-eval'])
     p.add_argument('--expected-database', required=True)
     p.add_argument('--resume', type=Path)
@@ -352,8 +348,8 @@ def main():
     else:
         boot_id = str(uuid4())
     env['SYSTEM_BOOT_ID'] = boot_id
-    os.environ['SYSTEM_BOOT_ID'] = boot_id  # Compose and host processes share one generation.
-    os.environ['KNOWLEDGE_RELEASE_ID'] = ''  # A deleted release pin must not survive a fresh system.
+    os.environ['SYSTEM_BOOT_ID'] = boot_id
+    os.environ['KNOWLEDGE_RELEASE_ID'] = ''
     if args.sudo_docker: os.environ['SYSTEM_SUDO_DOCKER'] = '1'
     lock = startup_lock_path()
     with lock.open('a') as handle:

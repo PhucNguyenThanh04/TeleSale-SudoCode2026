@@ -1,4 +1,3 @@
-"""CUDA speech models. Audio is handled in memory and never persisted."""
 
 from __future__ import annotations
 
@@ -95,7 +94,6 @@ class Models:
         self.asr_warmup_runs = 0
         self.vad_warmup_runs = 0
         self.tts_warmup_runs = 0
-        # Bypass VAD: silence passed through VAD would never exercise ASR.
         for index in range(3):
             self.transcribe_segment(np.zeros(SAMPLE_RATE, dtype=np.float32))
             self.asr_warmup_runs += 1
@@ -114,7 +112,6 @@ class Models:
         config.silero_vad.model = self.vad_config.silero_vad.model
         config.silero_vad.min_silence_duration = 0.7
         config.silero_vad.min_speech_duration = 0.2
-        # ListenSession enforces the 30 s cap and reports its reason.
         config.silero_vad.max_speech_duration = 60
         config.sample_rate = SAMPLE_RATE
         config.provider = self.vad_config.provider
@@ -125,8 +122,6 @@ class Models:
         stream = self.recognizer.create_stream()
         stream.accept_waveform(SAMPLE_RATE, samples)
         self.recognizer.decode_stream(stream)
-        # Reuse B2 text postprocessing; Gipformer has no Whisper confidence
-        # scores or hotword prompt to justify those decoder-specific filters.
         return normalize_text(clean_hypothesis(stream.result.text)).written
 
     def segments(self, samples: np.ndarray):

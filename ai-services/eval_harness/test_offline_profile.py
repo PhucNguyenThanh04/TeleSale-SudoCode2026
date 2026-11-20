@@ -1,4 +1,3 @@
-"""The offline runner must protect collection and child Python processes."""
 import os
 import socket
 import subprocess

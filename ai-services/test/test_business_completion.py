@@ -1,4 +1,3 @@
-"""General tool and context contracts for completing a purchase safely."""
 from test_deep_memory import FakeStreamAgent
 import asyncio
 from datetime import date
@@ -145,7 +144,7 @@ def test_model_handoff_checks_customer_authorization_and_records_ticket():
         business = BusinessTools(gateway, current, 5,
             lambda: datetime.now(timezone.utc), authorize_write=AsyncMock(return_value=True))
         result = await business.invoke('handoff.transfer', {
-            'brief': {'escalation_reason':'khach_yeu_cau_gap_nguoi'}})
+            'brief': {'escalation_reason':'khach_yeu_cau_gap_nguoi','conversation_summary':'Khách muốn tiếp tục tư vấn với nhân viên phụ trách.','open_questions':[],'next_action':'Nhân viên tiếp nhận yêu cầu tư vấn.'}})
         assert result['ticket_id'] == 'HT-TEST'
         assert current['needs_handoff'] is True
         assert current['handoff_ticket_id'] == 'HT-TEST'
@@ -163,7 +162,6 @@ def test_model_status_lookup_uses_owned_identity_without_asking_again():
         tools = BusinessTools(gateway, current, 3, lambda: None)
         assert 'error' not in await tools.invoke('order.status', {})
         assert current['tool_calls'][-1]['args']['order_id'] == 'OD-OFFLINE'
-        # Repeated model reads reuse the current observation.
         await tools.invoke('order.status', {})
         assert gateway.invoke_trusted.await_count == 1
     asyncio.run(run())

@@ -1,4 +1,3 @@
-"""Locate the BTC release for tests without depending on one checkout layout."""
 
 import os
 from pathlib import Path

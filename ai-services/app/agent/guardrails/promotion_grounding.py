@@ -1,4 +1,3 @@
-"""Verify each spoken offer against its product quote, never another benefit."""
 import re
 from datetime import date
 from typing import Any
@@ -26,7 +25,6 @@ def _gift_supported(clause: str, promos: list[dict], items: list[dict]) -> bool:
         gifts = [p for p in gifts if p.get("gift_qty", 1) == number]
     if not gifts:
         return False
-    # A generic gift is supportable without guessing its name from its SKU.
     if re.search(r"\btang (?:qua|kem qua)|\bqua tang\b", folded):
         return True
     match = re.search(r"(?:tang|bieu)\s+(?:kem\s+)?(?:(?:\d+|mot|hai|ba|bon|nam)\s+)?(.+)", folded)
@@ -49,8 +47,6 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
     order_ids = {str(row['order_id']) for call in successful
                  for row in [call['result'], *call['result'].get('orders', [])]
                  if isinstance(row, dict) and row.get('order_id')}
-    # A complete attributed policy section explains general conditions; it does
-    # not assert that a promotion has been applied to this customer's order.
     from app.agent.guardrails.policy_grounding import policy_evidence_for_answer
     normalize = lambda value: ' '.join(re.sub(r'[*`_]', '', value).split())
     policy_sections = []
@@ -62,9 +58,7 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
         if normalize(clause) and any(normalize(clause) in section for section in policy_sections):
             continue
         folded = _fold(clause)
-        # Product benefits such as "giảm bụi" / "tăng chất lượng" are not offers.
         commercial = _fold(re.sub(r'\btăng\b', '', clause, flags=re.IGNORECASE))
-        # Biểu mẫu (form) is not biếu (a promotional gift) after accent folding.
         commercial = re.sub(r'\bbieu mau\b', '', commercial)
         commercial = re.sub(r'\bgiam\s+(?:bui|min|on|mui|vi khuan)\b', '', commercial)
         if "?" in clause or re.search(r"\b(?:lan truoc|truoc day)\b", folded) and not re.search(r"\b(?:hien|hom nay|dang)\b", folded):
@@ -81,7 +75,6 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
                     and re.search(r'freeship|mien phi (?:ship|van chuyen)', folded)
                     and not re.search(r'\b(?:giam|tang|bieu)\b|%', commercial)):
                 basket = baskets[0]
-                # Shipping belongs to the order; it does not grant a unit discount.
                 unit = {'name': 'pricing.get_quote', 'args': {'on': basket.get('args', {}).get('on')},
                         'result': {'applied_promos': basket['result'].get('order_promos', []),
                                    'freeship': basket['result'].get('freeship', False)}}
@@ -97,13 +90,11 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
         mentioned = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
         selected = [c for c in quotes if not mentioned or c.get('args', {}).get('sku') in mentioned]
         if len(mentioned) > 1 and len(selected) == 1:
-            # Multiple variants without a sourced focus are still ambiguous.
             parent = selected[0].get('args', {}).get('sku')
             if not any(item.get('sku') == parent for item in items):
                 return "promotion_quote_missing"
         if not selected or len({c.get("args", {}).get("sku") for c in selected}) != 1:
             return "promotion_quote_missing"
-        # Conflicting quotes for the selected item are ambiguous evidence.
         if len({str((c.get("args"), c["result"])) for c in selected}) != 1:
             return "promotion_quote_missing"
         call = selected[-1]
@@ -147,7 +138,6 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
             return "promotion_detail_unverified"
         discounts = [p.get("discount_vnd", 0) for p in promos if type(p.get("discount_vnd", 0)) is int]
         if discount and not inactive:
-            # "không giảm thêm" does not assert a new discount.
             negative = re.search(r"(?:khong|chua)\s+(?:con\s+|duoc\s+|co\s+)?giam", folded)
             if not negative and not any(d > 0 for d in discounts):
                 return "promotion_detail_unverified"

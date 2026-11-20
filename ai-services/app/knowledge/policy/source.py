@@ -1,4 +1,3 @@
-"""Parse BTC sections into safe serving snapshots, independent of QA labels."""
 import hashlib
 import json
 import re
@@ -24,14 +23,12 @@ def _safe_body(body, transformation):
     if transformation == 'disclosure_limit':
         return 'Thông tin giá nhập, biên lợi nhuận và nhà cung cấp là nội bộ, không được cung cấp cho khách.'
     if transformation == 'discount_authority':
-        # The authority rule is public; the embedded internal floor percentages are not.
         return ('Nhân viên/agent không được tự giảm giá ngoài các chương trình đã công bố. '
                 'Yêu cầu giảm thêm cho đơn số lượng lớn (từ 3 sản phẩm cùng loại) phải '
                 'chuyển quản lý duyệt; agent không hứa mức giảm.')
     if transformation == 'restock_dates':
         safe = re.sub(r'\([^)]*\)', '', body)
         safe = re.sub(r'nhà cung cấp chậm,\s*', '', safe, flags=re.I)
-        # Keep the public dates/subjects only, never inventory quantities or vendors.
         return safe + '\nNgày dự kiến đã qua không xác nhận đã có hàng; kiểm tra inventory.check.'
     raise ValueError('Unknown safe transformation')
 

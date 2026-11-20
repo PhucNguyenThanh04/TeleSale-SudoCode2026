@@ -1,4 +1,3 @@
-"""Import contracts for the knowledge domain and its dedicated MCP adapter."""
 import ast
 import importlib
 from pathlib import Path

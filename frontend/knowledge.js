@@ -261,7 +261,6 @@ async function editor(gap, revision = null) {
     await editor(gap, saved); notice('Đã phê duyệt. Nội dung chưa được phát hành.');
   });
   button(actions, 'Từ chối bản này', async () => { if (!decisionReason.value.trim()) throw new Error('Nhập lý do quyết định.'); const saved = await command('reject', {id:revision.id,content_hash:revision.content_hash,reason:decisionReason.value}); selectedRevisions.delete(revision.id); await editor(gap, saved); notice('Đã từ chối bản đề xuất.'); }, 'danger');
-  // Approve only the displayed stored bytes, including the test being reviewed.
   const initialValues = [...form.querySelectorAll('input,textarea,select')].map(n => n.multiple ? [...n.selectedOptions].map(o => o.value).join(',') : n.value);
   const initialTest = [expected.value,variations.value];
   function formChanged() { return [...form.querySelectorAll('input,textarea,select')].some((n,i) => (n.multiple ? [...n.selectedOptions].map(o => o.value).join(',') : n.value) !== initialValues[i]) || expected.value !== initialTest[0] || variations.value !== initialTest[1]; }

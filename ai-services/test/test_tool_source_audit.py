@@ -1,4 +1,3 @@
-"""Data-driven tool checks against unmodified BTC data and November oracle."""
 import asyncio
 from datetime import date, timedelta
 from itertools import combinations_with_replacement
@@ -7,6 +6,7 @@ from app.mcp_servers.mcp_shared import commerce_rules
 from app.mcp_servers.mcp_catalog.services import catalog
 from app.mcp_servers.mcp_catalog.repos.postgres import CatalogRepo
 from test_november_pricing import reference, OrderRepo
+from write_authorization_fixtures import WRITE_TEST_SECRET, scripted_write_args
 
 
 def test_all_source_crm_identifiers_match_official_lookup(reference):
@@ -102,7 +102,7 @@ def test_every_source_sku_inventory_and_price_at_data_boundaries(reference):
             for phone, address in [(None, None), (owner['phone'], 'Hồ Chí Minh')]:
                 args = dict(sku=sku, on=on, customer_phone=phone, address=address)
                 expected = reference.pricing_get_quote(**args)
-                expected.pop('_internal_price_floor_vnd', None)  # Never serve internal costs.
+                expected.pop('_internal_price_floor_vnd', None)
                 owned = {o['sku'] for o in owner['orders'] if o.get('status')=='delivered'} if phone else set()
                 assert commerce_rules.quote(reference.PRODUCTS, reference.PROMOS, args, owned) == expected, args
 
@@ -212,7 +212,7 @@ def test_runtime_order_lookup_keeps_btc_payment_and_promotions_without_exposing_
         conn.close()
 
 
-def test_callback_reports_an_hour_only_move_instead_of_silently_changing_time():
+def test_callback_proposes_an_hour_only_move_without_inserting_it():
     from app.mcp_servers.mcp_order.services.order import callback
     class Repo:
         async def insert_callback(self, session, phone, moment, note):
@@ -223,9 +223,9 @@ def test_callback_reports_an_hour_only_move_instead_of_silently_changing_time():
         original = '2026-10-20T07:30'
         result = await callback(repo, None, {'customer_phone': '0984726714',
             'callback_at': original}, '0984726714')
-        assert result['callback_at'] == '2026-10-20T08:00'
-        assert result['moved_from'] == original
-        assert repo.moment.utcoffset() == timedelta(hours=7)
+        assert result['error'] == 'callback_reschedule_required'
+        assert result['proposed_callback_at'] == '2026-10-20T08:00+07:00'
+        assert not hasattr(repo, 'moment')
     asyncio.run(run())
 
 
@@ -258,7 +258,7 @@ def test_concurrent_exchanges_do_not_both_receive_the_first_exchange_fee(referen
             return [reference._ORDERS[receipt['order_id']]]
         async def exchange_count(self, session, order_id):
             count = len(self.updates)
-            await asyncio.sleep(0)  # Both requests can otherwise read zero before either insert.
+            await asyncio.sleep(0)
             return count
         async def insert_update(self, session, order_id, action, result):
             self.updates.append(result)
@@ -266,6 +266,10 @@ def test_concurrent_exchanges_do_not_both_receive_the_first_exchange_fee(referen
         repo = Repo()
         args = dict(order_id=receipt['order_id'], action='exchange_size',
                     new_variant_sku='SKU-JK-WND-L-NAVY', on='2026-10-20')
-        results = await asyncio.gather(invoke(repo, 'order.update', args), invoke(repo, 'order.update', args))
+        first = scripted_write_args('order.update', args, customer_id='C001', source_identity=phone)
+        second = scripted_write_args('order.update', args, customer_id='C001', source_identity=phone)
+        results = await asyncio.gather(
+            invoke(repo, 'order.update', first, context_secret=WRITE_TEST_SECRET),
+            invoke(repo, 'order.update', second, context_secret=WRITE_TEST_SECRET))
         assert sorted(r['fee_vnd'] for r in results) == [0, 60000]
     asyncio.run(run())

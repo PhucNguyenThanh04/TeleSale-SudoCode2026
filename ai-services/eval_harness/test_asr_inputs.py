@@ -1,4 +1,3 @@
-"""ASR handoff preserves customer-only speech and trusted scenario/session bindings."""
 from copy import deepcopy
 import json
 

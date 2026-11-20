@@ -1,4 +1,3 @@
-"""Shared deterministic masking before model, memory and traces."""
 
 import re
 
@@ -25,3 +24,13 @@ def mask_pii(value: str) -> str:
     value = _PERSON_NAME.sub("[TÊN ĐÃ ẨN]", value)
     return _NUMERIC_PII.sub("[SỐ ĐÃ ẨN]", value)
 
+
+
+def resolve_redacted_address(text: str) -> str | None:
+    matches = [match for pattern in (_ADDRESS, _STREET, _ALLEY, _APARTMENT)
+               for match in pattern.finditer(text)]
+    values = {re.sub(r'(?i)^(?:địa chỉ|dia chi)\s*[:\-]?\s*', '', match[0]).strip()
+              for match in matches if not any(other.start() <= match.start()
+                  and other.end() >= match.end() and other.span() != match.span()
+                  for other in matches)}
+    return next(iter(values)) if len(values) == 1 else None

@@ -1,4 +1,3 @@
-"""Source authority is PostgreSQL, never the vector index or feedback text."""
 from datetime import date
 from app.knowledge.schemas import KnowledgeError
 

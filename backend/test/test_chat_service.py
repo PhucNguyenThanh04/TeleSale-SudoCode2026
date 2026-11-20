@@ -1,4 +1,3 @@
-"""Focused checks for identity isolation and chat persistence boundaries."""
 
 import json
 import unittest

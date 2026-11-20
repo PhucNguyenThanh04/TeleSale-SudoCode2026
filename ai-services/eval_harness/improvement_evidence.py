@@ -1,4 +1,3 @@
-"""Compare fixed-test Knowledge Gap rounds from saved, hash-bound artifacts."""
 import argparse
 from datetime import datetime
 import json
@@ -53,7 +52,6 @@ def compare_runs(before, after, *, btc_root):
         values = [pair[1]['system'].get(metric, {}).get('value') for pair in pairs]
         deltas[metric] = round(values[1] - values[0], 3) if all(type(v) in (int, float) for v in values) else None
     result['delta_percentage_points'] = deltas
-    # Also protect the separately required price/promotion hallucination metric.
     hr = [pair[1]['system'].get('hallucination_rate', {}).get('price_promo_only', {}).get('value')
           for pair in pairs]
     deltas['price_promo_hallucination_rate'] = (round(hr[1] - hr[0], 3)
@@ -71,7 +69,7 @@ def compare_runs(before, after, *, btc_root):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Compare fixed-test Knowledge Gap rounds from saved, hash-bound artifacts.')
     parser.add_argument('before', type=Path)
     parser.add_argument('after', type=Path)
     parser.add_argument('--btc-root', type=Path, required=True)

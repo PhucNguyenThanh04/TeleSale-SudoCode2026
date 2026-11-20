@@ -1,4 +1,3 @@
-"""Chấm một lần chạy ASR bằng ``reference_eval.wer_cer`` của BTC và các số đo phụ."""
 import json
 import tempfile
 import unittest
@@ -106,9 +105,9 @@ class ScoreRunTests(unittest.TestCase):
             write(dataset / "ground_truth.json", ground_truth)
             write(run / "hypotheses.json", hypotheses)
             with warnings.catch_warnings():
-                warnings.simplefilter("ignore", ResourceWarning)  # script BTC mở file không đóng
+                warnings.simplefilter("ignore", ResourceWarning)
                 report = score_run(dataset, run, load_reference_eval(BTC_DIR), catalog=())
-                self.assertTrue(report["rules_stale"])  # không có run.json → không biết bộ luật nào
+                self.assertTrue(report["rules_stale"])
                 self.assertIsNone(report["ground_truth_match"])
                 write(run / "run.json", {**rules_fingerprint(),
                                          "ground_truth_sha256": text_sha256(dataset / "ground_truth.json")})

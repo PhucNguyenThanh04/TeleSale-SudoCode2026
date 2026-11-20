@@ -1,4 +1,3 @@
-"""Public customer interaction history, separate from model retrieval context."""
 from datetime import date
 from typing import Literal
 

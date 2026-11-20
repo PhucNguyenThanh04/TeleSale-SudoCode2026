@@ -1,4 +1,3 @@
-"""Scoped customer knowledge is read from LangMem only."""
 
 import unittest
 from unittest.mock import AsyncMock

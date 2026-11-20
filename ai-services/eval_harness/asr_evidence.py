@@ -1,4 +1,3 @@
-"""Verify saved local-ASR reports with the BTC scorer; never transcribe audio."""
 import argparse
 import json
 from pathlib import Path
@@ -80,7 +79,6 @@ def inspect_asr(dataset, run, *, btc_root, group):
 
 
 def collect_asr_evidence(sources, *, btc_root):
-    """Bind optional BTC/team reports after offline score verification; never transcribe."""
     if not sources or set(sources) - {'btc', 'team'}:
         raise ValueError('asr_groups_invalid')
     root = Path(btc_root).resolve()
@@ -124,7 +122,7 @@ def asr_sources_from_args(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Verify saved local-ASR reports with the BTC scorer; never transcribe audio.')
     parser.add_argument('--dataset', type=Path, required=True)
     parser.add_argument('--run', type=Path, required=True)
     parser.add_argument('--btc-root', type=Path, required=True)

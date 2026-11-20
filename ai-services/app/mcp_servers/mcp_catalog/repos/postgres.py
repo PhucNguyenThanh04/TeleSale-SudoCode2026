@@ -1,4 +1,3 @@
-"""Read-only PostgreSQL queries for customer, products, stock and promotions."""
 
 import json
 from datetime import date

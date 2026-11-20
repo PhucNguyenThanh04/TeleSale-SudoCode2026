@@ -1,4 +1,3 @@
-"""Apply evidence-backed updates to a bounded, structured session episode."""
 
 from copy import deepcopy
 from uuid import UUID, uuid5
@@ -12,7 +11,7 @@ _KINDS = {"question", "blocker"}
 
 
 class EpisodeCapacityError(ValueError):
-    """The bounded episode is full; the verified turn can still be committed."""
+    pass
 
 
 def _safe_text(value: object, maximum: int) -> str:
@@ -31,11 +30,6 @@ def _evidence(quote: object, customer_text: str, agent_text: str) -> str:
 
 
 def admit_episode_resolutions(previous: dict, delta: dict, **evidence) -> tuple[dict, int]:
-    """Reject unsupported optional resolutions before applying the remaining delta.
-
-    Revalidate cached proposals too: a target may have disappeared since extraction.
-    The strict state validator remains responsible for every other delta field.
-    """
     admitted = deepcopy(delta)
     rejected = 0
     for update in admitted.get("topic_updates", []):
@@ -60,7 +54,6 @@ def admit_episode_resolutions(previous: dict, delta: dict, **evidence) -> tuple[
 def apply_episode_delta(previous: dict, delta: dict, *, source_turn_id: str,
                         customer_text: str, agent_text: str,
                         prior_open_items: dict[str, tuple[str, str]] | None = None) -> dict:
-    """Return an updated state; never mutate the source on invalid input."""
     try:
         UUID(source_turn_id)
     except (TypeError, ValueError) as exc:
@@ -92,24 +85,6 @@ def apply_episode_delta(previous: dict, delta: dict, *, source_turn_id: str,
             topic = {"scope_type": scope_type, "scope_id": scope_id,
                      "customer_goal": "", "advice_given": "", "next_step": "", "items": []}
             topics.append(topic)
-        if 'consultation' in update:
-            from app.schemas.consultation import ConsultationSnapshot
-            patch=ConsultationSnapshot.model_validate(update['consultation']).model_dump(mode='json',exclude_unset=True)
-            if scope_type != 'global' or set(patch.get('source_refs',{})) != set(patch)-{'source_refs','schema_version'}:
-                raise ValueError('invalid consultation patch')
-            expected_roles={'candidates':'tool','recommended_sku':'agent','selected_sku':'customer',
-                            'budget':'customer','presented_offer':'agent','accepted_offer':'customer','delegation':'customer'}
-            for field,ref in patch['source_refs'].items():
-                if ref['source_turn_id'] != source_turn_id or ref['source_kind']!=expected_roles.get(field):
-                    raise ValueError('invalid consultation source')
-                if ref['source_kind']!='tool':
-                    # SourceRef already validates masked evidence, including existing redactions.
-                    source_text = customer_text if ref['source_kind']=='customer' else agent_text
-                    if ref['evidence_quote'].casefold() not in source_text.casefold():
-                        raise ValueError('consultation evidence is not in current turn')
-            previous=topic.get('consultation') or {}
-            merged={**previous,**patch,'source_refs':{**previous.get('source_refs',{}),**patch['source_refs']}}
-            topic['consultation']=ConsultationSnapshot.model_validate(merged).model_dump(mode='json')
         for field in ("customer_goal", "advice_given", "next_step"):
             if field in update:
                 quotes = update.get("narrative_evidence_quotes", {})

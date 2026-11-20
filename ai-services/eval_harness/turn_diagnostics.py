@@ -1,4 +1,3 @@
-"""Shared value-free turn evidence; speech alone never establishes a root cause."""
 import hashlib
 import json
 import re
@@ -212,8 +211,6 @@ def verify_turn_diagnostics(trace: Path, expected: dict | None = None) -> dict:
                             or failure.get('error_code') not in TOOL_ERRORS or ('retrieval_status' in failure and failure['retrieval_status'] not in RETRIEVAL_STATUS)):
                             raise ValueError('Unsafe tool failure')
                 else:
-                    # Validate content-free stage shape; values from profile/draft
-                    # must never be introduced through additional fields.
                     template=stage_evidence({},None,**{k:row[k] for k in IDENTITY})
                     if set(detail)!=set(template)|{'agent_text_sha256'}:
                         raise ValueError('Unsafe stage diagnostics')
@@ -297,7 +294,6 @@ def verify_decisions(trace, expected):
 
 
 def merge_decisions(traces, out):
-    """Coordinator only: verify per-config files, then publish a single immutable run file."""
     from eval_harness.official_pipeline import atomic_bytes
     out = Path(out)
     if out.exists():
@@ -318,7 +314,6 @@ def merge_decisions(traces, out):
 
 
 def trace_execution_health(trace: Path) -> str:
-    """Derive health only from verified, trace-bound evidence."""
     from app.agent.harness.execution_diagnostics import execution_health
     trace = Path(trace)
     verify_turn_diagnostics(trace)

@@ -1,4 +1,3 @@
-"""Functional loader checks; no live DB, model, or BTC evaluations."""
 import asyncio
 import json
 import sys

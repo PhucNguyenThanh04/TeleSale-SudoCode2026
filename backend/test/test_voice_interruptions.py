@@ -1,4 +1,3 @@
-"""Full duplex voice races with offline STT, synthesis and harness doubles."""
 import asyncio
 
 import httpx

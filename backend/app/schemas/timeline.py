@@ -1,4 +1,3 @@
-"""Gateway contract for the public, session-bound history endpoint."""
 from datetime import date
 from typing import Literal
 from uuid import UUID

@@ -1,4 +1,3 @@
-"""Order PostgreSQL queries; no commerce decisions live here."""
 
 import json
 from datetime import date, datetime

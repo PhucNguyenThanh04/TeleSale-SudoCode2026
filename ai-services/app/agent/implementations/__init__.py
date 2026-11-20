@@ -1,4 +1,3 @@
-"""Select an agent implementation without changing the outer harness."""
 
 from typing import Literal
 

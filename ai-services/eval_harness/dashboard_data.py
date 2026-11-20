@@ -1,4 +1,3 @@
-"""Validated, aggregate data model for the single-run evaluation dashboard."""
 
 import hashlib
 import json

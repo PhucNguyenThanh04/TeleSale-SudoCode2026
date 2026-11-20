@@ -146,10 +146,10 @@ def test_asof_date_does_not_attach_future_summary_to_an_older_committed_session(
         assert 'FUTURE_SECRET' not in str(result)
         versions[-1]['deleted'] = True
         deleted = await read_timeline(repo, 'C1', str(uuid4()), '2026-10-08', projector=projection(versions))
-        assert deleted['items'] == []  # deletion cannot be bypassed by an earlier business date
+        assert deleted['items'] == []
         versions[0]['deleted'], versions[-1]['deleted'] = True, False
         past_deleted = await read_timeline(repo, 'C1', str(uuid4()), '2026-10-08', projector=projection(versions))
-        assert past_deleted['items'] == []  # a future version cannot reactivate history at an earlier date
+        assert past_deleted['items'] == []
     asyncio.run(run())
 
 

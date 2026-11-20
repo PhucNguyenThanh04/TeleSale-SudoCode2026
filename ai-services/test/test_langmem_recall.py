@@ -1,4 +1,3 @@
-"""Accepted recall stays within canonical customer and source boundaries."""
 
 import unittest
 from unittest.mock import AsyncMock

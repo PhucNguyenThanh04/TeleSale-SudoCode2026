@@ -1,4 +1,3 @@
-"""Session continuation is scoped and never promotes a voice draft to evidence."""
 from datetime import date
 from types import SimpleNamespace
 import asyncio

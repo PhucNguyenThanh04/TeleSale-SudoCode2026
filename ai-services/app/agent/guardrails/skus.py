@@ -1,4 +1,3 @@
-"""Resolve SKU mentions against product evidence already returned by tools."""
 
 import re
 from typing import Any

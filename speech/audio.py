@@ -1,4 +1,3 @@
-"""Đọc/ghi âm thanh mono 16 kHz và giả lập kênh điện thoại cho dữ liệu tổng hợp (chỉ cần numpy + PyAV)."""
 from __future__ import annotations
 
 import io
@@ -11,7 +10,6 @@ SAMPLE_RATE = 16000
 
 
 def decode(source: str | Path | bytes, sampling_rate: int = SAMPLE_RATE) -> np.ndarray:
-    """mp3/wav/m4a… → float32 mono [-1, 1]. Dùng PyAV đi kèm faster-whisper, không cần ffmpeg."""
     from faster_whisper.audio import decode_audio
 
     if isinstance(source, bytes):
@@ -40,7 +38,6 @@ def silence(seconds: float, sampling_rate: int = SAMPLE_RATE) -> np.ndarray:
 
 
 def trim(audio: np.ndarray, threshold: float = 0.01, pad_s: float = 0.05, sampling_rate: int = SAMPLE_RATE) -> np.ndarray:
-    """Cắt khoảng lặng đầu/cuối của từng câu TTS để tự kiểm soát khoảng nghỉ giữa các lượt."""
     loud = np.flatnonzero(np.abs(audio) > threshold)
     if loud.size == 0:
         return audio
@@ -61,7 +58,6 @@ def _band_limit(audio: np.ndarray, low_hz: float, high_hz: float, sampling_rate:
 
 
 def telephone(audio: np.ndarray, sampling_rate: int = SAMPLE_RATE) -> np.ndarray:
-    """Giả lập cuộc gọi: băng thông 300–3400 Hz và lượng tử μ-law 8 bit như kênh G.711."""
     narrow = peak_normalize(_band_limit(audio, 300.0, 3400.0, sampling_rate))
     mu = 255.0
     companded = np.sign(narrow) * np.log1p(mu * np.abs(narrow)) / np.log1p(mu)
@@ -78,7 +74,6 @@ def pink_noise(n: int, rng: np.random.Generator) -> np.ndarray:
 
 
 def add_noise(audio: np.ndarray, snr_db: float, rng: np.random.Generator, noise: np.ndarray | None = None) -> np.ndarray:
-    """Trộn nhiễu (mặc định nhiễu hồng; có thể truyền tiếng ồn thật) ở SNR cho trước, tính trên đoạn có tiếng."""
     if noise is None or noise.size == 0:
         noise = pink_noise(audio.size, rng)
     else:

@@ -1,4 +1,3 @@
-"""HTTP contract checks for the text-turn harness endpoint."""
 
 import unittest
 from unittest.mock import patch

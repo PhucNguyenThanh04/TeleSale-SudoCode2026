@@ -1,4 +1,3 @@
-"""Runtime failures must not contaminate successful turns' memory attribution."""
 import asyncio
 from datetime import date
 from types import SimpleNamespace
@@ -29,7 +28,6 @@ def test_runtime_failure_never_waits_for_nonexistent_memory_job():
             raise RuntimeError('missing turn for LangMem job')
     async def capture(sources):
         assert set(sources) <= set(committed)
-        # Anonymous first turn is backfilled after identity is resolved in turn 3.
         return {source: ([{'key': 'size', 'value': 41, 'op': 'set', 'customer_id': 'C'}]
                 if len(committed) == 2 and source == committed[0] else []) for source in sources}
     capture = AsyncMock(side_effect=capture)
@@ -43,7 +41,6 @@ def test_runtime_failure_never_waits_for_nonexistent_memory_job():
     assert rows[0]['memory_writes'][0]['value'] == 41
     assert {c.args[0] for c in wait.call_args_list} == set(committed)
     assert capture.call_args.args[0] == committed
-    # Preserve failed-run detection; fixing capture must never hide the runtime error.
     with pytest.raises(RuntimeError, match='turn failed'):
         assert_trace_ready({'LOCAL': {'calls': {'call_1': {'customer_turns': ['a','b','c']}}}},
                            {('LOCAL','call_1'): rows})
@@ -95,7 +92,6 @@ def test_real_memory_errors_are_preserved_and_still_block_scoring(failure):
         wait_for_jobs=wait, capture_writes=capture))
     assert rows[0]['memory_error'] == failure
     if failure == 'capture_failed':
-        # One failed batch readback leaves every source in that batch unverified.
         assert rows[1]['memory_error'] == 'capture_failed'
     else:
         assert 'memory_error' not in rows[1]

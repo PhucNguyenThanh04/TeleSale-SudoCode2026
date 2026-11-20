@@ -1,12 +1,14 @@
-"""Clarifications must survive verification without authorizing factual promises."""
 
 import asyncio
 import socket
+from datetime import date
+from types import SimpleNamespace
 
 import pytest
 
 from app.agent.guardrails.checks import _money_claims, check_answer, check_grounding
 from app.agent.harness.agent_nodes import AgentNodes
+from test_deep_memory import FakeToolModel
 
 
 @pytest.fixture(autouse=True)
@@ -28,9 +30,11 @@ def no_network(monkeypatch):
     ("Điều gì phù hợp nhất với nhu cầu của chị ạ?", "Tôi cần tư vấn."),
 ])
 def test_verifier_preserves_non_assertions(answer, customer):
-    nodes = AgentNodes(None, None, None, 3, 3)
+    nodes = AgentNodes(FakeToolModel(replies=[]), None, None, 3, 3)
     result = asyncio.run(nodes.verify_agent({
         "agent_draft": answer, "safe_text": customer, "tool_calls": [],
+        'request': SimpleNamespace(on=date(2031, 3, 12), input_mode='clean'),
+        'identity_status': 'unknown',
     }))
     assert result["agent_text"] == answer
     assert not result.get("verifier_events")

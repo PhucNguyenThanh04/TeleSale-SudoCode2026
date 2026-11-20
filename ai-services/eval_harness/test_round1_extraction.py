@@ -1,4 +1,3 @@
-"""Speech regressions from the M1 audit; no truth/tool input to extraction."""
 import pytest
 
 from eval_harness.extractor import extract_detailed
@@ -127,7 +126,6 @@ def test_request_for_processing_time_is_narrative_not_customer_information():
     result = extract_detailed('Chị cho em xin một chút thời gian để tra cứu chính xác thông tin này giúp chị ạ.')
     assert result['questions'] == []
     assert any(c['kind'] == 'question' and c['reason'] == 'narrative' for c in result['candidates'])
-    # A real delivery-time question must still be measured.
     assert extract_detailed('Chị cho em biết thời gian muốn nhận hàng là khi nào ạ?')['questions']
 
 

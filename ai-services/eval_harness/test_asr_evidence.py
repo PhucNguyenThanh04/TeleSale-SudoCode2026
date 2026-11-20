@@ -1,4 +1,3 @@
-"""ASR scores require matching artifacts, scope and separate entity evidence."""
 import json
 from pathlib import Path
 import pytest

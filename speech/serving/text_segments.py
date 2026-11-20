@@ -1,4 +1,3 @@
-"""Split TTS input at sentence periods or after 20 words."""
 
 from __future__ import annotations
 
@@ -12,15 +11,11 @@ _NUMBER_DOT = "\ue000"
 
 
 def prepare_tts_segments(text: str) -> list[str]:
-    """Expand spoken text before enforcing the model's word limit."""
     return split_tts_text(prepare_tts_text(text))
 
 
 def split_tts_text(text: str) -> list[str]:
     normalized = " ".join(text.replace(_NUMBER_DOT, " ").split())
-    # Vietnamese prices, dates and decimals commonly contain periods. Protect a
-    # period only when it is surrounded by digits, so the final period in
-    # ``25.000.000. Mẫu khác...`` remains a sentence boundary.
     protected = re.sub(r"(?<=\d)\.(?=\d)", _NUMBER_DOT, normalized)
     segments: list[str] = []
     for match in re.finditer(r"[^.]+(?:\.|$)", protected):

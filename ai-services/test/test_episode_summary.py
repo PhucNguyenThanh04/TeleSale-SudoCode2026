@@ -1,4 +1,3 @@
-"""Long summaries keep structured decisions without leaking personal data."""
 
 import unittest
 

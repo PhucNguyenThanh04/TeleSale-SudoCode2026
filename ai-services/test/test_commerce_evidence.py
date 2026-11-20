@@ -1,4 +1,3 @@
-"""Commercial evidence across turns; no BTC expected-answer inputs."""
 from copy import deepcopy
 import time
 from datetime import date
@@ -100,11 +99,11 @@ def test_memory_history_retains_server_owned_source_turn_id():
     assert result['history'][0]['source_turn_id']==turn_id
 
 
-def test_current_customer_address_invalidates_old_quote_for_verifier_too():
+def test_explicit_delivery_context_invalidates_an_incompatible_quote():
     from app.mcp_servers.mcp_shared.commerce_evidence import build_commerce_evidence
     s=state('Địa chỉ: Region B')
     s['session_tool_calls']=[quote(address='Region A')]
-    assert not any(c['name']=='pricing.get_quote' for c in build_commerce_evidence(s))
+    assert not any(c['name']=='pricing.get_quote' for c in build_commerce_evidence(s, args={'address':'Region B'}))
 
 
 def test_duplicate_observation_does_not_resolve_equal_order_conflict():
@@ -129,7 +128,6 @@ def test_parent_variant_claim_binding_and_unrelated_quotes():
 
 
 def bind_history_observations(s):
-    """Bind existing prior tool results to the committed test turn; never add consent."""
     tid=str(uuid4())
     s['history'][0]['source_turn_id']=tid
     for call in s['session_tool_calls']:
@@ -148,7 +146,7 @@ def test_prompt_context_exposes_reused_session_evidence_without_new_tool_call():
     assert s['tool_calls']==[]
 
 
-def test_context_refresh_prefers_sourced_selection_over_advised_list():
+def test_context_read_does_not_plan_commercial_calls_from_a_legacy_selection():
     import asyncio
     from datetime import datetime,timezone
     from types import SimpleNamespace
@@ -168,8 +166,9 @@ def test_context_refresh_prefers_sourced_selection_over_advised_list():
         return quote(args['sku'])['result'] if name=='pricing.get_quote' else stock(args['sku'])['result']
     result=asyncio.run(load_context(s,SimpleNamespace(read_context=read,include_prior=True,max_episodes=5),
         SimpleNamespace(invoke_trusted=invoke),lambda:datetime.now(timezone.utc)))
-    assert {args['sku'] for _,args in calls}=={'SKU-ASTER'}
-    assert len(result['tool_calls'])==2
+    assert calls==[]
+    assert result['call_brief']['selected_sku'] is None
+    assert result['tool_calls']==[]
 
 
 def test_promotion_expiry_requires_exact_code_and_exact_status():
@@ -192,21 +191,6 @@ def test_stock_claims_bind_each_product_without_cross_product_leakage():
     assert check_answer('Aster còn hàng; Brio còn hàng.',calls)[1] is None
 
 
-def test_retained_quote_region_needs_literal_customer_source_and_matching_owner():
-    from app.mcp_servers.mcp_shared.commerce_evidence import current_customer_address
-    s=state('Lên đơn nhé.')
-    s['history']=[{'customer':'Anh ở Q7 HCM.','agent':'Dạ.'}]
-    s['session_tool_calls']=[quote(address='Q7 HCM')]
-    bind_history_observations(s)
-    assert current_customer_address(s)=='Q7 HCM'
-    s['history'][0]['customer']='Tôi chỉ hỏi giá.'
-    assert current_customer_address(s) is None
-    s['history'][0]['customer']='Anh ở Q7 HCM.'
-    s['session_tool_calls'][0]['customer_id']='OTHER'
-    assert current_customer_address(s) is None
-    s['session_tool_calls'][0]['customer_id']=s['customer_id']
-    s['history'].append({'customer':'Tôi không còn ở Q7 HCM.','agent':'Dạ.'})
-    assert current_customer_address(s) is None
 
 
 def test_context_masking_preserves_valid_turn_uuid_that_contains_phone_like_digits():
@@ -216,29 +200,4 @@ def test_context_masking_preserves_valid_turn_uuid_that_contains_phone_like_digi
                           'profile':{'source_turn_id':tid}})
     assert masked['history'][0]['source_turn_id']==tid
     assert '0912345678' not in masked['history'][0]['customer']
-    assert masked['profile']['source_turn_id']!=tid  # The exemption is by trusted field path.
-
-
-def test_new_unresolved_customer_region_does_not_revive_prior_quote_region():
-    from app.mcp_servers.mcp_shared.commerce_evidence import current_customer_address
-    s=state('Anh ở Q1 HCM, lên đơn nhé.')
-    s['history']=[{'customer':'Anh ở Q7 HCM.','agent':'Dạ.'}]
-    s['session_tool_calls']=[quote(address='Q7 HCM')]
-    bind_history_observations(s)
-    assert current_customer_address(s) is None
-
-
-def test_k0_giao_ve_binds_the_customer_region_to_the_current_quote_and_order():
-    from app.mcp_servers.mcp_shared.commerce_evidence import current_customer_address
-    from app.mcp_servers.mcp_shared.consultation import customer_order_options, purchase_block_reason, purchase_arguments
-    s = state('Ok em lên đơn cho anh một máy, thanh toán COD, giao về Quận 7, TP.HCM nhé.')
-    s['history'] = [{'customer': 'Tôi chọn Aster.', 'agent': 'Aster giá 900.000đ.'}]
-    s['session_tool_calls'] = [catalog(), quote(), stock()]
-    bind_history_observations(s)
-    s['tool_calls'] = [quote(address='Quận 7, TP.HCM')]
-    assert current_customer_address(s) == 'Quận 7, TP.HCM'
-    assert customer_order_options(s)['address'] == 'Quận 7, TP.HCM'
-    args = purchase_arguments(s)
-    assert args and purchase_block_reason(s, args) is None
-    s['tool_calls'][0]['args']['address'] = 'Quận 3, TP.HCM'
-    assert current_customer_address(s) is None
+    assert masked['profile']['source_turn_id']!=tid

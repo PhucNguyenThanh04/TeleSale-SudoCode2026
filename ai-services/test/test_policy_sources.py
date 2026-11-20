@@ -8,7 +8,7 @@ def test_all_btc_sections_are_accounted_for_and_safe():
     from app.knowledge.policy.source import parse_policy_sources, default_metadata
     chunks = parse_policy_sources(btc_data_dir() / 'policy', default_metadata())
     ids = {c.chunk_id for c in chunks}
-    assert len(ids) == 93  # 99 original sections, five administrative + NB-04 excluded.
+    assert len(ids) == 93
     assert 'NQ-01' not in ids and 'NB-04' not in ids
     assert {'NB-01', 'NB-02', 'NB-03', 'PB-06', 'KM-06'} <= ids
     rows = {c.chunk_id: c for c in chunks}

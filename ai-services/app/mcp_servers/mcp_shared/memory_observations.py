@@ -1,4 +1,3 @@
-"""Allowlisted tool evidence that may cross into long-term memory."""
 
 import json
 from typing import Any
@@ -43,7 +42,6 @@ def _pick(value: Any, fields: set[str]) -> dict:
 
 
 def memory_observations(calls: list[dict]) -> list[dict]:
-    """Keep only evidence needed for customer facts; exclude unknown fields and tools."""
     safe = []
     for call in calls[:20]:
         if not isinstance(call, dict):

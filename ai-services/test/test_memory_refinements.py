@@ -1,4 +1,3 @@
-"""Reported tool observations remain eligible for LangMem admission."""
 
 import unittest
 

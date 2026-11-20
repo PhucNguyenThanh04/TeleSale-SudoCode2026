@@ -1,4 +1,3 @@
-"""Run the real browser audio scheduler against a deterministic audio clock."""
 from test_voice_browser import site, browser, open_site
 
 

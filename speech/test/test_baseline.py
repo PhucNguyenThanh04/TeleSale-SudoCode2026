@@ -1,4 +1,3 @@
-"""Frozen baseline contracts; all decoding is synthetic and all artifacts are temporary."""
 import copy
 import hashlib
 import io
@@ -108,7 +107,7 @@ class AsrContractTests(unittest.TestCase):
                     self.assertEqual(records[0]["raw"].strip(), "thanks for watching")
                     self.assertEqual((records[0]["avg_logprob"], records[0]["no_speech_prob"]), (-2., .9))
                     self.assertEqual(asr.finalize(records, lexicon, hotword_terms=terms)["asr_segments"], [])
-                    self.assertEqual(len(records), 1)  # filtering never destroys raw diagnostics
+                    self.assertEqual(len(records), 1)
 
     def test_decode_granularity_and_options(self):
         lexicon = default_lexicon()
@@ -448,7 +447,7 @@ class BaselineContractTests(BaselineFixture):
                 baseline.write_json(path, value)
                 with self.assertRaisesRegex(ValueError, "JSON object"):
                     btc.read_json_object(path)
-                self.assertEqual(btc.read_json(path), value)  # the general reader still supports arrays
+                self.assertEqual(btc.read_json(path), value)
         self.run_fixture()
         for name in ("experiment.json", "ground_truth.json", "B0/run.json",
                      "B0/hypotheses.json", "B0/raw.json"):
@@ -479,7 +478,6 @@ class BaselineContractTests(BaselineFixture):
 
 class BaselineComparisonTests(BaselineFixture):
     def compare_with_oracle(self):
-        # Synthetic scorer isolates date propagation without requiring the external BTC package.
         evaluator = SimpleNamespace(wer_cer=lambda _: {"WER": 0., "CER": 0., "entity_accuracy": 100.,
                                                         "n_dialogues": 2, "n_entities": 0, "per_dialogue": {}})
         with patch.object(baseline, "load_reference_eval", return_value=evaluator), \

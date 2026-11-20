@@ -44,7 +44,7 @@ def test_warranty_exception_is_selected_by_order_date_not_current_date():
     context=TrustedPolicyContext(request_id='r',principal='harness',on=request.on,
         verified_order_date='2026-07-10',date_source='order.status')
     result=apply_policy_rules([bh],request,context)[0]
-    assert result.applicability.status=='conditional'  # Product/conditions still require confirmation.
+    assert result.applicability.status=='conditional'
     assert len(result.applicability.rules)==1
     assert result.applicability.rules[0].effective_until==date(2026,7,31)
 

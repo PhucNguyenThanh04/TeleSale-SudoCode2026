@@ -1,4 +1,3 @@
-"""Real PostgreSQL memory contract in an automatically removed test database."""
 
 import os
 import asyncio
@@ -146,7 +145,10 @@ class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
             return ([ProfileFactCandidate(key="room_area_m2", value=25,
                 source_kind="customer", source_turn_id=payload["turn_id"],
                 evidence_quote="Phòng tôi 25 m²", observed_on=date(2026, 10, 15))], None)
-        self.assertTrue(await process_one(self.repo, extractor, projection))
+        async def reviewer(facts, *_args):
+            return facts
+        self.assertTrue(await process_one(self.repo, extractor, projection,
+                                         fact_reviewer=reviewer))
         attributed = await read_distillation_writes(self.dsn, [source])
         self.assertEqual(attributed[source][0]["key"], "room_area_m2")
         loaded = await read(self.repo, "C901", str(uuid4()),

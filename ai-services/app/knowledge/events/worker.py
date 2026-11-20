@@ -1,4 +1,3 @@
-"""Durable analysis worker. No approval or publication authority."""
 from app.knowledge.config import configured_url
 import asyncio
 import re
@@ -75,7 +74,7 @@ async def process_one(repo, worker_id, analyzer=analyze_event, now=None, *, even
                         gap['draft_revision_id'] = draft['id']
                         await tx.put('gaps', gap_id, gap)
                     except ValueError:
-                        pass  # A stale source leaves the gap available for manual review.
+                        pass
                 current.update(status='completed', gap_id=gap_id)
                 event.update(status='analyzed')
                 await tx.put('events', event['id'], event)

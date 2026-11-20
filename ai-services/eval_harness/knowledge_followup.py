@@ -1,4 +1,3 @@
-"""Detect after an ordinary pair; evaluate published knowledge in a separate command."""
 import argparse
 import asyncio
 import os
@@ -42,7 +41,6 @@ async def prepare_review(base_run, repo, worker, settings, *, actor='local-revie
             'seed': params['seed'],
             'expected_database': expected, 'actor': actor, 'worker_timeout': timeout}}
     atomic_json(out/'experiment.json', state)
-    # K0 already exists: this only proposes, and the coordinator always returns before C.
     await core.run_experiment(Namespace(resume=out, expected_database=expected), repo, worker, settings)
     state = core.read_json(out/'experiment.json')
     if state['status'] == 'awaiting_review':

@@ -1,4 +1,3 @@
-"""Real Chrome and authenticated gateway; no live knowledge service or publication."""
 from contextlib import asynccontextmanager
 import json
 import base64
@@ -170,7 +169,6 @@ def test_combined_review_publishes_only_selected_and_keeps_base(review_site, bro
     open_combined(evaluate, 3)
     assert not state['commands']
     assert evaluate("document.querySelectorAll('#detail input[data-revision-id]').length") == 3
-    # Explicit selection and review are required before any write.
     evaluate("clickText('Duyệt và phát hành các mục đã chọn');waitFor(()=>!document.querySelector('#error').hidden)")
     assert not state['commands']
     evaluate("document.querySelector('[data-revision-id=R0]').checked=true;document.querySelector('[data-revision-id=R2]').checked=true")
@@ -209,7 +207,6 @@ def test_combined_failure_does_not_activate_and_can_retry(review_site, browser, 
         assert not any(c['action']=='prepare_release' for c in state['commands'])
         assert [r['status'] for r in data['revisions']] == ['approved', 'draft']
     if stage == 'prepare_release': assert not any(c['action']=='activate_release' for c in state['commands'])
-    # Reloading must include approved-but-unpublished revisions for retry.
     open_combined(evaluate, count)
     evaluate("document.querySelectorAll('[data-revision-id]').forEach(c=>c.checked=true)")
     confirm_combined(evaluate)
@@ -253,7 +250,6 @@ def test_experiment_review_filters_gaps_and_keeps_active_revisions(review_site, 
     old = dict(data['revisions'][0], id='OLD', gap_id='old-gap', status='approved')
     unrelated = dict(old, id='OTHER', gap_id='other-gap')
     data['revisions'].extend([old, unrelated])
-    # Hybrid release manifests retain references, not the full question/body.
     data['releases'].append({'id': 'K0', 'status': 'ready', 'manifest': {'items': [
         {k: old[k] for k in ('id', 'gap_id', 'kind', 'content_hash')}]}})
     state['active'] = 'K0'
@@ -333,7 +329,7 @@ def test_review_prepare_activate_rollback_without_login(review_site,browser):
     Path('/tmp/knowledge-review-desktop.png').write_bytes(base64.b64decode(command('Page.captureScreenshot',format='png')['data']))
     assert not state['active'] and not data['releases']
     approve(evaluate)
-    assert not state['active']  # approval alone never publishes
+    assert not state['active']
     evaluate("clickText('Thêm vào danh sách phát hành');waitFor(()=>document.querySelector('#notice').innerText.includes('Đã chọn'))")
     evaluate("document.querySelector('#releases-tab').click();waitFor(()=>document.querySelector('#releases-view').innerText.includes('Chuẩn bị release'))")
     evaluate("clickText('Chuẩn bị release từ các bản đã chọn');waitFor(()=>!!document.querySelector('#release-detail'))")

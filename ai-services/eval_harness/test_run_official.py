@@ -1,4 +1,3 @@
-"""The run coordinator cannot publish mismatched source snapshots."""
 
 import asyncio
 import json

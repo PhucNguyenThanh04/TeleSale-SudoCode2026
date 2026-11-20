@@ -1,4 +1,3 @@
-"""Re-extract speech annotations offline; this is never a new agent evaluation."""
 import argparse
 from copy import deepcopy
 import hashlib
@@ -65,11 +64,6 @@ def _metric_delta(original: dict, updated: dict) -> dict:
 
 
 def replay_pair(source_run: Path, output_dir: Path, btc_root: Path) -> dict:
-    """Audit a historical pair, replay annotations and rescore offline only.
-
-    Source agent provenance is referenced verbatim, never regenerated as a live
-    run with the current source digest. The manifest is the final replay marker.
-    """
     import shutil
     from eval_harness.official_pipeline import atomic_bytes, atomic_json
     from eval_harness.extraction_report import (sha256, extraction_fingerprint,
@@ -124,8 +118,6 @@ def replay_pair(source_run: Path, output_dir: Path, btc_root: Path) -> dict:
     if sha256(score_path) != inputs['score_sha256']:
         issues.append({'code': 'source_score_bytes_mismatch', 'actual_sha256': sha256(score_path),
                        'recorded_sha256': inputs['score_sha256']})
-    # Re-score the unchanged original pair even when hashes match: value equality
-    # is the prerequisite for attributing any delta to extraction alone.
     with tempfile.TemporaryDirectory(prefix='extraction-original-') as temporary:
         rescored = Path(temporary)/'original_rescore.json'
         score_pair(scenarios, traces['full'], traces['baseline_no_memory'], rescored, btc_root=btc_root)
@@ -156,7 +148,6 @@ def replay_pair(source_run: Path, output_dir: Path, btc_root: Path) -> dict:
     if (source_hashes != _file_hashes(source_run) or scorer_hash != sha256(scorer)
             or btc_digest != _btc_digest(scenarios, btc_root) or fingerprint != extraction_fingerprint()):
         raise ValueError('Source/scorer/extractor changed during replay')
-    # Final byte checks bind the exact score, summary and snapshot being published.
     if provenance != {**provenance, 'score_sha256': sha256(score),
             'full_trace_sha256': sha256(updated_traces['full']),
             'baseline_trace_sha256': sha256(updated_traces['baseline_no_memory']),
@@ -185,7 +176,7 @@ def replay_pair(source_run: Path, output_dir: Path, btc_root: Path) -> dict:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Re-extract speech annotations offline; this is never a new agent evaluation.')
     parser.add_argument('--input', type=Path)
     parser.add_argument('--output', type=Path)
     parser.add_argument('--source-run', type=Path)
@@ -236,7 +227,7 @@ def main() -> None:
                 parser.error('Output audit failed: ' + str(audit['errors']))
         if args.input.read_bytes() != raw:
             parser.error('Input changed during extraction')
-        os.link(temporary, args.output)  # Exclusive publication, never overwrites.
+        os.link(temporary, args.output)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)

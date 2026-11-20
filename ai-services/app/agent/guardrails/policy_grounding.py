@@ -1,4 +1,3 @@
-"""Policy evidence eligibility, keeping conditional explanations distinct from entitlement."""
 import re
 
 _UNCONFIRMED = re.compile(r'(?i)(?:chưa (?:thể )?(?:xác (?:minh|nhận)|có thông tin)|theo ngày.{0,25}(?:khai|cung cấp)|nếu .{0,100}(?:ngày|đơn|mua)|cần (?:xác (?:minh|nhận)|kiểm tra))')

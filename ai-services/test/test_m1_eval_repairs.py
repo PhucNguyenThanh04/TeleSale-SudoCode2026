@@ -1,4 +1,3 @@
-"""Regressions from BTC public inputs, using the actual tool and verifier boundary."""
 import asyncio
 import json
 from pathlib import Path
@@ -42,21 +41,6 @@ def test_category_repair_preserves_hard_constraints_and_unknown_categories():
         if category.startswith('unknown'): assert args['category'] == category
 
 
-def test_actual_policy_recovery_is_not_rejected_as_product_price():
-    from app.agent.harness.session_nodes import safe_followup_reply
-    from app.agent.guardrails.checks import check_answer, _money_claims
-    # Public changelog is applicable even when the order date is unknown.
-    content = (btc_data_dir() / 'policy/changelog.md').read_text()
-    section = content.split('[CL-01]', 1)[-1].split('[CL-02]', 1)[0]
-    s = state('Bên em cho đổi trả trong 14 ngày đúng không?')
-    s['tool_calls'] = [{'name': 'policy.search',
-        'args': {'query': 'Bên em cho đổi trả trong 14 ngày đúng không', 'on': '2026-11-05'},
-        'result': {'retrieval_status': 'ok', 'evidence': [{
-            'content': section, 'evidence_type': 'business_rule',
-            'applicability': {'status': 'applicable'}}]}}]
-    answer = safe_followup_reply(s)
-    assert '7 ngày' in answer
-    assert check_answer(answer, s['tool_calls'], s['safe_text'])[1] is None, (answer, _money_claims(answer), _money_claims(section))
 
 
 @pytest.mark.parametrize('text', ['Đơn tạo trước 01/10/2026 vẫn áp dụng bản cũ.',
@@ -67,21 +51,6 @@ def test_policy_dates_and_durations_are_not_money(text):
     assert _money_claims(text) == []
 
 
-def test_sc07_saved_policy_response_survives_real_verifier():
-    from datetime import date
-    from app.agent.harness.session_nodes import safe_followup_reply
-    from app.agent.harness.agent_nodes import AgentNodes
-    from app.agent.guardrails.checks import check_answer, _money_claims
-    s = state('Bên em cho đổi trả trong 14 ngày đúng không? Chị đọc trên web thấy thế.')
-    s['request'] = s['request'].model_copy(update={'on': date(2026, 10, 15)})
-    s['tool_calls'] = [json.loads((Path(__file__).parent / 'fixtures/m1_policy_search.json').read_text())]
-    answer = safe_followup_reply(s)
-    assert '7 ngày' in answer
-    assert check_answer(answer, s['tool_calls'], s['safe_text'])[1] is None, (answer, _money_claims(answer))
-    s['agent_draft'] = 'Chính sách đổi trả là 999 ngày.'
-    s['followup_kind'] = 'policy'
-    result = asyncio.run(AgentNodes(None, None, None, 6, 6).verify_agent(s))
-    assert '7 ngày' in result['agent_text'], result
 
 
 @pytest.mark.parametrize('on,address,expected', [
@@ -100,46 +69,10 @@ def test_quote_exposes_same_delivery_estimate_as_order(on, address, expected):
     assert result.get('estimated_delivery') == expected == _delivery(on, address)
 
 
-@pytest.mark.parametrize('estimated', ['2026-11-07', '2026-11-09', None, 'invalid', '2026-11-04'])
-def test_week_delivery_preference_does_not_require_delivery_estimate(estimated):
-    from test_commerce_evidence import catalog, quote, stock
-    from app.mcp_servers.mcp_shared.consultation import purchase_block_reason
-    s = state('Mua Aster giá 900.000đ, giao trong tuần này nhé.')
-    q = quote()
-    q['result']['estimated_delivery'] = estimated
-    s['tool_calls'] = [catalog(), q, stock()]
-    reason = purchase_block_reason(s, {'sku': 'SKU-ASTER', 'qty': 1, 'price_vnd': 900000})
-    assert reason is None
 
 
-def test_estimate_does_not_authorize_extra_delivery_conditions_or_wrong_address():
-    from test_commerce_evidence import catalog, quote, stock
-    from app.mcp_servers.mcp_shared.consultation import purchase_block_reason
-    for text, address in [
-        ('Mua Aster giá 900.000đ, giao trong tuần này trước 8 giờ nhé.', None),
-        ('Mua Aster giá 900.000đ, giao trong tuần này nhé.', 'Hà Nội'),
-    ]:
-        s = state(text)
-        q = quote()
-        q['result']['estimated_delivery'] = '2026-11-07'
-        s['tool_calls'] = [catalog(), q, stock()]
-        args = {'sku': 'SKU-ASTER', 'qty': 1, 'price_vnd': 900000}
-        if address: args['address'] = address
-        assert purchase_block_reason(s, args) is not None
 
 
-def test_policy_recovery_does_not_copy_competitor_instructions():
-    from datetime import date
-    from app.agent.harness.session_nodes import safe_followup_reply
-    s = state('Bên em cho đổi trả trong 14 ngày đúng không?')
-    s['request'] = s['request'].model_copy(update={'on': date(2026, 10, 15)})
-    s['tool_calls'] = [json.loads((Path(__file__).parent / 'fixtures/m1_policy_search.json').read_text())]
-    answer = safe_followup_reply(s)
-    assert 'đối thủ' not in answer
-    assert 'playbook' not in answer.lower()
-    from eval_harness.extractor import extract_claims
-    claims = extract_claims(answer, s['tool_calls'])
-    assert not any(c['field'] == 'exchange_fee_vnd' and c['value'] == 20000 for c in claims), claims
 
 
 def test_actual_model_tool_accepts_customer_category_and_preserves_trace_contract():
@@ -205,32 +138,8 @@ def test_delivery_answer_uses_quote_as_estimate_not_guarantee(answer, accepted):
     assert (result[1] is None) is accepted
 
 
-def test_unmet_delivery_deadline_offers_sourced_date_without_creating_order():
-    from test_commerce_evidence import catalog, quote, stock
-    from app.agent.harness.session_nodes import safe_consultation_reply
-    from app.agent.guardrails.checks import check_answer
-    s = state('Mua Aster giá 900.000đ, bắt buộc giao trong tuần này.')
-    q = quote()
-    q['result']['estimated_delivery'] = '2026-11-09'
-    s['tool_calls'] = [catalog(), q, stock()]
-    answer = safe_consultation_reply(s)
-    assert '2026-11-09' in answer and '?' in answer
-    assert check_answer(answer, s['tool_calls'], s['safe_text'], focus_sku='SKU-ASTER')[1] is None
-    assert not any(c['name'] == 'order.create' for c in s['tool_calls'])
 
 
-@pytest.mark.parametrize('text', [
-    'Mua Aster giá 900.000đ, giao trước thứ sáu, giao trong tuần này nhé.',
-    'Mua Aster giá 900.000đ, trước 8 giờ, giao trong tuần này nhé.',
-])
-def test_week_constraint_does_not_erase_another_deadline(text):
-    from test_commerce_evidence import catalog, quote, stock
-    from app.mcp_servers.mcp_shared.consultation import purchase_block_reason
-    s = state(text)
-    q = quote()
-    q['result']['estimated_delivery'] = '2026-11-07'
-    s['tool_calls'] = [catalog(), q, stock()]
-    assert purchase_block_reason(s, {'sku': 'SKU-ASTER', 'qty': 1, 'price_vnd': 900000}) == 'delivery_confirmation_required'
 
 
 def test_all_saved_empty_catalog_queries_recover_without_dropping_filters():

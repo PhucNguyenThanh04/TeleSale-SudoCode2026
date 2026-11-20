@@ -1,4 +1,3 @@
-"""Audit BTC trace coverage and record nonsecret run provenance."""
 
 import argparse
 import hashlib

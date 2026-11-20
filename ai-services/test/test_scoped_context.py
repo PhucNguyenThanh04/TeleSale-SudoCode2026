@@ -1,4 +1,3 @@
-"""Returning callers see product-specific history and dated refreshes."""
 
 import unittest
 from datetime import date, datetime, timezone
@@ -227,7 +226,7 @@ class ScopedContextTest(unittest.IsolatedAsyncioTestCase):
                          [{"order_id": "OD1001", "variant_sku": "SKU-2", "status": "delivered"}])
         joined_warnings = " | ".join(brief["stale_warnings"])
         self.assertIn("180 ngày", joined_warnings)
-        self.assertNotIn("SKU-4-PRO", joined_warnings)  # No current evidence of a successor.
+        self.assertNotIn("SKU-4-PRO", joined_warnings)
         self.assertIn("2026-05-01", joined_warnings)
         self.assertIn("SKU-1", joined_warnings)
         self.assertIn("chị Lan", brief["suggested_opening"])

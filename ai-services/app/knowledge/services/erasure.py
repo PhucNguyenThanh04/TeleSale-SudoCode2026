@@ -1,4 +1,3 @@
-"""Erase evidence and invalidate derived drafts under the worker commit barrier."""
 from app.knowledge.schemas import timestamp
 
 

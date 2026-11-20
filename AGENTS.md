@@ -1,5 +1,9 @@
 # AGENTS.md 
 
+## Coding preference
+
+- Do not add code comments or explanatory docstrings. Keep only required shebangs/compiler directives; preserve runtime prompts, tool metadata, and CLI help as functional data.
+
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.

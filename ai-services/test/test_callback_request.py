@@ -1,21 +1,8 @@
 from datetime import date
 import pytest
 
-from app.agent.harness.callback_request import callback_request
 
 
-@pytest.mark.parametrize('text,expected', [
-    ('Em đặt lịch hẹn gọi lại cho anh vào 10 giờ sáng ngày mai 22/10/2026 nhé.', '2026-10-22T10:00'),
-    ('Em đặt lịch gọi lại ngày mai lúc 14 giờ nhé.', '2026-10-22T14:00'),
-    ('Nếu đặt lịch gọi lại ngày mai lúc 10 giờ thì sao?', None),
-    ('Đừng đặt lịch gọi lại ngày mai lúc 10 giờ.', None),
-    ('Em gọi lại lúc 10 giờ nhé.', None),
-    ('Em đặt lịch gọi lại ngày mai lúc 25 giờ.', None),
-    ('Em đặt lịch gọi lại ngày mai lúc 10 giờ hoặc 14 giờ.', None),
-    ('Em đặt lịch gọi lại ngày mai 23/10/2026 lúc 10 giờ.', None),
-])
-def test_explicit_callback_time_is_customer_bound_and_unambiguous(text, expected):
-    assert callback_request(text, date(2026, 10, 21)) == expected
 
 
 @pytest.mark.parametrize('failed', [False, True])

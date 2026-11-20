@@ -1,4 +1,3 @@
-"""Load VieNeu Turbo on CPU and check a real preset voice."""
 
 import json
 import os

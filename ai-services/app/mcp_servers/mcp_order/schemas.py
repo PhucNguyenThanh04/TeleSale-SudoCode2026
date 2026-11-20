@@ -1,4 +1,3 @@
-"""Validated BTC order tool inputs and private operation context."""
 
 from datetime import date, datetime
 from typing import Literal
@@ -12,11 +11,15 @@ class Context(BaseModel):
     operation_key: str | None = None
 
 
+class WriteInput(Context):
+    trusted_authorization: str | None = None
+
+
 class OrderLine(QuoteLine):
     price_vnd: int = Field(ge=0, strict=True)
 
 
-class CreateInput(Context):
+class CreateInput(WriteInput):
     customer_phone: str
     sku: str | None = Field(default=None, min_length=1)
     qty: int = Field(default=1, ge=1, strict=True)
@@ -42,7 +45,7 @@ class StatusInput(Context):
     order_id: str | None = None
     customer_phone: str | None = None
 
-class UpdateInput(Context):
+class UpdateInput(WriteInput):
     order_id: str
     action: Literal["exchange_size", "exchange_product", "return", "update_address"]
     on: date
@@ -50,11 +53,11 @@ class UpdateInput(Context):
     reason: str | None = None
 
 
-class CallbackInput(Context):
+class CallbackInput(WriteInput):
     customer_phone: str
     callback_at: datetime
     note: str | None = None
 
 
-class HandoffInput(Context):
+class HandoffInput(WriteInput):
     brief: dict

@@ -1,4 +1,3 @@
-"""Contract for reopening a customer conversation months later."""
 
 import json
 import time
@@ -51,21 +50,21 @@ class ReferenceGateway:
 
 class MemoryFreshnessContract(unittest.IsolatedAsyncioTestCase):
     async def test_initial_call_keeps_same_session_history_without_immediate_fact(self):
-        case = CASES["return_after_months"]
-        first_call = case["calls"][0]
+        utterances = ['Tôi cần tư vấn cho phòng 25 mét vuông.', 'Ngân sách của tôi là hai triệu đồng.']
         model = FakeToolModel(replies=[
-            AIMessage(content='{"answer":"Dạ, em ghi nhận ạ.","fact_candidates":'
-                              '[{"key":"room_area_m2","value":30,"source":"customer"}]}'),
-            AIMessage(content="Dạ, em sẽ kiểm tra ạ.")])
+            AIMessage(content='{"answer":"unsupported machine envelope","fact_candidates":[]}'),
+            AIMessage(content="Em đã ghi nhận nhu cầu của mình."),
+            AIMessage(content="Em sẽ tìm phương án phù hợp với nhu cầu đã trao đổi.")])
         memory = FakeMemory()
-        runtime = DeepHarnessRuntime(model, FakeGateway(customer_id="C106"), memory)
+        runtime = DeepHarnessRuntime(model, FakeGateway(customer_id="owner-a"), memory)
         session = uuid4()
-        for index, item in enumerate(first_call["turns"], start=1):
-            request = turn(item["text"], session)
+        for index, text in enumerate(utterances, start=1):
+            request = turn(text, session)
             await runtime.run(request)
-            self.assertEqual(runtime.state_for(request).get("customer_id"), "C106")
+            self.assertEqual(runtime.state_for(request).get("customer_id"), "owner-a")
             self.assertEqual(len(memory.turns[str(session)]), index)
             self.assertEqual(memory.profile, {})
+        self.assertEqual(len(model.seen), 3)
 
     def test_old_quote_cannot_be_presented_as_current_price(self):
         sku, on = "SKU-AP-MINI", "2027-06-15"

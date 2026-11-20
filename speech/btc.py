@@ -1,4 +1,3 @@
-"""Tìm và đọc dữ liệu BTC (catalog, ground truth, script chấm) mà không sao chép vào repo."""
 from __future__ import annotations
 
 import hashlib
@@ -17,7 +16,6 @@ DATA_DIR_NAME = "BTC-Data-Vong1-TEAMS"
 
 
 def find_data_dir(cli_value: str | Path | None = None, required: bool = True) -> Path | None:
-    """Thứ tự: tham số CLI → biến môi trường ``BTC_DATA_DIR`` → thư mục cạnh repo."""
     candidates = [cli_value, os.environ.get("BTC_DATA_DIR"), REPO_ROOT.parent / DATA_DIR_NAME]
     for candidate in candidates:
         if candidate and (Path(candidate) / "catalog" / "products.json").is_file():
@@ -41,7 +39,6 @@ def read_json_object(path: Path) -> dict:
 
 
 def text_sha256(path: str | Path) -> str:
-    """sha256 của file văn bản (kịch bản, ground_truth.json) sau khi đổi CRLF → LF: Windows và Linux cho cùng giá trị."""
     return hashlib.sha256(Path(path).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
@@ -59,12 +56,11 @@ def reference_date(ground_truth: dict) -> date:
 
 
 def _load_btc_module(path: Path, name: str) -> ModuleType:
-    """Nạp một file .py của BTC thành module mới (không đăng ký vào ``sys.modules``, không ghi ``__pycache__``)."""
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Không nạp được {path}")
     module = importlib.util.module_from_spec(spec)
-    previous, sys.dont_write_bytecode = sys.dont_write_bytecode, True  # gói BTC chỉ đọc
+    previous, sys.dont_write_bytecode = sys.dont_write_bytecode, True
     try:
         spec.loader.exec_module(module)
     finally:
@@ -73,11 +69,8 @@ def _load_btc_module(path: Path, name: str) -> ModuleType:
 
 
 def load_reference_eval(data_dir: Path) -> ModuleType:
-    """Nạp ``eval/reference_eval.py`` của BTC để chấm bằng đúng code của BTC."""
     return _load_btc_module(data_dir / "eval" / "reference_eval.py", "btc_reference_eval")
 
 
 def load_mock_tools(data_dir: Path) -> ModuleType:
-    """Nạp ``eval/mock_tools.py`` của BTC (chuẩn kết quả tool). Mỗi lần gọi là một bản mới:
-    module giữ trạng thái toàn cục (đơn, ticket, KM một lần/khách, CRM) nên kiểm từng hội thoại phải tách riêng."""
     return _load_btc_module(data_dir / "eval" / "mock_tools.py", "btc_mock_tools")

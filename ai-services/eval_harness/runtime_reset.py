@@ -1,4 +1,3 @@
-"""Reset mutable runtime data before a controlled evaluation run."""
 
 import asyncpg
 
@@ -46,7 +45,6 @@ async def reset_runtime_database(
                 worker_sequence = await connection.fetchrow(
                     'SELECT last_value,is_called FROM runtime.langmem_distillation_jobs_job_id_seq')
             await connection.execute("TRUNCATE TABLE " + ", ".join(qualified) + " RESTART IDENTITY")
-            # An old worker claim must never match a job created after reset.
             if worker_sequence:
                 await connection.execute(
                     "SELECT setval('runtime.langmem_distillation_jobs_job_id_seq', $1, $2)",
@@ -58,7 +56,6 @@ async def reset_runtime_database(
 
 
 async def probe_runner_database(dsn: str) -> dict:
-    """Read the actual reset connection identity before warm-up/model calls."""
     connection = await asyncpg.connect(dsn.replace("postgresql+asyncpg://", "postgresql://", 1))
     try:
         row = await connection.fetchrow("SELECT current_database() AS database, "

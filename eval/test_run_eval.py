@@ -1,4 +1,3 @@
-"""The runner must trace harness output without feeding answer labels to it."""
 
 from eval_harness.test_support import VoiceLifecycleStub
 import asyncio

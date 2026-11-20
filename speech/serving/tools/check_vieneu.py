@@ -1,4 +1,3 @@
-"""Smoke-test VieNeu SSE and time the first playable frame."""
 
 import json
 import sys

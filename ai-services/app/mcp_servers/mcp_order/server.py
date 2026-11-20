@@ -1,4 +1,3 @@
-"""mcp-order process entrypoint."""
 
 from app.configs import get_settings
 from app.mcp_servers.mcp_order.repos.postgres import OrderRepo

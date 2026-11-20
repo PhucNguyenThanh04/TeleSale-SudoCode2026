@@ -1,4 +1,3 @@
-"""Attach a sealed customer-only ASR replay to explicitly mapped BTC scenarios."""
 import argparse
 from copy import deepcopy
 from datetime import date, timedelta
@@ -63,7 +62,7 @@ def attach_replay(scenarios, bundle, bindings):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Attach a sealed customer-only ASR replay to explicitly mapped BTC scenarios.')
     parser.add_argument('--scenarios', required=True, type=Path)
     parser.add_argument('--btc-root', required=True, type=Path)
     parser.add_argument('--bundle', required=True, type=Path)

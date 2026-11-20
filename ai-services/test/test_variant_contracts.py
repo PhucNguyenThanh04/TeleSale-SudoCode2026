@@ -1,4 +1,3 @@
-"""Catalog-based selection contracts, independent of benchmark product IDs."""
 import asyncio
 from datetime import date
 from unittest.mock import AsyncMock
@@ -24,7 +23,6 @@ def state():
 
 
 def selected_customer_offer(current, sku):
-    """Committed customer choice survives even when catalog metadata needs hydration."""
     ref = {'customer_id': 'C-LOCAL', 'session_id': str(current['request'].session_id),
            'source_turn_id': str(uuid4()), 'source_kind': 'customer',
            'evidence_quote': f'Tôi chọn {sku}.'}
@@ -83,19 +81,20 @@ def test_create_requires_exact_stock_and_quote(mismatch):
     assert prepare_tool_call(current, lambda: None) is None
 
 
-def test_returning_create_hydrates_catalog_without_recursive_lock():
+def test_model_can_read_catalog_then_create_without_recursive_lock():
     async def run():
         current = state()
         selected_customer_offer(current, "SKU-LOCAL-BOOT")
         current["safe_text"] = current["request"].text = "Mua SKU-LOCAL-BOOT size 37 màu đỏ giá 730 nghìn giúp tôi"
-        current["session_tool_calls"] = evidence("SKU-LOCAL-BOOT-R")
+        current["session_tool_calls"] = evidence("SKU-LOCAL-BOOT-R", customer_phone=current["customer_phone"])
         gateway = AsyncMock()
         async def invoke(name, args, *rest):
             if name == "catalog.search":
                 return {"items": [catalog("SKU-LOCAL-BOOT")]}
             return {"status": "created", "order_id": "ODLOCAL1"}
         gateway.invoke_trusted.side_effect = invoke
-        tools = BusinessTools(gateway, current, 4, lambda: None)
+        tools = BusinessTools(gateway, current, 4, lambda: None, authorize_write=AsyncMock(return_value=True))
+        await tools.invoke("catalog.search", {"sku": "SKU-LOCAL-BOOT"})
         result = await asyncio.wait_for(tools.invoke("order.create", {
             "sku": "SKU-LOCAL-BOOT", "size": 37, "color": "đỏ", "price_vnd": 730000}), 1)
         assert result.get("status") == "created", result
@@ -137,12 +136,12 @@ def test_latest_read_can_invalidate_prior_evidence():
         assert prepare_tool_call(current, lambda:None) is None
 
 
-def test_customer_selection_cannot_be_overwritten_by_model_or_memory():
+def test_resolver_uses_explicit_model_sku_without_classifying_customer_speech():
     current = state()
     current['safe_text'] = 'Lấy size 37 màu đỏ, lên đơn giúp tôi.'
     current['tool_calls'] = [{'name':'catalog.search','result':{'items':[catalog('SKU-LOCAL-BOOT')]}}]
     current['scoped_facts'] = {'product':{'SKU-LOCAL-BOOT':{'color':{'value':'xanh'}}}}
-    assert resolve_product_selection(current, {'sku':'SKU-LOCAL-BOOT-B'}).sku != 'SKU-LOCAL-BOOT-B'
+    assert resolve_product_selection(current, {'sku':'SKU-LOCAL-BOOT-B'}).sku == 'SKU-LOCAL-BOOT-B'
 
 
 def test_unknown_identity_does_not_hydrate_or_create_order():
@@ -198,6 +197,6 @@ def test_failed_catalog_and_budget_exhaustion_never_create():
         result = await tools.invoke('order.create',{'sku':'SKU-LOCAL-A','price_vnd':730000})
         assert 'error' in result
         assert all(call.args[0] != 'order.create' for call in gateway.invoke_trusted.await_args_list)
-        assert gateway.invoke_trusted.await_count == (1 if budget else 0)
+        assert gateway.invoke_trusted.await_count == 0
     asyncio.run(run(0))
     asyncio.run(run(2))

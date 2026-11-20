@@ -1,4 +1,3 @@
-"""The three MCP handler boundaries explain calls without exposing customer data."""
 
 import unittest
 from contextlib import asynccontextmanager

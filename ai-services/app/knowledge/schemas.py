@@ -1,4 +1,3 @@
-"""Shared lifecycle values, source snapshots and evidence contracts."""
 import hashlib
 import json
 from datetime import date, datetime, timezone

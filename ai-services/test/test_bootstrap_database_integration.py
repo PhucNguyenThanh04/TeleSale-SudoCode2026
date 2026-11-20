@@ -1,4 +1,3 @@
-"""Opt-in real PostgreSQL test; creates and drops only a uniquely named test DB."""
 import asyncio
 import os
 from uuid import uuid4

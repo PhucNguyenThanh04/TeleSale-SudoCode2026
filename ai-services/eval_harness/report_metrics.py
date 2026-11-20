@@ -1,4 +1,3 @@
-"""Display saved BTC scores and verify evidence without models, DB access or mutation."""
 import argparse
 from datetime import date, timedelta
 import json
@@ -204,7 +203,7 @@ def render_run(directory: Path, *, btc_root: Path | None = None, asr_sources=Non
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Display saved BTC scores and verify evidence without models, DB access or mutation.')
     parser.add_argument('run', type=Path, help='Thư mục run hoặc file run.json')
     parser.add_argument('--btc-root', type=Path, help='BTC snapshot dùng để kiểm nghiệm thu hội thoại')
     from eval_harness.asr_evidence import add_asr_arguments, asr_sources_from_args

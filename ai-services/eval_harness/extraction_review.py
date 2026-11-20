@@ -1,7 +1,3 @@
-"""Offline candidate review with exact trace bindings; never changes BTC scores.
-
-Evidence hashes verify the cited source, not the reviewer's semantic judgment.
-"""
 import argparse
 from collections import Counter
 import hashlib
@@ -117,7 +113,7 @@ def verify_review(report_path, review_path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description="Offline candidate review with exact trace bindings; never changes BTC scores.\n\nEvidence hashes verify the cited source, not the reviewer's semantic judgment.\n")
     parser.add_argument('kind', choices=('template', 'check'))
     parser.add_argument('--report', required=True, type=Path)
     parser.add_argument('--review', required=True, type=Path)

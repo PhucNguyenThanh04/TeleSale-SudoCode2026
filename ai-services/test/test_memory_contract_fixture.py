@@ -1,4 +1,3 @@
-"""Validate the independent multi-session memory contract fixture."""
 
 import unittest
 from pathlib import Path

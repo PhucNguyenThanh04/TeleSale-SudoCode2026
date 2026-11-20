@@ -1,4 +1,3 @@
-"""A conversational acknowledgement cannot replace a successful business write."""
 import pytest
 from app.agent.guardrails.checks import check_answer
 

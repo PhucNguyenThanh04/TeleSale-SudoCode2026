@@ -1,7 +1,3 @@
-"""Bind speech-only extraction diagnostics to final trace bytes.
-
-Counters describe detected candidates, never recall of all agent speech.
-"""
 from collections import Counter
 import hashlib
 import json
@@ -11,7 +7,6 @@ from eval_harness.extractor import extract_detailed
 
 IDENTITY = ('run_id', 'config', 'scenario_id', 'call', 'turn')
 VERSION = 1
-# Extraction has no runtime mappings/config dependencies outside these modules.
 FINGERPRINT_COMPONENTS = ('extractor.py', 'extraction_report.py')
 
 
@@ -65,8 +60,6 @@ def summarize_extraction(traces: dict[str, Path], sidecars: dict[str, Path], btc
                 raise ValueError('Extraction identity/order mismatch')
             seen.add(identity)
             expected = make_extraction_row(row, extract_detailed(row['agent_text']))
-            # Recompute from masked speech, detecting candidate/projection/counter
-            # edits as well as accidentally mixed extractor versions.
             if detail != expected or detail['extractor_fingerprint'] != fingerprint:
                 raise ValueError('Extraction fingerprint/text/candidate mismatch')
             candidates = detail['candidates']

@@ -1,12 +1,3 @@
-"""Chấm ``hypotheses.json`` bằng chính ``reference_eval.wer_cer`` của BTC, kèm vài số đo phụ để phân tích.
-
-* ``WER``/``CER``/``entity_accuracy``: số chính thức theo script BTC.
-* ``wer_raw``: WER nếu nộp nguyên chữ Whisper (chỉ qua chuẩn hóa của BTC) → cho thấy tác dụng của lexicon + TN.
-* ``oracle_entity_accuracy``: trích entity từ chính transcript đúng → tách lỗi ASR khỏi lỗi bộ trích entity.
-* ``asr_time``: giây ASR / phút audio (đơn vị BTC yêu cầu báo riêng ở M1), tổng + p50/p95 theo file.
-
-Script BTC bỏ qua hội thoại không có trong ``hypotheses.json`` (điểm sẽ đẹp giả), nên ở đây thiếu ID là lỗi.
-"""
 from __future__ import annotations
 
 import json
@@ -52,7 +43,6 @@ def oracle_entities(ground_truth: dict, catalog: tuple[Product, ...]) -> dict:
 
 
 def coverage(ground_truth: dict, hypotheses: dict) -> dict:
-    """Đếm hội thoại; ``ValueError`` nếu thiếu ID vì ``reference_eval`` sẽ lặng lẽ bỏ qua chúng."""
     expected = [d["id"] for d in ground_truth["dialogues"]]
     missing = [i for i in expected if i not in hypotheses]
     if missing:
@@ -71,7 +61,6 @@ def _percentile(values: list[float], q: float) -> float:
 
 
 def asr_time(hypotheses: dict, run_info: dict) -> dict | None:
-    """Giây ASR cho mỗi phút audio. Không tính thời gian nạp model (ghi riêng ở ``load_s``)."""
     metas = [h.get("meta", {}) for h in hypotheses.values()]
     metas = [m for m in metas if m.get("audio_s") and m.get("asr_s") is not None]
     if not metas:
@@ -84,11 +73,6 @@ def asr_time(hypotheses: dict, run_info: dict) -> dict | None:
 
 
 def ground_truth_check(dataset_dir: Path, run_info: dict) -> bool | None:
-    """Run có được tạo từ đúng ``ground_truth.json`` này không (hash ghi trong ``run.json`` lúc transcribe).
-
-    ``None`` = không kiểm được (run cũ chưa ghi hash, hoặc transcribe không thấy ground truth cạnh audio).
-    Chỉ khớp theo ID là chưa đủ: hai dataset khác kịch bản có thể dùng chung ID (ví dụ ``T02``).
-    """
     recorded = run_info.get("ground_truth_sha256")
     if not recorded:
         return None
@@ -141,9 +125,7 @@ def score_run(dataset_dir: Path, run_dir: Path, ref_eval: ModuleType, catalog: t
               "device": run_info.get("device"), "compute_type": run_info.get("compute_type"),
               "decode": run_info.get("decode"), "rtf": run_info.get("rtf"),
               "lexicon_sha256": run_info.get("lexicon_sha256"), "rules_sha256": run_info.get("rules_sha256"),
-              # True = hypotheses tạo bằng bộ luật khác bộ hiện tại → chạy `renormalize` trước khi so sánh.
               "rules_stale": run_info.get("rules_sha256") != current["rules_sha256"],
-              # False = run tạo từ ground truth khác dataset đang chấm; None = run cũ, không kiểm được.
               "ground_truth_match": ground_truth_check(dataset_dir, run_info), "dialogues": counts,
               "asr_time": asr_time(hypotheses, run_info), "official": official, "wer_raw": raw_scores["WER"], "cer_raw": raw_scores["CER"],
               **oracle_entities(ground_truth, catalog), "per_dialogue": per_dialogue}

@@ -1,4 +1,3 @@
-"""Release gate uses BTC denominators and identical run metadata."""
 
 import unittest
 

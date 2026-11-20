@@ -1,4 +1,3 @@
-"""Deep Agent implementation for the common business tool contract."""
 
 from deepagents import create_deep_agent
 from langchain_core.language_models.chat_models import BaseChatModel

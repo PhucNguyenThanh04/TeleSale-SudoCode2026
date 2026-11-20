@@ -1,17 +1,21 @@
-"""Always-on grounding stays active when optional answer checks are disabled."""
 
 import asyncio
 import logging
+from datetime import date
+from types import SimpleNamespace
 
 import pytest
 
 from app.agent.guardrails.checks import FALLBACK, attribute_feature_status
 from app.agent.harness.agent_nodes import AgentNodes
 from app.agent.harness.runtime import AgentHarnessRuntime
+from test_deep_memory import FakeToolModel
 
 
 def _state(attributes, answer="Máy này có HEPA H13 ạ."):
     return {
+        'request': SimpleNamespace(on=date(2031, 3, 12), input_mode='clean'),
+        'identity_status': 'unknown',
         "agent_draft": answer,
         "safe_text": "Tư vấn máy này",
         "tool_calls": [{
@@ -24,7 +28,7 @@ def _state(attributes, answer="Máy này có HEPA H13 ạ."):
 
 @pytest.mark.parametrize("enabled", [True, False])
 def test_grounding_rejects_unsupported_feature_with_both_flag_values(enabled):
-    nodes = AgentNodes(None, None, None, 3, 3)
+    nodes = AgentNodes(FakeToolModel(replies=[]), None, None, 3, 3)
     nodes.guardrails_enabled = enabled
     result = asyncio.run(nodes.verify_agent(_state({})))
     assert result["agent_text"] == FALLBACK
@@ -32,7 +36,7 @@ def test_grounding_rejects_unsupported_feature_with_both_flag_values(enabled):
 
 @pytest.mark.parametrize("enabled", [True, False])
 def test_grounding_accepts_evidenced_feature_with_both_flag_values(enabled):
-    nodes = AgentNodes(None, None, None, 3, 3)
+    nodes = AgentNodes(FakeToolModel(replies=[]), None, None, 3, 3)
     nodes.guardrails_enabled = enabled
     result = asyncio.run(nodes.verify_agent(_state({"features": "HEPA H13"})))
     assert result["agent_text"] == "Máy này có HEPA H13 ạ."
@@ -52,7 +56,7 @@ def test_disabled_flag_logs_reason_and_startup_warning(monkeypatch):
     assert warnings[0][1]["level"] == logging.WARNING
     assert "kiểm tra bằng chứng vẫn chạy" in warnings[0][1]["reason"]
 
-    nodes = AgentNodes(None, None, None, 3, 3)
+    nodes = AgentNodes(FakeToolModel(replies=[]), None, None, 3, 3)
     nodes.guardrails_enabled = False
     asyncio.run(nodes.verify_agent(_state({"features": "HEPA H13"})))
     asyncio.run(nodes.verify_agent(_state({"features": "HEPA H13"})))
@@ -89,14 +93,14 @@ def test_explicit_false_overrides_free_text_feature_and_silence_is_unknown():
 ])
 def test_feature_claim_matches_attributes_even_with_answer_checks_disabled(
         enabled, attributes, answer, accepted):
-    nodes = AgentNodes(None, None, None, 3, 3)
+    nodes = AgentNodes(FakeToolModel(replies=[]), None, None, 3, 3)
     nodes.guardrails_enabled = enabled
     result = asyncio.run(nodes.verify_agent(_state(attributes, answer)))
     assert (result["agent_text"] == answer) is accepted
 
 
 def test_feature_claim_is_checked_for_each_named_product_and_other_category():
-    nodes = AgentNodes(None, None, None, 3, 3)
+    nodes = AgentNodes(FakeToolModel(replies=[]), None, None, 3, 3)
     nodes.guardrails_enabled = False
     state = _state({"child_safe_lock": False}, "Giày chạy Test có khóa trẻ em ạ.")
     state["tool_calls"][0]["result"]["items"] = [
@@ -115,7 +119,7 @@ def test_feature_claim_is_checked_for_each_named_product_and_other_category():
     ("Máy lọc Test không có PM2.5 ạ.", False),
 ])
 def test_text_feature_claim_polarity_uses_catalog_evidence(answer, accepted):
-    nodes = AgentNodes(None, None, None, 3, 3)
+    nodes = AgentNodes(FakeToolModel(replies=[]), None, None, 3, 3)
     nodes.guardrails_enabled = False
     result = asyncio.run(nodes.verify_agent(_state({"features": "HEPA H13"}, answer)))
     assert (result["agent_text"] == answer) is accepted

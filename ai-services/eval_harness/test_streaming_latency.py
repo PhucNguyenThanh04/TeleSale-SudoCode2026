@@ -1,4 +1,3 @@
-"""Honest first-answer timestamps; no model or database calls."""
 import asyncio
 import json
 from datetime import date
@@ -20,7 +19,7 @@ def test_stream_ttft_is_first_delta_and_total_includes_terminal_persistence(monk
             yield {'event': 'delta', **identity, 'seq': 1, 'text': 'Giá '}
             clock[0] += .07
             yield {'event': 'delta', **identity, 'seq': 2, 'text': '50.000đ.'}
-            clock[0] += .02  # Essential persistence, before done.
+            clock[0] += .02
             yield {'event': 'done', **identity, 'agent_text': 'Giá 50.000đ.',
                    'memory_update': {'turn_saved': True, 'status': 'pending'}}
     monkeypatch.setattr('eval_harness.benchmark_runner.time.perf_counter', lambda: clock[0])

@@ -1,19 +1,3 @@
-"""CLI: ``python -m speech <lệnh>``.
-
-  voices       liệt kê giọng tiếng Việt (edge-tts / ElevenLabs Voice Library), thêm giọng vào My Voices
-  synth        kịch bản hội thoại → audio + ground_truth.json + segments.json
-  manual-export checklist tạo clip ElevenLabs thủ công trên web; nhập lại bằng synth --engine files
-  validate     kiểm kịch bản tự viết (định dạng, dạng nói, giá/KM/tồn kho theo mock_tools BTC)
-  transcribe   audio → hypotheses.json đúng format BTC
-  renormalize  chạy lại chuẩn hóa + entity trên chữ thô đã lưu (sửa lexicon xong không cần chạy lại ASR)
-  eval         chấm bằng reference_eval.py của BTC, so sánh nhiều run
-  normalize    xem một câu đi qua các bước chuẩn hóa (debug)
-  baseline     chạy B0/B1/B2 cùng audio/model, xuất điểm và delta bằng evaluator BTC
-  compare-baselines kiểm nguồn/config/hash và chấm lại experiment, không decode lại
-  prepare-replay    cắt clip khách theo mốc A/C offline
-  export-replay     ASR clip khách thành gói turns.jsonl cố định
-  verify-replay     kiểm toàn vẹn và hợp đồng gói đã lưu
-"""
 from __future__ import annotations
 
 import argparse
@@ -43,13 +27,11 @@ def _write_json(path: Path, payload: dict) -> None:
 
 
 def _dataset_ground_truth(audio: Path) -> Path | None:
-    """``ground_truth.json`` của dataset chứa ``audio`` (thư mục ``<dataset>/audio`` hoặc một file trong đó)."""
     path = (audio if audio.is_dir() else audio.parent).parent / "ground_truth.json"
     return path if path.is_file() else None
 
 
 def _provenance(source_path: Path, noise_path: str | None, team_preview: bool) -> dict:
-    """Nguồn của dataset ghi vào manifest: đường dẫn đầy đủ + sha256 của kịch bản (và file nhiễu nếu có)."""
     from .btc import text_sha256
     from .tts import file_sha256
 
@@ -85,7 +67,6 @@ def cmd_voices(args: argparse.Namespace) -> None:
 
 
 def _team_source(source: dict, args: argparse.Namespace, config: dict) -> dict:
-    """Bản mẫu giọng clone (tv1–tv3, {kh}) → điền vùng/giới theo team_voices.json hoặc đội giả lập để nghe thử."""
     from .team import PREVIEW_TEAM, fill_team, is_template, load_team_voices, team_voice_entries
 
     if not any(is_template(d) for d in source["dialogues"]):
@@ -186,7 +167,7 @@ def cmd_validate(args: argparse.Namespace) -> None:
     from .btc import find_data_dir, read_json
     from .validate import Reference, format_report, validate
 
-    warnings.simplefilter("ignore", ResourceWarning)  # mock_tools BTC mở file JSON không đóng
+    warnings.simplefilter("ignore", ResourceWarning)
     ref = Reference.load(find_data_dir(args.data_dir))
     report = validate([(path, read_json(path)) for path in args.dialogues], ref)
     text = format_report(report)
@@ -230,7 +211,6 @@ def cmd_transcribe(args: argparse.Namespace) -> None:
     out = Path(args.out)
     _write_json(out / "hypotheses.json", hypotheses)
     _write_json(out / "run.json", {**info, "audio": str(target), "reference_date": ref.isoformat(),
-                                   # eval so hash này với ground_truth.json của dataset để bắt chấm nhầm cặp
                                    "ground_truth_sha256": text_sha256(gt_path) if gt_path else None})
     print(f"Xong trên {info['device']}/{info['compute_type']}: RTF {info['rtf']} → {out / 'hypotheses.json'}")
 
@@ -338,7 +318,7 @@ def cmd_replay(args: argparse.Namespace) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="python -m speech", description=__doc__,
+    parser = argparse.ArgumentParser(prog="python -m speech", description='CLI: ``python -m speech <lệnh>``.\n\n  voices       liệt kê giọng tiếng Việt (edge-tts / ElevenLabs Voice Library), thêm giọng vào My Voices\n  synth        kịch bản hội thoại → audio + ground_truth.json + segments.json\n  manual-export checklist tạo clip ElevenLabs thủ công trên web; nhập lại bằng synth --engine files\n  validate     kiểm kịch bản tự viết (định dạng, dạng nói, giá/KM/tồn kho theo mock_tools BTC)\n  transcribe   audio → hypotheses.json đúng format BTC\n  renormalize  chạy lại chuẩn hóa + entity trên chữ thô đã lưu (sửa lexicon xong không cần chạy lại ASR)\n  eval         chấm bằng reference_eval.py của BTC, so sánh nhiều run\n  normalize    xem một câu đi qua các bước chuẩn hóa (debug)\n  baseline     chạy B0/B1/B2 cùng audio/model, xuất điểm và delta bằng evaluator BTC\n  compare-baselines kiểm nguồn/config/hash và chấm lại experiment, không decode lại\n  prepare-replay    cắt clip khách theo mốc A/C offline\n  export-replay     ASR clip khách thành gói turns.jsonl cố định\n  verify-replay     kiểm toàn vẹn và hợp đồng gói đã lưu\n',
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--data-dir", help="thư mục BTC-Data-Vong1-TEAMS (mặc định: BTC_DATA_DIR hoặc cạnh repo)")
     sub = parser.add_subparsers(dest="command", required=True)

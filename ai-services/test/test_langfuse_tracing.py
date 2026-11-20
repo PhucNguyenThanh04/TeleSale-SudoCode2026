@@ -1,4 +1,3 @@
-"""Customer data never reaches Langfuse's span exporter."""
 
 import unittest
 from contextlib import contextmanager

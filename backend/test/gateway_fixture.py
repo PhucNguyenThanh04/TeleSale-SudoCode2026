@@ -1,4 +1,3 @@
-"""Transport/UI tests use a fixed authenticated profile; test_demo_auth tests real auth."""
 from datetime import datetime, timezone
 
 from starlette.requests import HTTPConnection

@@ -1,11 +1,10 @@
-"""Call and human handoff briefs matching the BTC JSON Schema fields."""
 
 from datetime import date, datetime
 from typing import Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, Field, StrictInt, StrictStr
 
-PhoneNumber = str  # Call Brief permits a broader string; Handoff Brief validates below.
+PhoneNumber = str
 Channel = Literal["hotline", "chat_fanpage", "zalo_oa", "web_chat", "other"]
 
 

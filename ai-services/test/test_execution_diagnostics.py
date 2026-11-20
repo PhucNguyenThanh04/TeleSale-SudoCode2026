@@ -70,7 +70,7 @@ def test_real_node_distinguishes_model_and_postprocess(failure):
     if failure == 'model':
         agent.response.side_effect = TimeoutError('private')
     else:
-        agent.response.return_value = 42  # post-invoke result.get fails
+        agent.response.return_value = 42
     node = AgentNodes(None, None, None, 3, 3)
     with patch('app.agent.harness.agent_nodes.build_agent', return_value=agent), \
          patch('app.agent.harness.agent_nodes.text_prompt', return_value='offline'), \

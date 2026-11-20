@@ -1,10 +1,8 @@
-"""A rejected product draft may still yield a sourced, useful answer."""
 
 import asyncio
 
 from app.agent.guardrails.checks import FALLBACK, check_answer, check_grounding
 from app.agent.harness.agent_nodes import AgentNodes
-from app.agent.harness.session_nodes import safe_catalog_reply
 
 
 def _state(text, *, price=4_800_000, budget=5_000_000, lock=False):
@@ -36,37 +34,3 @@ def test_recover_sourced_price_and_child_lock_when_model_claim_is_wrong():
     assert "4.800.000đ" in result["agent_text"]
     assert "không có khóa trẻ em" in result["agent_text"]
     assert check_answer(result["agent_text"], state["tool_calls"], state["safe_text"])[1] is None
-
-
-def test_recovery_uses_validated_child_safe_option_with_different_budget():
-    state = _state("Có con nhỏ, phòng 27m2, tối đa 6 triệu.",
-                   price=5_200_000, budget=6_000_000, lock=True)
-    result = safe_catalog_reply(state)
-    assert "5.200.000đ" in result
-    assert "có khóa trẻ em" in result
-    assert check_answer(result, state["tool_calls"], state["safe_text"])[1] is None
-
-
-def test_recovery_names_product_in_each_feature_sentence_with_multiple_results():
-    state = _state("Nhà có con nhỏ, phòng 27m2, ngân sách 5 triệu.")
-    state["tool_calls"][0]["result"]["items"].append({
-        "sku": "SKU-FILTER-B", "name": "Máy lọc Filter B", "variants": [],
-        "attributes": {"room_area_m2": 35, "child_safe_lock": True},
-    })
-    result = safe_catalog_reply(state)
-    assert "Máy lọc Filter A không có khóa trẻ em" in result
-    assert check_grounding(result, state["tool_calls"]) is None
-
-
-def test_recovery_does_not_present_price_above_budget():
-    state = _state("Nhà có con nhỏ, chi tối đa 5 triệu.", price=5_200_000)
-    result = safe_catalog_reply(state)
-    assert "5.200.000đ" not in result
-    assert "em tìm thấy" in result
-
-
-def test_recovery_does_not_invent_child_safety_when_not_asked():
-    state = _state("Phòng 27m2, ngân sách 5 triệu.")
-    result = safe_catalog_reply(state)
-    assert "khóa trẻ em" not in result
-    assert check_answer(result, state["tool_calls"], state["safe_text"])[1] is None

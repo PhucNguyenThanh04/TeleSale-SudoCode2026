@@ -1,4 +1,3 @@
-"""Saved evidence must not become an M1 pass through missing or edited metadata."""
 from copy import deepcopy
 from eval_harness.test_support import LEGACY_TEXT_MEASUREMENT
 import json
@@ -146,4 +145,4 @@ def test_nonstreaming_measurement_uses_btc_rule_7_and_requires_equal_times(tmp_p
     gates = checks(report)
     assert gates['m1_text_lifecycle']['status'] == 'pass'
     assert gates['ttft_measured']['status'] == ('missing' if unequal else 'pass')
-    assert report['conversation_accepted'] is False  # still too few turns
+    assert report['conversation_accepted'] is False

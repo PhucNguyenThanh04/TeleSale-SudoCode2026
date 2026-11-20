@@ -1,4 +1,3 @@
-"""One-time admin setup for LangGraph's unqualified store DDL."""
 
 import asyncio
 

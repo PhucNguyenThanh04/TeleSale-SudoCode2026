@@ -1,4 +1,3 @@
-"""Only committed worker results may be displayed as remembered facts."""
 
 import unittest
 from contextlib import asynccontextmanager

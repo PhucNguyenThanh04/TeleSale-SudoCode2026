@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 
 
 class MemoryRepo:
-    """Transactional test repository; production uses PostgreSQL."""
     def __init__(self, sources=()):
         self.tables = {}
         self.source_rows = {s['chunk_id']: s for s in sources}

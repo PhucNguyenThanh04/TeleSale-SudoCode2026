@@ -1,4 +1,3 @@
-"""Explicitly simulated review of a hash-pinned, human-authored experiment plan."""
 import asyncio
 import re
 import time
@@ -119,7 +118,6 @@ async def auto_review(repo, worker_repo, plan, rows, *, actor, run_id, timeout=6
         payload = {key: case.get(key, '') for key in ('kind', 'question', 'answer')}
         payload.update(aliases=case.get('aliases', []), source_ids=[r['chunk_id'] for r in case['sources']],
                        source_review_note=plan['review_note'], scope='simulated experiment')
-        # Reuse an exact revision/test on resume; never auto-approve arbitrary worker drafts.
         async with repo.transaction() as tx:
             matches = [r for r in await tx.rows('revisions') if r['gap_id'] == gap['id']
                 and all(r.get(k) == v for k, v in payload.items())]

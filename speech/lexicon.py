@@ -1,12 +1,3 @@
-"""Từ điển Việt-Anh cho hội thoại telesale.
-
-Hai việc:
-1. ``canonicalize``: gom biến thể ASR ("e pia", "ê pia", "air pure", "pờ rô") về dạng chuẩn ("AirPure", "Pro").
-2. ``spoken_terms``: đổi dạng chuẩn sang dạng nói mà ground truth BTC dùng ("AirPure" → "e pia").
-
-Dữ liệu nằm trong ``lexicon.json``; trường ``source`` ghi mức tin cậy: ``btc_gt`` (có trong ground truth
-BTC), ``btc_sample`` (có trong public sample), ``guess`` (nhóm tự đoán, cần nghe audio thật để kiểm).
-"""
 from __future__ import annotations
 
 import json
@@ -18,7 +9,6 @@ from .textutil import detokenize, fold, tokenize
 
 DEFAULT_LEXICON = Path(__file__).with_name("lexicon.json")
 
-# Âm đầu dễ nhầm khi ASR phiên âm từ tiếng Anh/tên riêng: "kha rô phi" ~ "ka rô phi" ~ "ca rô phi".
 _ONSETS = (("ngh", "ng"), ("gh", "g"), ("ph", "f"), ("kh", "k"), ("qu", "kw"), ("gi", "z"), ("tr", "ch"),
            ("ch", "ch"), ("c", "k"), ("q", "k"), ("d", "z"), ("r", "z"), ("x", "s"), ("v", "z"))
 
@@ -47,10 +37,10 @@ class Rule:
 @dataclass(frozen=True)
 class Lexicon:
     entries: tuple[dict, ...]
-    single: dict[str, tuple[Rule, ...]]               # biến thể một token, so khớp chữ thường giữ dấu
-    multi: dict[tuple[str, ...], tuple[Rule, ...]]    # biến thể nhiều token, so khớp chữ thường giữ dấu
-    phonetic: dict[tuple[str, ...], tuple[Rule, ...]]  # biến thể nhiều token của mục ``fuzzy``: bỏ dấu + gộp âm đầu
-    spoken: dict[tuple[str, ...], str]                 # token dạng chuẩn (chữ thường) → dạng nói
+    single: dict[str, tuple[Rule, ...]]
+    multi: dict[tuple[str, ...], tuple[Rule, ...]]
+    phonetic: dict[tuple[str, ...], tuple[Rule, ...]]
+    spoken: dict[tuple[str, ...], str]
     max_len: int
     brand_tokens: frozenset[str]
 
@@ -73,7 +63,6 @@ def build_lexicon(data: dict) -> Lexicon:
         canonical = entry["canonical"]
         rule = Rule(canonical)
         canonical_tokens = tokenize(canonical)
-        # Viết tắt toàn chữ hoa chỉ đổi sang dạng nói khi đúng chữ hoa ("RO" → "rô", nhưng "rủi ro" giữ nguyên).
         acronym = canonical.isupper()
         spoken[tuple(t if acronym else t.lower() for t in canonical_tokens)] = entry.get("spoken", canonical.lower())
         if entry.get("type") == "brand":
@@ -143,7 +132,6 @@ def canonicalize(text: str, lexicon: Lexicon) -> str:
 
 
 def spoken_terms(text: str, lexicon: Lexicon) -> str:
-    """Đổi các dạng chuẩn trong câu sang dạng nói; từ khác giữ nguyên."""
     tokens = tokenize(text)
     low = [t.lower() for t in tokens]
     longest = max((len(k) for k in lexicon.spoken), default=1)
@@ -163,7 +151,6 @@ def spoken_terms(text: str, lexicon: Lexicon) -> str:
 
 
 def hotwords(lexicon: Lexicon, limit: int = 40) -> str:
-    """Danh sách dạng chuẩn đưa vào ``hotwords`` của faster-whisper (giới hạn để không chiếm hết prompt)."""
     terms: list[str] = []
     for entry in lexicon.entries:
         if entry.get("hotword") and entry["canonical"] not in terms:

@@ -1,4 +1,3 @@
-"""Compose the dedicated knowledge process; startup never builds the corpus."""
 from app.knowledge.config import qdrant_url
 
 from qdrant_client import AsyncQdrantClient

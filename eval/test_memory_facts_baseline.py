@@ -1,4 +1,3 @@
-"""Checks for the fixed, synthetic memory evaluation corpus and scorer."""
 
 from pathlib import Path
 

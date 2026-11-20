@@ -1,4 +1,3 @@
-"""Memory tool inputs."""
 
 from uuid import UUID
 from datetime import date

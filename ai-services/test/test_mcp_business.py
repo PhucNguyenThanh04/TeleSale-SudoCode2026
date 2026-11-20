@@ -1,4 +1,3 @@
-"""Pure commerce rules and service replay checks."""
 
 import importlib.util
 import json
@@ -10,6 +9,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 from app.mcp_servers.mcp_shared.commerce_rules import _catalog, _inventory, quote
 from app.mcp_servers.mcp_order.services.order import invoke as invoke_order
 from btc_data import btc_data_dir
+from write_authorization_fixtures import WRITE_TEST_SECRET, scripted_write_args
 
 BTC = btc_data_dir()
 
@@ -30,10 +30,12 @@ class FakeOrderRepo:
         previous = self.operations.get(key)
         if previous and previous[0:2] != (name, digest):
             return {"error": "operation_key_conflict"}
+        if previous is None:
+            self.operations[key] = (name, digest, None)
         return previous[2] if previous else None
 
     async def finish_operation(self, _session, key, result):
-        self.operations[key] = ("handoff.transfer", self.digest, result)
+        self.operations[key] = (*self.operations[key][:2], result)
 
     async def insert_handoff(self, _session, _brief):
         self.handoffs += 1
@@ -71,11 +73,9 @@ class BusinessTest(unittest.IsolatedAsyncioTestCase):
             "product_advised": None, "price_quoted_vnd": None, "open_questions": [],
             "next_action": "Gọi lại để tư vấn.", "generated_at": "2026-10-15T10:00:00+07:00"},
             "source_channel": "hotline", "source_identity": "0984726714", "operation_key": "key-1"}
-        import hashlib
-        clean = {k: v for k, v in args.items() if k != "operation_key"}
-        repo.digest = hashlib.sha256(json.dumps(clean, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
-        first = await invoke_order(repo, "handoff.transfer", args)
-        second = await invoke_order(repo, "handoff.transfer", args)
+        args = scripted_write_args('handoff.transfer', args, customer_id='C001')
+        first = await invoke_order(repo, "handoff.transfer", args, context_secret=WRITE_TEST_SECRET)
+        second = await invoke_order(repo, "handoff.transfer", args, context_secret=WRITE_TEST_SECRET)
         self.assertEqual(first, second)
         self.assertEqual(repo.handoffs, 1)
         schema = json.loads((BTC / "schemas/handoff_brief.schema.json").read_text(encoding="utf-8"))
@@ -95,9 +95,10 @@ class BusinessTest(unittest.IsolatedAsyncioTestCase):
                        {"generated_at": "2026-10-15T10:00:00"}):
             with self.subTest(change=change):
                 repo = FakeOrderRepo()
-                result = await invoke_order(repo, "handoff.transfer", {
+                args = scripted_write_args('handoff.transfer', {
                     "brief": {**valid, **change}, "source_channel": "hotline",
-                    "source_identity": "0984726714"})
+                    "source_identity": "0984726714"}, customer_id='C001')
+                result = await invoke_order(repo, "handoff.transfer", args, context_secret=WRITE_TEST_SECRET)
                 self.assertEqual(result.get("error"), "brief_invalid")
                 self.assertEqual(repo.handoffs, 0)
 

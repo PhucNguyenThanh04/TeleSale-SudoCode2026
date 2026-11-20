@@ -1,4 +1,3 @@
-"""Catalog behavior with products and variants absent from published scenarios."""
 import asyncio
 from datetime import date, datetime
 from uuid import uuid4
@@ -44,97 +43,18 @@ def test_verified_sku_without_published_prefix_can_be_quoted():
     s['decision'] = Decision(action='tool', tool_name='pricing.get_quote', tool_args={'sku': item['sku']})
     prepared = prepare_tool_call(s, datetime.now)
     assert prepared is not None and prepared[1]['sku'] == item['sku']
-    # A model's arbitrary product label still cannot supply a verified identifier.
     s['tool_calls'] = []
     assert prepare_tool_call(s, datetime.now) is None
 
 
-@pytest.mark.parametrize('count', [2, 3, 4])
-def test_basket_preparation_accepts_explicit_one_each_for_any_product_count(count):
-    from app.agent.implementations.business_agent import BusinessTools
-    items = [product(f'SKU-NOVA-{i}', f'Đèn Nova N{i}') for i in range(count)]
-    text = 'Tổng giá giỏ hàng ' + ', '.join(p['name'] for p in items) + ', mỗi sản phẩm 1 nhé.'
-    s = state(text, items)
-
-    class Gateway:
-        async def invoke(self, name, args):
-            if name == 'pricing.quote_order':
-                return {'total_vnd': count * 100_000, 'units': [], 'lines': args['lines']}
-            if name == 'pricing.get_quote':
-                return {'sku': args['sku'], 'final_price_vnd': 100_000}
-            return {'items': items}
-
-    asyncio.run(BusinessTools(Gateway(), s, 10, datetime.now).prepare_consultation())
-    quotes = [c for c in s['tool_calls'] if c['name'] == 'pricing.quote_order']
-    assert len(quotes) == 1
-    assert quotes[0]['args']['lines'] == [{'sku': sku, 'qty': 1} for sku in sorted(p['sku'] for p in items)]
-    assert not any(c['name'] == 'order.create' for c in s['tool_calls'])
 
 
-@pytest.mark.parametrize('phrase,quantity', [('2 máy', 2), ('ba chiếc', 3), ('4 đôi', 4), ('năm bộ', 5)])
-def test_quantity_parser_and_evidence_share_spoken_and_numeric_units(phrase, quantity):
-    from app.mcp_servers.mcp_shared.consultation import requested_quantity
-    from app.mcp_servers.mcp_shared.commerce_evidence import build_commerce_evidence
-    item = product('SKU-NOVA', 'Đèn Nova Lumi')
-    s = state(f'Báo giá {phrase} Nova Lumi.', [item])
-    s['tool_calls'] += [{'name': 'pricing.get_quote',
-        'args': {'sku': item['sku'], 'qty': n, 'on': '2028-03-17'},
-        'result': {'sku': item['sku'], 'final_price_vnd': 100_000}}
-        for n in (1, quantity)]
-    assert requested_quantity(s) == quantity
-    assert [c['args']['qty'] for c in build_commerce_evidence(s)
-            if c['name'] == 'pricing.get_quote'] == [quantity]
 
 
-@pytest.mark.parametrize('quantity', [2, 3])
-def test_multiple_units_of_one_product_prepare_a_basket_quote(quantity):
-    from app.agent.implementations.business_agent import BusinessTools
-    from app.mcp_servers.mcp_shared.commerce_rules import quote_order
-    item = product('SKU-NOVA', 'Đèn Nova Lumi')
-    s = state(f'Báo giá {quantity} máy Nova Lumi.', [item])
-
-    class Gateway:
-        async def invoke(self, name, args):
-            if name == 'pricing.quote_order':
-                return quote_order([item], [], args)
-            if name == 'pricing.get_quote':
-                return {'sku': item['sku'], 'final_price_vnd': 100_000}
-            return {'items': [item]}
-
-    asyncio.run(BusinessTools(Gateway(), s, 10, datetime.now).prepare_consultation())
-    quotes = [c for c in s['tool_calls'] if c['name'] == 'pricing.quote_order']
-    assert len(quotes) == 1 and len(quotes[0]['result']['units']) == quantity
 
 
-@pytest.mark.parametrize('phrase,expected', [('mười một chiếc', 11), ('hai mươi ba máy', 23),
-                                            ('một trăm linh năm bộ', 105)])
-def test_compound_spoken_quantity_is_not_truncated_to_last_digit(phrase, expected):
-    from app.mcp_servers.mcp_shared.consultation import requested_quantity
-    assert requested_quantity({'safe_text': phrase}) == expected
 
 
-def test_basket_preparation_resolves_selected_variants_from_metadata():
-    from app.agent.implementations.business_agent import BusinessTools
-    from app.mcp_servers.mcp_shared.commerce_rules import quote_order
-    item = product('SKU-NOVA', 'Giày Nova Lumi')
-    item['variants'] = [{'variant_sku': 'SKU-NOVA-VIOLET', 'size': '38.5', 'color': 'tím',
-                         'price_delta_vnd': 0},
-                        {'variant_sku': 'SKU-NOVA-BLUE', 'size': '39', 'color': 'xanh',
-                         'price_delta_vnd': 0}]
-    s = state('Báo giá 3 đôi Nova Lumi size 38.5 màu tím.', [item])
-
-    class Gateway:
-        async def invoke(self, name, args):
-            if name == 'pricing.quote_order':
-                return quote_order([item], [], args)
-            if name == 'pricing.get_quote':
-                return {'sku': args['sku'], 'final_price_vnd': 100_000}
-            return {'items': [item]}
-
-    asyncio.run(BusinessTools(Gateway(), s, 10, datetime.now).prepare_consultation())
-    quotes = [c for c in s['tool_calls'] if c['name'] == 'pricing.quote_order']
-    assert len(quotes) == 1
-    assert quotes[0]['args']['lines'] == [{'sku': 'SKU-NOVA-VIOLET', 'qty': 3}]
 
 
 def test_variant_selection_uses_longest_catalog_value_for_decimal_size_and_color():

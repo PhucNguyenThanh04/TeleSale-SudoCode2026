@@ -1,4 +1,3 @@
-"""Immutable lexical generations with transactional compare-and-swap activation."""
 from app.knowledge.services.permissions import require_permission
 from app.knowledge.schemas import Conflict, KnowledgeError, Missing, digest, identifier, timestamp
 from app.knowledge.services.source_validation import validate_sources
@@ -99,5 +98,4 @@ async def activate_release(repo, release_id, expected_active_id, actor_id, opera
 
 
 async def rollback_release(repo, target_id, expected_active_id, actor_id):
-    # Restoring a generation validates it against today's sources again.
     return await activate_release(repo, target_id, expected_active_id, actor_id, 'rollback_release')

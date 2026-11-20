@@ -1,4 +1,3 @@
-"""Shared backend boundary types. Dates in business requests are scenario dates."""
 
 from typing import Annotated, Literal
 

@@ -1,4 +1,3 @@
-"""A real WebSocket relays checked upstream frames before the terminal reply."""
 import asyncio
 import json
 import threading

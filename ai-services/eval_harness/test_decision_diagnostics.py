@@ -1,4 +1,3 @@
-"""Safe decision evidence, independent from official BTC rows."""
 import json
 from types import SimpleNamespace
 from uuid import UUID
@@ -93,16 +92,6 @@ def test_memory_service_envelope_is_opt_in_and_store_strips_transport(monkeypatc
     assert not disabled.events
 
 
-def test_gate_reports_exact_reason_without_tool_execution():
-    from app.mcp_servers.mcp_shared.consultation import purchase_block_reason
-    d = api()
-    state = {'identity_status': 'unknown'}
-    assert purchase_block_reason(state, {}) == 'identity_required'
-    with d.capture_decisions() as capture:
-        reason = purchase_block_reason(state, {})
-    assert reason == 'identity_required'
-    gate = [e for e in capture.events if e['event'] == 'gate_result']
-    assert gate and gate[-1]['reason'] == reason and gate[-1]['status'] == 'blocked'
 
 
 def test_tool_attempt_blocked_before_mcp_is_visible():

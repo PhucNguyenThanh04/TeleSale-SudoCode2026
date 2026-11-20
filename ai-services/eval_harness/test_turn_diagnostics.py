@@ -1,4 +1,3 @@
-"""Safe observed fallback evidence, independent from speech/score heuristics."""
 import asyncio
 import json
 import logging

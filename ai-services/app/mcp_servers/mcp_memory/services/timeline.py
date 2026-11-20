@@ -1,4 +1,3 @@
-"""Read-only chronological history; never rank by query or generate summaries."""
 import asyncio
 from datetime import date
 
@@ -65,8 +64,6 @@ async def read_timeline(repo, customer_id, session_id, on, offset=0, limit=10,
                         summary_status=record.get('summary_status') or ('ready' if summary else 'unavailable'))
                     if item.on <= on:
                         items.append(item)
-                # shortcut: scan one customer's versions/metadata before paging; use a
-                # keyset query if long histories exceed the two-second read budget.
                 items.sort(key=lambda item: (item.on, item.session_id), reverse=True)
                 page = items[offset:offset+limit]
                 end = offset + len(page)

@@ -1,4 +1,3 @@
-"""Questions are classified by requested information, not contextual keywords."""
 import pytest
 from eval_harness.extractor import extract_questions
 

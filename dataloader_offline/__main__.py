@@ -1,4 +1,3 @@
-"""Run with ``python -m dataloader_offline`` from the repository root."""
 
 from __future__ import annotations
 
@@ -136,12 +135,11 @@ async def import_data(args, release):
         else:
             print("MCP Knowledge index not built; use --prepare-policy for an explicit build.")
     except Exception as exc:
-        # Never print arbitrary exception messages: they may contain DSNs or headers.
         details = 'reason='+type(exc).__name__
         try:
             from app.mcp_servers.mcp_knowledge.services.cloudflare import PolicyProviderError
         except ImportError:
-            PolicyProviderError = None  # PostgreSQL-only loader need not install AI deps.
+            PolicyProviderError = None
         if PolicyProviderError is not None and isinstance(exc, PolicyProviderError):
             details = (f'provider=cloudflare; reason={exc.reason}; '
                        f'http_status={exc.status}; provider_code={exc.provider_code}')

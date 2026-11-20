@@ -1,4 +1,3 @@
-"""Value-free evidence that redaction changed BTC's observable inputs."""
 import json
 import re
 
@@ -16,7 +15,6 @@ def inspect_redaction(raw_row: dict, safe_row: dict, *, call_spec: dict) -> list
         return '\n'.join((row.get('agent_text',''), json.dumps(row.get('memory_writes',[]),ensure_ascii=False),
                           json.dumps([t.get('args',{}) for t in row.get('tool_calls',[])],ensure_ascii=False)))
     raw, safe = blob(raw_row), blob(safe_row)
-    # BTC permits 10-digit phone numbers starting with zero; CCCD/STK do count.
     for path in ('agent_text','memory_writes'):
         text = json.dumps(raw_row.get(path,''),ensure_ascii=False)
         if SENSITIVE_NUMBER.search(text):
@@ -61,8 +59,6 @@ def inspect_redaction(raw_row: dict, safe_row: dict, *, call_spec: dict) -> list
                 if (needle in before)!=(needle in after):
                     add('memory_checks','memory_writes')
     if 'claims' not in raw_row and raw_row.get('agent_text') != safe_row.get('agent_text'):
-        # Conservative evidence check without extracting raw customer data.
-        # If masking removes a factual/question cue or number, scoring may change.
         cues = r"\b\d+(?:[.,]\d+)*\b|giá|giảm|miễn phí|freeship|bảo hành|đổi trả|người thật|size|màu|diện tích|ngân sách|đúng không|bao nhiêu"
         if re.findall(cues, raw_row.get('agent_text', ''), re.I) != re.findall(cues, safe_row.get('agent_text', ''), re.I):
             add('extracted_value', 'agent_text')
@@ -70,7 +66,6 @@ def inspect_redaction(raw_row: dict, safe_row: dict, *, call_spec: dict) -> list
         if field not in raw_row:
             continue
         if raw_row.get(field) != safe_row.get(field):
-            # Evidence text changes alone do not change HR/RQR; field/slot/value do.
             strip=lambda rows:[{k:v for k,v in r.items() if k not in {'text','source'}} for r in rows]
             if strip(raw_row.get(field,[])) != strip(safe_row.get(field,[])):
                 add('extracted_value',field)

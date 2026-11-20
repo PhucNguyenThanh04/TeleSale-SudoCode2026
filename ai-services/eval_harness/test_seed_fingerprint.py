@@ -1,4 +1,3 @@
-"""A source-data fingerprint must reflect live BTC rows, not import files."""
 
 import os
 import unittest

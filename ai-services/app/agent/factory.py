@@ -1,4 +1,3 @@
-"""Assemble the active agent, harness, memory and MCP adapters."""
 
 from app.agent.harness.observability import configure_agent_logging
 from app.agent.harness.runtime import AgentHarnessRuntime
@@ -10,7 +9,6 @@ from app.infarstructure.llm import build_llm
 
 
 def build_runtime(settings: Settings, *, gateway=None) -> AgentHarnessRuntime:
-    """Build the Deep Agent runtime using the four MCP servers."""
     configure_agent_logging(settings.log_level)
     if gateway is None and not all((settings.mcp_catalog_url, settings.mcp_order_url,
                 settings.mcp_memory_url, settings.mcp_knowledge_url, settings.mcp_internal_token)):

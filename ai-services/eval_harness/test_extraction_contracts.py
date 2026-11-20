@@ -1,4 +1,3 @@
-"""Detailed annotations share projections without scenario or tool truth input."""
 from eval_harness import extractor
 
 

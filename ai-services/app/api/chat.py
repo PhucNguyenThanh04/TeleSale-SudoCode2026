@@ -1,4 +1,3 @@
-"""HTTP boundary for the text-turn harness."""
 
 import hmac
 import json

@@ -1,4 +1,3 @@
-"""Replace only VieNeu's cached HF snapshot symlinks with local copies for ORT."""
 
 import os
 import shutil

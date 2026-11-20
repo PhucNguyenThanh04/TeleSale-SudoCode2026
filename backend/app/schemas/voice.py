@@ -1,4 +1,3 @@
-"""Commands for the public voice demo; no customer resolution here."""
 
 from datetime import date
 from typing import Annotated, Literal

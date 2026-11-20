@@ -1,4 +1,3 @@
-"""Headless Chrome + real AudioWorklet/WebSocket, offline speech/agent doubles."""
 import asyncio
 import base64
 from contextlib import asynccontextmanager
@@ -45,7 +44,6 @@ def site():
         return connection
 
     async def tts(text):
-        # Audible-clock playback takes 0.1 s + a sentence pause.
         yield {"event": "audio_chunk", "index": 0, "sample_rate": 16000,
                "pcm16_base64": base64.b64encode(b'\x00\x04' * options['tts_samples']).decode()}
         yield {"event": "segment_end", "index": 0}
@@ -224,7 +222,6 @@ def test_browser_continuous_turns_pcm_and_end_restart(site, browser):
       document.querySelector('#end-call').click();
       return tracks.every(t => t.readyState === 'ended');
     })()""")
-    # New WebSocket call starts a fresh harness session request.
     assert len({request["session_id"] for request in requests}) == 2
 
 

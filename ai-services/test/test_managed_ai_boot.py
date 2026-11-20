@@ -1,4 +1,3 @@
-"""AI must reject an incomplete generation before constructing the runtime."""
 import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock

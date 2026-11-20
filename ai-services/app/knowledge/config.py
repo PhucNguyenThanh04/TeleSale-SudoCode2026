@@ -1,4 +1,3 @@
-"""Knowledge settings use the same .env and environment precedence as the service."""
 import os
 from app.configs import get_settings
 

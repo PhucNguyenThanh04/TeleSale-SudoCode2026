@@ -1,4 +1,3 @@
-"""Offline K0 -> K1 -> K0 rehearsal using real lifecycle, hybrid index and MCP."""
 import argparse
 import asyncio
 from contextlib import asynccontextmanager, ExitStack
@@ -15,7 +14,6 @@ from app.mcp_servers.mcp_knowledge.repos.postgres import PolicyRepository
 
 
 class _MemoryRepository(PolicyRepository):
-    """Rehearsal-only storage; inherited snapshot reads validate real manifests."""
     def __init__(self, sources):
         self.tables = {}
         self.source_rows = sources
@@ -98,7 +96,6 @@ async def rehearse(btc_root: Path) -> dict:
         max_tokens=8000, dimension=2, dense_candidates=30, sparse_candidates=30,
         hard_limit=10, dense_threshold=.4, relevance_verified=True, queue_capacity=1,
         deadline_seconds=10, dependency_timeout_seconds=2, breaker_failures=2, breaker_cooldown_seconds=.05)
-    # This isolated command never loads Settings/.env or connects to configured services.
     with ExitStack() as stack:
         stack.enter_context(patch('app.configs.get_settings', return_value=SimpleNamespace(
             knowledge_policy_config_file=Path('offline-fixture'))))
@@ -216,7 +213,7 @@ def render_report(report):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Offline K0 -> K1 -> K0 rehearsal using real lifecycle, hybrid index and MCP.')
     parser.add_argument('--btc-root', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
     args = parser.parse_args()

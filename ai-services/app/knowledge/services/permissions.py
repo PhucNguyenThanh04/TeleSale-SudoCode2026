@@ -1,4 +1,3 @@
-"""Reviewer permissions are provisioned by an administrator, never by the UI."""
 from app.knowledge.schemas import Forbidden
 
 

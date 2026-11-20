@@ -1,4 +1,3 @@
-"""Validate a paired text run and publish only BTC's authoritative score."""
 
 import json
 import hashlib
@@ -16,7 +15,6 @@ from eval.trace_audit import audit_pair, audit_trace, build_manifest, _reject_se
 
 
 def atomic_bytes(path: Path, payload: bytes) -> None:
-    """Publish exact scorer bytes; rename is atomic only for this one file."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix='.pending-', dir=path.parent)
@@ -48,7 +46,6 @@ def publish_pair(scenarios_dir: Path, full_trace: Path, baseline_trace: Path,
                  extraction_sidecars: dict[str, Path] | None = None,
                  require_turn_diagnostics: bool = False,
                  decision_diagnostics: dict | None = None) -> dict:
-    """Audit, score and commit a complete pair; leave no score on failure."""
     traces = {"full": full_trace, "baseline_no_memory": baseline_trace}
     outputs = [score_out, score_out.with_suffix('.inputs.json'),
                *(score_out.parent / f'{config}.manifest.json' for config in traces)]
@@ -111,7 +108,6 @@ def publish_pair(scenarios_dir: Path, full_trace: Path, baseline_trace: Path,
                 raise ValueError('Published extraction/score mismatch')
             diagnostic_ref = {'extraction_report': {'path': report_path.name, 'sha256': sha256(report_path)},
                               'extraction_status': checked['extraction_status']}
-        # Validate the bytes actually published, not just the staging files.
         final_manifests = {config: build_manifest(
             trace_path=trace, scenarios_dir=scenarios_dir, config=config,
             scorer_report_path=score_out, btc_root=btc_root, **metadata)

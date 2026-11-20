@@ -1,4 +1,3 @@
-"""Optional Langfuse tracing with an export-time customer-data boundary."""
 
 import json
 import re
@@ -9,8 +8,6 @@ from app.configs import Settings
 from app.schemas.agent import TextTurnRequest
 
 
-# Only low-risk operational attributes may leave this service. The LangChain
-# callback captures prompts and tool arguments before this export hook runs.
 _EXPORTED_ATTRIBUTES = frozenset({
     "langfuse.trace.name", "langfuse.trace.tags", "langfuse.observation.type",
     "langfuse.observation.level", "langfuse.observation.model.name",
@@ -21,12 +18,10 @@ _EXPORTED_ATTRIBUTES = frozenset({
 
 
 def safe_to_export(span) -> bool:
-    """Span events and status descriptions cannot be edited by the mask hook."""
     return not span.events and not getattr(span.status, "description", None)
 
 
 def mask_trace_spans(*, params):
-    """Remove all payload/metadata attributes, including unknown future SDK keys."""
     from langfuse.types import MaskOtelSpansResult, OtelSpanPatch
 
     patches = {}
@@ -64,7 +59,6 @@ _CREDENTIAL_ATTRIBUTE = re.compile(
 
 
 def debug_mask(settings: Settings):
-    """Keep debug payloads while stripping known credentials from exported spans."""
     from langfuse.types import MaskOtelSpansResult, OtelSpanPatch
 
     secrets = tuple(value for item in (

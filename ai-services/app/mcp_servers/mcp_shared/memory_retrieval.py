@@ -1,11 +1,9 @@
-"""Deterministic relevance ordering over already-authorized memory episodes."""
 import re
 
 from app.mcp_servers.mcp_shared.commerce_rules import _search_text
 
 
 def resolved_episode_view(episodes: list[dict], evidence: list[dict]) -> list[dict]:
-    """Keep accepted resolutions even when their session is outside the shortlist."""
     resolved = {entry['item_id']: entry for episode in evidence
                 if episode.get('status', 'active') == 'active'
                 for entry in episode.get('resolved_prior_items', [])
@@ -20,7 +18,10 @@ def resolved_episode_view(episodes: list[dict], evidence: list[dict]) -> list[di
                     matched.add(item['item_id'])
                     item = {**item, 'status': 'resolved'}
                 items.append(item)
-            topics.append({**topic, 'items': items})
+            topics.append({**{key:value for key,value in topic.items() if key!='consultation'}, 'items': items})
+        episode = {key:value for key,value in episode.items()
+                   if key not in {'consultation','offer_candidates','basket_offers'}}
+        episode = {**episode, 'topics': topics}
         if matched:
             existing = episode.get('resolved_prior_items', [])
             ids = {entry.get('item_id') for entry in existing if isinstance(entry, dict)}

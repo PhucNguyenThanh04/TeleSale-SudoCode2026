@@ -1,11 +1,5 @@
-"""Read-only commercial evidence selection from runtime-owned session observations.
-
-No customer consent is inferred here. Never append this view to the tool trace.
-"""
 from copy import deepcopy
 import json
-import re
-from app.mcp_servers.mcp_shared.commerce_rules import _search_text
 
 COMMERCIAL_TOOLS = frozenset({'catalog.search', 'pricing.get_quote', 'pricing.quote_order', 'inventory.check'})
 
@@ -22,7 +16,6 @@ def _bound(call, state):
                             ('session_id', str(getattr(request, 'session_id', '')))):
         if field in call and str(call[field]) != str(expected):
             return False
-    # Missing metadata is allowed only because these lists are owned/bound by runtime.
     return True
 
 
@@ -30,43 +23,7 @@ def _signature(args):
     return json.dumps(args, sort_keys=True, default=str, ensure_ascii=False)
 
 
-def current_customer_address(state: dict) -> str | None:
-    """Effective explicit address/region, retained only with customer-source proof."""
-    request = state.get('request')
-    raw = getattr(request, 'text', '')
-    pattern = r'(?i)(?:địa chỉ|dia chi)\s*:\s*([^\n.!?]+)'
-    match = re.search(pattern, raw)
-    if match:
-        return match.group(1).strip()
-    speech = [(str(t.get('source_turn_id', t.get('turn_id', ''))),
-               t.get('customer', t.get('customer_text', ''))) for t in state.get('history', [])]
-    speech.append((str(getattr(request, 'client_msg_id', '')), raw))
-    current = state.get('tool_calls', [])
-    calls = [c for c in [*state.get('session_tool_calls', []), *current]
-             if isinstance(c, dict) and c.get('name') in {'pricing.get_quote', 'pricing.quote_order'} and _bound(c, state)]
-    for tid, text in reversed(speech):
-        folded = _search_text(text)
-        if not re.search(r'\bo\b|dia chi|(?:giao|ship) (?:den|ve)', folded):
-            continue
-        # An unresolved change/revocation cannot revive the previous address.
-        if re.search(r'\b(?:khong|chua)\s+(?:con\s+)?(?:o|giao)|\bneu\b|\bdoi\s+(?:dia chi|noi o|khu vuc)', folded):
-            return None
-        for call in reversed(calls):
-            source = call.get('source_turn_id')
-            if str(source) != tid and not (source is None and call in current
-                                          and tid == str(getattr(request, 'client_msg_id', ''))):
-                continue
-            address = call.get('args', {}).get('address')
-            if (isinstance(address, str) and address.strip() and '[' not in address
-                    and re.search(r'(?<!\w)' + re.escape(_search_text(address)) + r'(?!\w)', folded)):
-                return address
-        if re.search(r'dia chi|(?:giao|ship) (?:den|ve)|\b(?:anh|chi|toi|minh|a|e|em)\s+o\b', folded):
-            return None  # A newer location without matching proof invalidates the old one.
-    return None
-
-
 def build_commerce_evidence(state: dict, *, args: dict | None = None) -> list[dict]:
-    """Latest compatible reads + current noncommercial calls, without mutating either list."""
     current = [c for c in state.get('tool_calls', []) if isinstance(c, dict) and _bound(c, state)]
     prior = [c for c in state.get('session_tool_calls', []) if isinstance(c, dict) and _bound(c, state)]
     observations = [*prior, *current]
@@ -97,8 +54,7 @@ def build_commerce_evidence(state: dict, *, args: dict | None = None) -> list[di
     request = state.get('request')
     on = getattr(request, 'on', None)
     on = on.isoformat() if hasattr(on, 'isoformat') else str(on or '')
-    from app.mcp_servers.mcp_shared.consultation import requested_quantity
-    desired_qty = (args or {}).get('qty', requested_quantity(state))
+    desired_qty = (args or {}).get('qty')
     selected = []
     for key, (index, call) in latest.items():
         if key in conflicts or not successful(call):
@@ -115,16 +71,12 @@ def build_commerce_evidence(state: dict, *, args: dict | None = None) -> list[di
             if args and args.get('sku') and args['sku'] != proposed.get('sku'):
                 continue
             if name == 'pricing.get_quote':
-                address = current_customer_address(state)
-                if address is not None and proposed.get('address') != address:
-                    continue
                 if desired_qty is not None and proposed.get('qty', 1) != desired_qty:
                     continue
                 if args is not None and any(proposed.get(k) != args.get(k)
                                             for k in ('address', 'basket_skus')):
                     continue
         selected.append((index, deepcopy(call)))
-    # A later lookup for a SKU replaces earlier metadata for that SKU even if empty/failed.
     catalog_barriers = {}
     for index, call in enumerate(observations):
         if call.get('name') == 'catalog.search':

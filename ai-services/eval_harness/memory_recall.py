@@ -1,4 +1,3 @@
-"""Direct memory recall and precision measurement against call facts_established."""
 
 from __future__ import annotations
 
@@ -47,7 +46,6 @@ def evaluate_memory_recall(
     scenarios: dict[str, Any],
     trace_full: dict[tuple[str, str], list[dict[str, Any]]],
 ) -> dict[str, Any]:
-    """Compare distilled memory_writes in each call with that call's facts_established."""
     per_slot_expected: dict[str, int] = defaultdict(int)
     per_slot_matched: dict[str, int] = defaultdict(int)
     per_slot_written: dict[str, int] = defaultdict(int)
@@ -84,7 +82,6 @@ def evaluate_memory_recall(
 
             for slot, exp_val in established.items():
                 if slot == "phone_provided":
-                    # PB-08: phone is identity-linked and masked, not a stored profile slot.
                     continue
                 per_slot_expected[slot] += 1
                 sc_expected += 1

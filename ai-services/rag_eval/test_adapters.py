@@ -28,7 +28,6 @@ def test_real_mcp_handler_accepts_signed_eval_context(monkeypatch):
 
     service = Service()
     server = create_server(service, context_secret='offline-secret')
-    # In-process transport has no HTTP authentication; retain the real signed handler.
     monkeypatch.setattr('fastmcp.Client', lambda transport, **kwargs: Client(transport))
     settings = SimpleNamespace(mcp_knowledge_url=server,
         mcp_internal_token=SecretStr('offline-secret'), knowledge_policy_config_file=None,

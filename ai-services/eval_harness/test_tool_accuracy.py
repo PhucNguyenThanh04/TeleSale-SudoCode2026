@@ -38,7 +38,7 @@ def test_accuracy_counts_missing_wrong_extra_and_abstention():
                                        for n in range(1, 7))))
     assert report['tool_call_accuracy'] == {'passed': 2, 'total': 6, 'percent': 33.33}
     assert report['calls'] == {'matched': 2, 'missing': 2, 'unexpected': 3}
-    assert report['cases'][0]['passed']  # result timeout is distinct from decision accuracy
+    assert report['cases'][0]['passed']
     assert report['cases'][1]['missing_expected_indexes'] == [0]
     assert report['cases'][2]['unexpected_actual_indexes'] == [0]
     assert report['cases'][5]['unexpected_actual_indexes'] == [1]

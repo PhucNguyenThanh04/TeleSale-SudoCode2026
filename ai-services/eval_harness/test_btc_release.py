@@ -1,4 +1,3 @@
-"""The supplied BTC package must become a reproducible offline snapshot."""
 import hashlib
 import importlib.util
 import json

@@ -1,4 +1,3 @@
-"""Automatic review consumes worker drafts, never an advance answer plan."""
 import asyncio
 from copy import deepcopy
 

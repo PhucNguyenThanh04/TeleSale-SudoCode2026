@@ -1,14 +1,3 @@
-"""ElevenLabs thủ công: xuất checklist để tạo clip trên web (gói Free, không gọi API) rồi nhập clip lại.
-
-``python -m speech manual-export --dialogues <file> --out speech/data/inbox/elevenlabs``
-    → ``checklist.md`` + ``checklist.csv``: mỗi lượt một dòng gồm tên file cần lưu, giọng gợi ý, câu cần dán,
-    số ký tự và credit ước tính; tạo sẵn thư mục ``<ID>/`` để thả file tải về.
-
-``python -m speech synth --engine files --inbox speech/data/inbox/elevenlabs --dialogues <file> --out ...``
-    → ghép clip ``<ID>/<ID>_<idx>_<A|C>.mp3`` với lượt thoại (``scan_inbox``). Nếu cả thư mục ``<ID>/`` chưa đổi
-    tên file thì gán theo thứ tự tên file (tên mặc định của ElevenLabs có mốc thời gian nên đúng thứ tự tạo).
-    Báo file thiếu/thừa và clip có tốc độ đọc bất thường so với độ dài câu (``check_rates``).
-"""
 from __future__ import annotations
 
 import csv
@@ -23,11 +12,8 @@ from .validate import syllables
 
 AUDIO_SUFFIXES = (".mp3", ".wav", ".m4a", ".flac", ".ogg")
 CLIP_RE = re.compile(r"^(?P<id>[A-Za-z0-9][A-Za-z0-9-]*)_(?P<idx>\d+)_(?P<role>[AC])$", re.IGNORECASE)
-# Tốc độ đọc hợp lý của một câu TTS (âm tiết/giây); ngoài khoảng này thường là dán nhầm câu hoặc clip bị cắt.
 RATE_RANGE = (2.0, 8.0)
-MIN_SYLLABLES_FOR_RATE = 3  # câu quá ngắn ("dạ", "vâng ạ") có tốc độ dao động mạnh nên bỏ qua
-# Trang giá ElevenLabs: Flash/Turbo v2.5 giảm còn 0,5–1 credit/ký tự "for API usage"; Help Center: credit phụ thuộc
-# tạo qua website hay API → khi tạo thủ công trên web, tính cả mức xấu nhất 1 credit/ký tự.
+MIN_SYLLABLES_FOR_RATE = 3
 WEB_MAX_CREDIT = 1.0
 
 
@@ -134,7 +120,6 @@ def _audio_files(folder: Path) -> list[Path]:
 
 
 def scan_inbox(dialogues: list[dict], inbox: Path) -> InboxScan:
-    """Ghép clip trong ``inbox/<ID>/`` (và file đã đặt tên chuẩn ở ``inbox/``) với từng lượt thoại."""
     inbox = Path(inbox)
     scan = InboxScan()
     root_files = _audio_files(inbox)
@@ -174,7 +159,6 @@ def scan_inbox(dialogues: list[dict], inbox: Path) -> InboxScan:
 
 def check_rates(dialogues: list[dict], clips: dict[tuple[str, int], Path],
                 duration: Callable[[Path], float]) -> list[str]:
-    """Cảnh báo clip có tốc độ (âm tiết/giây của câu trong kịch bản) ngoài ``RATE_RANGE``."""
     warnings = []
     for dialogue in dialogues:
         for turn in dialogue["turns"]:
@@ -192,12 +176,10 @@ def check_rates(dialogues: list[dict], clips: dict[tuple[str, int], Path],
 
 
 def clip_seconds(path: Path) -> float:
-    """Thời lượng phần có tiếng (đã cắt lặng đầu/cuối như khi ghép hội thoại)."""
     from . import audio as au
 
     return au.trim(au.decode(path)).size / au.SAMPLE_RATE
 
 
 def files_config(scan: InboxScan) -> dict:
-    """Cấu hình cho engine ``files`` của ``tts``: khóa ``<ID>#<idx>`` → đường dẫn clip."""
     return {"files": {"clips": {f"{did}#{idx}": str(path) for (did, idx), path in scan.clips.items()}}}

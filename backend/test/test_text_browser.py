@@ -1,4 +1,3 @@
-"""Real Chrome and text WebSocket; no model, speech service or database."""
 import asyncio
 from contextlib import asynccontextmanager
 import json
@@ -169,7 +168,7 @@ def open_text_timeline(text_site, browser):
     url, calls, timeline = text_site
     command, evaluate = browser
     command('Network.enable')
-    command('Network.setBlockedURLs', urls=['https://*'])  # local UI only; no external fonts
+    command('Network.setBlockedURLs', urls=['https://*'])
     command('Page.enable')
     command('Page.navigate', url=url)
     deadline = time.monotonic() + 10
@@ -180,7 +179,7 @@ def open_text_timeline(text_site, browser):
     while not evaluate("!!document.querySelector('#identity')?.readOnly"):
         assert time.monotonic() < deadline
         time.sleep(.02)
-    command('Page.navigate', url=url)  # successful login currently opens the voice page
+    command('Page.navigate', url=url)
     while not evaluate("!!document.querySelector('#timeline-items') && !!document.querySelector('#identity')?.readOnly"):
         assert time.monotonic() < deadline
         time.sleep(.02)
@@ -218,7 +217,6 @@ def test_timeline_browser_pages_refreshes_cross_channel_and_survives_reload(text
     assert timeline['queries'][-1]['session_id'] != old_session
     assert timeline['queries'][-1]['channel_identity'] == USER['zalo_id']
     assert len(calls) == 1
-    # Full page reload still fetches persistent server history, not browser-local items.
     command('Page.navigate', url=text_site[0])
     deadline = time.monotonic() + 5
     while not js("!!document.querySelector('#identity')?.readOnly"):
@@ -289,7 +287,7 @@ def test_timeline_browser_error_retry_empty_and_stale_response(text_site, browse
         return originalFetch(url, options);
       }; document.querySelector('#timeline-reload').click(); waitFor(() => !!window.releaseOldTimeline);""")
     js("document.querySelector('#text').value='Chat khi lịch sử đang tải'; document.querySelector('#chat-form').requestSubmit(); waitFor(() => document.querySelectorAll('.message.agent').length === 1 && !document.querySelector('#send').disabled)")
-    assert len(calls) == 1  # pending history fetch never blocks a chat turn
+    assert len(calls) == 1
     js("""(async () => {
       document.querySelector('#end').click();
       await waitFor(() => !document.querySelector('#connect').disabled);

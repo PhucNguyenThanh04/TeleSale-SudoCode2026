@@ -1,4 +1,3 @@
-"""HTTP contract for one text turn sent by the trusted backend."""
 
 from datetime import date
 from typing import Annotated, Literal
@@ -43,7 +42,6 @@ class ChatRequest(BaseModel):
 
 
 class TextTurnRequest(ChatRequest):
-    """Validated request inside the graph, always bound to a session."""
 
     session_id: UUID
 

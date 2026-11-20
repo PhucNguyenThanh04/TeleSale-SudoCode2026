@@ -1,4 +1,3 @@
-"""Start local MCP servers and the LangMem worker together."""
 
 import os
 import subprocess
@@ -12,7 +11,6 @@ from app.configs import get_settings
 
 
 def run_all(*, secrets_dir: Path | None = None) -> None:
-    """Run MCP services and LangMem with separate database roles until stopped."""
     settings = get_settings()
     if not settings.database_url:
         raise RuntimeError("Set DATABASE_URL in ai-services/.env for the local MCP launcher")
@@ -41,7 +39,7 @@ def run_all(*, secrets_dir: Path | None = None) -> None:
 
     base_env = os.environ.copy()
     base_env.update({
-        "DATABASE_URL": "",  # Each child must use its own role, not the admin DSN in .env.
+        "DATABASE_URL": "",
         "MCP_DB_HOST": database.host,
         "MCP_DB_PORT": str(database.port or 5432),
         "MCP_DB_NAME": database.database,

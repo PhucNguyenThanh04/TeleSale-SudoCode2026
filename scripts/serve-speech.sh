@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Run from any directory. Ctrl+C stops both local speech processes.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 PYTHON="$PWD/.venv-speech-serving/bin/python"

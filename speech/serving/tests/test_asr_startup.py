@@ -1,4 +1,3 @@
-"""GPU selection and exactly three startup warmups, without model inference."""
 import asyncio
 import os
 from pathlib import Path

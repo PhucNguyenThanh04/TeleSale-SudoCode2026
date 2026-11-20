@@ -1,4 +1,3 @@
-"""Catalog search keeps customer constraints while ranking descriptive words."""
 
 import asyncio
 import json

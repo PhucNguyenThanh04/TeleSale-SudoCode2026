@@ -1,4 +1,3 @@
-"""Review gateway with a server-bound actor and internal AI authentication."""
 import httpx
 from app.auth import current_user
 from fastapi import APIRouter, Depends, HTTPException, Request

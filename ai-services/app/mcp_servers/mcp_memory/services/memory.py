@@ -1,4 +1,3 @@
-"""LangMem memory reads and durable turn commits."""
 
 import asyncio
 import hashlib
@@ -75,13 +74,8 @@ def _valid_fact(fact: dict) -> bool:
                     and mask_pii(value) == value)))))
 
 
-async def _committed_episode_view(repo, conn, customer_id, session_id, previous, prior_episodes=None, *, rows_cache=None):
-    """Read-your-committed-turns without waiting for or writing the projection."""
-    from app.mcp_servers.mcp_shared.consultation import committed_consultation, admit_consultation
-    from app.mcp_servers.mcp_memory.services.episode_state import apply_episode_delta
-    if not hasattr(repo, 'recent_session_turns'):
-        return previous
-    if await repo.owner(conn, session_id) != customer_id:
+async def _committed_episode_view(repo, conn, customer_id, session_id, previous, *, rows_cache=None):
+    if not hasattr(repo, 'recent_session_turns') or await repo.owner(conn, session_id) != customer_id:
         return previous
     if rows_cache is not None and session_id in rows_cache:
         rows = rows_cache[session_id]
@@ -94,69 +88,40 @@ async def _committed_episode_view(repo, conn, customer_id, session_id, previous,
         return previous
     if rows_cache is not None:
         rows_cache[session_id] = rows
-    turns, calls = [], []
-    view = previous
+    calls = []
     for row in rows:
         if not isinstance(row, dict) or not row.get('client_msg_id'):
             continue
-        tid = str(row['client_msg_id'])
-        turn = {'customer_id': customer_id, 'session_id': session_id, 'turn_id': tid,
-                'on': str(row['on_date']), 'customer_text': row['customer_text'], 'agent_text': row['agent_text']}
-        turns.append(turn)
         observed = row.get('tool_observations') or []
-        if isinstance(observed, str):
-            observed = json.loads(observed)
-        calls.extend({**c, 'source_turn_id': tid, 'customer_id': customer_id, 'session_id': session_id}
-                     for c in observed if isinstance(c, dict))
-        snapshot = committed_consultation(customer_id, session_id, turns, calls, prior_episodes=prior_episodes)
-        payload = snapshot.model_dump(mode='json')
-        fresh = {k: ref for k, ref in snapshot.source_refs.items() if ref.source_turn_id == tid}
-        if not set(fresh) - {'candidates'}:
-            continue
-        patch = {k: payload[k] for k in fresh}
-        patch['source_refs'] = {k: ref.model_dump(mode='json') for k, ref in fresh.items()}
-        admitted = admit_consultation(patch, customer_id=customer_id, session_id=session_id,
-                                     committed_turns=turns, tool_calls=calls, prior_episodes=prior_episodes)
-        if admitted:
-            old = view or {'schema_version': 1, 'customer_id': customer_id, 'session_id': session_id,
-                           'on_date': turn['on'], 'status': 'active', 'topics': []}
-            view = {**old, **apply_episode_delta(old, {'topic_updates': [
-                {'scope_type': 'global', 'scope_id': '', 'consultation': admitted}]},
-                source_turn_id=tid, customer_text=turn['customer_text'], agent_text=turn['agent_text'])}
-    if turns:
-        from app.agent.memory.deterministic_tool_facts import deterministic_episode_tools
-        from app.mcp_servers.mcp_shared.basket import presented_basket_offers
-        actions, quotes = deterministic_episode_tools(calls, turns[-1]['on'])
-        baskets = presented_basket_offers(customer_id=customer_id, session_id=session_id,
-                                          committed_turns=turns, tool_calls=calls)
-        if actions or quotes or baskets:
-            view = view or {'schema_version': 1, 'customer_id': customer_id, 'session_id': session_id,
-                            'on_date': turns[-1]['on'], 'status': 'active', 'topics': []}
-            view = {**view, 'actions_completed': actions, 'quoted_prices': quotes}
-            if baskets:
-                view['basket_offers'] = baskets
-    if view and turns:
-        from app.mcp_servers.mcp_shared.presented_offers import derive_presented_offers
-        from app.mcp_servers.mcp_memory.services.episode_summary import build_episode_summary
-        from app.agent.memory.episode_candidates import outcome_from_tool_calls
-        view = {**view, 'on': turns[-1]['on'],
-                'summary': view.get('summary') or build_episode_summary([], [], 800, episode_state=view),
-                'outcome': view.get('outcome') or outcome_from_tool_calls(calls)}
+        observed = json.loads(observed) if isinstance(observed, str) else observed
+        calls.extend({**call, 'source_turn_id': str(row['client_msg_id'])}
+                     for call in observed if isinstance(call, dict))
+    view = resolved_episode_view([previous], [])[0] if previous else None
+    if not rows:
+        return view
+    from app.agent.memory.deterministic_tool_facts import deterministic_episode_tools
+    from app.mcp_servers.mcp_memory.services.episode_summary import build_episode_summary
+    from app.agent.memory.episode_candidates import outcome_from_tool_calls
+    on = str(rows[-1]['on_date'])
+    actions, quotes = deterministic_episode_tools(calls, on)
+    view = {**(view or {'schema_version': 1, 'customer_id': customer_id,
+        'session_id': session_id, 'on_date': on, 'status': 'active', 'topics': []}),
+        'actions_completed': actions, 'quoted_prices': quotes,
+        'committed_turns': [{'source_turn_id': str(row['client_msg_id']),
+            'customer': mask_pii(row['customer_text']), 'agent': mask_pii(row['agent_text'])}
+            for row in rows[-12:]], 'turn_count': len(rows)}
+    if view:
+        view = {**view, 'on': on,
+            'summary': view.get('summary') or build_episode_summary([], [], 800, episode_state=view),
+            'outcome': view.get('outcome') or outcome_from_tool_calls(calls)}
         if rows[-1].get('channel'):
             view['channel'] = rows[-1]['channel']
-        # A bounded read view of existing committed evidence, not another persisted history.
-        view = {**view, 'offer_candidates': [o.model_dump(mode='json') for o in
-            derive_presented_offers(customer_id=customer_id, session_id=session_id,
-                                    committed_turns=turns, tool_calls=calls)]}
     return view
 
 
 async def _operational_facts(repo, conn, customer_id, sessions, facts, rows_cache, revision_barriers):
-    """Admit only new committed evidence; the background projection is enrichment."""
-    from app.agent.memory.customer_facts import _supplement_customer_facts
     from app.agent.memory.deterministic_tool_facts import verified_tool_candidates
     from app.agent.memory.deterministic_tool_facts import verified_variant_details
-    from app.agent.memory.episode_candidates import blocker_resolution
     from app.mcp_servers.mcp_memory.services.langmem_admission import admit_profile_candidates
     indexed = {(fact.get('scope_type', 'global'), fact.get('scope_id', ''), fact.get('key')): fact
                for fact in facts if isinstance(fact, dict)}
@@ -168,13 +133,6 @@ async def _operational_facts(repo, conn, customer_id, sessions, facts, rows_cach
         rows_cache[session_id] = rows
         variants = {}
         for row in rows:
-            blocker = indexed.get(('global', '', 'blocker'))
-            newer = not (type(row.get('job_id')) is int and type((blocker or {}).get('revision')) is int
-                         and row['job_id'] <= blocker['revision'])
-            if blocker and newer and blocker_resolution(row['customer_text'], {'blocker': blocker})[0]:
-                indexed.pop(('global', '', 'blocker'))
-            # Completion of enrichment does not prove every deterministic fact
-            # was projected. Per-key revision barriers below still protect deletes.
             tid = str(row['client_msg_id'])
             on = str(row['on_date'])
             turn = {'customer_id': customer_id, 'session_id': session_id, 'turn_id': tid,
@@ -187,8 +145,7 @@ async def _operational_facts(repo, conn, customer_id, sessions, facts, rows_cach
                     for item in call['result'].get('items', []):
                         for variant in item.get('variants', []):
                             variants[variant['variant_sku']] = {**variant, 'parent_sku': item['sku']}
-            candidates = _supplement_customer_facts({'content': json.dumps(turn, ensure_ascii=False)}, [])
-            candidates.extend(verified_tool_candidates(turn['agent_text'], calls, tid, on))
+            candidates = verified_tool_candidates(turn['agent_text'], calls, tid, on)
             accepted, _ = admit_profile_candidates(customer_id, session_id, candidates, [turn], calls)
             for call in calls:
                 sku = call.get('args', {}).get('sku')
@@ -201,20 +158,16 @@ async def _operational_facts(repo, conn, customer_id, sessions, facts, rows_cach
                                if scope == 'room' and slot == key[2]
                                and canonical_room(scope_id) == canonical_room(key[1])}
                     if len(aliases) > 1:
-                        continue  # Conflicting stored scope identities need resolution.
+                        continue
                     if aliases:
                         fact = {**fact, 'scope_id': next(iter(aliases))}
                         key = ('room', fact['scope_id'], key[2])
-                # Completed enrichment may have assigned the evidence to a room
-                # or product. Do not reintroduce its unscoped fallback or bypass
-                # a scoped deletion from that revision (or a newer one).
                 if (row.get('memory_status') == 'completed' and key[0] == 'global'
                         and type(row.get('job_id')) is int and any(
                             scope != 'global' and slot == fact['key'] and revision >= row['job_id']
                             for (scope, _, slot), revision in revision_barriers.items())):
                     continue
                 old = indexed.get(key, {})
-                # A slower job from an older session cannot replace a newer projection.
                 old_revision = old.get('revision')
                 barrier = max(revision_barriers.get(key, -1), old_revision if type(old_revision) is int else -1)
                 if type(row.get('job_id')) is int and row['job_id'] <= barrier:
@@ -257,8 +210,6 @@ async def read(repo, customer_id: str | None, session_id: str,
         try:
             async with asyncio.timeout(2.0):
                 await repo.lock_key(conn, f"langmem:{customer_id}")
-                # Projection methods use independent connections; keep both reads
-                # inside the customer lock and join/cancel them before releasing it.
                 async with asyncio.TaskGroup() as reads:
                     fact_read = reads.create_task(projector.list_fact_versions(customer_id))
                     episode_read = reads.create_task(projector.list_episode_versions(customer_id))
@@ -303,15 +254,6 @@ async def read(repo, customer_id: str | None, session_id: str,
                     recency = {str(item['session_id']): len(recent) - index for index, item in enumerate(recent)}
                     all_episodes.sort(key=lambda item: (str(item.get('on', item.get('on_date', ''))),
                         recency.get(str(item.get('session_id')), 0)), reverse=True)
-                if diagnostic_active():
-                    from types import SimpleNamespace
-                    diagnostic_state = {'customer_id': customer_id, 'history': result['history'],
-                        'request': SimpleNamespace(session_id=session_id)}
-                    for ep in all_episodes:
-                        for topic in ep.get('topics', []) if isinstance(ep, dict) else []:
-                            if isinstance(topic, dict) and isinstance(topic.get('consultation'), dict):
-                                diagnostic_emit('memory_projection', state=diagnostic_state, component='memory',
-                                    snapshot=topic['consultation'], revision=ep.get('revision'))
                 current = next((item for item in all_episodes
                     if item.get("session_id") == session_id), None)
                 prior_episodes = [item for item in all_episodes
@@ -326,9 +268,7 @@ async def read(repo, customer_id: str | None, session_id: str,
                         if prior_id and prior_id != session_id:
                             episodes[index] = await _committed_episode_view(
                                 repo, conn, customer_id, prior_id, episode, rows_cache=rows_cache)
-                refreshed = {ep['session_id']: ep for ep in episodes}
-                current = await _committed_episode_view(repo, conn, customer_id, session_id, current,
-                    [refreshed.get(item['session_id'], item) for item in prior_episodes], rows_cache=rows_cache)
+                current = await _committed_episode_view(repo, conn, customer_id, session_id, current, rows_cache=rows_cache)
                 session_calls = []
                 for row in rows_cache.get(session_id, []):
                     observed = row.get('tool_observations') or []
