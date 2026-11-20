@@ -1,4 +1,3 @@
-"""Structured episode items retain evidence and transition without inventing state."""
 
 import unittest
 from uuid import uuid4

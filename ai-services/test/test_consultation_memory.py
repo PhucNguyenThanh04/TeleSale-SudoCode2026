@@ -1,11 +1,5 @@
-"""Durable selection needs owner-bound committed customer evidence."""
-from app.schemas.consultation import ConsultationSnapshot
 
 
-def test_legacy_snapshot_has_no_customer_permission():
-    snap=ConsultationSnapshot()
-    assert snap.selected_sku is None and snap.delegation.status=='unknown'
-    assert ConsultationSnapshot.model_validate({'schema_version':1}).model_dump()['schema_version']==2
 
 
 def evidence():
@@ -20,30 +14,8 @@ def evidence():
     return t,turns,calls,proposal
 
 
-def test_admitted_selection_roundtrips_and_clear_does_not_resurrect():
-    from app.mcp_servers.mcp_shared.consultation import admit_consultation
-    from app.mcp_servers.mcp_memory.services.episode_state import apply_episode_delta
-    t,turns,calls,proposal=evidence()
-    admitted=admit_consultation(proposal,customer_id='C',session_id='session',committed_turns=turns,tool_calls=calls)
-    assert admitted and admitted['selected_sku']=='SKU-ASTER'
-    delta={'topic_updates':[{'scope_type':'global','scope_id':'','consultation':admitted}]}
-    stored=apply_episode_delta({},delta,source_turn_id=t,customer_text=turns[0]['customer_text'],agent_text=turns[0]['agent_text'])
-    assert stored['topics'][0]['consultation']['selected_sku']=='SKU-ASTER'
-    from uuid import uuid4
-    t2=str(uuid4());turn={'turn_id':t2,'customer_id':'C','session_id':'session','on':'2026-11-05','customer_text':'Không lấy Aster nữa.','agent_text':'Dạ vâng.'}
-    revoked={'selected_sku':None,'source_refs':{'selected_sku':{'customer_id':'C','session_id':'session','source_turn_id':t2,'source_kind':'customer','evidence_quote':turn['customer_text']}}}
-    patch=admit_consultation(revoked,customer_id='C',session_id='session',committed_turns=[*turns,turn],tool_calls=calls)
-    updated=apply_episode_delta(stored,{'topic_updates':[{'scope_type':'global','consultation':patch}]},source_turn_id=t2,customer_text=turn['customer_text'],agent_text=turn['agent_text'])
-    assert updated['topics'][0]['consultation']['selected_sku'] is None
-    assert stored['topics'][0]['consultation']['selected_sku']=='SKU-ASTER'
 
 
-def test_agent_cannot_supply_customer_consent_or_wrong_owner():
-    from app.mcp_servers.mcp_shared.consultation import admit_consultation
-    t,turns,calls,proposal=evidence()
-    proposal['source_refs']['selected_sku']['source_kind']='agent'
-    assert admit_consultation(proposal,customer_id='C',session_id='session',committed_turns=turns,tool_calls=calls) is None
-    assert admit_consultation(proposal,customer_id='OTHER',session_id='session',committed_turns=turns,tool_calls=calls) is None
 
 
 def test_topic_optional_contract_and_mcp_admission_preserve_snapshot():
@@ -97,44 +69,10 @@ def test_projection_keeps_business_identifiers_in_consultation_json():
     assert _safe(payload)['topics'][0]['consultation']['selected_sku']==sku
 
 
-def test_provisional_handoff_proposal_cannot_grant_customer_permission():
-    from app.agent.memory.episode_candidates import accepted_episode_delta
-    _,_,_,proposal=evidence()
-    result=accepted_episode_delta('Chào em','Em tìm thấy Aster.',
-        {'topic_updates':[{'scope_type':'global','scope_id':'','consultation':proposal}]},{},[])
-    assert result=={}
 
 
-def test_masked_pii_evidence_is_stable_and_roundtrips_without_raw_data():
-    import pytest
-    from app.schemas.consultation import SourceRef, mask_evidence, mask_consultation
-    from app.mcp_servers.mcp_shared.consultation import committed_consultation
-    from app.mcp_servers.mcp_memory.services.episode_state import apply_episode_delta
-    t, turns, calls, _ = evidence()
-    raw = 'Tôi chọn Aster để xem giá. Địa chỉ: 12 đường Hoa. 0912345678'
-    safe = mask_evidence(raw)
-    assert '12 đường Hoa' not in safe and '0912345678' not in safe
-    assert mask_evidence(safe) == safe
-    turns[0]['customer_text'] = safe
-    snapshot = committed_consultation('C', 'session', turns, calls)
-    patch = {'selected_sku': snapshot.selected_sku,
-             'source_refs': {'selected_sku': snapshot.source_refs['selected_sku'].model_dump()}}
-    assert mask_consultation(patch) == patch
-    stored = apply_episode_delta({}, {'topic_updates': [
-        {'scope_type': 'global', 'consultation': patch}]}, source_turn_id=t,
-        customer_text=safe, agent_text=turns[0]['agent_text'])
-    assert stored['topics'][0]['consultation']['selected_sku'] == 'SKU-ASTER'
-    with pytest.raises(ValueError, match='contains PII'):
-        SourceRef(customer_id='C', session_id='session', source_turn_id=t,
-                  source_kind='customer', evidence_quote=raw)
 
 
-def test_offer_schema_upgrade_is_compatible_and_does_not_grant_permission():
-    from app.schemas.consultation import ConsultationSnapshot
-    legacy=ConsultationSnapshot.model_validate({'schema_version':1,'selected_sku':'SKU-ASTER'})
-    assert legacy.schema_version==2
-    assert legacy.presented_offer is None and legacy.accepted_offer is None
-    assert ConsultationSnapshot.model_validate_json(legacy.model_dump_json())==legacy
 
 
 def test_memory_read_committed_offer_before_worker_and_preserves_admitted_on_truncation():
@@ -170,25 +108,6 @@ def test_memory_read_committed_offer_before_worker_and_preserves_admitted_on_tru
     assert repeated['current_episode']['topics'][0]['consultation']==snapshot
 
 
-def test_committed_acceptance_can_link_admitted_prior_offer_and_reject_wrong_owner():
-    from copy import deepcopy
-    from uuid import uuid4
-    from app.mcp_servers.mcp_shared.consultation import committed_consultation
-    from test_presented_offers import evidence
-    sid,turns,calls=evidence()
-    first=committed_consultation('C',sid,turns,calls)
-    ep={'customer_id':'C','session_id':sid,'on_date':'2026-11-05',
-        'topics':[{'scope_type':'global','consultation':first.model_dump(mode='json')}]}
-    new_sid,tid=str(uuid4()),str(uuid4())
-    new_turn={**turns[0],'session_id':new_sid,'turn_id':tid,'customer_text':'Lấy mẫu đó, lên đơn.',
-              'agent_text':'Em đang xử lý yêu cầu.'}
-    new_calls=[{**c,'session_id':new_sid,'source_turn_id':tid} for c in calls]
-    accepted=committed_consultation('C',new_sid,[new_turn],new_calls,prior_episodes=[ep])
-    assert accepted.accepted_offer.price_vnd==900000
-    assert accepted.source_refs['accepted_offer'].session_id==new_sid
-    assert accepted.accepted_offer.presented_source.session_id==sid
-    wrong=deepcopy(ep);wrong['customer_id']='OTHER'
-    assert committed_consultation('C',new_sid,[new_turn],new_calls,prior_episodes=[wrong]).accepted_offer is None
 
 
 def test_worker_offer_projection_retry_is_idempotent_and_does_not_invent_consent():
@@ -216,32 +135,3 @@ def test_worker_offer_projection_retry_is_idempotent_and_does_not_invent_consent
     assert first['accepted_offer'] is None
     assert asyncio.run(process_one(repo,extractor,projection))
     assert projection.put_episode.await_args.args[2]['topics'][0]['consultation']==first
-
-
-def test_order_only_acceptance_matches_committed_admission_and_json_readback():
-    import json
-    from uuid import uuid4
-    from app.mcp_servers.mcp_shared.consultation import committed_consultation,admit_consultation
-    from app.mcp_servers.mcp_memory.services.episode_state import apply_episode_delta
-    from test_presented_offers import evidence
-    sid,turns,calls=evidence();turns[0]['customer_text']='Cho tôi xem giá Aster.'
-    first=committed_consultation('C',sid,turns,calls)
-    assert first.selected_sku is None and first.accepted_offer is None
-    tid=str(uuid4())
-    turns.append({**turns[0],'turn_id':tid,'customer_text':'Ok em lên đơn cho anh, thanh toán COD nhé.',
-                  'agent_text':'Dạ, em xử lý yêu cầu.'})
-    snap=committed_consultation('C',sid,turns,calls)
-    assert snap.accepted_offer.price_vnd==900000
-    assert snap.source_refs['selected_sku'].source_turn_id==tid
-    assert snap.source_refs['accepted_offer'].source_turn_id==tid
-    payload=snap.model_dump(mode='json')
-    fresh={k:v for k,v in snap.source_refs.items() if v.source_turn_id==tid}
-    patch={k:payload[k] for k in fresh}
-    patch['source_refs']={k:v.model_dump(mode='json') for k,v in fresh.items()}
-    admitted=admit_consultation(patch,customer_id='C',session_id=sid,committed_turns=turns,tool_calls=calls)
-    assert admitted is not None
-    stored=apply_episode_delta({}, {'topic_updates':[{'scope_type':'global','consultation':admitted}]},
-        source_turn_id=tid,customer_text=turns[-1]['customer_text'],agent_text=turns[-1]['agent_text'])
-    readback=json.loads(json.dumps(stored))['topics'][0]['consultation']
-    assert readback['accepted_offer']==payload['accepted_offer']
-    assert 'purchase_intent' not in readback

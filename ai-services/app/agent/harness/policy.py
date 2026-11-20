@@ -1,6 +1,6 @@
-"""Existing deterministic tool boundaries, separate from graph wiring."""
 
-from app.mcp_servers.mcp_shared.commerce_evidence import build_commerce_evidence, current_customer_address
+from app.mcp_servers.mcp_shared.commerce_evidence import build_commerce_evidence
+from app.mcp_servers.mcp_shared.pii import resolve_redacted_address
 
 from collections import Counter
 from dataclasses import dataclass
@@ -8,7 +8,6 @@ from datetime import datetime
 from typing import Any, Callable, Literal
 import unicodedata
 
-from app.agent.harness.catalog_query import clean_catalog_query, canonical_catalog_category
 from app.agent.harness.handoff_brief import build_handoff_brief
 from app.agent.harness.state import TurnState
 
@@ -29,19 +28,6 @@ _READ_TOOL_ARGS = {
     "pricing.quote_order": {"lines", "on", "customer_phone", "address"},
     "policy.search": {"query", "on", "order_id", "order_date", "customer_reported_order_date", "top_k"},
 }
-def _single_catalog_sku(state: TurnState) -> str | None:
-    searches = [call for call in state.get("tool_calls", [])
-                if call.get("name") == "catalog.search" and
-                "error" not in call.get("result", {})]
-    if not searches:
-        return None
-    items = searches[-1]["result"].get("items")
-    if not isinstance(items, list) or len(items) != 1 or not isinstance(items[0], dict):
-        return None
-    sku = items[0].get("sku")
-    return sku if isinstance(sku, str) and sku else None
-
-
 @dataclass(frozen=True)
 class ProductSelection:
     status: Literal["resolved", "catalog_required", "selection_required", "selection_unavailable"]
@@ -50,9 +36,7 @@ class ProductSelection:
     missing_fields: tuple[str, ...] = ()
 
 
-def resolve_product_selection(state: TurnState, args: dict[str, Any], *,
-                              use_customer_context: bool = True) -> ProductSelection:
-    """Resolve catalog metadata; historical interpretation is for memory views only."""
+def resolve_product_selection(state: TurnState, args: dict[str, Any]) -> ProductSelection:
     sku = args.get("sku")
     items = [item for call in build_commerce_evidence(state)
              if call.get("name") == "catalog.search" and "error" not in call.get("result", {})
@@ -64,43 +48,11 @@ def resolve_product_selection(state: TurnState, args: dict[str, Any], *,
     parent_sku = parent["sku"]
     if not parent["variants"]:
         return ProductSelection("resolved", sku, parent_sku)
-    facts = (state.get("scoped_facts", {}).get("product", {}).get(parent_sku, {})
-             if use_customer_context else {})
     def folded(value):
         return "".join(char for char in unicodedata.normalize(
             "NFD", str(value).casefold().replace("đ", "d"))
             if unicodedata.category(char) != "Mn")
-    selections = {}
-    from app.mcp_servers.mcp_shared.consultation import _mentions
-    metadata = {item['sku']: item for item in items}
-    customer_texts = []
-    historical_focus = None
-    for turn in (state.get('history', []) if use_customer_context else []):
-        if not isinstance(turn, dict):
-            continue
-        customer = turn.get('customer', turn.get('customer_text', ''))
-        named = _mentions(customer, metadata)
-        if named:
-            historical_focus = next(iter(named)) if len(named) == 1 else None
-        if historical_focus == parent_sku:
-            customer_texts.append(folded(customer))
-        agent_named = _mentions(turn.get('agent', turn.get('agent_text', '')), metadata)
-        if agent_named:
-            historical_focus = next(iter(agent_named)) if len(agent_named) == 1 else None
-    if use_customer_context:
-        customer_texts.append(folded(state.get('safe_text', '')))
-    from app.mcp_servers.mcp_shared.commerce_entities import variant_option_values
-    for key in ('size', 'color'):
-        current = set()
-        for customer_text in customer_texts:
-            mentioned = variant_option_values(customer_text, parent['variants'], key)
-            if mentioned:
-                current = mentioned
-        if len(current) > 1:
-            return ProductSelection("selection_required", parent_sku=parent_sku, missing_fields=(key,))
-        selections[key] = next(iter(current)) if current else args.get(key)
-        if selections[key] is None and sku == parent_sku:
-            selections[key] = facts.get(key, facts.get("preferred_" + key, {})).get("value")
+    selections = {key: args.get(key) for key in ('size', 'color')}
     variants = [v for v in parent["variants"] if isinstance(v, dict)
                 and (sku == parent_sku or v.get("variant_sku") == sku)
                 and all(value is None or folded(v.get(key)) == folded(value)
@@ -115,11 +67,10 @@ def resolve_product_selection(state: TurnState, args: dict[str, Any], *,
 
 
 def catalog_variant(state: TurnState, args: dict[str, Any]) -> str | None:
-    return resolve_product_selection(state, args, use_customer_context=False).sku
+    return resolve_product_selection(state, args).sku
 
 
 def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[str, dict[str, Any]] | None:
-    """Validate a proposed tool call and supply trusted business arguments."""
     request = state["request"]
     decision = state["decision"]
     name = decision.tool_name or ""
@@ -129,34 +80,10 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
     if name in {'pricing.get_quote', 'pricing.quote_order', 'order.create'}:
         address = args.get('address')
         if isinstance(address, str) and '[' in address:
-            # Resolve the privacy marker only at the trusted boundary. Never
-            # persist a redacted placeholder as an actual delivery address.
-            actual = current_customer_address(state)
+            actual = resolve_redacted_address(request.text)
             if address.strip() != '[ĐỊA CHỈ ĐÃ ẨN]' or not actual or '[' in actual:
                 return None
             args['address'] = actual
-    if name == "catalog.search" and isinstance(args.get("category"), str):
-        args["category"] = canonical_catalog_category(args["category"])
-    if name == "catalog.search" and isinstance(args.get("query"), str):
-        args["query"] = clean_catalog_query(args["query"])
-        # A wider second search should not silently drop the customer's filters.
-        for call in reversed(state.get("tool_calls", [])):
-            if call.get("name") != "catalog.search":
-                continue
-            previous = call.get("args", {})
-            prior_query = previous.get("query")
-            new_query = args["query"].casefold()
-            old_query = prior_query.casefold() if isinstance(prior_query, str) else ""
-            if (new_query and (old_query == new_query or old_query.startswith(new_query + " "))
-                    and call.get("result", {}).get("items") == []):
-                for key in ("min_room_area_m2", "max_price_vnd", "category"):
-                    if args.get(key) is None and previous.get(key) is not None:
-                        args[key] = previous[key]
-            break
-    if name in {"inventory.check", "pricing.get_quote"} and not args.get("sku"):
-        sku = _single_catalog_sku(state)
-        if sku:
-            args["sku"] = sku
     if (name in {"inventory.check", "pricing.get_quote"}
             or name == 'order.create' and args.get('lines') is None):
         selected = catalog_variant(state, args)
@@ -168,9 +95,6 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
     if name in _READ_TOOL_ARGS:
         args = {key: value for key, value in args.items() if key in _READ_TOOL_ARGS[name]}
     if name in {"inventory.check", "pricing.get_quote"} and not isinstance(args.get("sku"), str):
-        return None
-    if (name == "pricing.get_quote" and not args["sku"].startswith("SKU-")
-            and resolve_product_selection(state, args, use_customer_context=False).status == 'catalog_required'):
         return None
     if name in DATED_TOOLS:
         args["on"] = request.on.isoformat()
@@ -221,19 +145,6 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
             args["customer_phone"] = state["customer_phone"]
         else:
             return None
-        if name == 'order.update' and args.get('action') == 'exchange_product':
-            orders = [*(state.get('crm_orders') or []),
-                *[o for c in build_commerce_evidence(state) if c.get('name') == 'order.status'
-                  and 'error' not in c.get('result', {}) for o in c['result'].get('orders', [])]]
-            originals = {o.get('variant_sku') or o.get('sku') for o in orders
-                         if o.get('order_id') == requested_id} - {None}
-            items = [i for c in build_commerce_evidence(state) if c.get('name') == 'catalog.search'
-                     for i in c['result'].get('items', [])]
-            parent = next((i for i in items if any(v.get('variant_sku') == args.get('new_variant_sku')
-                           for v in i.get('variants', []))), None)
-            if parent and len(originals) == 1 and originals <= {
-                    parent['sku'], *(v.get('variant_sku') for v in parent.get('variants', []))}:
-                args['action'] = 'exchange_size'
     if name == "order.create":
         if state.get("identity_status") != "known":
             return None
@@ -247,15 +158,12 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
             args = CreateInput.model_validate(args).model_dump(mode='json', exclude_none=True)
         except ValueError:
             return None
-        cached = any(call.get('name') == name and call.get('args') == args
-                     for call in state.get('tool_calls', []))
-        if not cached and order_evidence_error(state, args) is not None:
+        if order_evidence_error(state, args) is not None:
             return None
     return name, args
 
 
 def order_evidence_error(state: TurnState, args: dict[str, Any]) -> str | None:
-    """Check exact owned tool evidence, without inferring customer intent or selection."""
     if state.get('identity_status') != 'known':
         return 'identity_required'
     lines = args.get('lines') or [{'sku': args['sku'], 'qty': args['qty'],
@@ -317,3 +225,12 @@ def filter_owned_orders(name: str, args: dict[str, Any], result: dict[str, Any],
     return {**result, "orders": [order for order in result["orders"]
             if isinstance(order, dict) and order.get("order_id") in owned
             and (not args.get("order_id") or order.get("order_id") == args["order_id"])]}
+
+
+def transaction_selection_mismatch(state: TurnState) -> bool:
+    for call in state.get("tool_calls", []):
+        if call.get("name") == "order.create" and call.get("result", {}).get("status") == "created":
+            selection = resolve_product_selection(state, call.get("args", {}))
+            if selection.status != "catalog_required" and selection.sku != call.get("args", {}).get("sku"):
+                return True
+    return False

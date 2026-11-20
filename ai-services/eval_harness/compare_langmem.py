@@ -1,4 +1,3 @@
-"""Compare BTC reference reports with an evidence-based LangMem adoption gate."""
 
 import argparse
 import json
@@ -68,7 +67,6 @@ def _variant(report: dict) -> dict:
 
 
 def compare(reference_reports: dict[str, dict]) -> dict:
-    """Return sanitized aggregates; missing denominators never become zero scores."""
     names = ("current", "shadow", "enabled")
     variants = {name: _variant(reference_reports.get(name, {})) for name in names}
     current, enabled = variants["current"], variants["enabled"]

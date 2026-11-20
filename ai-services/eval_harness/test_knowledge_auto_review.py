@@ -1,4 +1,3 @@
-"""Simulated review uses real services and only selected full-run evidence."""
 import asyncio
 from copy import deepcopy
 

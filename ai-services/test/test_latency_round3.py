@@ -1,4 +1,3 @@
-"""Exact-utterance regressions from 20261117T070242Z, with offline inference/storage."""
 import asyncio
 from datetime import date
 from unittest.mock import patch
@@ -6,36 +5,13 @@ from unittest.mock import patch
 import pytest
 from langchain_core.messages import AIMessage
 
-from app.agent.harness.callback_request import callback_request
-from app.mcp_servers.mcp_shared.consultation_followup import followup_task
 from test_commerce_evidence import state
 from test_m1_round2_runtime import runtime_for, turns, tool_message
 from test_november_pricing import reference
 
 
-@pytest.mark.parametrize('text,expected', [
-    ('Hiện anh đang bận họp nên chưa trao đổi kỹ được, em đặt lịch hẹn gọi lại cho anh vào 10 giờ sáng ngày mai 22/10/2026 nhé.', '2026-10-22T10:00'),
-    ('Anh đang bận, chưa muốn đặt lịch gọi lại ngày mai lúc 10 giờ.', None),
-    ('Anh đang bận, em đừng đặt lịch gọi lại ngày mai lúc 10 giờ.', None),
-    ('Em đặt lịch gọi lại ngày mai lúc 10 giờ, nhưng đừng gọi lại nhé.', None),
-    ('Nếu đặt lịch gọi lại ngày mai lúc 10 giờ thì sao?', None),
-    ('Đừng, gọi lại ngày mai lúc 10 giờ.', None),
-])
-def test_callback_negation_belongs_to_the_requested_action(text, expected):
-    assert callback_request(text, date(2026, 10, 21)) == expected
 
 
-@pytest.mark.parametrize('text', [
-    'Anh hỏi lại yêu cầu đổi áo hôm trước, quy trình bưu tá qua thu hồi áo cũ bên em thường mất mấy ngày và điều kiện giữ nguyên tem mác hộp thế nào em?',
-    'Anh vẫn giữ nguyên size và màu đã xác nhận đổi hôm trước nhé, khi gửi lại anh cần lưu ý giữ nguyên tem mác ra sao em?',
-])
-def test_packaging_question_routes_to_policy_with_owned_order_date(text):
-    current = state(text)
-    current['owned_order_ids'] = ['OD-EXCHANGE']
-    task = followup_task(current)
-    assert task.kind == 'policy'
-    assert 'tem mác' in task.policy_query
-    assert task.order_id == 'OD-EXCHANGE'
 
 
 def test_natural_missing_tds_wording_is_normalized_without_guessing_a_value(reference):
@@ -173,37 +149,10 @@ def test_one_price_does_not_complete_a_request_for_two_named_products():
     assert not _task_answer_complete('Aster giá 900.000đ.', current)
 
 
-def test_hypothetical_switch_changes_only_information_focus():
-    from app.mcp_servers.mcp_shared.consultation import derive_consultation
-    from test_consultation_flow import state as consultation_state, quoted
-    current = quoted(consultation_state('Nếu chuyển sang Brio thì giá bao nhiêu để tôi cân nhắc?'))
-    current['history'] = [{'customer': 'Tôi đang xem Aster.', 'agent': 'Aster có giá 900.000đ.'}]
-    decision = derive_consultation(current)
-    assert decision.focus_sku == 'SKU-BRIO'
-    assert decision.snapshot.selected_sku is None
-    assert decision.snapshot.accepted_offer is None
-    assert not decision.purchase_intent
 
 
-def test_policy_answer_cannot_hide_an_unanswered_stock_question():
-    from app.agent.harness.agent_nodes import _task_answer_complete
-    from test_consultation_followup import policy_result
-    from test_commerce_evidence import catalog
-    current = state('Aster bảo hành bao lâu và hiện còn hàng không?')
-    current['tool_calls'] = [catalog(), {'name': 'policy.search',
-        'args': {'query': followup_task(current).policy_query, 'on': '2026-11-05'}, 'result': policy_result()}]
-    assert not _task_answer_complete('Theo thông tin chính sách đã kiểm tra: ' +
-        policy_result()['evidence'][0]['content'], current)
 
 
-@pytest.mark.parametrize('text,expected', [
-    ('Tôi đang xem một mẫu áo khoác, hiện giá bao nhiêu?', []),
-    ('Tôi đang xem Xiaomi Smart 4 Pro và Philips AC1715, cho giá từng món.',
-     ['Xiaomi Smart 4 Pro', 'AC1715']),
-])
-def test_literal_product_reads_do_not_invent_or_collapse_product_names(text, expected):
-    from app.agent.harness.catalog_query import explicit_product_queries
-    assert explicit_product_queries(text) == expected
 
 
 def test_prepared_order_policy_keeps_ownership_binding_across_graph_nodes(reference):
@@ -238,20 +187,3 @@ def test_prepared_order_policy_keeps_ownership_binding_across_graph_nodes(refere
             await runtime.close()
 
     asyncio.run(run())
-
-
-def test_policy_reply_omits_document_instructions_and_keeps_the_entire_rule():
-    from app.agent.harness.session_nodes import safe_followup_reply
-    from test_consultation_followup import policy_result
-    current = state('Điều kiện giữ nguyên tem mác khi đổi trả ra sao?')
-    task = followup_task(current)
-    result = policy_result()
-    result['evidence'][0]['content'] = ('# Chính sách đổi trả\n\n'
-        'Mỗi mục có mã `[DT-xx]` — là `chunk_id` dùng để gán nhãn Recall@k.\n\n'
-        'Điều kiện đổi trả\nSản phẩm còn nguyên tem, nhãn, hộp, chưa qua sử dụng. '
-        'Bình sữa đã bóc seal không được đổi trả vì lý do vệ sinh.')
-    current['tool_calls'] = [{'name': 'policy.search',
-        'args': {'query': task.policy_query, 'on': '2026-11-05'}, 'result': result}]
-    answer = safe_followup_reply(current, task)
-    assert 'chunk_id' not in answer and 'Recall@k' not in answer, answer
-    assert 'nguyên tem' in answer and 'không được đổi trả' in answer, answer

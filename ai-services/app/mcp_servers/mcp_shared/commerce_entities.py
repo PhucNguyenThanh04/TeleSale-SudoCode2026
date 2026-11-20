@@ -1,23 +1,8 @@
-"""Resolve spoken product references from catalog metadata, never matching prices."""
 import re
 from app.mcp_servers.mcp_shared.commerce_rules import _search_text
 
 
-def product_alternatives_requested(text: str) -> bool:
-    return bool(re.search(r'so sanh|phuong an khac|mau khac|thay the|re hon|dat hon', _search_text(text)))
-
-
-def allows_short_product_name(text: str, item: dict) -> bool:
-    """An accessory's compatible model name alone does not identify the accessory."""
-    if not _search_text(item.get('category', '')).endswith('/phu-kien'):
-        return True
-    words = _search_text(item.get('name', '')).split()
-    cue = ' '.join(words[:2] if words[:1] == ['bo'] else words[:1])
-    return bool(cue and re.search(r'(?<!\w)' + re.escape(cue) + r'(?!\w)', _search_text(text)))
-
-
 def variant_option_values(text: str, variants: list[dict], key: str) -> set[str]:
-    """Match literal catalog values, retaining the longest value at each cue."""
     cue = r'\b(?:size|co|kich co)' if key == 'size' else r'\bmau'
     matches = [(m.start(), m.end(), _search_text(str(v[key])))
                for v in variants if isinstance(v, dict) and v.get(key) is not None
@@ -42,21 +27,11 @@ def resolve_claim_skus(text: str, calls: list[dict], *, focus_sku: str | None = 
     explicit = {sku for sku in known if sku and named(sku)}
     if explicit:
         return explicit
-    aliases = {}
-    for sku, item in items.items():
-        words = _search_text(item.get('name', '')).split()
-        starts = range(max(1, len(words) - 1)) if allows_short_product_name(text, item) else range(1)
-        for start in starts:
-            label = ' '.join(words[start:])
-            if label:
-                aliases.setdefault(label, set()).add(sku)
-        if allows_short_product_name(text, item) and not (item.get('attributes') or {}).get('bundle_of'):
-            for word in item.get('name', '').split()[1:]:
-                if len(word) >= 3 and word[0].isupper() and word.casefold() not in {'pro', 'lite', 'mini', 'max', 'plus', 'ultra'}:
-                    aliases.setdefault(_search_text(word), set()).add(sku)
-    matches = [(label, owners) for label, owners in aliases.items() if named(label)]
-    parents = set().union(*(owners for label, owners in matches
-                           if not any(label != other and label in other for other, _ in matches))) if matches else set()
+    matches = [(match.start(), match.end(), sku)
+               for sku,item in items.items() if item.get('name')
+               for match in re.finditer(r'(?<![\w-])'+re.escape(_search_text(item['name']))+r'(?![\w-])',folded)]
+    parents = {sku for start,end,sku in matches
+               if not any(a<=start and b>=end and b-a>end-start for a,b,_ in matches)}
     if not parents:
         return {focus_sku} if focus_sku else set()
     result = set()
@@ -77,7 +52,6 @@ def resolve_claim_skus(text: str, calls: list[dict], *, focus_sku: str | None = 
         elif focus_sku and any(v.get('variant_sku') == focus_sku for v in variants):
             result.add(focus_sku)
         else:
-            # Parent quotes remain valid, but cannot pick one of several variants.
             result.add(parent)
             result.update(v['variant_sku'] for v in selected if v.get('variant_sku'))
     return result

@@ -1,4 +1,3 @@
-"""Contract tests for publication through the unchanged BTC scorer."""
 
 import json
 import hashlib

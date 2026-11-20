@@ -1,16 +1,3 @@
-"""Kiểm kịch bản hội thoại tự viết trước khi tạo audio: ``python -m speech validate --dialogues <file>...``.
-
-Ba lớp kiểm, theo thứ tự nguồn chuẩn của BTC (schema/mock_tools/reference_eval):
-
-1. Định dạng — cùng format ``asr/ground_truth.json`` + trường riêng của nhóm (``split``, ``call_date``,
-   ``tool_context``, ``checks``); nhãn chỉ dùng khóa entity BTC; entity hội thoại = gộp entity các lượt.
-2. Dạng nói — ``text`` là đúng chữ người đọc nói ra (số bằng chữ, không ký hiệu); giá trị nhãn phải được nói
-   ra trong chính lượt đó (đọc qua bộ chuẩn hóa ITN của pipeline).
-3. Sự thật — giá/KM/tồn kho/bảo hành/phí… khớp ``eval/mock_tools.py`` của BTC tại ``call_date`` của từng hội
-   thoại; mục ``checks`` gọi thẳng tool BTC cho các khẳng định không gắn nhãn (KM chưa bắt đầu, hết hạn…).
-
-``error`` phải sửa trước khi tạo audio; ``warn`` cần người đọc lại; ``info`` chỉ để báo cáo.
-"""
 from __future__ import annotations
 
 import inspect
@@ -28,7 +15,6 @@ from .normalize import normalize_text
 from .textutil import btc_norm, fold
 from .tts import DEFAULT_ELEVEN_MODEL, credits_per_char
 
-# Khóa entity có trong asr/ground_truth.json BTC và đề bài (mục 3.1–3.3).
 ENTITY_KEYS = frozenset({
     "sku", "price_vnd", "room_area_m2", "blocker", "order_id", "has_children", "budget_vnd", "promo_expiry",
     "delivery_days", "payment", "warranty_months", "competitor_price_vnd", "return_days", "min_free_ship_vnd",
@@ -41,17 +27,15 @@ BLOCKERS = frozenset({"can hoi chong", "can hoi vo", "so sanh gia"})
 SPLITS = frozenset({"dev", "holdout"})
 TTS_ENGINES = frozenset({"elevenlabs", "vieneu", "edge", "files"})
 
-# Chính sách BTC (policy/van-chuyen-thanh-toan.md, doi-tra-bao-hanh.md) và mock_tools.py.
-FREE_SHIP_DEFAULT_VND = 2_000_000          # VC-02, mock: freeship nếu giá ≥ 2 triệu
-BULKY_FEE_VND = 30_000                     # VC-02: hàng cồng kềnh ngoài nội thành
+FREE_SHIP_DEFAULT_VND = 2_000_000
+BULKY_FEE_VND = 30_000
 BULKY_HINTS = ("may loc nuoc", "xe day", "ghe o to")
-EXCHANGE_FEES_VND = frozenset({0, 30_000, 60_000})  # DT-03: lần đầu miễn phí, lần 2+ 30k/chiều (mock: 60k)
-COD_LIMIT_VND = 10_000_000                 # VC-04, mock order_create
-DELIVERY_DAYS = frozenset({2, 3, 4, 5, 7})  # cận trên các khung VC-01
-RETURN_DAYS = {"thoi-trang": frozenset({7})}  # DT-01; gia dụng/mẹ bé: 7 ngày đổi trả, 30 ngày đổi mới lỗi NSX
+EXCHANGE_FEES_VND = frozenset({0, 30_000, 60_000})
+COD_LIMIT_VND = 10_000_000
+DELIVERY_DAYS = frozenset({2, 3, 4, 5, 7})
+RETURN_DAYS = {"thoi-trang": frozenset({7})}
 RETURN_DAYS_DEFAULT = frozenset({7, 30})
 
-# Ước lượng thời lượng: tốc độ edge-tts đo trên dataset cũ (nhật ký bước 15) + khoảng nghỉ trung bình synth.
 SYLLABLES_PER_S = 4.3
 TURN_GAP_S = 0.525
 LEAD_S = 0.3
@@ -60,22 +44,20 @@ SECONDS_RANGE = (45.0, 75.0)
 
 _PHONE_FORMAT = re.compile(r"^0\d{9}$")
 _ORDER_FORMAT = re.compile(r"^OD\d{6}$")
-_MOCK_ORDER_RANGE = re.compile(r"^OD6\d{5}$")  # mock order_create sinh OD600001+
+_MOCK_ORDER_RANGE = re.compile(r"^OD6\d{5}$")
 _PLACEHOLDER_RE = re.compile(r"\{[^{}]*\}")
 _BAD_CHARS_RE = re.compile(r"[^\w\s,.?!…;:'’\-–]|_")
 _SYLLABLE_RE = re.compile(r"[^\W\d_]+")
 _NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)?")
-# Size chữ đọc kiểu Việt (luật chuẩn hóa chưa đổi về chữ cái — xem giới hạn trong nhật ký).
 _SIZE_LETTERS = {"S": ("size ét",), "M": ("size em", "size mờ"), "L": ("size lờ", "size eo"),
                  "XL": ("size ích xờ lờ", "size ích eo", "size ếch eo")}
-# Ngữ cảnh biến thể lấy từ lời thoại khi lượt không gắn nhãn size/màu (vd hỏi mua mới, không phải đổi size).
 _CTX_SIZE_RE = re.compile(r"\bsize (\d{2}|xl|s|m|l)\b")
 _CTX_COLOR_RE = re.compile(r"\bmau (den|trang|xam|navy|be)\b")
 
 
 @dataclass
 class Issue:
-    level: str          # error | warn | info
+    level: str
     dialogue: str
     turn: int | None
     message: str
@@ -123,9 +105,6 @@ class _Sink:
         self.report.issues.append(Issue(level, self.dialogue, turn, message))
 
 
-# ---------------------------------------------------------------------------
-# Dữ liệu tham chiếu
-# ---------------------------------------------------------------------------
 
 @dataclass
 class Reference:
@@ -158,13 +137,10 @@ class Reference:
     def fresh_mock(self, overlay: list[dict] | None = None) -> ModuleType:
         mock = load_mock_tools(self.data_dir)
         if overlay:
-            mock.CRM = list(mock.CRM) + list(overlay)  # CRM giả lập trong bộ nhớ, không sửa file BTC
+            mock.CRM = list(mock.CRM) + list(overlay)
         return mock
 
 
-# ---------------------------------------------------------------------------
-# Tiện ích
-# ---------------------------------------------------------------------------
 
 def _iso(value) -> date | None:
     try:
@@ -218,9 +194,6 @@ def _codes(items: list) -> set[str]:
     return {i["promo_code"] if isinstance(i, dict) else i for i in items or []}
 
 
-# ---------------------------------------------------------------------------
-# Lớp 1 — định dạng
-# ---------------------------------------------------------------------------
 
 def _check_header(source: dict, file: str, report: Report) -> tuple[str, tuple[str, str] | None, str | None]:
     sink = _Sink(report, file)
@@ -298,9 +271,6 @@ def _check_format(d: dict, sink: _Sink, ref_date: str, window, holidays: frozens
         sink("warn", f"{len(turns)} lượt, ngoài khoảng {TURNS_RANGE[0]}–{TURNS_RANGE[1]} như dữ liệu BTC")
 
 
-# ---------------------------------------------------------------------------
-# Lớp 2 — dạng nói và nhãn
-# ---------------------------------------------------------------------------
 
 def _check_spoken(turn: dict, sink: _Sink, template: bool) -> None:
     idx = turn.get("idx")
@@ -379,7 +349,7 @@ def _spoken_in_turn(key: str, value, low: str, tokens: set[str], ref: Reference)
         if value == 0:
             return bool(_FREE_RE.search(low))
         amounts = {_amount_value(m) for m in _AMOUNT_RE.finditer(low)}
-        amounts |= {int(n) for n in re.findall(r"(?<![\d.,])\d{4,}(?![\d.,])", low)}  # "1161000" không kèm đơn vị
+        amounts |= {int(n) for n in re.findall(r"(?<![\d.,])\d{4,}(?![\d.,])", low)}
         return value in amounts
     if key == "phone":
         return value in re.sub(r"[\s.\-]", "", low)
@@ -408,9 +378,6 @@ def _spoken_in_turn(key: str, value, low: str, tokens: set[str], ref: Reference)
     return None
 
 
-# ---------------------------------------------------------------------------
-# Lớp 3 — sự thật theo mock_tools BTC tại call_date
-# ---------------------------------------------------------------------------
 
 @dataclass
 class _Context:
@@ -421,7 +388,6 @@ class _Context:
 
 
 def _resolve(mock: ModuleType, ctx: _Context) -> tuple[str | None, bool]:
-    """SKU gốc trong nhãn + size/màu đã nói → (SKU để gọi tool, đã xác định được biến thể?)."""
     if ctx.sku is None:
         return None, False
     product = mock._BY_SKU.get(ctx.sku)
@@ -462,7 +428,7 @@ def _check_facts(d: dict, sink: _Sink, ref: Reference) -> None:
                 ctx.size = ctx.color = None
             ctx.sku = labels["sku"]
         _variant_from_text(turn, ctx)
-        for key in ("size_old", "size_new"):  # size_new sau cùng → đang nói về size mới
+        for key in ("size_old", "size_new"):
             if key in labels:
                 ctx.size = labels[key]
         if "color" in labels:
@@ -475,7 +441,6 @@ def _check_facts(d: dict, sink: _Sink, ref: Reference) -> None:
 
 
 def _variant_from_text(turn: dict, ctx: _Context) -> None:
-    """Size/màu nói đúng một lần trong lượt → cập nhật ngữ cảnh (nhắc nhiều giá trị thì giữ nguyên)."""
     written = fold(normalize_text(str(turn.get("text", "")).replace(KH, "anh")).written)
     sizes = {m.upper() for m in _CTX_SIZE_RE.findall(written)}
     colors = set(_CTX_COLOR_RE.findall(written))
@@ -572,14 +537,13 @@ _TOOLS = {"catalog.search": "catalog_search", "inventory.check": "inventory_chec
 
 
 def _run_check(check: dict, number: int, mock: ModuleType, on: str, tool_context: dict, sink: _Sink) -> None:
-    """``{"tool", "args", "expect", "applied", "not_applied", "expired", "ineligible", "why", "turn"}``."""
     tool, turn = check.get("tool"), check.get("turn")
     label = f"check {number} ({tool})"
     if not check.get("why"):
         sink("warn", f"{label}: thiếu 'why' (khẳng định nào trong lời thoại cần kiểm)", turn)
     args = dict(check.get("args") or {})
     try:
-        if tool == "delivery.eta":  # ngày giao dự kiến như order_create trả về
+        if tool == "delivery.eta":
             result = mock._eta(args.get("on", on), args.get("address", tool_context.get("address")))
         elif tool in _TOOLS:
             func = getattr(mock, _TOOLS[tool])
@@ -604,12 +568,8 @@ def _run_check(check: dict, number: int, mock: ModuleType, on: str, tool_context
                                   f"{sorted(_codes(result.get(source)))}", turn)
 
 
-# ---------------------------------------------------------------------------
-# Báo cáo
-# ---------------------------------------------------------------------------
 
 def _oracle(d: dict, ref: Reference, written: list[str]) -> tuple[int, int]:
-    """Bộ trích entity của pipeline trên chính lời thoại đúng (trần trên khi ASR không sai)."""
     expected = d.get("entities") or {}
     when = _iso(d.get("call_date")) or date(2026, 10, 15)
     found, _ = extract_entities(written, ref.catalog, reference_date=when)

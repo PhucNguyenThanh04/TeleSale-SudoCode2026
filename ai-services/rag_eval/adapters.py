@@ -1,4 +1,3 @@
-"""Live boundaries. No clients are constructed by offline replay."""
 import asyncio
 import json
 from pathlib import Path

@@ -1,4 +1,3 @@
-"""Real graph streaming with token barriers, no services or wall-clock benchmarks."""
 import asyncio
 from typing import Any
 
@@ -169,7 +168,7 @@ def test_later_business_tool_cannot_change_published_evidence_or_write():
     asyncio.run(run())
 
 
-def test_openai_sse_waits_for_stop_before_publication():
+def test_openai_sse_waits_for_stop_and_structured_review_before_publication():
     import json
     import httpx
     from langchain_openai import ChatOpenAI
@@ -178,6 +177,8 @@ def test_openai_sse_waits_for_stop_before_publication():
         release = asyncio.Event()
         calls = []
         started = asyncio.Event()
+        review_started = asyncio.Event()
+        release_review = asyncio.Event()
 
         class Body(httpx.AsyncByteStream):
             async def __aiter__(self):
@@ -193,8 +194,21 @@ def test_openai_sse_waits_for_stop_before_publication():
 
         async def handler(request):
             payload = json.loads(request.content)
-            assert payload['stream'] is True
             calls.append(payload)
+            if any(tool.get('function', {}).get('name') == 'GroundingReview'
+                   for tool in payload.get('tools', [])):
+                assert not payload.get('stream')
+                review_started.set()
+                await release_review.wait()
+                return httpx.Response(200, json={'id':'offline-review',
+                    'object':'chat.completion', 'created':1, 'model':'offline',
+                    'choices':[{'index':0, 'finish_reason':'tool_calls', 'message':{
+                        'role':'assistant', 'content':None, 'tool_calls':[{
+                            'id':'review-1', 'type':'function', 'function':{
+                                'name':'GroundingReview', 'arguments':json.dumps({
+                                    'supported':True, 'reason':'supported',
+                                    'unsupported_claim':''})}}]}}]})
+            assert payload['stream'] is True
             return httpx.Response(200, stream=Body(), headers={'content-type':'text/event-stream'})
 
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
@@ -209,13 +223,17 @@ def test_openai_sse_waits_for_stop_before_publication():
                 await asyncio.wait_for(started.wait(), 3)
                 assert not pending.done()
                 release.set()
+                await asyncio.wait_for(review_started.wait(), 3)
+                assert not pending.done() and not memory.turns
+                release_review.set()
                 first = await asyncio.wait_for(pending, 3)
                 assert first['event'] == 'delta'
                 rest = [e async for e in stream]
-                assert rest[-1]['event'] == 'done' and len(calls) == 1
+                assert rest[-1]['event'] == 'done' and len(calls) == 2
                 assert memory.turns[str(request.session_id)][0]['agent'] == rest[-1]['agent_text']
             finally:
                 release.set()
+                release_review.set()
                 await stream.aclose()
                 await runtime.close()
     asyncio.run(run())

@@ -1,4 +1,3 @@
-"""Settings behavior without contacting a model provider."""
 
 import os
 import tempfile

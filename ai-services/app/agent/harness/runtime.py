@@ -1,4 +1,3 @@
-"""Run one graph turn with process-local idempotency and session locking."""
 
 import asyncio
 import logging
@@ -14,7 +13,7 @@ from uuid import uuid4
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from app.agent.graph import build_graph
-from app.agent.harness.agent_nodes import AgentNodes, MEMORY_UNAVAILABLE
+from app.agent.harness.agent_nodes import AgentNodes
 from app.agent.memory.store import MemoryStore
 from app.agent.harness.observability import log_event
 from app.agent.harness.context import load_context
@@ -32,7 +31,6 @@ from app.agent.harness.streaming import GuardedStream, active_stream
 
 
 class AgentHarnessRuntime:
-    """Deep Agent runtime with one streaming model/tool loop."""
 
     def __init__(self, llm: BaseChatModel, tools: ToolGateway, memory: MemoryStore,
                  max_tool_calls: int = DEFAULT_MAX_TOOL_CALLS,
@@ -85,7 +83,7 @@ class AgentHarnessRuntime:
         key = (str(request.session_id), str(request.client_msg_id))
         async with self._locks[key[0]]:
             state = self._states.get(key)
-            if (not state or state["request"].delivery_mode != "voice"
+            if (not state or key not in self._responses or state["request"].delivery_mode != "voice"
                     or identity_fingerprint(request) != identity_fingerprint(state["request"])
                     or request.on != state["request"].on):
                 raise ValueError("Playback identity or turn mismatch")
@@ -142,9 +140,7 @@ class AgentHarnessRuntime:
         return identity, calls
 
     async def prepare_session(self, request: PrepareSessionRequest) -> PrepareSessionResponse:
-        """Warm returning-customer reads without inference or a committed turn."""
         started = time.perf_counter()
-        # Empty text is internal context input, never a fabricated customer turn.
         turn = TextTurnRequest.model_construct(**request.model_dump(),
             client_msg_id=uuid4(), text="", input_mode="asr_transcript")
         session_id = str(request.session_id)
@@ -162,8 +158,6 @@ class AgentHarnessRuntime:
             session.update(context)
             if context.get("tool_failed"):
                 raise RuntimeError("session_preparation_failed")
-            # Retain only reads, not profile snapshots: every real turn still
-            # checks memory ownership/erasure and sees the latest committed history.
             self._preparations[session_id] = (
                 request.on, started, identity.get("customer_id"),
                 deepcopy(context.get("tool_calls", [])))
@@ -171,11 +165,9 @@ class AgentHarnessRuntime:
                                            call_brief=context.get("call_brief"))
 
     def state_for(self, turn: TextTurnRequest) -> TurnState | None:
-        """Return the observed graph state for an in-process evaluation runner."""
         return self._states.get((str(turn.session_id), str(turn.client_msg_id)))
 
     async def memory_update(self, request: TurnMemoryRequest) -> MemoryUpdate:
-        """Read the worker's durable result, independently of response generation."""
         from app.mcp_servers.mcp_shared.pii import mask_pii
 
         turn = TextTurnRequest.model_construct(**request.model_dump(), text="", input_mode="clean")
@@ -189,8 +181,6 @@ class AgentHarnessRuntime:
             update = MemoryUpdate.model_validate(result)
             if update.status != "completed":
                 update.changes = []
-            # Supplement the MCP's general PII mask with the bound customer's
-            # known name, including short names not caught by the generic mask.
             name = identity.get("customer_name")
             for change in update.changes:
                 if isinstance(change.value, str):
@@ -204,7 +194,6 @@ class AgentHarnessRuntime:
             return MemoryUpdate()
 
     async def memory_timeline(self, request: TimelineRequest) -> TimelinePage:
-        """Read public history only for an already bound session; never run inference."""
         session_id = str(request.session_id)
         if session_id not in self._session_identities:
             raise ValueError('Session has not been prepared')
@@ -251,7 +240,7 @@ class AgentHarnessRuntime:
             token = active_stream.set(stream)
             try:
                 response = await self.run(turn)
-                if stream.state is None:  # A checked cached response; never re-execute tools.
+                if stream.state is None:
                     saved = self.state_for(turn)
                     if saved is not None and not saved.get('agent_text'):
                         stream.terminal({'event': 'error', 'code': 'turn_interrupted'})
@@ -270,11 +259,9 @@ class AgentHarnessRuntime:
             async for event in stream.events():
                 yield {'session_id': str(turn.session_id), 'client_msg_id': str(turn.client_msg_id), **event}
         finally:
-            # Do not cancel an in-flight write on a transport disconnect.
             stream.disconnect()
 
     async def run(self, turn: TextTurnRequest) -> TextTurnResponse:
-        """Collect the guarded text stream, or generate voice awaiting its receipt."""
         async def collect(text):
             return True
 
@@ -307,12 +294,15 @@ class AgentHarnessRuntime:
             bound = self._session_identities.get(session_id)
             if bound is not None and bound[0] != fingerprint:
                 raise ValueError("Session channel identity mismatch")
-            if key in self._responses:
+            if key in self._states:
                 original = self._states[key]['request']
                 if (self._states[key]['memory_include_prior'] != getattr(self.memory, 'include_prior', True)
                         or any(getattr(original, field) != getattr(turn, field)
                        for field in ('text', 'on', 'delivery_mode', 'verified_customer_id', 'verified_phone'))):
                     raise ValueError('Conflicting turn retry')
+                if self._states[key].get('reply_error'):
+                    raise RuntimeError(self._states[key]['reply_error'])
+            if key in self._responses:
                 from app.mcp_servers.mcp_memory.schemas import validate_read_response
                 try:
                     context = validate_read_response(await self.memory.read_context(
@@ -323,13 +313,10 @@ class AgentHarnessRuntime:
                     self._session_states.pop(session_id, None)
                     self._session_tool_calls.pop(session_id, None)
                     self._preparations.pop(session_id, None)
-                    return TextTurnResponse(client_msg_id=turn.client_msg_id, session_id=turn.session_id,
-                        agent_text=MEMORY_UNAVAILABLE,
-                        memory_update=MemoryUpdate(status='unavailable'))
+                    raise RuntimeError('memory_unavailable')
                 log_event(turn, "chat", "cache_hit",
                           duration_ms=round((time.perf_counter() - started) * 1000))
                 return self._responses[key]
-            # Never let the next turn use generated-but-unheard voice as history.
             for pending in list(self._playback_tasks):
                 if pending[0] == session_id:
                     await self._finalize_playback(pending, 0, True)
@@ -346,8 +333,6 @@ class AgentHarnessRuntime:
                         if (prepared_on == turn.on and time.perf_counter() - prepared_at <= 30
                                 and prepared_customer == identity.get("customer_id")):
                             prepared_calls = reads
-                    # Attribute prepared evidence to its first real consumer, without
-                    # adding another tool attempt or inventing a preparation turn.
                     prepared_calls = [{**call, 'customer_id': identity.get('customer_id'),
                         'session_id': session_id, 'source_turn_id': str(turn.client_msg_id)}
                         for call in prepared_calls]
@@ -355,8 +340,6 @@ class AgentHarnessRuntime:
                               "run_name": "process-chat-turn"}
                     if trace:
                         config["callbacks"] = [trace[0]]
-                    # Pre-call reads are prior evidence, not tool attempts made
-                    # for this utterance (which may change SKU, quantity or address).
                     prior_session_calls = deepcopy([
                         *self._session_tool_calls[session_id], *prepared_calls])
                     state: TurnState = await self.graph.ainvoke(
@@ -368,8 +351,10 @@ class AgentHarnessRuntime:
                     )
                     response_text = state['agent_text']
                     if stream is not None:
-                        state['agent_text'] = await stream.finish(response_text, state)
+                        state['agent_text'] = (stream.published if state.get('reply_error') else
+                                               await stream.finish(response_text, state))
                         response_text = state['agent_text'] or response_text
+                    if stream is not None or state.get('reply_error'):
                         state.update(await self.nodes.persist_agent(state))
                     session.update(state)
                     if not state.get("tool_failed"):
@@ -390,6 +375,12 @@ class AgentHarnessRuntime:
                           duration_ms=round((time.perf_counter() - started) * 1000),
                           error_type=type(exc).__name__)
                 raise
+            state['memory_include_prior'] = getattr(self.memory, 'include_prior', True)
+            self._states[key] = state
+            if state.get('reply_error'):
+                log_event(turn, "chat", "failed", level=logging.ERROR,
+                          reason=state['reply_error'])
+                raise RuntimeError(state['reply_error'])
             response = TextTurnResponse(
                 client_msg_id=turn.client_msg_id,
                 session_id=turn.session_id,
@@ -403,8 +394,6 @@ class AgentHarnessRuntime:
                             "pending" if state.get("customer_id") else "not_applicable")),
             )
             self._responses[key] = response
-            state['memory_include_prior'] = getattr(self.memory, 'include_prior', True)
-            self._states[key] = state
             if turn.delivery_mode == "voice":
                 self._playback_tasks[key] = asyncio.create_task(self._expire_playback(key))
             log_event(turn, "chat", "completed",
@@ -415,5 +404,4 @@ class AgentHarnessRuntime:
             return response
 
 
-# Existing integrations use this name for the same Deep Agent runtime.
 DeepHarnessRuntime = AgentHarnessRuntime

@@ -1,4 +1,3 @@
-"""ElevenLabs thủ công: checklist, ghép clip trong inbox, kiểm tốc độ đọc, engine ``files``."""
 import contextlib
 import csv
 import io
@@ -43,7 +42,7 @@ class ChecklistTests(unittest.TestCase):
             markdown = (out / "checklist.md").read_text(encoding="utf-8")
             self.assertTrue((out / "T90").is_dir())
         self.assertEqual([r["file"] for r in rows], ["T90/T90_01_A.mp3", "T90/T90_02_C.mp3", "T90/T90_03_A.mp3"])
-        self.assertEqual(rows[0]["text"], DIALOGUE["turns"][0]["tts_text"])  # dán tts_text khi có
+        self.assertEqual(rows[0]["text"], DIALOGUE["turns"][0]["tts_text"])
         self.assertEqual([r["voice"] for r in rows], ["Nữ Bắc", "Nam Nam", "Nữ Bắc"])
         chars = sum(len(t.get("tts_text") or t["text"]) for t in DIALOGUE["turns"])
         self.assertEqual(summary["chars"], chars)
@@ -75,7 +74,7 @@ class InboxTests(unittest.TestCase):
 
     def test_named_files_in_folder_or_root_and_missing_report(self):
         self.touch("T90/T90_01_A.wav")
-        self.touch("T90_3_A.mp3")  # đặt thẳng ở inbox, idx không đệm số 0
+        self.touch("T90_3_A.mp3")
         scan = manual.scan_inbox([DIALOGUE], self.inbox)
         self.assertEqual(set(scan.clips), {("T90", 1), ("T90", 3)})
         self.assertEqual(scan.missing, ["T90/T90_02_C.mp3"])
@@ -87,7 +86,7 @@ class InboxTests(unittest.TestCase):
         self.touch("T90/T90_02_A.mp3")
         self.touch("T90/T90_09_C.mp3")
         scan = manual.scan_inbox([DIALOGUE], self.inbox)
-        self.assertEqual(len(scan.errors), 2)  # hai file cho lượt 1; lượt 2 là vai C
+        self.assertEqual(len(scan.errors), 2)
         self.assertTrue(any("không có lượt 9" in e for e in scan.extra))
 
     def test_unrenamed_downloads_are_assigned_in_name_order(self):
@@ -108,9 +107,9 @@ class InboxTests(unittest.TestCase):
         self.assertEqual(len(scan.extra), 2)
 
     def test_reading_rate_flags_wrong_or_truncated_clip(self):
-        paths = {("T90", 1): self.touch("T90/T90_01_A.mp3", 3.0),   # ~4 âm tiết/s: bình thường
-                 ("T90", 2): self.touch("T90/T90_02_C.mp3", 0.1),   # câu 1 âm tiết: bỏ qua
-                 ("T90", 3): self.touch("T90/T90_03_A.mp3", 0.8)}   # >13 âm tiết/s: quá nhanh
+        paths = {("T90", 1): self.touch("T90/T90_01_A.mp3", 3.0),
+                 ("T90", 2): self.touch("T90/T90_02_C.mp3", 0.1),
+                 ("T90", 3): self.touch("T90/T90_03_A.mp3", 0.8)}
         warnings = manual.check_rates([DIALOGUE], paths, manual.clip_seconds)
         self.assertEqual(len(warnings), 1)
         self.assertIn("T90_03_A.mp3", warnings[0])
@@ -138,7 +137,7 @@ class InboxTests(unittest.TestCase):
         config = manual.files_config(manual.scan_inbox([DIALOGUE], self.inbox))
         first = tts.synth_dataset(SOURCE, self.inbox / "ds1", engine="files", config=config,
                                   cache_dir=self.inbox / "cache", channel="none")
-        replaced = self.touch("T90/T90_02_C.mp3", 0.7)  # thay một clip sau khi đã tạo dataset
+        replaced = self.touch("T90/T90_02_C.mp3", 0.7)
         second = tts.synth_dataset(SOURCE, self.inbox / "ds2", engine="files", config=config,
                                    cache_dir=self.inbox / "cache", channel="none")
         self.assertEqual([c["file"] for c in first["clips"]],

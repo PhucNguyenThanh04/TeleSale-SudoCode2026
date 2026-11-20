@@ -12,7 +12,6 @@ from speech.serving.listen import ListenSession, serve_listen
 
 
 class FakeVad:
-    """Deterministic frame detector; no model weights or inference."""
     def __init__(self):
         self.frames = []
         self.active = []
@@ -255,7 +254,6 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
             await ws.outgoing.get()
             self.assertTrue(await asyncio.to_thread(started.wait, 2))
             await ws.incoming.put({'type': 'websocket.disconnect'})
-            # Let receive finish and cleanup cancel the worker.
             for _ in range(10):
                 await asyncio.sleep(0)
             self.assertTrue(lock.locked())

@@ -1,4 +1,3 @@
-"""Kiểm kịch bản tự viết: định dạng, dạng nói, sự thật theo mock_tools BTC tại call_date."""
 import copy
 import unittest
 import warnings
@@ -8,7 +7,7 @@ from speech.tts import with_full_text
 from speech.validate import Reference, merge_turn_entities, validate
 
 BTC_DIR = find_data_dir(required=False)
-FAKE_PHONE = "0977000111"  # số giả, kiểm trong test là không trùng CRM
+FAKE_PHONE = "0977000111"
 
 
 def dialogue(turns: list[tuple[str, str, dict]], **fields) -> dict:
@@ -35,7 +34,7 @@ def run(*dialogues, header=None):
     source = {"reference_date": "2026-10-15", "call_date_range": ["2026-10-15", "2026-10-31"],
               "tts_engine": "elevenlabs", **(header or {}), "dialogues": list(dialogues)}
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore", ResourceWarning)  # mock_tools BTC mở file không đóng
+        warnings.simplefilter("ignore", ResourceWarning)
         return validate([("x.json", source)], REF)
 
 

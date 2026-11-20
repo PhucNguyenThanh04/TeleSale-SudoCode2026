@@ -1,4 +1,3 @@
-"""Optional pinned-Ragas API test: all HTTP is served by MockTransport."""
 import asyncio
 import importlib.util
 import json
@@ -50,4 +49,4 @@ def test_pinned_ragas_judge_against_fake_http(monkeypatch):
         finally:
             await judge.close()
     asyncio.run(check())
-    assert len(calls) == 7  # business + 2 faithfulness + 4 correctness requests
+    assert len(calls) == 7

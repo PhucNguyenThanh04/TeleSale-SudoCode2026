@@ -1,4 +1,3 @@
-"""Load explicitly reviewed knowledge serving configuration."""
 import json
 from app.mcp_servers.mcp_knowledge.schemas import PolicyRuntimeConfig
 

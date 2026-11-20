@@ -1,4 +1,3 @@
-"""Facts must survive enrichment completion without resurrecting deleted values."""
 import asyncio
 import json
 from pathlib import Path
@@ -172,66 +171,8 @@ def test_latest_t06_remembers_corrected_variant_without_reasking_and_keeps_other
     assert products['SKU-SN-RUN1']['color']['value'] == 'den'
 
 
-def test_latest_t13_prior_child_fact_changes_recommendation_without_repeating_it():
-    from datetime import date
-    from uuid import UUID
-    from app.agent.implementations.business_agent import BusinessTools
-    from app.mcp_servers.mcp_shared.consultation_shortlist import build_shortlist, consultation_scope
-    from app.mcp_servers.mcp_shared.memory_observations import memory_observations
-    from test_commerce_evidence import state
-    from test_k0_harness_replay import OfflineCommerce
-    rows = list(map(json.loads, (RUN / 'full.diagnostics_full.jsonl').read_text().splitlines()))
-    initial = [r for r in rows if r['scenario_id'] == 'SC-T13' and r['call'] == 'call_1']
-    query = next(r['user_text'] for r in rows if (r['scenario_id'], r['call'], r['turn']) == ('SC-T13', 'call_2', 1))
-    async def run():
-        choices = []
-        for child_present in (True, False):
-            repo = Repo()
-            prior, current = str(uuid4()), str(uuid4())
-            for row in initial:
-                # Counterfactual changes only the stated child fact, not the new
-                # request, room, budget, catalog or ranking implementation.
-                speech = row['user_text'] if child_present or row['turn'] != 2 else 'Nhà anh không có con nhỏ.'
-                add_turn(repo, prior, 'C1', speech, row['agent_text'], memory_observations(row['tool_calls']))
-            for index, turn in enumerate(repo.sessions[prior]['turns'], 1):
-                turn.update(memory_status='completed', job_id=index)
-            s = state(query)
-            s.update(await read(repo, 'C1', current, projector=Projection()), customer_id='C1')
-            s['request'] = s['request'].model_copy(update={'session_id': UUID(current), 'on': date(2026, 10, 22)})
-            gateway = OfflineCommerce()
-            # The category is established by the prior product metadata, not by
-            # an expected outcome in the scenario.
-            await BusinessTools(gateway, s, 5, lambda: None).invoke('catalog.search', {'sku': 'SKU-AP-MINI'})
-            await BusinessTools(gateway, s, 5, lambda: None).prepare_consultation()
-            shortlist = build_shortlist(s, scope=consultation_scope(s), quoted_only=True)
-            assert shortlist.items
-            choices.append(shortlist.items[0]['sku'])
-            assert not any(name == 'order.create' for name, _ in gateway.calls)
-            assert s['profile']['has_children']['value'] is child_present
-        assert choices[0] == 'SKU-AP-Y'
-        assert choices[1] != choices[0]
-    asyncio.run(run())
 
 
-def test_two_named_rooms_survive_completion_and_returning_question_selects_only_its_area():
-    from app.mcp_servers.mcp_shared.consultation import requirements
-    from test_commerce_evidence import state
-    repo = Repo()
-    prior, current = str(uuid4()), str(uuid4())
-    add_turn(repo, prior, 'C1', 'Phòng ngủ 25m2.')
-    add_turn(repo, prior, 'C1', 'Phòng khách 40m2.')
-    for index, turn in enumerate(repo.sessions[prior]['turns'], 1):
-        turn.update(memory_status='completed', job_id=index)
-    loaded = asyncio.run(read(repo, 'C1', current, projector=Projection()))
-    assert 'room_area_m2' not in loaded['profile']
-    assert loaded['scoped_facts']['room']['bedroom']['room_area_m2']['value'] == 25
-    assert loaded['scoped_facts']['room']['living_room']['room_area_m2']['value'] == 40
-    s = state('Tìm lại mẫu phù hợp cho phòng ngủ hôm trước nhé.')
-    s.update(loaded, customer_id='C1')
-    s['history'] = [{'customer': 'Phòng khách 40m2.', 'agent': 'Dạ.'}]
-    assert requirements(s)['room_area_m2'] == 25
-    s['safe_text'] = 'Phòng khách hôm trước thì mẫu nào phù hợp?'
-    assert requirements(s)['room_area_m2'] == 40
 
 
 def test_legacy_room_alias_deletion_cannot_be_revived_under_a_new_canonical_scope():

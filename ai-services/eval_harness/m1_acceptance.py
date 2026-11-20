@@ -1,4 +1,3 @@
-"""Read-only M1 conversation evidence checks; never run a model or rescore a run."""
 import argparse
 import json
 from pathlib import Path
@@ -55,7 +54,6 @@ def inspect_dataset(path, *, btc_root):
 
 
 def load_pair(directory, *, btc_root):
-    """Bind the score to the original scenarios, traces, manifests and BTC scorer."""
     directory, btc_root = Path(directory), Path(btc_root)
     run = _read(directory / 'run.json')
     if run.get('status') != 'validated':
@@ -208,7 +206,7 @@ def inspect_run(directory, *, btc_root, extraction_review=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Read-only M1 conversation evidence checks; never run a model or rescore a run.')
     parser.add_argument('kind', choices=('run', 'dataset'))
     parser.add_argument('path', type=Path)
     parser.add_argument('--btc-root', required=True, type=Path)

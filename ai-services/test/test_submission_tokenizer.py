@@ -1,4 +1,3 @@
-"""Pinned setup artifact: no real network or model calls."""
 import hashlib
 import importlib.util
 import io

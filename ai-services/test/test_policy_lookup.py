@@ -1,4 +1,3 @@
-"""Policy grounding and trusted dates remain required while retrieval is unavailable."""
 
 import unittest
 from datetime import date

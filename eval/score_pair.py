@@ -1,4 +1,3 @@
-"""Run BTC's scorer and bind its report to the exact input trace bytes."""
 
 import argparse
 import hashlib

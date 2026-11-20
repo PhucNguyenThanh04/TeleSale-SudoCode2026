@@ -1,4 +1,3 @@
-"""Validate the AI's NDJSON stream before relaying answer deltas."""
 import json
 
 from app.schemas.chat import AITextTurnResponse

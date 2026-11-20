@@ -1,4 +1,3 @@
-"""Typed state for the production one-turn graph."""
 
 from typing import Any, Literal, TypedDict
 
@@ -43,11 +42,11 @@ class TurnState(TypedDict, total=False):
     memory_blocked: bool
     memory_include_prior: bool
     agent_text: str
+    verified_answer: str
     agent_draft: str
+    reply_context: dict[str, Any]
+    reply_error: str | None
     verifier_events: list[dict[str, Any]]
-    consultation: dict[str, Any]
-    consultation_scope: dict[str, Any]
-    followup_kind: str
     policy_order_bindings: dict[int, str | None]
     needs_handoff: bool
     handoff_ticket_id: str | None

@@ -1,4 +1,3 @@
-"""Offline conversation tests: no model, speech inference or database calls."""
 import asyncio
 import json
 from uuid import UUID, uuid4
@@ -338,7 +337,6 @@ async def test_preparation_overlaps_listening_and_first_turn_waits_for_it():
         reply = await browser.until("agent_reply")
         assert reply["session_id"] == prepared[0]["session_id"]
         assert requests[0]["session_id"] == prepared[0]["session_id"]
-        # Actual-turn brief wins over a preliminary opening built without speech.
         assert reply["call_brief"] == {"summary": "old"}
     finally:
         await end_call(browser, http, task)

@@ -1,4 +1,3 @@
-"""Bridge the root loader to the existing AI policy parser and release workflow."""
 import argparse
 import json
 import sys
@@ -8,7 +7,6 @@ from pathlib import Path
 
 
 def _enable_ai_imports():
-    # ai-services is a sibling application, not an installed Python package.
     path = str(Path(__file__).resolve().parents[1] / 'ai-services')
     if path not in sys.path:
         sys.path.insert(0, path)
@@ -23,7 +21,6 @@ def policy_sources(directory, metadata_path=None):
 
 
 def _validate_provider_runtime(config):
-    """Validate local CPU assets and credentials without any API request."""
     from app.configs import get_settings
     from app.mcp_servers.mcp_knowledge.services.embedding import load_tokenizer
     from app.knowledge.schemas import KnowledgeError
@@ -76,7 +73,6 @@ async def _check_prepare_dependencies(config, dsn, source_database_url):
 
 
 async def validate_policy_prepare(*, actor, runtime_config, expected_active, source_database_url=None):
-    """Fail on invalid config/permissions/base before the loader writes source data."""
     _enable_ai_imports()
     from app.knowledge.config import configured_url
     from app.knowledge.repos.postgres import KnowledgeRepo
@@ -101,7 +97,6 @@ async def validate_policy_prepare(*, actor, runtime_config, expected_active, sou
 
 async def prepare_policy(source_dir, *, actor, runtime_config, metadata_path,
                          expected_active, revision_ids):
-    """Explicit encoding/build only; activation remains a separate reviewed action."""
     _enable_ai_imports()
     from app.knowledge.cli import execute
     return await execute(argparse.Namespace(

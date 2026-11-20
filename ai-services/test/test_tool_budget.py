@@ -1,4 +1,3 @@
-"""The model must stop receiving callable tools once its turn budget is spent."""
 
 import asyncio
 from types import SimpleNamespace

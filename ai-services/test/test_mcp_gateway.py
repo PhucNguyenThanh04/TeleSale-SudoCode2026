@@ -1,4 +1,3 @@
-"""MCP discovery and trusted context remain BTC-compatible."""
 
 import asyncio
 import unittest
@@ -12,6 +11,7 @@ from app.mcp_servers.mcp_catalog.tools.handlers import create_server as catalog_
 from app.mcp_servers.mcp_memory.tools.handlers import create_server as memory_server
 from app.mcp_servers.mcp_order.tools.handlers import create_server as order_server
 from btc_data import btc_data_dir
+from write_authorization_fixtures import WRITE_TEST_SECRET, scripted_write_context
 
 
 class FakeRepo:
@@ -109,7 +109,8 @@ class GatewayTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_catalog_and_order_routes_keep_btc_names(self):
         repo = FakeRepo()
-        gateway = MCPGateway(catalog_server(repo), order_server(repo), None)
+        gateway = MCPGateway(catalog_server(repo), order_server(repo, context_secret=WRITE_TEST_SECRET),
+                             None, context_secret=WRITE_TEST_SECRET)
         with patch("app.mcp_servers.mcp_catalog.tools.handlers.service.get_quote", new_callable=AsyncMock) as quote:
             quote.return_value = {"final_price_vnd": 4890000}
             result = await gateway.invoke_trusted("pricing.get_quote", {"sku": "SKU-AP-X",
@@ -121,12 +122,14 @@ class GatewayTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(payload["source_identity"], "0984726714")
         with patch("app.mcp_servers.mcp_order.tools.handlers.service_invoke", new_callable=AsyncMock) as order:
             order.return_value = {"order_id": "OD600001", "status": "created"}
-            created = await gateway.invoke_trusted("order.create", {"sku": "SKU-AP-X",
+            context, args = scripted_write_context('order.create', {"sku": "SKU-AP-X",
                 "on": "2026-10-15", "qty": 1, "price_vnd": 4890000,
-                "payment": "COD", "customer_phone": "0984726714"},
-                "C001", "hotline", "0984726714", "turn-1")
+                "payment": "COD", "customer_phone": "0984726714"}, customer_id='C001')
+            created = await gateway.invoke_trusted("order.create", args,
+                "C001", "hotline", "0984726714", args['operation_key'], write_context=context)
             self.assertEqual(created["order_id"], "OD600001")
-            self.assertEqual(order.await_args.args[2]["operation_key"], "turn-1")
+            self.assertEqual(order.await_args.args[2]["operation_key"], args['operation_key'])
+            self.assertTrue(order.await_args.args[2]['trusted_authorization'])
 
     async def test_crm_routes_to_catalog(self):
         repo = FakeRepo()

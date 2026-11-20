@@ -1,4 +1,3 @@
-"""Smoke test the published speech API: TTS output is fed to VAD + STT."""
 
 import json
 import base64

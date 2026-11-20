@@ -1,4 +1,3 @@
-"""Read-only source/snapshot/index comparison. Never imports or starts a model."""
 from datetime import date, datetime, timezone
 import json
 from pathlib import Path
@@ -24,7 +23,6 @@ def _key(table,row):
 
 
 def _expected_source_rows(release):
-    """Independent column-level expectations, including JSON and parent references."""
     tables = {name:{} for name in KEYS}
     def put(table,row):
         key = _key(table,row)
@@ -55,8 +53,6 @@ def _expected_source_rows(release):
     for c in release['chunks']:
         common=dict(document_id=c.document_id,access_level=c.access_level,
             effective_from=c.effective_from,effective_until=c.effective_until,date_basis=c.date_basis)
-        # The source writer upserts document metadata for each section; retain that
-        # legacy representation while checking chunk-level metadata independently.
         tables['policy_documents'][c.document_id]=common
         put('policy_chunks',dict(common,chunk_id=c.chunk_id,title=c.title,body=c.body,source_hash=c.content_hash))
     return tables
@@ -189,8 +185,6 @@ async def verify_ingestion(database_url, source_dir, *, knowledge_database_url,
         try:
             count=(await client.count(manifest['collection'],exact=True)).count
             report['counts']['qdrant']={'expected':len(expected_chunks),'actual':count}
-            # Compare index against its stored immutable snapshot first. Fresh-source
-            # drift is reported separately rather than silently rewriting a release.
             stored=[SourceChunk.model_validate(c) for c in snapshot]
             await HybridPolicyIndex(client).verify(release,config,chunks=stored)
             report['checks']['index']=True

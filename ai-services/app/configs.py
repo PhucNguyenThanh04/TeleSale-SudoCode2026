@@ -1,4 +1,3 @@
-"""AI service settings loaded from ai-services/.env and process environment."""
 
 from functools import lru_cache
 from pathlib import Path
@@ -86,7 +85,6 @@ class Settings(BaseSettings):
     @field_validator("langfuse_base_url", mode="before")
     @classmethod
     def normalize_optional_langfuse_url(cls, value):
-        """Compose supplies empty strings for unset optional environment values."""
         return None if isinstance(value, str) and not value.strip() else value
 
     @field_validator("timezone")
@@ -113,5 +111,4 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    """Return one validated settings object per process."""
     return Settings()

@@ -1,4 +1,3 @@
-"""Exercise the real model tool boundary with offline HTTP and MCP."""
 import asyncio
 import json
 import re
@@ -136,7 +135,8 @@ def test_runtime_graph_emits_health_and_preserves_canonical_observations():
             return httpx.Response(200, request=request, headers={'content-type':'text/event-stream'},
                 text='data: ' + json.dumps(frame) + '\n\ndata: [DONE]\n\n')
         request = turn('Xin chào')
-        with patch.object(httpx.AsyncClient, 'send', send), capture_diagnostic_events() as events:
+        with patch.object(httpx.AsyncClient, 'send', send), capture_diagnostic_events() as events, patch(
+                'app.agent.harness.agent_nodes.review_answer', AsyncMock(return_value=None)):
             await runtime.run(request)
         assert n == 2
         assert any(c['name']=='catalog.search' for c in runtime.state_for(request)['tool_calls'])

@@ -1,4 +1,3 @@
-"""CRM address terms reach the model independently of a returning-call brief."""
 
 import json
 import unittest

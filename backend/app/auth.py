@@ -1,4 +1,3 @@
-"""Demo accounts are separate from BTC profiles; cookies carry account IDs only."""
 import asyncio
 from datetime import datetime, timedelta, timezone
 
@@ -83,7 +82,6 @@ def bind_start(start, user):
 
 
 async def authenticated_socket(socket, run):
-    """A JWT cannot keep a WebSocket alive beyond its expiration."""
     seconds = socket.state.auth_expires - datetime.now(timezone.utc).timestamp()
     task = asyncio.create_task(run())
     try:
@@ -91,7 +89,6 @@ async def authenticated_socket(socket, run):
         if task in done:
             await task
         else:
-            # Close before cancelling: transport cleanup otherwise sends normal closure.
             await socket.close(code=4401, reason='Login expired')
     finally:
         if not task.done():

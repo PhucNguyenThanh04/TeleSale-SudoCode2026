@@ -1,8 +1,3 @@
-"""Measure catalog.search calls per independent turn with the configured real model.
-
-Only catalog.search is available to this benchmark. Memory stays in process, so
-MCP mode reads the deployed catalog without writing evaluation turns or orders.
-"""
 
 import argparse
 import asyncio
@@ -19,18 +14,17 @@ from uuid import uuid4
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "ai-services"))
 
-from langchain_core.callbacks import BaseCallbackHandler  # noqa: E402
+from langchain_core.callbacks import BaseCallbackHandler
 
-from app.agent.harness.runtime import AgentHarnessRuntime  # noqa: E402
-from app.agent.mcp.gateway import MCPGateway  # noqa: E402
-from app.configs import get_settings  # noqa: E402
-from app.infarstructure.llm import build_llm  # noqa: E402
-from app.mcp_servers.mcp_shared.commerce_rules import _catalog  # noqa: E402
-from app.schemas.agent import TextTurnRequest  # noqa: E402
+from app.agent.harness.runtime import AgentHarnessRuntime
+from app.agent.mcp.gateway import MCPGateway
+from app.configs import get_settings
+from app.infarstructure.llm import build_llm
+from app.mcp_servers.mcp_shared.commerce_rules import _catalog
+from app.schemas.agent import TextTurnRequest
 
 
 def catalog_search_metrics(rows: list[dict]) -> dict:
-    """Summarize actual recorded tool calls, including turns with no search."""
     counts = [sum(call.get("name") == "catalog.search"
                   for call in row.get("tool_calls", [])) for row in rows]
     search_turns = sum(count > 0 for count in counts)
@@ -56,7 +50,6 @@ class _ModelCalls(BaseCallbackHandler):
 
 
 class _TurnMemory:
-    """Enough memory contract for independent single-turn benchmark sessions."""
 
     include_prior = False
 
@@ -159,7 +152,7 @@ async def measure(args: argparse.Namespace) -> dict:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Measure catalog.search calls per independent turn with the configured real model.\n\nOnly catalog.search is available to this benchmark. Memory stays in process, so\nMCP mode reads the deployed catalog without writing evaluation turns or orders.\n')
     parser.add_argument("--text", required=True, help="Synthetic customer question")
     parser.add_argument("--runs", type=int, default=10)
     parser.add_argument("--on", default="2026-10-15")

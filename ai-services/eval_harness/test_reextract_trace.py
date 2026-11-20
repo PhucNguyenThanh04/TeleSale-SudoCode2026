@@ -1,4 +1,3 @@
-"""Offline extraction cannot rewrite conversations or invent missing provenance."""
 from copy import deepcopy
 import json
 import subprocess

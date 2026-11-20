@@ -1,4 +1,3 @@
-"""Bind a chat session to its CRM identity once per runtime instance."""
 
 import hashlib
 import re
@@ -10,7 +9,6 @@ from app.schemas.agent import TextTurnRequest
 
 
 def identity_fingerprint(turn: TextTurnRequest) -> str:
-    """Compare trusted channel bindings without keeping the raw identifier as a key."""
     value = f"{turn.channel}\0{turn.channel_identity or ''}"
     return hashlib.sha256(value.encode()).hexdigest()
 
@@ -23,7 +21,6 @@ def _empty_identity(status: str = "unknown") -> dict[str, Any]:
 
 async def initialize_identity(turn: TextTurnRequest, tools: ToolGateway
                               ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """Fetch CRM details for a new session; tool errors must not bind an unknown owner."""
     if turn.verified_customer_id and turn.verified_phone:
         result = await tools.invoke("crm.get_customer", {"phone": turn.verified_phone})
         if "error" in result:

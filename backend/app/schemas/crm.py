@@ -1,4 +1,3 @@
-"""CRM seed records and identity lookup; a phone can map to multiple customers."""
 
 from datetime import date
 

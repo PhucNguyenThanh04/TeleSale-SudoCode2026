@@ -1,4 +1,3 @@
-"""Optional paid judging of saved answers; Ragas imports remain lazy."""
 import json
 import math
 from importlib.metadata import version

@@ -1,4 +1,3 @@
-"""Claims describe speech, irrespective of whether the tool agrees."""
 import pytest
 from eval_harness.extractor import extract_claims
 

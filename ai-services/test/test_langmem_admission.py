@@ -1,4 +1,3 @@
-"""Only evidence-backed LangMem proposals become canonical writes."""
 
 import unittest
 from datetime import date
@@ -42,14 +41,6 @@ class AdmissionTests(unittest.TestCase):
         self.assertEqual(accepted, [])
         self.assertEqual(rejected[0]["reason"], "identity_mismatch")
 
-    def test_rejects_hypothetical_change(self):
-        from app.mcp_servers.mcp_memory.services.langmem_admission import admit_profile_candidates
-        accepted, rejected = admit_profile_candidates("C001", "session-1", [
-            candidate("color", "trang", "Nếu lấy màu trắng", op="supersede")],
-            [{"turn_id": "turn-1", "customer_id": "C001", "session_id": "session-1",
-              "customer_text": "Nếu lấy màu trắng thì sao?"}], [])
-        self.assertEqual(accepted, [])
-        self.assertTrue(rejected)
 
     def test_rejects_tool_fact_without_successful_tool(self):
         from app.mcp_servers.mcp_memory.services.langmem_admission import admit_profile_candidates

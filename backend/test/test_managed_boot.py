@@ -1,4 +1,3 @@
-"""Gateway waits for its generation; it never resets the shared DB itself."""
 import asyncio
 from contextlib import asynccontextmanager
 from types import SimpleNamespace

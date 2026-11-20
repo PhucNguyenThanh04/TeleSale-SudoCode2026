@@ -1,4 +1,3 @@
-"""Source checks for authored inputs; no agent, network, DB or model execution."""
 from collections import Counter
 from datetime import date
 import hashlib
@@ -97,7 +96,6 @@ def test_customer_channel_persona_and_product_bindings(sid):
 
 @pytest.mark.parametrize('sid', CASES)
 def test_factual_oracles_against_original_btc_tools(sid):
-    """Preserve state between calls, especially the customer's one-use promotion."""
     mock = load_mock()
     scenario, metadata = CASES[sid], REVIEW['scenarios'][sid]
     steps = metadata['oracle_checks']
@@ -157,7 +155,6 @@ def test_no_copied_scenario_or_reused_customer_from_existing_team_set():
         new = shingles(speech(scenario))
         for old in existing + [case for other_id, case in CASES.items() if other_id != sid]:
             known = shingles(speech(old))
-            # A lexical copy screen, not proof of semantic independence.
             overlap = len(new & known) / len(new | known)
             assert overlap < 0.35, (sid, old['scenario_id'], overlap)
         assert len(REVIEW['scenarios'][sid]['novelty']) > 60

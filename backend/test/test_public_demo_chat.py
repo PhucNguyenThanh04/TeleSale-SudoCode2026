@@ -1,4 +1,3 @@
-"""Public BTC simulator keeps explicit channel identity without weakening validation."""
 
 import unittest
 from datetime import date

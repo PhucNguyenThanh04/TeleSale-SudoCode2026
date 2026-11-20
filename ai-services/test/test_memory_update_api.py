@@ -1,4 +1,3 @@
-"""Chat metadata and asynchronous memory reads with offline dependencies."""
 
 import unittest
 

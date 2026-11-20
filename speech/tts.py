@@ -1,9 +1,3 @@
-"""Tạo audio hội thoại từ kịch bản (cùng format ``asr/ground_truth.json`` BTC) bằng edge-tts hoặc ElevenLabs.
-
-Mỗi lượt được đọc bằng giọng theo vai (A = nhân viên, C = khách) và vùng miền/giới tính ghi trong kịch bản,
-rồi ghép với khoảng nghỉ ngẫu nhiên có seed. Đầu ra có ``audio/<id>.segments.json`` (mốc thời gian + người nói)
-để chấm diarization ở M2, và bản sao ``ground_truth.json`` để chấm WER bằng script BTC.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -33,7 +27,6 @@ _VOICE_ID_RE = re.compile(r"^[A-Za-z0-9]{20}$")
 
 
 def credits_per_char(model_id: str) -> float:
-    """Ước tính theo bảng giá ElevenLabs (Flash/Turbo rẻ hơn một nửa); kiểm tra lại trên trang Usage."""
     return 0.5 if model_id in ELEVEN_LANGUAGE_CODE_MODELS else 1.0
 
 
@@ -51,9 +44,6 @@ def resolve_voice(config: dict, engine: str, role: str, region: str | None, gend
     raise KeyError(f"Chưa cấu hình giọng {engine} cho vai {role}, vùng {region}, giới tính {gender} (thử các khóa {keys}).")
 
 
-# ---------------------------------------------------------------------------
-# Engine
-# ---------------------------------------------------------------------------
 
 async def _edge_bytes(text: str, params: dict) -> bytes:
     import edge_tts
@@ -68,7 +58,6 @@ async def _edge_bytes(text: str, params: dict) -> bytes:
 
 
 def _edge(text: str, params: dict) -> np.ndarray:
-    # Dịch vụ edge-tts thỉnh thoảng trả NoAudioReceived ngẫu nhiên với cùng tham số → thử lại vài lần.
     attempts = 6
     for attempt in range(attempts):
         try:
@@ -125,7 +114,7 @@ def _eleven(text: str, params: dict) -> np.ndarray:
 
 
 _VIENEU_MODELS: dict[str, object] = {}
-_VIENEU_CLONES: dict[tuple[str, str], str] = {}  # (mode, sha256 mẫu giọng) → tên giọng đã add_voice
+_VIENEU_CLONES: dict[tuple[str, str], str] = {}
 _VIENEU_INFER_KEYS = ("temperature", "top_k")
 
 
@@ -138,13 +127,6 @@ def file_sha256(path: str | Path) -> str:
 
 
 def _vieneu(text: str, params: dict) -> np.ndarray:
-    """VieNeu-TTS chạy offline trên CPU (pip ``vieneu``; cần Python ≤ 3.13 vì phụ thuộc kaldi-native-fbank).
-
-    Mô hình tự đọc chen tiếng Anh nên không cần bảng ``pronounce``. Audio gốc 24/48 kHz được giải mã lại
-    về 16 kHz bằng cùng bộ resample PyAV như edge-tts để hai nguồn đi qua một đường xử lý giống nhau.
-    ``ref_audio`` (giọng clone): mẫu giọng được ``add_voice`` một lần cho mỗi nội dung file (sha256), không lưu
-    vào thư viện giọng của VieNeu (``save=False``).
-    """
     mode = params.get("mode", "v3turbo")
     if mode not in _VIENEU_MODELS:
         from vieneu import Vieneu
@@ -169,7 +151,6 @@ _MMS_MODELS: dict[str, tuple] = {}
 
 
 def _mms(text: str, params: dict) -> np.ndarray:
-    """Meta MMS-TTS (VITS, 1 giọng, giấy phép CC-BY-NC 4.0). Cần ``torch`` + ``transformers``; không đọc được tiếng Anh."""
     import torch
     from transformers import AutoTokenizer, VitsModel
 
@@ -178,7 +159,6 @@ def _mms(text: str, params: dict) -> np.ndarray:
         _MMS_MODELS[name] = (VitsModel.from_pretrained(name), AutoTokenizer.from_pretrained(name))
     model, tokenizer = _MMS_MODELS[name]
     model.speaking_rate = float(params.get("speaking_rate", 1.0))
-    # VITS dự đoán độ dài ngẫu nhiên → seed theo câu để chạy lại ra cùng audio.
     torch.manual_seed(int(hashlib.sha1(text.encode("utf-8")).hexdigest()[:8], 16))
     with torch.no_grad():
         wav = model(**tokenizer(text, return_tensors="pt")).waveform[0].numpy().astype(np.float32)
@@ -188,7 +168,6 @@ def _mms(text: str, params: dict) -> np.ndarray:
 
 
 def _files(text: str, params: dict) -> np.ndarray:
-    """Clip có sẵn (ElevenLabs tạo thủ công trên web, xem ``manual.py``); ``text`` chỉ để báo cáo."""
     return au.decode(params["path"])
 
 
@@ -196,11 +175,6 @@ ENGINES = {"edge": _edge, "elevenlabs": _eleven, "vieneu": _vieneu, "mms": _mms,
 
 
 def synth_text(text: str, engine: str, params: dict, cache_dir: Path) -> tuple[np.ndarray, bool]:
-    """→ (audio, lấy từ cache?). Cache theo (engine, tham số giọng, câu) để chạy lại không tốn credit.
-
-    Giọng clone được khóa theo sha256 nội dung file mẫu (không theo đường dẫn): thay mẫu giọng thì tạo lại.
-    Engine ``files`` đọc thẳng clip có sẵn, không cache và không tính ký tự mới.
-    """
     if engine == "files":
         return ENGINES[engine](text, params), True
     settings = {k: v for k, v in params.items() if k not in ("key", "name", "note")}
@@ -217,9 +191,6 @@ def synth_text(text: str, engine: str, params: dict, cache_dir: Path) -> tuple[n
     return clip, False
 
 
-# ---------------------------------------------------------------------------
-# Hội thoại
-# ---------------------------------------------------------------------------
 
 def with_full_text(dialogue: dict) -> dict:
     dialogue = copy.deepcopy(dialogue)
@@ -243,13 +214,12 @@ def _turn_params(dialogue: dict, turn: dict, engine: str, config: dict) -> dict:
         return {"key": f"files:{speaker}", "path": path}
     voice_field, region_field, gender_field = VOICE_FIELDS.get(speaker, VOICE_FIELDS["C"])
     team_key = dialogue.get(voice_field)
-    if team_key and team_key in section.get("voices", {}):  # giọng clone của thành viên (tv1–tv3)
+    if team_key and team_key in section.get("voices", {}):
         return {"key": team_key, **section["voices"][team_key], **section.get("roles", {}).get(speaker, {})}
     return resolve_voice(config, engine, speaker, dialogue.get(region_field), dialogue.get(gender_field))
 
 
 def plan(dialogues: list[dict], engine: str, config: dict) -> list[dict]:
-    """Bảng phân giọng + số ký tự cần đọc (để xem trước chi phí trước khi gọi API)."""
     pronounce = config.get(engine, {}).get("pronounce", {})
     rows = []
     for dialogue in dialogues:
@@ -262,7 +232,6 @@ def plan(dialogues: list[dict], engine: str, config: dict) -> list[dict]:
 
 
 def _voice_label(params: dict) -> str:
-    """Nhãn giọng ghi vào manifest; giọng clone chỉ ghi hash mẫu, không ghi đường dẫn/tên người."""
     if params.get("ref_audio"):
         return f"clone-{file_sha256(params['ref_audio'])[:12]}"
     if params.get("path"):
@@ -274,12 +243,6 @@ def synth_dataset(source: dict, out_dir: Path, *, engine: str, config: dict, cac
                   channel: str = "phone", snr_db: float = 10.0, seed: int = 7,
                   noise: np.ndarray | None = None, only: set[str] | None = None, add_noise: bool = True,
                   provenance: dict | None = None) -> dict:
-    """``add_noise=False``: bỏ trộn nhiễu cả với hội thoại ``noisy`` (bản sạch để nghe thử/so sánh).
-
-    ``provenance``: nguồn của dataset (file kịch bản + hash, file nhiễu…) ghi nguyên vào ``manifest.json``.
-    Manifest luôn có ``ground_truth_sha256`` để run ASR ghi lại và ``eval`` kiểm đúng cặp run–dataset;
-    engine ``files`` ghi thêm ``clips`` (thư mục hội thoại/tên file + sha256 từng clip đã dùng).
-    """
     dialogues = [d for d in source["dialogues"] if not only or d["id"] in only]
     rows = plan(dialogues, engine, config)
     noise_scope = source.get("noise_scope", "dialogue")
@@ -338,9 +301,6 @@ def synth_dataset(source: dict, out_dir: Path, *, engine: str, config: dict, cac
     return manifest
 
 
-# ---------------------------------------------------------------------------
-# Liệt kê / thêm giọng
-# ---------------------------------------------------------------------------
 
 def list_edge_voices(locale_prefix: str = "vi-") -> list[dict]:
     import edge_tts

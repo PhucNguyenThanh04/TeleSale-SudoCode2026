@@ -1,8 +1,3 @@
-"""Experimental automatic approval of scoped, source-checked worker proposals.
-
-Lexical relevance and verbatim source checks are conservative filters, not a
-semantic correctness judge. Generated tests never become answer ground truth.
-"""
 import asyncio
 import re
 import time

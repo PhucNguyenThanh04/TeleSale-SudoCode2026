@@ -1,4 +1,3 @@
-"""Export audited evaluation failures; optional explicit ingestion into the gap queue."""
 import argparse
 import asyncio
 from datetime import date, timedelta
@@ -71,7 +70,7 @@ async def ingest(events):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Export audited evaluation failures; optional explicit ingestion into the gap queue.')
     parser.add_argument('--run', required=True, type=Path)
     parser.add_argument('--btc-root', required=True, type=Path)
     parser.add_argument('--out', required=True, type=Path)

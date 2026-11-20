@@ -1,4 +1,3 @@
-"""Eval advances on committed working state; background enrichment drains at call boundary."""
 import asyncio
 from datetime import date
 from types import SimpleNamespace

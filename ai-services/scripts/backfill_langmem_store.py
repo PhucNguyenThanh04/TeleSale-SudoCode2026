@@ -1,4 +1,3 @@
-"""One-time, provenance-filtered migration from legacy customer knowledge."""
 
 import asyncio
 import json
@@ -17,7 +16,6 @@ def _value(value):
 
 async def backfill_customer(repo: MemoryRepo, store: LangMemProjection,
                             customer_id: str) -> dict[str, int]:
-    """Copy only sourced, safe active records; never overwrite new LangMem writes."""
     counts = {"facts": 0, "episodes": 0, "skipped": 0}
     async with repo.transaction() as conn:
         await repo.lock_key(conn, f"erasure:{customer_id}")

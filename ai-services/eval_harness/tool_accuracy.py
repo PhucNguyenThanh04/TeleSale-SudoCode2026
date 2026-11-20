@@ -1,4 +1,3 @@
-"""Offline, explicitly scoped tool-decision accuracy; independent of BTC scores."""
 import argparse
 import hashlib
 import json
@@ -38,7 +37,6 @@ def _contains(expected, actual):
 
 
 def _match(expected, actual):
-    """Maximum bipartite match: broad expectations cannot steal narrow matches."""
     candidates = [[i for i, call in enumerate(actual) if item['name'] == call['name']
                    and _contains(item['args_match'], call['args'])] for item in expected]
     owners = {}
@@ -78,7 +76,6 @@ def score_trace(rows: list[dict], labels: dict) -> dict:
         identities.add(identity)
         indexed[key] = row
     _require(len(identities) == 1, 'trace_mixed_run_or_config')
-    # Reject NaN/Infinity in labels, including when called directly rather than via CLI.
     json.dumps(labels, allow_nan=False)
     results, seen, ids = [], set(), set()
     totals = {'matched': 0, 'missing': 0, 'unexpected': 0}
@@ -159,7 +156,7 @@ def _json(text):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Offline, explicitly scoped tool-decision accuracy; independent of BTC scores.')
     parser.add_argument('--trace', type=Path, required=True)
     parser.add_argument('--labels', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)

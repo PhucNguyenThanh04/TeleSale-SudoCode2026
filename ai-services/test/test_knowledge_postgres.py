@@ -1,4 +1,3 @@
-"""Opt-in checks against an already provisioned, explicitly selected test DB."""
 import os
 import unittest
 from uuid import uuid4
@@ -29,6 +28,5 @@ class KnowledgePostgresTests(unittest.IsolatedAsyncioTestCase):
             async with repo.transaction() as tx:
                 self.assertEqual((await tx.get('events',a['id']))['status'],'pending')
                 self.assertEqual((await tx.get('jobs',a['id']))['status'],'pending')
-            # Retain only the scoped synthetic records; never reset/clean a DB here.
         finally:
             await repo.close()

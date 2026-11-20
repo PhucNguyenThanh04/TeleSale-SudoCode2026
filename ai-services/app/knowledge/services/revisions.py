@@ -1,4 +1,3 @@
-"""Immutable content versions; approvals are tied to exact content and test hashes."""
 import re
 from app.knowledge.events.evidence import safe_text
 from app.knowledge.services.permissions import require_permission
@@ -58,7 +57,6 @@ async def edit_revision(repo, actor_id, revision_id, expected_hash, changes):
             raise Missing('Revision not found')
         if old['content_hash'] != expected_hash:
             raise Conflict('Revision changed')
-        # Published or approved bytes are retained; edits create a new revision.
         return await _draft(tx, actor_id, old['gap_id'], old | changes)
 
 

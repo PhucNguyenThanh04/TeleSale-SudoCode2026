@@ -1,7 +1,3 @@
-"""Single-run BTC text evaluation dashboard (Streamlit + Plotly).
-
-Run from ai-services: streamlit run eval_harness/visualize_benmark.py
-"""
 
 from __future__ import annotations
 

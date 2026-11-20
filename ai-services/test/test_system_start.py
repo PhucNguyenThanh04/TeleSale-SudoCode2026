@@ -1,4 +1,3 @@
-"""Managed startup owns one boot, ahead of every server and eval arm."""
 import asyncio
 from argparse import Namespace
 from contextlib import asynccontextmanager

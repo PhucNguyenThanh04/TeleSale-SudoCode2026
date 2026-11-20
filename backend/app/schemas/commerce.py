@@ -1,4 +1,3 @@
-"""Order and callback tool boundaries owned by the backend."""
 
 import datetime as dt
 from typing import Literal

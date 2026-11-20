@@ -1,4 +1,3 @@
-"""Scoped proposals and recorded reviewer decisions; never approve or publish."""
 import asyncio
 import time
 
@@ -16,7 +15,6 @@ MODE = 'manual_frontend_review'
 
 async def analyze(evidence, sources):
     result = await analyze_event(evidence, sources)
-    # A failed task with evidence already retrieved is not proof of missing knowledge.
     if evidence.get('signal') == 'evaluation_failure' and (
             evidence.get('retrieved_ids') or not any(
                 t['name'] == 'policy.search' for t in evidence['tool_calls'])):
@@ -74,7 +72,6 @@ async def propose(repo, worker_repo, rows, feedback, *, actor, run_id, release_i
 
 
 async def collect_review(repo, proposals, *, actor, run_id, base):
-    """Return only published, source/test/decision-bound revisions from proposed gaps."""
     async with repo.transaction() as tx:
         await require_permission(tx, actor)
         active = (await tx.get('active', 'current') or {}).get('release_id')

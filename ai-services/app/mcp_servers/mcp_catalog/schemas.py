@@ -1,4 +1,3 @@
-"""BTC catalog tool input validation."""
 
 from datetime import date
 from pydantic import BaseModel, Field

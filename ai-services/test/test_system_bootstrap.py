@@ -1,4 +1,3 @@
-"""Only a managed system boot may clear state; BTC is never reset here."""
 import asyncio
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock

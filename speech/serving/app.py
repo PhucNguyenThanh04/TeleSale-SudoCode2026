@@ -1,4 +1,3 @@
-"""Isolated speech API and demo, served only on a chosen loopback port."""
 
 from __future__ import annotations
 
@@ -52,7 +51,6 @@ HOP_HEADERS = {"connection", "keep-alive", "proxy-authenticate", "proxy-authoriz
 
 @app.middleware("http")
 async def public_web_route(request: Request, call_next):
-    """Keep both Cloudflare hostnames on 18110, serving the web via its own backend."""
     if request.url.hostname != "telesale.ktoxz.id.vn":
         return await call_next(request)
     client = httpx.AsyncClient(timeout=httpx.Timeout(120, connect=5))

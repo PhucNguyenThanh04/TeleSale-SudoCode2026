@@ -1,4 +1,3 @@
-"""PostgreSQL persistence. Serialize short lifecycle mutations, never model calls."""
 import json
 from contextlib import asynccontextmanager
 from sqlalchemy import text
@@ -45,7 +44,6 @@ class KnowledgeRepo(Database):
 
 
 class AsyncpgUnitOfWork:
-    """Join the existing memory transaction without a second DB connection."""
     def __init__(self, conn):
         self.conn = conn
 

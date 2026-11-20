@@ -1,4 +1,3 @@
-"""One temporary call: transport orchestration, with agent state owned by harness."""
 
 import asyncio
 import json
@@ -124,7 +123,7 @@ class VoiceCall:
             await self.send("memory_update", turn_id=turn_id, client_msg_id=client_msg_id,
                             memory_update=update, tracking_finished=True)
         except Exception:
-            pass  # The call may have disconnected while the status request finished.
+            pass
 
     async def interrupt(self):
         turn = self.active_turn
@@ -139,8 +138,6 @@ class VoiceCall:
     async def synthesize(self, turn: VoiceTurn, text: str):
         index = 0
         segment = 0
-        # Speak original sentence units so receipts map to verified source text,
-        # even when the speech service expands numbers into Vietnamese words.
         for sentence in re.finditer(r".+?(?:[.!?](?!\d)(?=\s|$)|$)", text, re.DOTALL):
             if not sentence.group().strip():
                 continue
@@ -388,7 +385,6 @@ class VoiceCall:
                 if self.prepare_task is not None and self.prepare_task in done:
                     self.prepare_task.result()
                     self.prepare_task = None
-                # The same input stream stays live across generation and playback.
                 if self.speech_task is not None and self.speech_task in done:
                     try:
                         event = json.loads(self.speech_task.result())
@@ -421,8 +417,6 @@ class VoiceCall:
                 self.active_turn.playback.set()
             if self.tts_task is not None:
                 self.tts_task.cancel()
-            # Let an issued business request finish once; closing a browser is
-            # not authorization to roll it back or issue a replacement request.
             if self.reply_task is not None:
                 if self.active_turn is not None and not self.active_turn.request_started:
                     self.reply_task.cancel()

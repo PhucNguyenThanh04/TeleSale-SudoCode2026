@@ -1,4 +1,3 @@
-"""Wiring for the explicit one-turn LangGraph."""
 
 from datetime import datetime
 from typing import Callable
@@ -19,7 +18,6 @@ def build_graph(llm: BaseChatModel, tools: ToolGateway, memory: MemoryStore,
                 clock: Callable[[], datetime] | None = None,
                 guardrails_enabled: bool = True,
                 nodes: AgentNodes | None = None):
-    """One Deep Agent graph; runtime persists delivered text or voice receipts."""
     nodes = nodes or AgentNodes(llm, tools, memory, max_tool_calls, prompt_history_turns, clock)
     nodes.guardrails_enabled = guardrails_enabled
     graph = StateGraph(TurnState)

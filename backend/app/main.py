@@ -76,7 +76,6 @@ app.include_router(operator_session_router)
 app.include_router(calls_router)
 app.include_router(reference_router)
 
-# Serve the operator console from the same origin as the authenticated API.
 _frontend_dir = Path(__file__).resolve().parents[2] / "frontend"
 if _frontend_dir.is_dir():
     app.mount("/app", StaticFiles(directory=_frontend_dir, html=True), name="operator-console")

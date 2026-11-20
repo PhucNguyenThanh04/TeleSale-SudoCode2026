@@ -1,4 +1,3 @@
-"""Customer erasure spans canonical and projected memory."""
 
 import unittest
 from contextlib import asynccontextmanager

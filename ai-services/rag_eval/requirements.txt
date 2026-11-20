@@ -1,3 +1,1 @@
-# Optional judging dependencies; install after ai-services/requirements.txt.
-# Kept separate so retrieval/replay do not add Ragas to the serving environment.
 ragas==0.4.4

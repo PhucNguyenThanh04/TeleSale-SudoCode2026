@@ -1,12 +1,9 @@
-"""Assemble the small, masked model context for a text turn."""
 
 from app.mcp_servers.mcp_shared.decision_diagnostics import context_checkpoint
 
 
-import asyncio
 import time
 import logging
-import re
 import json
 from datetime import date, datetime
 from uuid import UUID
@@ -15,9 +12,8 @@ from typing import Any, Callable
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agent.guardrails.checks import mask_pii, safe_tool_result
-from app.agent.harness.brief_opening import build_suggested_opening
 from app.agent.memory.store import MemoryStore, memory_error_code
-from app.agent.harness.observability import log_event, log_tool_input, log_tool_output
+from app.agent.harness.observability import log_event
 from app.agent.harness.state import TurnState
 from app.agent.mcp.gateway import ToolGateway
 from app.constants import (PROFILE_SLOT_KEYS,
@@ -54,6 +50,9 @@ def _build_brief_orders(state: TurnState, remembered_order_ids: list[str] | None
 
 
 def prompt_context(state: TurnState, history_turns: int) -> dict[str, Any]:
+    if state.get('tool_failed'):
+        state = {**state, 'history': [], 'profile': {}, 'scoped_facts': {'product': {}, 'room': {}},
+                 'episodes': [], 'current_episode': None, 'call_brief': None, 'session_tool_calls': []}
     on = state['request'].on
     customer_facts, sales_history = _split_facts(state.get("profile", {}), on=on)
     scoped = _safe_scoped_facts(state.get("scoped_facts", {}), on=on)
@@ -91,6 +90,7 @@ def prompt_context(state: TurnState, history_turns: int) -> dict[str, Any]:
     return {
         "on": state["request"].on.isoformat(),
         "input_mode": state["request"].input_mode,
+        "memory_available": not state.get("tool_failed", False),
         "identity_status": state["identity_status"],
         "honorific": (state.get("honorific") if state["identity_status"] == "known"
                       and state.get("customer_id") else None),
@@ -108,7 +108,6 @@ def prompt_context(state: TurnState, history_turns: int) -> dict[str, Any]:
 
 
 def prompt_messages(context: dict[str, Any]) -> list[HumanMessage | AIMessage]:
-    """Give same-session turns their actual conversation roles."""
     metadata = {key: value for key, value in context.items()
                 if key not in {"session_history", "customer_text"}}
     messages: list[HumanMessage | AIMessage] = [HumanMessage(
@@ -135,7 +134,6 @@ def _uuid_fact_source(value: Any) -> bool:
 
 
 def _split_facts(profile: dict[str, Any], *, on: date | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Keep customer-stated limits separate from prices and actions by the shop."""
     sales_keys = TOOL_ONLY_SLOT_KEYS | {Slot.PRODUCT_ADVISED}
     customer, sales = {}, {}
     for key, fact in profile.items():
@@ -223,8 +221,8 @@ def _mask_context(value: Any, path: tuple[str, ...] = ()) -> Any:
     if isinstance(value, list):
         return [_mask_context(item, (*path, '[]')) for item in value]
     if isinstance(value, dict):
-        from app.schemas.consultation import mask_consultation
-        return {key: mask_consultation(item) if key=='consultation' else _mask_context(item, (*path, key)) for key, item in value.items()}
+        return {key: _mask_context(item, (*path, key)) for key, item in value.items()
+                if key not in {'consultation', 'offer_candidates', 'basket_offers'}}
     return value
 
 
@@ -289,7 +287,6 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
         memory.read_context(session_id, customer_id, **read_kwargs)))
     if "error" in context:
         return failed("memory.read", context.get("error"))
-    # Prefer richer in-process observations; recover missing committed reads after a restart.
     session_calls = list(state.get('session_tool_calls', []))
     existing = {str(call['source_turn_id']) for call in session_calls if call.get('source_turn_id')}
     session_calls.extend(call for call in context.get('session_tool_calls', [])
@@ -325,7 +322,6 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
                         for item in state.get("crm_sessions", [])
                         if isinstance(item, dict) and all(k in item for k in
                             ("session_id", "channel", "date", "summary")))
-    # Prefer the memory summary over CRM when both describe the same session.
     unique_episodes = {}
     for item in episodes:
         key = str(item["session_id"])
@@ -339,122 +335,18 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
         episodes = []
         prior_ids = set()
     prior_ids.discard(session_id)
-    first_turn = (context.get("turn_count", 0) == 0 or
-                  ("current_episode" in context and context["current_episode"] is None))
     create_brief = (bool(episodes) and bool(state.get("customer_phone"))
                     and state.get("identity_status") == "known")
-    fresh_calls = []
     warnings = []
     safe_customer, safe_sales = _split_facts(profile, on=state['request'].on)
     profile = {**safe_customer, **safe_sales}
     advised = safe_sales.get(Slot.PRODUCT_ADVISED, {}).get("value")
     scoped_products = scoped_facts["product"]
-    requested_skus = [sku for sku in scoped_products
-                      if sku.casefold() in state.get("safe_text", "").casefold()]
-    if requested_skus:
-        candidate_skus = list(requested_skus)
-    else:
-        def _sku_recency(sku: str) -> str:
-            facts = scoped_products.get(sku, {})
-            dates = [str(f.get("on", "")) for f in facts.values()
-                     if isinstance(f, dict) and f.get("on")]
-            return max(dates) if dates else ""
-        ordered_scoped = sorted(scoped_products.keys(), key=_sku_recency, reverse=True)
-        candidate_skus = ordered_scoped + ([advised] if isinstance(advised, str)
-                                           and advised not in scoped_products else [])
-    candidate_skus = list(dict.fromkeys(candidate_skus))
-    from app.mcp_servers.mcp_shared.consultation import derive_consultation
-    consultation = derive_consultation({**state, 'history': history, 'profile': profile,
-        'scoped_facts': scoped_facts, 'episodes': episodes, 'current_episode': current_episode})
-    focused = consultation.focus_sku
-    # Refresh a sourced focus, or the sole historical candidate. Shortlisting is
-    # handled by BusinessTools within its budget, never a memory-list position.
-    refresh_skus = [focused] if focused else candidate_skus if len(candidate_skus) == 1 else []
-    skipped_skus = [sku for sku in candidate_skus if sku not in refresh_skus]
     quotes_by_sku = {call['args']['sku']: call['result']
         for call in build_commerce_evidence(state)
         if call.get('name') == 'pricing.get_quote' and isinstance(call.get('args', {}).get('sku'), str)
         and type(call['result'].get('final_price_vnd')) is int
         and isinstance(call['result'].get('applied_promos'), list)}
-    freshness_request = bool(re.search(
-        r"(?i)giá|khuyến mãi|tồn kho|còn hàng|bao nhiêu|giảm giá|ưu đãi",
-        state.get("safe_text") or state["request"].text))
-    should_refresh = (create_brief and first_turn) or (episodes and freshness_request)
-
-    async def _invoke_refresh(name: str, args: dict[str, Any]) -> dict[str, Any]:
-        log_event(state, "retrieve_context", "refresh_invoking", tool=name)
-        log_tool_input("retrieve_context", name, args)
-        try:
-            if hasattr(tools, "invoke_trusted"):
-                res = await tools.invoke_trusted(
-                    name, args, customer_id,
-                    state["request"].channel, state["request"].channel_identity)
-            else:
-                res = await tools.invoke(name, args)
-        except Exception:
-            res = {"error": "tool_error"}
-        if not isinstance(res, dict):
-            res = {"error": "invalid_tool_result"}
-        log_event(state, "retrieve_context", "refresh_result", tool=name,
-                  success="error" not in res)
-        log_tool_output(state, "retrieve_context", name, res)
-        return res
-
-    async def _refresh_one_sku(refresh_sku: str):
-        inv_args = {"sku": refresh_sku, "on": state["request"].on.isoformat()}
-        quote_args = {
-            "sku": refresh_sku, "on": state["request"].on.isoformat(),
-            **({"customer_phone": state["customer_phone"]}
-               if state.get("customer_phone") else {}),
-        }
-        from app.mcp_servers.mcp_shared.commerce_evidence import build_commerce_evidence
-        valid = build_commerce_evidence(state, args={'sku': refresh_sku, 'qty': 1})
-        async def read_needed(name, args):
-            existing = next((c for c in reversed(valid) if c['name'] == name), None)
-            return (existing['result'], False) if existing else (await _invoke_refresh(name, args), True)
-        (stock_res, stock_new), (quote_res, quote_new) = await asyncio.gather(
-            read_needed('inventory.check', inv_args), read_needed('pricing.get_quote', quote_args))
-        return refresh_sku, inv_args, stock_res, quote_args, quote_res, stock_new, quote_new
-
-    if should_refresh and refresh_skus:
-        refresh_results = await asyncio.gather(
-            *(_refresh_one_sku(sku) for sku in refresh_skus))
-    else:
-        refresh_results = []
-
-    for refresh_sku, inv_args, stock, quote_args, quote, stock_new, quote_new in refresh_results:
-        if stock_new:fresh_calls.append({'name': 'inventory.check', 'args': inv_args, 'result': stock})
-        if quote_new:fresh_calls.append({'name': 'pricing.get_quote', 'args': quote_args, 'result': quote})
-        history_facts = scoped_products.get(refresh_sku, safe_sales)
-        if (isinstance(quote, dict) and "error" not in quote
-                and type(quote.get("final_price_vnd")) is int
-                and isinstance(quote.get("applied_promos"), list)
-                and quote.get("sku", refresh_sku) == refresh_sku):
-            quotes_by_sku[refresh_sku] = quote
-        if stock.get("discontinued") is True:
-            succ = stock.get("successor_sku")
-            if isinstance(succ, str) and succ:
-                warnings.append(
-                    f"{refresh_sku}: Sản phẩm đã hết hàng và ngừng kinh doanh; gợi ý mẫu thay thế {succ}.")
-            else:
-                warnings.append(
-                    f"{refresh_sku}: Sản phẩm đã hết hàng và ngừng kinh doanh; cần tư vấn lại.")
-        elif stock.get("in_stock") is False:
-            warnings.append(f"{refresh_sku}: Sản phẩm đã hết hàng; cần tư vấn lại.")
-        elif "error" in stock:
-            warnings.append(f"{refresh_sku}: Chưa kiểm tra được tồn kho hiện tại.")
-        old_price = history_facts.get(Slot.PRICE_QUOTED_VND, {}).get("value")
-        if old_price is not None and quote.get("final_price_vnd") != old_price:
-            warnings.append(f"{refresh_sku}: Giá hiện tại khác báo giá cũ hoặc chưa xác minh được.")
-        old_promo = history_facts.get(Slot.PROMO_CODE, {}).get("value")
-        if old_promo and refresh_sku in quotes_by_sku and old_promo not in {
-            promo.get("promo_code") for promo in quote.get("applied_promos", [])}:
-            warnings.append(f"{refresh_sku}: Khuyến mãi cũ không còn được áp dụng.")
-        elif old_promo and refresh_sku not in quotes_by_sku:
-            warnings.append(f"{refresh_sku}: Chưa kiểm tra được khuyến mãi hiện tại.")
-    if should_refresh and skipped_skus:
-        warnings.append(
-            f"Chưa làm mới tự động cho {', '.join(skipped_skus)}; cần kiểm tra lại khi khách hỏi.")
     brief = None
     if create_brief:
         last = episodes[0]
@@ -498,28 +390,12 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
             product = {"sku": advised, "promo_code": safe_sales.get(Slot.PROMO_CODE, {}).get("value")}
             product.update(_quoted_product_fields(safe_sales))
             advised_products.append(product)
-        # The canonical snapshot can already reflect later advice while the
-        # independent fact projection still contains only an earlier product.
-        snapshot = consultation.snapshot
-        recommended_ref = snapshot.source_refs.get('recommended_sku')
-        selected_ref = snapshot.source_refs.get('selected_sku')
-        recommended = (snapshot.recommended_sku if recommended_ref
-                       and recommended_ref.source_kind == 'agent' else None)
-        selected = (snapshot.selected_sku if selected_ref
-                    and selected_ref.source_kind == 'customer' else None)
-        discussed = {product['sku'] for product in advised_products}
-        for sku in (recommended, selected):
-            if sku and sku not in discussed:
-                advised_products.append({'sku': sku})
-                discussed.add(sku)
         known_slots = set(safe_customer) | set(safe_sales)
         for groups in scoped_facts.values():
             for facts in groups.values():
                 known_slots.update(facts)
-        if advised_products and not refresh_skus:
+        if any(product["sku"] not in quotes_by_sku for product in advised_products):
             warnings.append("Chưa kiểm tra lại giá, khuyến mãi và tồn kho của các sản phẩm đã tư vấn.")
-        next_action = ("Kiểm lại giá hoặc khuyến mãi trước khi tư vấn tiếp." if warnings
-                       else "Tiếp tục tư vấn theo nhu cầu đã ghi nhận.")
         structured_blockers = _open_episode_items(episodes, "blocker")
         resolved_any = any(
             isinstance(ep, dict) and bool(ep.get("resolved_prior_items"))
@@ -530,16 +406,6 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
                          if (Slot.BLOCKER in safe_customer and not resolved_any) else [])
         brief_orders = _build_brief_orders(
             state, context.get("owned_order_ids", []), profile, scoped_products)
-        opening = build_suggested_opening(
-            honorific=state.get("honorific"),
-            customer_name=state.get("customer_name"),
-            last_session=last,
-            requested_skus=requested_skus,
-            advised_products=advised_products,
-            recommended_sku=recommended,
-            selected_sku=selected,
-            open_blockers=open_blockers,
-        )
         brief = CallBrief(
             customer_phone=state["customer_phone"], customer_name=state.get("customer_name"),
             honorific=state.get("honorific"), is_returning=True,
@@ -548,14 +414,13 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
                           "channel": last["channel"], "summary": last["summary"],
                           "outcome": last["outcome"]},
             products_advised=advised_products,
-            recommended_sku=recommended,
-            selected_sku=selected,
+
             orders=brief_orders,
             open_blockers=open_blockers,
             open_questions=_open_episode_items(episodes, "question"),
             must_not_ask=sorted(known_slots & PROFILE_SLOT_KEYS),
-            suggested_opening=opening,
-            suggested_next_action=next_action,
+            suggested_opening="",
+            suggested_next_action=None,
             generated_at=clock(),
             latency_ms=int((time.perf_counter() - state["received_at_monotonic"]) * 1000),
             profile_facts={**{key: value["value"] for key, value in safe_customer.items()},
@@ -575,5 +440,5 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
             "episodes": episodes, "current_episode": current_episode,
             "call_brief": brief,
             "remembered_order_ids": context.get("owned_order_ids", []),
-            "tool_calls": [*state.get("tool_calls", []), *fresh_calls],
+            "tool_calls": list(state.get("tool_calls", [])),
         "turn_no": context.get("turn_count", len(history)) + 1}

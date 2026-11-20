@@ -1,4 +1,3 @@
-"""Order, callback and handoff decisions independent of MCP and SQL transport."""
 
 import hashlib
 import json
@@ -6,6 +5,8 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from app.mcp_servers.mcp_shared.commerce_rules import HOLIDAYS, _delivery, _inventory, _parent, quote, quote_order
+from app.mcp_servers.mcp_order.write_authorization import (
+    WRITE_TOOLS, normalized_write, verify_write_authorization)
 
 
 async def _identity(repo, session, args: dict) -> tuple[str | None, str | None]:
@@ -141,6 +142,8 @@ async def callback(repo, session, args: dict, phone: str,
         moment = datetime.fromisoformat(args["callback_at"])
     except (KeyError, ValueError):
         return {"error": "invalid_callback_at"}
+    zone = ZoneInfo(timezone_name)
+    moment = moment.astimezone(zone) if moment.tzinfo else moment.replace(tzinfo=zone)
     moved = False
     while moment.date().isoformat() in HOLIDAYS or (moment.weekday() == 6 and not 9 <= moment.hour < 18):
         moment += timedelta(days=1)
@@ -149,8 +152,10 @@ async def callback(repo, session, args: dict, phone: str,
     if not 8 <= moment.hour < 21:
         moment = moment.replace(hour=8, minute=0)
         moved = True
-    stored = moment if moment.tzinfo else moment.replace(tzinfo=ZoneInfo(timezone_name))
-    number = await repo.insert_callback(session, phone, stored, args.get("note"))
+    if moved:
+        return {'error': 'callback_reschedule_required',
+                'proposed_callback_at': moment.isoformat(timespec='minutes')}
+    number = await repo.insert_callback(session, phone, moment, args.get("note"))
     return {"callback_id": f"CB{number:04d}", "customer_phone": phone,
             "callback_at": moment.isoformat(timespec="minutes"),
             "moved_from": args["callback_at"] if moved else None, "note": args.get("note")}
@@ -182,17 +187,27 @@ async def handoff(repo, session, args: dict, customer_id: str | None, phone: str
 
 
 async def invoke(repo, name: str, args: dict,
-                 timezone_name: str = "Asia/Ho_Chi_Minh") -> dict:
+                 timezone_name: str = "Asia/Ho_Chi_Minh", *,
+                 context_secret: str | None = None) -> dict:
     functions = {"order.create": create, "order.status": status, "order.update": update,
                  "schedule.callback": callback, "handoff.transfer": handoff}
     if name not in functions:
         return {"error": "unknown_tool"}
+    context = None
+    if name in WRITE_TOOLS:
+        try:
+            context = verify_write_authorization(name, args, context_secret)
+            args = normalized_write(name, args)
+        except PermissionError:
+            return {'error': 'write_authorization_required'}
     key = args.get("operation_key")
     clean = {k: v for k, v in args.items() if k != "operation_key"}
     digest = hashlib.sha256(json.dumps(clean, sort_keys=True, ensure_ascii=False,
                                        default=str).encode()).hexdigest()
     async with repo.transaction() as session:
         customer_id, phone = await _identity(repo, session, args)
+        if context is not None and context.customer_id != customer_id:
+            return {'error': 'identity_changed'}
         if name != "handoff.transfer" and not customer_id:
             return {"error": "identity_required"}
         if name in {"order.create", "order.update"}:

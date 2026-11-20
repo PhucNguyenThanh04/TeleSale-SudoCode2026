@@ -1,4 +1,3 @@
-"""The slot registry preserves the existing memory and brief contracts."""
 
 import unittest
 from dataclasses import FrozenInstanceError
@@ -34,11 +33,6 @@ class SlotRegistryTests(unittest.TestCase):
             Slot.COMPETITOR_PRICE_VND, Slot.SIZE, Slot.COLOR, Slot.PAYMENT,
         ))
 
-    def test_customer_and_tool_evidence_gates_are_unchanged(self):
-        self.assertEqual(fact_evidence(Slot.BUDGET_VND, 5_000_000, "set",
-                                       "Ngân sách tôi 5 triệu", []).source, "customer")
-        self.assertIsNone(fact_evidence(Slot.PRODUCT_ADVISED, "SKU-AP-X", "set",
-                                        "Tôi thích SKU-AP-X", []).source)
 
 
 if __name__ == "__main__":

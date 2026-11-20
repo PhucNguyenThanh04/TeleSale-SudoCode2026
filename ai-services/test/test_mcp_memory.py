@@ -1,4 +1,3 @@
-"""LangMem turn persistence, session history and replay checks."""
 
 import unittest
 from contextlib import asynccontextmanager

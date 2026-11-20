@@ -1,4 +1,3 @@
-"""Eligible supplements derived from currently authorized source rows."""
 from app.knowledge.schemas import Conflict, KnowledgeError, Missing, digest
 from app.knowledge.services.source_validation import applicable, validate_sources
 from app.knowledge.context import BASE_ONLY

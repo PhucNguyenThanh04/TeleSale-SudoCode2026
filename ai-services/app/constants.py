@@ -1,4 +1,3 @@
-"""Shared non-policy limits for the AI service and MCP catalog."""
 
 from dataclasses import dataclass
 from typing import Literal
@@ -34,7 +33,6 @@ class Slot:
 
 @dataclass(frozen=True)
 class SlotSpec:
-    """One slot's declared contract; admission rules remain in fact_evidence."""
 
     key: str
     value_type: type | tuple[type, ...]
@@ -49,8 +47,6 @@ class SlotSpec:
     value_format: Literal["plain", "date"] = "plain"
 
 
-# Keep brief-marked entries in their existing display order. Value types/domains
-# are enforced by fact_evidence; supersede remains descriptive metadata.
 SLOT_REGISTRY = (
     SlotSpec(Slot.ROOM_AREA_M2, int, "customer", brief_must_not_ask=True,
              value_domain="closed"),

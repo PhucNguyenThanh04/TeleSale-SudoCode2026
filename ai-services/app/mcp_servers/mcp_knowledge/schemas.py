@@ -1,4 +1,3 @@
-"""MCP request, trusted context, response and serving configuration contracts."""
 from datetime import date
 from pathlib import Path
 from typing import Literal

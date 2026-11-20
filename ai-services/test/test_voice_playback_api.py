@@ -1,4 +1,3 @@
-"""Playback receipts are an authenticated backend-only operation."""
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch

@@ -1,4 +1,3 @@
-"""Reproducible B0/B1/B2 experiments; labels are used only by offline scoring."""
 from __future__ import annotations
 
 import hashlib

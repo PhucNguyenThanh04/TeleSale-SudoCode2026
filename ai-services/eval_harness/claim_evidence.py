@@ -1,4 +1,3 @@
-"""Conservative explanations of BTC mismatches; never changes claims or scores."""
 from copy import deepcopy
 
 from app.agent.guardrails.checks import check_answer
@@ -14,12 +13,10 @@ def explain_claim_mismatch(row: dict, field: str, value, *, on: str,
     text = claims[0].get('text')
     if not text:
         return unresolved
-    # The caller may supply earlier reads from this same scenario/call only.
     calls = [*(context_calls or []), *row.get('tool_calls', [])]
     named = resolve_claim_skus(text, calls)
     quotes = [c for c in calls if c.get('name') == 'pricing.get_quote'
               and (not named or c.get('args', {}).get('sku') in named)]
-    # Repeated identical reads are harmless; competing quotes are ambiguous.
     distinct = []
     for quote in quotes:
         normalized = {**quote, 'args': {'qty': 1, **quote.get('args', {})}}
@@ -39,7 +36,6 @@ def explain_claim_mismatch(row: dict, field: str, value, *, on: str,
     else:
         if value is not True:
             return unresolved
-        # An expired applied-promo receipt cannot support a current benefit.
         current = deepcopy(quote)
         current['result']['applied_promos'] = [p for p in result.get('applied_promos', [])
             if not p.get('valid_until') or p['valid_until'] >= on]

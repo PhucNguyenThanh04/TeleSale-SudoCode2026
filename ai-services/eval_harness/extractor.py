@@ -1,8 +1,3 @@
-"""Trace Extractor Engine for AI TeleSale SudoCode 2026.
-
-Extracts questions, claims, and facts used from agent outputs and turn state
-to construct standardized evaluation traces adhering to BTC schema.
-"""
 
 from __future__ import annotations
 
@@ -10,7 +5,6 @@ import re
 from typing import Any
 
 def _money_claims(text: str) -> list[tuple[int, str, bool]]:
-    """Eval-local amounts: runtime guardrail behavior is deliberately independent."""
     text = re.sub(r"(?<!\w)(\d+)\s*(?:triệu|tr)(\d{1,3})(?!\w)",
                   lambda m: str(int(m[1]) * 1000000 + int(m[2]) * 10 ** (6 - len(m[2]))) + "đ", text, flags=re.I)
     result = []
@@ -36,7 +30,6 @@ def _is_inspection_narrative(text: str) -> bool:
         r"\s*(?:dạ[,]?\s*)?(?:em|tôi|shop) (?:sẽ|đang) (?:kiểm tra|xem|tìm hiểu)\b", text, re.I))
 
 
-# Question detection patterns
 CONFIRM_PATTERNS = [
     re.compile(r"(đúng không|phải không|có phải|chuẩn chưa|đúng chưa|xác nhận lại)\b", re.IGNORECASE),
     re.compile(r"^dạ anh/chị chọn .*, đúng không ạ", re.IGNORECASE),
@@ -61,7 +54,6 @@ SLOT_QUESTION_PATTERNS = [
     ("customer_name", re.compile(r"(tên là gì|xin phép gọi anh/chị là|tên của anh/chị)", re.IGNORECASE)),
 ]
 
-# Claims extraction patterns
 HUMAN_CLAIM_PATTERNS = [
     re.compile(r"(em là người thật|tôi là người thật|không phải ai|không phải bot|người thật nói chuyện)", re.IGNORECASE),
 ]
@@ -101,8 +93,6 @@ def numeric_text(text):
 
 def _question_candidates(agent_text: str) -> list[dict]:
     candidates = []
-    # Keep lists inside a request intact; discard comma-separated context only
-    # before the first request. Numeric punctuation is not a sentence boundary.
     for sentence in re.split(r"(?<=[?!;\n])\s*|(?<!\d)\.(?!\d)\s*", agent_text):
         sentence = sentence.strip(" *#-\n")
         if not sentence:
@@ -131,7 +121,6 @@ def _question_candidates(agent_text: str) -> list[dict]:
         target = sentence
         if request:
             before = sentence[:request.start()]
-            # The request's own noun phrase precedes the interrogative.
             if "," in before and not any(p.search(before.split(",")[-1]) for p in CONFIRM_PATTERNS):
                 target = sentence[before.rfind(",") + 1:].strip()
                 if any(p.search(target) for p in CONFIRM_PATTERNS) and not any(p.search(target) for _, p in SLOT_QUESTION_PATTERNS):
@@ -176,7 +165,6 @@ def _question_candidates(agent_text: str) -> list[dict]:
 
 
 def _policy_version_projections(clause: str) -> list[dict]:
-    """Preserve replacement roles instead of treating every mentioned version as current."""
     versions = list(re.finditer(r"\b20\d{2}-\d{2}\b(?!-\d)", clause))
     if not versions or not re.search(r"chính sách|phiên bản|bản cũ|thay thế|hiện.*(?:dùng|áp dụng)|trước đây.*dùng", clause, re.I):
         return []
@@ -199,25 +187,21 @@ def _policy_version_projections(clause: str) -> list[dict]:
 
 
 def _claim_projections(agent_text: str, tool_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Extract verifiable factual claims from agent text and tool calls."""
     claims = []
     if not agent_text:
         agent_text = ""
 
-    # A self-assertion is different from questions, quotations or reported speech.
     for clause in re.split(r"[.!?;\n]", agent_text):
         if not clause.strip() or any(c in clause for c in ('“', '”', '"', '«')):
             continue
         if re.search(r"phải không|đúng không|khách (?:hỏi|nói)|nếu|không (?:phải )?(?:là )?người thật", clause, re.I):
             continue
-        # The question mark belongs to the complete sentence, not the split clause.
         if clause.strip() + "?" in agent_text or re.search(re.escape(clause.strip()) + r"\s*\?", agent_text):
             continue
         if re.search(r"(?:em|tôi|mình)\s+(?:là người thật|không phải (?:là )?(?:ai|bot)\b)", clause, re.I):
             claims.append({"field": "is_human", "value": True, "text": clause.strip()})
             break
 
-    # Only speech supplies claims. Tools never repair or invent their truth.
     for clause in re.split(r"\.(?!\d)|[!;\n]|\bnhưng\b|,\s*(?!\d)", agent_text):
         if "?" in clause or re.search(r"\bnếu\b|phải không|đúng không", clause, re.I):
             continue
@@ -228,8 +212,6 @@ def _claim_projections(agent_text: str, tool_calls: list[dict[str, Any]]) -> lis
             if re.search(r"không (?:phải|có)\s+(?:là\s+)?(?:giá|\d)", priced, re.I):
                 priced = ""
             priced = numeric_text(priced)
-            # Remove only the attributed budget amount, preserving any selling
-            # price before or after it in the same clause.
             priced = re.sub(
                 r'\b(?:ngân sách|mức chi)\s+(?:của\s+(?:anh|chị|mình|bạn)\s+)?'
                 r'(?:(?:tầm|khoảng|tối đa|là|chỉ)\s+)*'
@@ -253,7 +235,6 @@ def _claim_projections(agent_text: str, tool_calls: list[dict[str, Any]]) -> lis
             claims.extend({"field": field, "value": not inactive, "source": "text", "text": clause.strip()}
                           for field in fields)
 
-    # Stock statements have the same polarity/time boundary as offer claims.
     for clause in re.split(r"\.(?!\d)|[!;\n]|\bnhưng\b|,\s*(?!\d)", agent_text):
         if "?" in clause or re.search(r"\bnếu\b", clause, re.I):
             continue
@@ -268,7 +249,6 @@ def _claim_projections(agent_text: str, tool_calls: list[dict[str, Any]]) -> lis
     if "ngừng bán" in lower_text:
         claims.append({"field": "product_status", "value": "discontinued", "source": "text"})
 
-    # Policy facts use BTC field names. Only explicit, unconditional speech counts.
     for clause in re.split(r"\.(?!\d)|[!;\n]|,\s*(?!\d)", agent_text):
         if "?" in clause or re.search(r"\bnếu\b|phải không|đúng không", clause, re.I):
             continue
@@ -311,13 +291,10 @@ def _candidate(kind: str, text: str, *, projection: dict | None = None,
 
 def _claim_clauses(text: str):
     for sentence in re.split(r"\.(?!\d)|[!;\n]|\bnhưng\b", text):
-        # A leading if-clause governs the consequent across its comma.
         if re.match(r"\s*(?:nếu|lần (?:đổi )?đầu|từ lần đổi)", sentence, re.I):
             yield sentence
             continue
         for clause in re.split(r",\s*(?!\d)", sentence):
-            # Explicit independent predicates, not product lists. Keep temporal
-            # and conditional scopes together rather than invent an inheritance.
             if re.search(r"\bnếu\b|lần trước|trước đây|chính sách cũ", clause, re.I):
                 yield clause
             else:
@@ -326,8 +303,6 @@ def _claim_clauses(text: str):
 
 def _claim_candidates(agent_text: str) -> list[dict]:
     candidates = []
-    # Clause-local extraction prevents conditions/negation leaking to a separate
-    # assertion. Commas inside amounts and periods inside numbers are retained.
     for clause in _claim_clauses(agent_text):
         clause = clause.strip(" *#-")
         if not clause:
@@ -337,7 +312,6 @@ def _claim_candidates(agent_text: str) -> list[dict]:
         if not factual:
             continue
         if "?" in clause or re.search(r"phải không|đúng không", clause, re.I):
-            # The question candidate represents this request; it is not also an assertion.
             continue
         if re.search(r'[“”"«»]|khách (?:nói|hỏi)', clause, re.I):
             candidates.append(_candidate("claim", clause, disposition="excluded", reason="reported_speech"))
@@ -401,7 +375,6 @@ def _claim_candidates(agent_text: str) -> list[dict]:
 
 
 def extract_detailed(agent_text: str) -> dict:
-    """Speech-only extraction. IDs/context/truth are attached by callers later."""
     candidates = _question_candidates(agent_text) + _claim_candidates(agent_text)
     for index, candidate in enumerate(candidates):
         candidate["candidate_id"] = f"{candidate['kind']}-{index}"
@@ -415,7 +388,6 @@ def extract_questions(agent_text: str) -> list[dict[str, Any]]:
 
 
 def extract_claims(agent_text: str, tool_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    # Retained argument for callers; business observations never rewrite speech.
     return extract_detailed(agent_text)["claims"]
 
 
@@ -431,7 +403,6 @@ def build_trace_row(
     latency_ms: float,
     call_brief_latency_ms: float | None = None,
 ) -> dict[str, Any]:
-    """Construct one trace row matching BTC reference_eval structure."""
     annotations = extract_detailed(agent_text)
     questions = annotations["questions"]
     claims = annotations["claims"]
@@ -449,7 +420,7 @@ def build_trace_row(
         "claims": claims,
         "latency": {
             "total_ms": round(latency_ms, 1),
-            "ttft_ms": round(latency_ms, 1),  # non-streaming total
+            "ttft_ms": round(latency_ms, 1),
         },
         "call_brief_latency_ms": round(call_brief_latency_ms, 1) if call_brief_latency_ms else None,
     }

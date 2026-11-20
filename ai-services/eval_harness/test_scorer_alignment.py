@@ -1,4 +1,3 @@
-"""Synthetic contracts shared with the current BTC scorer; no model or real traces."""
 import importlib.util
 from pathlib import Path
 

@@ -1,4 +1,3 @@
-"""Transcript eval exercises the same runtime lifecycle as the deployed voice API."""
 import asyncio
 from datetime import date
 from pathlib import Path

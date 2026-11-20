@@ -1,4 +1,3 @@
-"""Hybrid vectors and safe BTC inspection payloads; PostgreSQL owns serving content."""
 from dataclasses import dataclass
 import uuid
 import math
@@ -24,8 +23,6 @@ def _payload(release, chunk, config):
         'chunk_id', 'section_id', 'document_id', 'access_level', 'source_hash', 'content_hash',
         'supplement', 'evidence_type', 'date_basis', 'effective_from', 'effective_until',
         'required_context', 'required_links', 'rules', 'conflict', 'transformation'})
-    # Only the safe BTC corpus is copied for inspection. Customer-derived text stays
-    # in PostgreSQL, where the existing erasure transaction can redact it completely.
     return metadata | {
         'release_id': release['id'], 'model_fingerprint': config.fingerprint(),
         'lexical_fingerprint': release['manifest'].get('bm25', {}).get('hash'),
@@ -56,7 +53,6 @@ class HybridPolicyIndex:
             await self.client.upsert(name, points=points, wait=True)
 
     async def refresh_payloads(self, release, chunks, *, config):
-        """Refresh inspection copies from the immutable snapshot without re-encoding."""
         chunks = list(chunks)
         snapshot = sorted([c.model_dump(mode='json') for c in chunks], key=lambda row:row['chunk_id'])
         if digest(snapshot) != release['manifest'].get('snapshot_hash'):
@@ -91,7 +87,6 @@ class HybridPolicyIndex:
             raise ValueError('Dense index schema mismatch')
         if vectors['dense'].distance != models.Distance.COSINE or 'sparse' not in (info.config.params.sparse_vectors or {}):
             raise ValueError('Hybrid index schema mismatch')
-        # Local Qdrant has a single logical store and reports shard_number=None.
         if info.config.params.sparse_vectors['sparse'].modifier != models.Modifier.IDF or info.config.params.shard_number not in (None, 1):
             raise ValueError('BM25 IDF/shard configuration mismatch')
         ids = manifest['source_hashes']

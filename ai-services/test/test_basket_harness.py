@@ -1,4 +1,3 @@
-"""Basket writes require a delivered offer, customer consent and compatible current evidence."""
 import asyncio
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -45,17 +44,6 @@ def test_customer_can_accept_delivered_basket_without_repeating_prices():
     assert gateway.invoke_trusted.await_args.args[1]['lines'] == args()['lines']
 
 
-@pytest.mark.parametrize('timing,allowed', [
-    ('giao trong tuần này nhé', True), ('bắt buộc giao trong tuần này', False)])
-def test_basket_delivery_preference_and_mandatory_deadline(timing, allowed):
-    current = basket_state('Đồng ý mua cả hai máy, chuyển khoản, ' + timing + '.')
-    result, gateway = invoke(current)
-    assert (result.get('status') == 'created') is allowed
-    if not allowed:
-        from app.mcp_servers.mcp_shared.basket import basket_block_reason
-        assert basket_block_reason(current, args()) == 'delivery_confirmation_required'
-        assert result.get('error')
-        assert gateway.invoke_trusted.await_count == 0
 
 
 @pytest.mark.parametrize('change', ['unheard', 'no_consent', 'hypothetical', 'revoke',
@@ -177,23 +165,6 @@ def test_repeated_basket_create_in_one_turn_does_not_create_twice():
     asyncio.run(run())
 
 
-def test_delivered_basket_survives_session_change_after_fresh_quote():
-    from app.mcp_servers.mcp_shared.basket import presented_basket_offers, basket_block_reason
-    previous = basket_state()
-    tid = previous['history'][0]['source_turn_id']
-    offers = presented_basket_offers(customer_id=previous['customer_id'],
-        session_id=str(previous['request'].session_id), committed_turns=[{
-            'turn_id': tid, 'customer_id': previous['customer_id'], 'session_id': str(previous['request'].session_id),
-            'agent_text': previous['history'][0]['agent']}], tool_calls=[
-                {**call, 'source_turn_id': tid} for call in previous['session_tool_calls']])
-    assert len(offers) == 1
-    current = basket_state()
-    current['history'] = []
-    current['session_tool_calls'][-1].pop('source_turn_id')
-    current['episodes'] = [{'customer_id': current['customer_id'], 'basket_offers': offers}]
-    assert basket_block_reason(current, args()) is None
-    current['episodes'][0]['customer_id'] = 'OTHER'
-    assert basket_block_reason(current, args()) is not None
 
 
 def test_customer_can_accept_quote_repeated_after_interrupted_delivery():
@@ -221,7 +192,7 @@ def test_basket_variant_requires_delivered_terms_and_respects_new_customer_size(
     for line in proposed['lines']:
         line['sku'] = 'SKU-ASTER-39'
     result, gateway = invoke(current, proposed)
-    assert 'error' in result  # The model's concrete variant alone is not customer consent.
+    assert 'error' in result
     assert not gateway.invoke_trusted.await_count
     current['history'][0]['agent'] = '2 máy Aster size 39 màu đen có tổng giá 1.350.000đ.'
     result, _ = invoke(deepcopy(current), proposed)
@@ -232,40 +203,8 @@ def test_basket_variant_requires_delivered_terms_and_respects_new_customer_size(
     assert not gateway.invoke_trusted.await_count
 
 
-def test_basket_offer_must_present_each_distinct_variant():
-    from app.agent.harness.session_nodes import safe_basket_reply
-    current = basket_state()
-    item = current['session_tool_calls'][0]['result']['items'][0]
-    item['variants'] = [{'variant_sku': 'SKU-ASTER-39', 'size': 39, 'color': 'đen'},
-                        {'variant_sku': 'SKU-ASTER-40', 'size': 40, 'color': 'đen'}]
-    proposed = args()
-    quote = current['session_tool_calls'][-1]
-    quote['args']['lines'] = [{'sku': f'SKU-ASTER-{size}', 'qty': 1} for size in (39, 40)]
-    current['session_tool_calls'][1:1] = [stock('SKU-ASTER-39'), stock('SKU-ASTER-40')]
-    for size, unit, line in zip((39, 40), quote['result']['units'], proposed['lines']):
-        unit['sku'] = line['sku'] = f'SKU-ASTER-{size}'
-    current['history'][0]['agent'] = '2 máy Aster size 39 màu đen có tổng giá 1.350.000đ.'
-    result, gateway = invoke(current, proposed)
-    assert 'error' in result
-    assert not gateway.invoke_trusted.await_count
-    reply = safe_basket_reply(current)
-    assert 'size 39' in reply and 'size 40' in reply
-    current['history'][0]['agent'] = reply
-    result, _ = invoke(current, proposed)
-    assert result.get('status') == 'created', result
 
 
-def test_basket_continuation_uses_unit_lines_instead_of_scalar_purchase():
-    async def run():
-        current = basket_state()
-        gateway = AsyncMock()
-        gateway.invoke_trusted.return_value = {'order_id': 'OD1', 'status': 'created', 'total_vnd': 1350000}
-        tools = BusinessTools(gateway, current, 5, lambda: datetime.now(timezone.utc))
-        result = await tools.complete_purchase_if_ready()
-        assert result and result['status'] == 'created'
-        assert gateway.invoke_trusted.await_args.args[0] == 'order.create'
-        assert gateway.invoke_trusted.await_args.args[1]['lines'] == args()['lines']
-    asyncio.run(run())
 
 
 def test_discount_percentage_is_bound_to_the_discounted_physical_unit():

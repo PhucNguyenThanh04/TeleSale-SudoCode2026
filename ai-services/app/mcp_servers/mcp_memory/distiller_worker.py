@@ -1,4 +1,3 @@
-"""Retryable LangMem worker for the primary long-term store."""
 
 from app.mcp_servers.mcp_shared.decision_diagnostics import worker_boundary, worker_envelope, emit as diagnostic_emit, active as diagnostic_active, save_worker_envelope
 
@@ -7,10 +6,11 @@ import asyncio
 import inspect
 import json
 import logging
-import re
 from datetime import date
 
 from app.agent.memory.langmem_extractor import extract_candidates
+from app.agent.memory.fact_review import (
+    FactReviewUnavailable, fact_review_digest, review_profile_facts)
 from app.agent.memory.deterministic_tool_facts import (deterministic_episode_tools,
                                                        verified_order_details,
                                                        verified_tool_candidates,
@@ -36,7 +36,6 @@ def decoded(value):
 
 
 def collect_prior_open_items(episodes: list[dict], current_session_id: str) -> list[dict]:
-    """Return open items from prior sessions that have not yet been resolved."""
     resolved_ids = set()
     for ep in episodes:
         if not isinstance(ep, dict) or ep.get("status", "active") != "active":
@@ -87,9 +86,28 @@ async def completed_revisions(repo, customer_id: str, versions: list[dict],
     return result if isinstance(result, set) else set(revisions)
 
 
+async def _review_customer_facts(facts, reviewer, turn, history, existing, calls):
+    customer = [ProfileFactCandidate.model_validate({**fact, 'observed_on': turn['on']})
+                for fact in facts if fact.get('source_kind') == 'customer']
+    if not customer:
+        return facts
+    admitted, _ = admit_profile_candidates(turn['customer_id'], turn['session_id'],
+                                           customer, [turn], calls)
+    if admitted:
+        if reviewer is None:
+            raise FactReviewUnavailable()
+        reviewed = await reviewer(admitted, turn, history, existing, calls)
+        if (not isinstance(reviewed, list)
+                or any(item not in admitted or item in reviewed[:index]
+                       for index, item in enumerate(reviewed))):
+            raise FactReviewUnavailable()
+    else:
+        reviewed = []
+    return [fact for fact in facts if fact.get('source_kind') != 'customer' or fact in reviewed]
+
+
 @worker_boundary
-async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
-    """Claim one committed turn; return False when the queue is empty."""
+async def process_one(repo: MemoryRepo, extractor, projector, *, fact_reviewer=None) -> bool:
     async with repo.transaction() as conn:
         job = await repo.claim_distillation(conn, 120)
     if not job:
@@ -103,7 +121,6 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
             await repo.lock_key(conn, f"erasure:{customer_id}")
             if hasattr(repo, 'distillation_claim_current') and not await repo.distillation_claim_current(conn, job_id, job['attempts']):
                 return True
-            # Reclaim a crashed final attempt so it cannot block this customer's queue forever.
             if job.get('attempts', 0) > 5:
                 await repo.finish_distillation(conn, job_id, 'failed', 'lease_attempts_exhausted')
                 return True
@@ -132,7 +149,7 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
                 for item in window if isinstance(item, dict)):
             window = [{**turn, "client_msg_id": source_turn_id}]
         messages = []
-        consultation_turns, consultation_calls = [], []
+        source_turns = []
         for item in window:
             if not isinstance(item, dict) or not item.get("client_msg_id"):
                 continue
@@ -143,11 +160,7 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
                 "agent_text": item.get("agent_text", ""),
                 "on": item_on.isoformat() if isinstance(item_on, date) else str(item_on),
                 "channel": item.get("channel", turn["channel"])}
-            prior_calls=decoded(item.get('tool_observations') or [])
-            observed=calls if payload['turn_id']==source_turn_id else prior_calls
-            if isinstance(observed,list):
-                consultation_calls.extend({**c,'source_turn_id':payload['turn_id']} for c in observed if isinstance(c,dict))
-            consultation_turns.append(payload.copy())
+            source_turns.append(payload.copy())
             if payload["turn_id"] == source_turn_id:
                 payload["tool_observations"] = calls
             messages.append({"role": "user", "content": json.dumps(
@@ -165,11 +178,10 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
             prior_open_list = collect_prior_open_items(prior_episodes, '')
             prior_open_map = {item["item_id"]: (item["scope_type"], item["scope_id"])
                               for item in prior_open_list}
-            # Each job owns one unseen source turn. Previous speech is reference
-            # context, not another turn to extract again on every job.
             latest = json.loads(messages[-1]['content'])
             previous = json.loads(messages[-2]['content']) if len(messages) > 1 else {}
-            latest['reference_context'] = {'previous_agent_text': previous.get('agent_text', '')}
+            latest['reference_context'] = {'previous_agent_text': previous.get('agent_text', ''),
+                                            'session_history': source_turns[:-1]}
             extraction_messages = [{'role': 'user', 'content': json.dumps(latest, ensure_ascii=False)}]
             arguments = (extraction_messages, existing, prior_open_list)
             signature = inspect.signature(extractor)
@@ -204,32 +216,6 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
             delta = (admit_episode_candidate(customer_id, session_id, episode,
                                              [committed], calls, prior_open_map)
                      if episode else None)
-            # Independent deterministic admission: an LLM need not propose the
-            # snapshot, and cannot grant consent through an unsupported proposal.
-            from app.mcp_servers.mcp_shared.consultation import committed_consultation, admit_consultation
-            snapshot=committed_consultation(customer_id,session_id,consultation_turns,consultation_calls,
-                prior_episodes=[ep for ep in prior_episodes if ep.get('session_id') != session_id])
-            snapshot_data=snapshot.model_dump(mode='json')
-            if diagnostic_active():
-                from types import SimpleNamespace
-                diagnostic_state = {'customer_id': customer_id, 'request': SimpleNamespace(session_id=session_id, client_msg_id=source_turn_id), 'history': [{'source_turn_id': t['turn_id']} for t in consultation_turns]}
-                diagnostic_emit('provenance', state=diagnostic_state, component='worker', provenance=True)
-                diagnostic_emit('worker_admission', state=diagnostic_state, component='worker', snapshot=snapshot_data, revision=job_id, status='unknown', rejected_count=len(rejected))
-            changed={k:v for k,v in snapshot.source_refs.items() if v.source_turn_id==source_turn_id}
-            if set(changed)-{'candidates'}:
-                patch={k:snapshot_data[k] for k in changed}
-                patch['source_refs']={k:v.model_dump(mode='json') for k,v in changed.items()}
-                admitted_snapshot=admit_consultation(patch,customer_id=customer_id,session_id=session_id,
-                    committed_turns=consultation_turns,tool_calls=consultation_calls,
-                    prior_episodes=[ep for ep in prior_episodes if ep.get('session_id') != session_id])
-                if diagnostic_active():
-                    diagnostic_emit('worker_admission', state=diagnostic_state, component='worker', snapshot=admitted_snapshot or {}, revision=job_id, status='admitted' if admitted_snapshot else 'rejected')
-                if admitted_snapshot:
-                    delta=delta or {'topic_updates':[]}
-                    global_topic=next((t for t in delta['topic_updates'] if t['scope_type']=='global'),None)
-                    if global_topic is None:
-                        global_topic={'scope_type':'global','scope_id':''};delta['topic_updates'].append(global_topic)
-                    global_topic['consultation']=admitted_snapshot
             if (delta and episode
                     and not any(fact["key"] == Slot.BLOCKER for fact in accepted)):
                 first_blocker = None
@@ -263,18 +249,14 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
                         pass
             if rejected:
                 logger.info("LangMem rejected %d proposals for job %d", len(rejected), job_id)
+            accepted = await _review_customer_facts(accepted, fact_reviewer, committed,
+                                                     source_turns, existing, calls)
             outcome = job.get("verified_outcome", "khac")
-            if (outcome == "khac" and episode
-                    and episode.customer_id == customer_id
-                    and episode.session_id == session_id
-                    and source_turn_id in episode.source_turn_ids
-                    and episode.outcome == "hen_goi_lai"
-                    and re.search(r"gọi lại|hẹn gọi", turn["customer_text"], re.I)):
-                outcome = "hen_goi_lai"
             actions_completed, quoted_prices = deterministic_episode_tools(calls, on)
             stored = {"facts": accepted, "delta": delta, "outcome": outcome,
                       "actions_completed": actions_completed,
-                      "quoted_prices": quoted_prices}
+                      "quoted_prices": quoted_prices,
+                      'fact_review_digest': fact_review_digest(accepted, committed, source_turns, calls)}
             envelope = worker_envelope()
             if envelope is not None:
                 stored['_decision_diagnostics'] = envelope
@@ -288,9 +270,21 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
             outcome = stored.get("outcome", "khac")
             actions_completed = stored.get("actions_completed", [])
             quoted_prices = stored.get("quoted_prices", [])
+            if stored.get('fact_review_digest') != fact_review_digest(
+                    accepted, committed, source_turns, calls):
+                versions = await projector.list_fact_versions(customer_id)
+                completed = await completed_revisions(repo, customer_id, versions)
+                accepted = await _review_customer_facts(accepted, fact_reviewer, committed,
+                    source_turns, select_facts(versions, completed), calls)
+                stored = {**stored, 'facts': accepted, 'reset_fact_revision': True,
+                    'fact_review_digest': fact_review_digest(accepted, committed, source_turns, calls)}
+                async with repo.transaction() as conn:
+                    if hasattr(repo, 'distillation_claim_current') and not await repo.distillation_claim_current(conn, job_id, job['attempts']):
+                        return True
+                    await repo.save_distillation_proposals(conn, job_id, stored)
         if diagnostic_active():
             from types import SimpleNamespace
-            diagnostic_state = {'customer_id': customer_id, 'request': SimpleNamespace(session_id=session_id, client_msg_id=source_turn_id), 'history': [{'source_turn_id': t['turn_id']} for t in consultation_turns]}
+            diagnostic_state = {'customer_id': customer_id, 'request': SimpleNamespace(session_id=session_id, client_msg_id=source_turn_id), 'history': [{'source_turn_id': t['turn_id']} for t in source_turns]}
             if job.get('accepted_proposals') is not None:
                 from app.mcp_servers.mcp_shared.decision_diagnostics import ingest
                 ingest(stored.get('_decision_diagnostics'))
@@ -304,6 +298,8 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
             if await repo.is_erasure_blocked(conn, customer_id):
                 await repo.finish_distillation(conn, job_id, "completed", "erasure_blocked")
                 return True
+            if stored.get('reset_fact_revision') is True:
+                await projector.discard_fact_revision(customer_id, job_id)
             versions = await projector.list_fact_versions(customer_id)
             completed = await completed_revisions(repo, customer_id, versions, conn)
             written = await projector.put_facts(customer_id, session_id, source_turn_id,
@@ -369,10 +365,6 @@ async def process_one(repo: MemoryRepo, extractor, projector) -> bool:
                     revision=job_id)
             if diagnostic_active():
                 diagnostic_emit('worker_projection', state=diagnostic_state, component='worker', revision=job_id, status='projected')
-                if delta or accepted or outcome != 'khac' or actions_completed or quoted_prices:
-                    for topic in state.get('topics', []):
-                        if isinstance(topic, dict) and isinstance(topic.get('consultation'), dict):
-                            diagnostic_emit('worker_projection', state=diagnostic_state, component='worker', revision=job_id, status='projected', snapshot=topic['consultation'])
                 await save_worker_envelope(repo, conn, job_id, stored)
             await repo.finish_distillation(conn, job_id, "completed", accepted_writes=(
                 written if isinstance(written, list) else []))
@@ -406,9 +398,11 @@ async def run() -> None:
     projector = LangMemProjection(database_url(settings))
     async def extractor(turns, existing, open_items=None):
         return await extract_candidates(model, turns, existing, open_items)
+    async def fact_reviewer(facts, turn, history, existing, calls):
+        return await review_profile_facts(model, facts, turn, history, existing, calls)
     try:
         while True:
-            if not await process_one(repo, extractor, projector):
+            if not await process_one(repo, extractor, projector, fact_reviewer=fact_reviewer):
                 await asyncio.sleep(1)
     finally:
         await repo.close()

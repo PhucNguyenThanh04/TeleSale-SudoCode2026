@@ -1,4 +1,3 @@
-"""Connection-bound M1 text demo through the same harness as voice."""
 import asyncio
 from typing import Annotated, Literal
 from uuid import UUID, uuid4

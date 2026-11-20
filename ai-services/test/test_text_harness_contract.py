@@ -1,4 +1,3 @@
-"""Harness invariants from the business/tool contract, independent of eval data."""
 import asyncio
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
@@ -43,7 +42,9 @@ def old_lamp_reads(state):
 def nodes():
     gateway = SimpleNamespace(invoke=AsyncMock(return_value={'error':'unexpected_tool'}))
     llm = SimpleNamespace(ainvoke=AsyncMock(return_value=AIMessage(
-        content='Mình cần làm rõ yêu cầu nào trước ạ?')))
+        content='Mình cần làm rõ yêu cầu nào trước ạ?')),
+        with_structured_output=Mock(return_value=SimpleNamespace(ainvoke=AsyncMock(
+            return_value={'supported':True, 'reason':'supported', 'unsupported_claim':''}))))
     return AgentNodes(llm, gateway, object(), 6, 6,
                       lambda: datetime(2030, 4, 8, tzinfo=timezone.utc)), gateway
 
@@ -361,8 +362,7 @@ def test_new_owned_quote_survives_discarding_foreign_observations():
     assert fresh in build_commerce_evidence(state)
 
 
-def test_completed_write_is_reported_when_model_generation_fails_after_it():
-    from app.agent.guardrails.checks import FALLBACK
+def test_completed_write_is_reported_by_llm_when_initial_generation_fails():
 
     async def run():
         state = turn_state('Tôi đã đồng ý đơn mua đèn.')
@@ -371,10 +371,12 @@ def test_completed_write_is_reported_when_model_generation_fails_after_it():
             'name':'order.create','args':{'sku':'SKU-LAMP-A','qty':1,'price_vnd':199000},
             'result':{'order_id':'ORDER-COMMITTED','status':'created'},
         }]
-        state['agent_draft'] = FALLBACK
+        state['agent_draft'] = ''
         node, _ = nodes()
+        node.llm.ainvoke.return_value = AIMessage(content='Em đã tạo đơn ORDER-COMMITTED cho mình.')
         result = await node.verify_agent(state)
         assert 'ORDER-COMMITTED' in result['agent_text']
+        assert node.llm.ainvoke.await_count == 1
     asyncio.run(run())
 
 
@@ -427,7 +429,6 @@ def test_anonymous_evidence_is_durable_and_used_after_identity_verification():
                 'tool_observations':observed}
         await write(repo, 'commit_turn', None, sid, data)
         assert repo.rows[sid][0]['tool_observations'] == observed
-        # A fresh service/repository facade has only committed rows, no local metadata.
         reopened = TurnRepo()
         reopened.rows = repo.rows
         reopened.enqueue_distillation = AsyncMock()
@@ -457,25 +458,26 @@ def test_postgres_turn_write_and_attribution_include_durable_evidence():
     asyncio.run(run())
 
 
-@pytest.mark.parametrize('name,args,result,phrase', [
+@pytest.mark.parametrize('name,args,result,reply', [
     ('schedule.callback', {'callback_at':'2030-04-09T10:00'},
-     {'callback_id':'CB123','callback_at':'2030-04-09T10:00'}, 'đã đặt lịch'),
-    ('handoff.transfer', {}, {'ticket_id':'HT123','status':'queued'}, 'đã chuyển'),
+     {'callback_id':'CB123','callback_at':'2030-04-09T10:00'}, 'Em đã đặt lịch gọi lại cho mình.'),
+    ('handoff.transfer', {}, {'ticket_id':'HT123','status':'queued'}, 'Em đã chuyển yêu cầu đến nhân viên phụ trách.'),
     ('order.update', {'order_id':'ORDER-A','action':'return'},
-     {'order_id':'ORDER-A','action':'return','status':'pickup_scheduled'}, 'trả hàng'),
+     {'order_id':'ORDER-A','action':'return','status':'pickup_scheduled'},
+     'Em đã ghi nhận yêu cầu trả hàng cho đơn ORDER-A.'),
     ('order.update', {'order_id':'ORDER-A','action':'update_address'},
-     {'order_id':'ORDER-A','action':'update_address','status':'updated'}, 'nơi giao'),
+     {'order_id':'ORDER-A','action':'update_address','status':'updated'},
+     'Em đã ghi nhận yêu cầu thay đổi nơi giao cho đơn ORDER-A.'),
 ])
-def test_completed_side_effect_is_acknowledged_after_model_failure(name, args, result, phrase):
-    from app.agent.guardrails.checks import FALLBACK
-
+def test_completed_side_effect_is_acknowledged_by_llm_after_initial_generation_failure(name, args, result, reply):
     async def run():
         state = turn_state('Tôi đồng ý yêu cầu này.')
         state['tool_calls'] = [{'name':name,'args':args,'result':result}]
-        state['agent_draft'] = FALLBACK
+        state['agent_draft'] = ''
         node, _ = nodes()
+        node.llm.ainvoke.return_value = AIMessage(content=reply)
         answer = (await node.verify_agent(state))['agent_text']
-        assert phrase in answer and answer != FALLBACK
+        assert answer == reply and node.llm.ainvoke.await_count == 1
     asyncio.run(run())
 
 
@@ -547,6 +549,9 @@ def test_real_graph_executes_only_model_proposed_and_authorized_purchase(approve
 
     class Model(FakeToolModel):
         def with_structured_output(self, schema, **kwargs):
+            from app.agent.guardrails.semantic_grounding import GroundingReview
+            if schema is GroundingReview:
+                return super().with_structured_output(schema, **kwargs)
             return SimpleNamespace(ainvoke=AsyncMock(return_value={
                 'allowed':approved,'basis':'customer_request' if approved else 'none',
                 'customer_quote':'Tôi đồng ý mua một đèn Aurora giá 199000đ.',

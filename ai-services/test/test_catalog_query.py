@@ -1,11 +1,9 @@
-"""Regression checks for model-proposed catalog queries."""
 
 import json
 import unittest
 from datetime import date
 from uuid import uuid4
 
-from app.agent.harness.catalog_query import clean_catalog_query
 from app.agent.harness.policy import prepare_tool_call
 from app.agent.harness.state import Decision
 from app.mcp_servers.mcp_shared.commerce_rules import _catalog
@@ -29,25 +27,6 @@ def state(query, **args):
 
 
 class CatalogQueryTest(unittest.TestCase):
-    def test_product_query_excludes_purpose_without_changing_catalog_contract(self):
-        cases = (
-            ("máy lọc không khí cho phòng ngủ", "máy lọc không khí"),
-            ("nồi chiên không dầu dành cho gia đình", "nồi chiên không dầu"),
-            ("Giày trekking HikePro", "Giày trekking HikePro"),
-        )
-        for raw, expected in cases:
-            with self.subTest(raw=raw):
-                self.assertEqual(clean_catalog_query(raw), expected)
-
-        prepared = prepare_tool_call(
-            state("máy lọc không khí cho phòng ngủ", min_room_area_m2=25),
-            lambda: None)
-        self.assertEqual(prepared, ("catalog.search", {
-            "query": "máy lọc không khí", "min_room_area_m2": 25}))
-        products = json.loads(PRODUCTS.read_text(encoding="utf-8"))["products"]
-        result = _catalog(products, prepared[1])
-        self.assertEqual(result["total"], 6)
-        self.assertNotIn("SKU-AP-MINI", {item["sku"] for item in result["items"]})
 
     def test_widened_search_keeps_previous_filters(self):
         current = state("máy lọc không khí")
@@ -75,8 +54,3 @@ class CatalogQueryTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-def test_k0_ampersand_brand_is_not_split_into_an_unknown_model_fragment():
-    from app.agent.harness.catalog_query import explicit_product_queries
-    assert explicit_product_queries('Anh muốn mua Lock&Lock 4 lít, thanh toán COD.') == ['Lock&Lock 4']

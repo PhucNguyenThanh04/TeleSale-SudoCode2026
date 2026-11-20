@@ -1,4 +1,3 @@
-"""Public Python entrypoint for one text chat turn."""
 
 from functools import lru_cache
 from uuid import uuid4
@@ -11,12 +10,10 @@ from app.schemas.agent import ChatRequest, ChatResponse, TextTurnRequest
 
 @lru_cache(maxsize=1)
 def get_runtime() -> AgentHarnessRuntime:
-    """Reuse locks and duplicate-response cache in this process."""
     return build_runtime(get_settings())
 
 
 async def chat(request: ChatRequest, *, runtime: AgentHarnessRuntime | None = None) -> ChatResponse:
-    """Run one turn; a new conversation gets a session ID in the response."""
     turn = TextTurnRequest.model_validate({
         **request.model_dump(), "session_id": request.session_id or uuid4(),
     })
@@ -26,7 +23,6 @@ async def chat(request: ChatRequest, *, runtime: AgentHarnessRuntime | None = No
 
 
 async def main() -> None:
-    # Chỉnh request này để chạy thử một lượt chat, không cần tham số dòng lệnh.
     request = ChatRequest(
         client_msg_id=uuid4(),
         session_id="2e83a0f3-f321-98a5-b9d6-9eba9eea1a38",

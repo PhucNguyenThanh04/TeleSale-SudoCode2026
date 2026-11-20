@@ -1,6 +1,4 @@
-# Ignore generated and sensitive files in this application repository.
 
-# Credentials and local configuration
 .env
 .env.*
 .envrc
@@ -15,7 +13,6 @@
 credentials.json
 service-account*.json
 
-# Python environments, caches, packaging and test output
 .venv*/
 venv/
 env/
@@ -39,7 +36,6 @@ build/
 dist/
 *.whl
 
-# Frontend dependencies and build output
 node_modules/
 .next/
 .nuxt/
@@ -49,7 +45,6 @@ node_modules/
 coverage/
 /BTC-cap-nhat-11-2026/
 
-# Local runtime output
 /postgres_data/
 /.archify/
 /BTC-Data-Vong1-TEAMS/
@@ -75,17 +70,13 @@ ai-services/rag_eval/results/
 outputs/
 artifacts/
 
-# Local dataset bundles (audio, archives, manifests and ground truth).
-# Keep the directory guide; source dialogues and test fixtures stay versioned.
 /dataset/*
 !/dataset/README.md
 
-# Speech dataset/runs (audio, TTS cache, hypotheses) and local voice config
 speech/data/
 speech/voices.json
 speech/serving/models/
 
-# Downloaded model weights and local object storage
 *.pt
 *.pth
 *.ckpt
@@ -95,7 +86,6 @@ speech/serving/models/
 minio-data/
 qdrant_storage/
 
-# Editor and operating system files
 .vscode/
 .idea/
 .DS_Store
@@ -108,7 +98,6 @@ graphify-out/
 .superpowers/
 /.system-start.lock
 
-# Local tokenizer asset and selected design/audit documents
 /ai-services/app/mcp_servers/mcp_knowledge/assets/bge-m3-tokenizer.json
 /ai-services/docs/btc-requirements-audit-2026-11-04.md
 /ai-services/docs/superpowers/specs/2026-11-04-btc-eval-harness-repair-design.md

@@ -1,4 +1,3 @@
-"""Pure BTC catalog, inventory, pricing and delivery rules shared by two services."""
 
 import unicodedata
 import re
@@ -45,7 +44,6 @@ def _delivery(on: str, address: str | None) -> str:
     return current.isoformat()
 
 def _search_text(value: str) -> str:
-    """Fold Vietnamese accents while retaining separators in category paths and SKUs."""
     value = value.casefold().replace("đ", "d")
     return "".join(char for char in unicodedata.normalize("NFD", value)
                    if unicodedata.category(char) != "Mn")
@@ -57,7 +55,6 @@ def _catalog(products: list[dict], args: dict) -> dict:
         return set(re.findall(r"[^\W\d_]+|\d+(?:[.,]\d+)?", _search_text(value)))
     query = _search_text(args.get("query") or "")
     query_terms = tokens(query)
-    # Explicit brands and product types are constraints; feature words only rank.
     brands = {p['brand'] for p in products if any(
         len(term) >= 3 and term in query_terms for term in tokens(p.get('brand', '')))}
     prefixes = []
@@ -179,7 +176,6 @@ def quote_order(products: list[dict], promos: list[dict], args: dict,
                 owned_skus: set[str] | None = None,
                 once_used: set[tuple[str, str]] | None = None, *,
                 used_today: set[str] | None = None, tie_prefer_first: bool = False) -> dict:
-    """Price each physical unit using promotion scope and conditions from the catalog."""
     lines = args.get('lines')
     if (not isinstance(lines, list) or not lines or any(
             not isinstance(line, dict) or not isinstance(line.get('sku'), str)
@@ -201,8 +197,6 @@ def quote_order(products: list[dict], promos: list[dict], args: dict,
             continue
         matching = [i for i, unit in enumerate(units)
                     if _promotion_applies(*_parent(products, unit['sku']), promo)]
-        # Reuse single-product eligibility checks, including region, ownership,
-        # size and once-per-customer; only the basket selects the discounted unit.
         eligible = {}
         for i in matching:
             candidate = quote(products, [{**promo, 'type': 'percent'}],

@@ -1,4 +1,3 @@
-"""JWT and customer isolation at the actual gateway boundary; no model calls."""
 import json
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -19,7 +18,6 @@ SECRET = 'offline-test-secret-with-at-least-32-bytes'
 @contextmanager
 def gateway():
     app = create_app(VoiceSettings(_env_file=None, demo_jwt_secret=SECRET))
-    # Only replace external persistence; password verification and JWT stay real.
     from app.auth import password_hash
     users = {
         'one': dict(id='one', username='one', password_hash=password_hash.hash('password-one'),
@@ -195,7 +193,6 @@ def test_two_simultaneous_voice_sessions_keep_distinct_profiles():
                     socket.send_json(start)
                     assert socket.receive_json()['event'] == 'ready'
                     assert socket.receive_json()['state'] == 'listening'
-                # Each connection has independent speech transport and AI session preparation.
                 assert len(client.app.state.voice_speech.sockets) == 2
                 for socket in (one, two):
                     socket.send_json({'event': 'end'})

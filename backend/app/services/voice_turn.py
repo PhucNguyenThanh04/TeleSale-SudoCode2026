@@ -1,4 +1,3 @@
-"""One generation's identity and confirmed playback, independent of input audio."""
 import asyncio
 from dataclasses import dataclass, field
 from uuid import uuid4

@@ -1,4 +1,3 @@
-"""Read-only, bounded public view of a committed turn's worker result."""
 
 import json
 import re

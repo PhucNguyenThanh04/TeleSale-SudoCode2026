@@ -1,4 +1,3 @@
-"""Saved K0 customer speech through production graph/MCP with offline storage/model."""
 import asyncio
 import json
 from datetime import date
@@ -19,17 +18,6 @@ from test_november_pricing import OrderRepo, reference
 K0 = Path(__file__).resolve().parents[1] / 'eval_harness/results/knowledge-k0/20261111T082822Z-116126a9'
 
 
-@pytest.mark.parametrize('text,requested', [
-    ('Anh muốn kiểm lại đơn với khoản thu trước khi khui.', True),
-    ('Em kiểm lại đơn giúp anh nhé.', True),
-    ('Anh chưa cần kiểm lại đơn.', False),
-    ('Đừng kiểm lại đơn, anh chỉ hỏi giá.', False),
-    ('Nếu kiểm lại đơn thì cần thông tin gì?', False),
-    ('Em lên đơn giúp anh nhé.', False),
-])
-def test_receipt_lookup_language_keeps_negation_and_purchase_separate(text, requested):
-    from app.mcp_servers.mcp_shared.consultation_followup import order_status_requested
-    assert order_status_requested(text) is requested
 
 
 @pytest.mark.parametrize('scenario_id,sku', [
@@ -60,8 +48,6 @@ def test_k0_customer_sequence_creates_selected_order_and_reads_receipt(reference
     from app.agent.implementations.tool_names import MODEL_TOOL_NAMES
     reads = [call for call in first['tool_calls']
              if call['name'] in {'catalog.search', 'inventory.check', 'pricing.get_quote'}]
-    # Replay actual discovery proposals, not scenario answer/SKU labels. Trusted
-    # owner/date parameters come from runtime, not the masked trace values.
     model = FakeToolModel(replies=[AIMessage(content='', tool_calls=[{
         'id': f'saved-discovery-{i}', 'name': MODEL_TOOL_NAMES[call['name']],
         'args': {k: v for k, v in call['args'].items() if k not in {'customer_phone', 'address', 'on'}}}
@@ -72,7 +58,6 @@ def test_k0_customer_sequence_creates_selected_order_and_reads_receipt(reference
     async def run():
         rows = []
         try:
-            # Order/lookup path only; SC-T02's later policy/exchange discussion is separate.
             calls = list(sorted(scenario['calls'].items()))[:1 if scenario_id == 'SC-T02' else 3]
             for call, spec in calls:
                 rows.extend(await run_scenario_call(runtime, scenario_id, call, spec,

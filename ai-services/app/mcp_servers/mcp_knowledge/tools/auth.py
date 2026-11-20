@@ -1,4 +1,3 @@
-"""Bind trusted policy context to exactly one validated tool request."""
 import hashlib
 import hmac
 import json

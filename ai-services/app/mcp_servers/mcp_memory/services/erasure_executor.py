@@ -1,10 +1,8 @@
-"""Internal, retry-safe erasure of memory-owned customer rows."""
 
 from uuid import UUID
 
 
 async def execute_erasure(repo, request_key: str, projector=None) -> dict:
-    """Purge the authorized memory slice; other stores remain explicitly pending."""
     try:
         UUID(request_key)
     except (TypeError, ValueError):

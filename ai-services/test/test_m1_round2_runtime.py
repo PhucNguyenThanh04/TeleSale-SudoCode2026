@@ -1,4 +1,3 @@
-"""M1 regressions through graph, MCP and commit; inference/storage stay offline."""
 import asyncio
 from copy import deepcopy
 from datetime import date

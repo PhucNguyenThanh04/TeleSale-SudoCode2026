@@ -1,4 +1,3 @@
-"""Verified requests block reads and writes before any physical purge."""
 
 import unittest
 from contextlib import asynccontextmanager
@@ -86,11 +85,17 @@ class ErasureWorkflowTest(unittest.IsolatedAsyncioTestCase):
                 return {"error": "unavailable"}
 
         gateway = Gateway()
-        runtime = DeepHarnessRuntime(FakeToolModel(replies=[]), gateway, BlockedMemory())
+        from langchain_core.messages import AIMessage
+        model = FakeToolModel(replies=[AIMessage(content='',tool_calls=[{'name':'handoff_transfer','args':{'brief':{'escalation_reason':'khac','conversation_summary':'Khách yêu cầu nhân viên xác minh phạm vi xử lý hồ sơ.','open_questions':[],'next_action':'Nhân viên xác minh yêu cầu và hướng xử lý.'}},'id':'privacy'}]),
+            AIMessage(content='Em đã chuyển yêu cầu đến nhân viên để xác minh; dữ liệu chưa được xóa.')])
+        runtime = DeepHarnessRuntime(model, gateway, BlockedMemory())
         request = turn("Xin xóa hồ sơ cá nhân của tôi.").model_copy(update={
             "channel_identity": "0900000901", "verified_customer_id": "C901",
             "verified_phone": "0900000901"})
-        response = await runtime.run(request)
+        from unittest.mock import patch
+        with patch('app.agent.harness.authorization.authorize_write',AsyncMock(return_value=True)):
+            response = await runtime.run(request)
+        self.assertEqual(len(model.seen),2)
         self.assertTrue(response.needs_handoff)
         self.assertEqual(response.handoff_ticket_id, "case-901")
         self.assertIn("handoff.transfer", [name for name, _ in gateway.calls])

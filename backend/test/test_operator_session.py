@@ -1,4 +1,3 @@
-"""Local cookie session replaces browser Bearer credentials."""
 
 import unittest
 

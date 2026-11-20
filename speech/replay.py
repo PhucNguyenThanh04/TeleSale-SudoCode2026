@@ -1,4 +1,3 @@
-"""Customer-only offline replay. Dataset speaker boundaries are annotations, not diarization."""
 from __future__ import annotations
 
 import json
@@ -148,7 +147,6 @@ def prepare_replay(mapping_path: Path, out: Path) -> dict:
     sessions = validate_sessions(mapping)
     prepared = []
     sources = []
-    # Validate all inputs before creating output or writing any clips.
     for session in sessions:
         dataset = Path(session["dataset"])
         if not dataset.is_absolute():
@@ -172,8 +170,6 @@ def prepare_replay(mapping_path: Path, out: Path) -> dict:
             start, end = (round(segment[k] * au.SAMPLE_RATE) for k in ("start", "end"))
             if start >= end:
                 raise ValueError("Segment is shorter than one audio sample")
-            # Tight speech-onset crops can make VAD miss a voiced clip. Keep silence at both edges,
-            # as in the original synthetic recordings, without borrowing neighbouring speaker audio.
             padded = np.concatenate((au.silence(BOUNDARY_PAD_S), audio[start:end], au.silence(BOUNDARY_PAD_S)))
             au.write_wav(path, padded)
             clips.append({k: session[k] for k in ("conversation_key", "session_key", "session_index",

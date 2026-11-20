@@ -1,4 +1,3 @@
-"""The local launcher preserves one database role per MCP process."""
 
 import tempfile
 import unittest

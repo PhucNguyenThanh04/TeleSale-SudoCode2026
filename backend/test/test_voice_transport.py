@@ -1,4 +1,3 @@
-"""Real loopback speech WebSocket, with offline HTTP harness/TTS stubs."""
 
 import asyncio
 import json

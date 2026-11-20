@@ -1,4 +1,3 @@
-"""LangMem proposals remain typed and safe before admission."""
 
 import unittest
 from datetime import date

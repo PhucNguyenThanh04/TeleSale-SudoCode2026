@@ -1,4 +1,3 @@
-"""Conservative lexical grounding for optional episode proposals."""
 
 import re
 

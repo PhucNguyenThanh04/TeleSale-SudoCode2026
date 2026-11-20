@@ -1,4 +1,3 @@
-"""mcp-memory process entrypoint."""
 
 from app.configs import get_settings
 from app.mcp_servers.mcp_memory.repos.postgres import MemoryRepo

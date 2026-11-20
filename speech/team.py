@@ -1,9 +1,3 @@
-"""Kịch bản hội thoại của nhóm: nhận diện bản mẫu giọng clone (``tv1``–``tv3``, ``{kh}``) và điền theo team_voices.json.
-
-Bản mẫu chỉ ghi khóa giọng (``agent_voice``/``customer_voice``) thay cho vùng miền/giới tính, vì chưa biết ai
-trong nhóm đọc vai nào. ``fill_team`` điền vùng miền/giới tính của người thật vào ground truth và thay ``{kh}``
-bằng "anh"/"chị" theo giới tính khách.
-"""
 from __future__ import annotations
 
 import copy
@@ -18,9 +12,7 @@ GENDERS = ("f", "m")
 TEAM_VOICE_RE = re.compile(r"^tv[1-3]$")
 VOICE_FIELDS = {"A": ("agent_voice", "agent_region", "agent_gender"),
                 "C": ("customer_voice", "customer_region", "customer_gender")}
-# Chỉ dùng để kiểm kịch bản (validate), không đưa vào ground_truth.json đầu ra.
 VALIDATOR_ONLY_FIELDS = ("checks", "tool_context")
-# Đội giả lập để nghe thử bản mẫu bằng giọng có sẵn (edge/VieNeu preset) trước khi có mẫu giọng thật.
 PREVIEW_TEAM = {"tv1": {"gender": "f", "region": "bac"}, "tv2": {"gender": "m", "region": "nam"},
                 "tv3": {"gender": "m", "region": "bac"}}
 
@@ -35,17 +27,12 @@ def is_template(dialogue: dict) -> bool:
 
 
 def load_team_voices(path: str | Path) -> dict[str, dict]:
-    """Đọc ``team_voices.json``: ``{"tv1": {"gender", "region", "ref_audio", "consent": true}, ...}``.
-
-    ``ref_audio`` tương đối được tính theo thư mục chứa file JSON. Thiếu đồng ý (``consent: true``) thì từ chối:
-    giọng clone chỉ được tạo từ mẫu của chính thành viên đã đồng ý.
-    """
     path = Path(path)
     raw = read_json(path)
     team, errors = {}, []
     for key, member in raw.items():
         if key.startswith("_"):
-            continue  # khóa ghi chú
+            continue
         where = f"{path.name}:{key}"
         if not TEAM_VOICE_RE.match(key):
             errors.append(f"{where}: khóa phải là tv1, tv2 hoặc tv3")
@@ -70,7 +57,6 @@ def load_team_voices(path: str | Path) -> dict[str, dict]:
 
 
 def fill_team(source: dict, team: dict[str, dict]) -> dict:
-    """Bản mẫu → kịch bản đầy đủ (vùng miền/giới tính theo người đọc, ``{kh}`` → anh/chị)."""
     out = copy.deepcopy(source)
     for dialogue in out["dialogues"]:
         if not is_template(dialogue):
@@ -89,5 +75,4 @@ def fill_team(source: dict, team: dict[str, dict]) -> dict:
 
 
 def team_voice_entries(team: dict[str, dict]) -> dict[str, dict]:
-    """Khóa giọng cho engine clone (``vieneu``): ``{"tv1": {"ref_audio": ...}}`` (+ tham số riêng trong ``tts``)."""
     return {key: {**member.get("tts", {}), "ref_audio": member["ref_audio"]} for key, member in team.items()}

@@ -1,4 +1,3 @@
-"""The service exposes only the LangMem memory flow."""
 
 import unittest
 from unittest.mock import AsyncMock

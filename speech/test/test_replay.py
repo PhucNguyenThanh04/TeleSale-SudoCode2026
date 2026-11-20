@@ -1,4 +1,3 @@
-"""Offline replay contracts: synthetic PCM, fake ASR, and the real request schema."""
 import copy
 import json
 import shutil
@@ -144,7 +143,7 @@ class ReplayValidationTests(unittest.TestCase):
             row = turn(text=" " + "x" * length + " ")
             with self.subTest(valid=length):
                 self.assertIsNone(replay.validate_turns([row]))
-                self.assertEqual(row["text"], " " + "x" * length + " ")  # validation is not truncation
+                self.assertEqual(row["text"], " " + "x" * length + " ")
         for text in ("", " \n\t ", "x" * 8001, None, 42):
             with self.subTest(invalid_length=None if not isinstance(text, str) else len(text)):
                 with self.assertRaisesRegex(ValueError, "1-8000"):
@@ -204,7 +203,7 @@ class ReplayArtifactTests(unittest.TestCase):
         write_json(self.data_dir / "catalog" / "products.json", [])
         (self.dataset / "audio").mkdir(parents=True)
         (self.dataset / "audio" / "X1.wav").write_bytes(b"synthetic source waveform")
-        self.audio = np.full(16000, -.85, dtype=np.float32)  # agent waveform is deliberately disjoint
+        self.audio = np.full(16000, -.85, dtype=np.float32)
         self.audio[4000:8000] = np.linspace(.15, .45, 4000, dtype=np.float32)
         self.audio[12000:16000] = np.linspace(.5, 1.2, 4000, dtype=np.float32)
         self.annotations = {"id": "X1", "segments": [

@@ -1,4 +1,3 @@
-"""Versioned Langfuse text prompts with local availability fallback."""
 
 import logging
 from functools import lru_cache
@@ -21,7 +20,6 @@ def _client():
 
 
 def text_prompt(name: str, fallback: str) -> str:
-    """Use the production label, falling back to the shipped prompt on errors."""
     settings = get_settings()
     if not settings.langfuse_prompts_enabled:
         prompt_loaded(name, fallback, "local")

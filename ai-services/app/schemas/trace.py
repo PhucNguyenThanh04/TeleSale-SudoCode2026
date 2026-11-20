@@ -1,4 +1,3 @@
-"""One JSONL row per agent turn, aligned with BTC trace_log.schema.json."""
 
 from typing import Any, Literal
 

@@ -1,4 +1,3 @@
-"""Admit typed LangMem proposals only when committed evidence supports them."""
 
 from app.agent.guardrails.checks import fact_evidence
 from app.mcp_servers.mcp_memory.services.memory import _valid_fact
@@ -26,6 +25,9 @@ def admit_profile_candidates(
                          candidate.source_turn_id)
         if turn is None:
             rejected.append({"key": candidate.key, "reason": "identity_mismatch"})
+            continue
+        if turn.get('on') is not None and candidate.observed_on.isoformat() != str(turn['on']):
+            rejected.append({'key': candidate.key, 'reason': 'observed_on_mismatch'})
             continue
         relevant_calls = [call for call in tool_calls
                           if call.get("source_turn_id") == candidate.source_turn_id
@@ -159,12 +161,6 @@ def admit_episode_candidate(
         elif scope_type == "global":
             scope_id = ""
         upd = get_update(scope_type, scope_id)
-        if topic.consultation is not None and scope_type == 'global':
-            from app.mcp_servers.mcp_shared.consultation import admit_consultation
-            snapshot=admit_consultation(topic.consultation.model_dump(mode='json',exclude_unset=True),
-                customer_id=customer_id,session_id=session_id,committed_turns=turns,tool_calls=tool_calls)
-            if snapshot:
-                upd['consultation']=snapshot
         for field in ("customer_goal", "advice_given", "next_step"):
             ev = getattr(topic, field, None)
             customer_evidence = '' if field == 'advice_given' else customer_source

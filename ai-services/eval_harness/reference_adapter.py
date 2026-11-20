@@ -1,4 +1,3 @@
-"""BTC trace fields derived from observable answers and tool arguments."""
 
 import json
 import re
@@ -19,7 +18,6 @@ _SCORER_ARG_FIELDS = frozenset({
 
 
 def mask_pii(value: str) -> str:
-    # Keep grouped account/identity numbers out of public text as well.
     return _base_mask_pii(SENSITIVE_NUMBER.sub(r"\1[SỐ ĐÃ ẨN]", value))
 
 
@@ -144,7 +142,6 @@ def _spoken_fact(key: str, value: Any, text: str) -> bool:
         r"(?<![\w-])" + re.escape(_fold(str(value))) + r"(?![\w-])", folded))
 
 
-# Generic room-type vocabulary only: never infer an arbitrary customer's label.
 _ROOM_ALIASES = {
     "bedroom": ("bedroom", "bed room", "phong ngu"),
     "living_room": ("living room", "living_room", "phong khach"),
@@ -184,7 +181,6 @@ def _scope_units(text: str, scope_type: str | None, scope_id: str | None, catalo
                 if parent_names == {scope_id}:
                     yield clause
                 continue
-            # Bind product values to their own mention, not another SKU in a list.
             mentions = list(re.finditer(r"(?<![\w-])sku-[\w-]+", clause))
             aliases = resolve_claim_skus(re.sub(r'(?<![\w-])sku-[\w-]+', '', clause), catalog_calls)
             if aliases and not {_fold(sku) for sku in aliases} <= {m.group() for m in mentions}:
@@ -200,8 +196,6 @@ def _scope_units(text: str, scope_type: str | None, scope_id: str | None, catalo
 
 
 def _speech_uses(text, key, value, scope_type, scope_id, *, customer=False, catalog_calls=()):
-    # Confirming an exact, sourced prior value still demonstrates use. An
-    # open/disjunctive question or a proposed blocker does not establish it.
     if not customer and key == "blocker" and ("?" in text or re.search(r"đúng không|phải không", text, re.I)):
         return False
     folded = _fold(re.sub(r"\*\*|__|`", "", text))
@@ -274,9 +268,8 @@ def facts_used(agent_text: str, tool_calls: list[dict], prior_facts: dict,
                current_session_id: str | None = None, *, customer_text: str = "",
                catalog_calls: list[dict] | None = None,
                usage_evidence: list[dict] | None = None) -> list[str]:
-    """Observable matches to sourced prior-session facts, not proof of causality."""
     if not current_session_id:
-        return []  # Session provenance cannot be verified.
+        return []
     catalog = [c for c in (catalog_calls if catalog_calls is not None else tool_calls)
                if c.get('name') == 'catalog.search' and isinstance(c.get('result'), dict)
                and 'error' not in c['result'] and c['result'].get('ok') is not False
@@ -304,8 +297,6 @@ def facts_used(agent_text: str, tool_calls: list[dict], prior_facts: dict,
             continue
         if customer_text:
             repeated = _speech_uses(customer_text, key, value, scope_type, scope_id, customer=True, catalog_calls=catalog)
-            # A bare value provided just now is not proof of remembering its
-            # scoped prior fact. Explicitly different scopes remain distinct.
             folded_customer = _fold(customer_text)
             scope_mentioned = bool(re.search(r"\bphong\b|\broom\b|" + "|".join(
                 _literal_pattern(alias) for aliases in _ROOM_ALIASES.values() for alias in aliases), folded_customer)) if scope_type == "room" else bool(re.search(r"(?<![\w-])sku-[\w-]+", folded_customer))
@@ -329,7 +320,6 @@ def facts_used(agent_text: str, tool_calls: list[dict], prior_facts: dict,
 
 
 def public_memory_writes(call: str, turn: int, memory_writes: list[dict], *, customer_name: str | None = None) -> list[dict]:
-    """Mask known memory value paths, preserving accepted op and original attribution."""
     sensitive = {"name", "customer_name", "phone", "customer_phone", "address", "shipping_address",
                  "bank_account", "account_number", "cccd", "national_id"}
     fields = {"key","value","op","customer_id","evidence_quote","scope_type","scope_id"}
@@ -354,7 +344,6 @@ def trace_line(run_id: str, config: str, scenario_id: str, call: str, turn: int,
                total_ms: float, call_brief_latency_ms: float | None,
                input_mode: str, customer_name: str | None = None, *,
                safety_issues: list | None = None, call_spec: dict | None = None) -> dict[str, Any]:
-    # Safety compares observations directly; raw PII never enters extraction.
     raw_row = {"scenario_id": scenario_id, "call": call, "turn": turn,
                "agent_text": agent_text, "tool_calls": deepcopy(tool_calls),
                "memory_writes": deepcopy(memory_writes)}

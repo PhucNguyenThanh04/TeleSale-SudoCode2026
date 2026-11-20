@@ -1,4 +1,3 @@
-"""Safe, bounded tool I/O logs shared by AI and the three MCP processes."""
 
 import json
 import logging
@@ -41,7 +40,6 @@ def _count(value: Any) -> int:
 
 
 def redact_text(value: str, customer_name: str | None = None) -> str:
-    """Mask common PII patterns and identifiers before rendering free text."""
     value = _UUID.sub("[ID ĐÃ ẨN]", mask_pii(value))
     value = _PHONE_WITH_SEPARATORS.sub("[SỐ ĐÃ ẨN]", value)
     if customer_name and len(customer_name.strip()) > 1:
@@ -171,7 +169,6 @@ def log_mcp_validation(server: str, name: str, exc: Exception) -> None:
 
 async def trace_mcp_call(server: str, name: str, args: dict[str, Any],
                          run: Callable[[], Awaitable[dict[str, Any]]]) -> dict[str, Any]:
-    """Log the handler boundary, including validation and service errors."""
     logger = logging.getLogger(f"app.mcp.{server}")
     started = time.perf_counter()
     logger.info("%s nhận vào | %s", name, render_payload(safe_tool_input(name, args)))

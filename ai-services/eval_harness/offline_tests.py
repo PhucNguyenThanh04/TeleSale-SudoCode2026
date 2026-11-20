@@ -1,8 +1,3 @@
-"""Run pytest without developer credentials, .env loading or network access.
-
-Usage from repository root: ai-services/.venv/bin/python -m
-    eval_harness.offline_tests ... (with PYTHONPATH=ai-services), or run this file.
-"""
 import os
 from pathlib import Path
 import subprocess

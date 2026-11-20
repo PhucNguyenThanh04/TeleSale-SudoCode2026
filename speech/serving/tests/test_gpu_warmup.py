@@ -1,4 +1,3 @@
-"""VAD/TTS CUDA startup and three warmups without downloading model weights."""
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch

@@ -1,4 +1,3 @@
-"""Offline checks for inputs to BTC scoring."""
 
 import json
 

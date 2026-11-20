@@ -1,4 +1,3 @@
-"""Offline counterexamples independent of the published catalog and scenarios."""
 import asyncio
 
 import pytest

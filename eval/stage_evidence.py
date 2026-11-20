@@ -1,4 +1,3 @@
-"""Small, value-free evidence sidecar for diagnosing evaluation turns."""
 
 import re
 from typing import Any
@@ -23,8 +22,6 @@ def _scope_keys(value: Any) -> dict[str, dict[str, list[str]]]:
         if not isinstance(scopes, dict):
             continue
         for scope_id, facts in scopes.items():
-            # Product SKUs are public catalog identifiers. Room labels can carry
-            # free-form customer text, so never copy them into this sidecar.
             label = scope_id if scope_type == "product" and isinstance(scope_id, str) \
                 and _SKU.fullmatch(scope_id) else "[redacted_scope]"
             keys = _safe_keys(facts)

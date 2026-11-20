@@ -1,4 +1,3 @@
-"""Namespace and serialization boundaries for the derived LangGraph store."""
 
 import unittest
 from contextlib import asynccontextmanager

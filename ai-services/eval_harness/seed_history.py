@@ -1,4 +1,3 @@
-"""Explicit scenario CRM history overlay; never mutates BTC source tables."""
 from copy import deepcopy
 from datetime import date
 

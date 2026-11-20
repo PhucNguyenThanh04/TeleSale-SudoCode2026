@@ -1,4 +1,3 @@
-"""Literal room labels for binding customer facts, never inferred room identities."""
 import re
 
 from app.mcp_servers.mcp_shared.commerce_rules import _search_text

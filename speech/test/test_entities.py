@@ -1,4 +1,3 @@
-"""Trích entity từ transcript dạng viết: SKU theo catalog, tiền theo ngữ cảnh và các slot hội thoại."""
 import unittest
 from pathlib import Path
 
@@ -133,7 +132,6 @@ class SlotTests(unittest.TestCase):
 
 @unittest.skipUnless(BTC_DIR, "cần dữ liệu BTC (BTC_DATA_DIR)")
 class BtcRegressionTests(unittest.TestCase):
-    """Chỉ chống thoái lui: bộ trích được phát triển khi đã đọc các mẫu này, không phải ước lượng tổng quát."""
 
     def test_entities_from_correct_transcripts_match_labels(self):
         catalog = load_catalog(BTC_DIR)
@@ -142,9 +140,6 @@ class BtcRegressionTests(unittest.TestCase):
                 self.assertEqual(oracle_entities(read_json(path), catalog)["oracle_entity_accuracy"], 100.0)
 
     def test_spoken_product_names_map_back_to_their_sku(self):
-        # Giả lập ASR đúng tuyệt đối: tên catalog → dạng nói → dạng viết → SKU. Bỏ qua sản phẩm mà tên không chứa hãng
-        # (vd "Bộ lõi lọc thay thế RO 1-2-3"): khách phải nói thêm hãng thì mới xác định được. HikePro đọc "hai pro"
-        # trùng "2 Pro" (RunLite 2 Pro trong D04) nên chỉ nhận được khi ASR viết ra "HikePro"/"hike pro".
         ambiguous = {"SKU-SN-TRK"}
         catalog = load_catalog(BTC_DIR)
         for product in read_json(BTC_DIR / "catalog" / "products.json")["products"]:

@@ -1,4 +1,3 @@
-"""Small evidence events written atomically with committed memory turns."""
 from app.knowledge.events.evidence import snapshot
 from app.knowledge.schemas import digest, timestamp
 

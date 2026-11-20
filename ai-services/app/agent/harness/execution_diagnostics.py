@@ -1,4 +1,3 @@
-"""Content-free execution evidence; never serialize exception messages or bodies."""
 from contextvars import ContextVar
 from functools import wraps
 import re
@@ -116,6 +115,5 @@ def pair_execution_health(values):
 
 
 def safe_failure_details(source):
-    """Share only normalized execution evidence across runner processes."""
     error = source.get('execution_error') if isinstance(source, dict) else getattr(source, 'execution_error', None)
     return {'execution_error': normalize_execution_event(error)} if isinstance(error, dict) else {}

@@ -1,4 +1,3 @@
-"""Resolve validated MCP settings and container secrets."""
 
 from pathlib import Path
 

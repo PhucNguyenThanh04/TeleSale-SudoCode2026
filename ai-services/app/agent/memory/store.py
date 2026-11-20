@@ -1,4 +1,3 @@
-"""Persistent agent memory over the MCP memory server."""
 
 from typing import Any, Protocol
 
@@ -9,12 +8,10 @@ from app.mcp_servers.mcp_memory.schemas import validate_read_response
 
 
 def safe_observations(calls: list[dict]) -> list[dict]:
-    """Bound successful business observations before crossing the memory MCP."""
     return memory_observations(calls)
 
 
 def memory_error_code(result: Any) -> str:
-    """Keep operational error metadata bounded and free of arbitrary payloads."""
     if not isinstance(result, dict):
         return "invalid_tool_result"
     code = result.get("error")
@@ -49,7 +46,6 @@ class MemoryStore(Protocol):
 
 
 class MCPMemoryStore:
-    """Async graph memory over memory.read/write, with no process-local facts."""
 
     supports_tool_observations = True
     supports_knowledge_signals = True

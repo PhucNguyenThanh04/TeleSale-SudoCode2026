@@ -1,4 +1,3 @@
-"""Benefits must each have evidence, independently of any benchmark campaign."""
 import pytest
 from app.agent.guardrails.checks import check_answer
 

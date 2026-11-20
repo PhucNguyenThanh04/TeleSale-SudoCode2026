@@ -1,4 +1,3 @@
-"""Prompt management preserves shipped behavior and uses labeled releases."""
 
 import unittest
 from unittest.mock import patch

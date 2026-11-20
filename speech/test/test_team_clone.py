@@ -1,4 +1,3 @@
-"""Giọng clone của thành viên (VieNeu ``ref_audio``) và bản mẫu kịch bản tv1–tv3 / ``{kh}``."""
 import argparse
 import json
 import shutil
@@ -69,7 +68,7 @@ class TeamVoicesTests(unittest.TestCase):
         self.assertEqual((d["agent_region"], d["agent_gender"], d["customer_region"], d["customer_gender"]),
                          ("bac", "f", "nam", "m"))
         self.assertEqual(d["turns"][0]["text"], "dạ em chào anh ạ")
-        self.assertIn("{kh}", TEMPLATE["dialogues"][0]["turns"][0]["text"])  # bản mẫu gốc không bị sửa
+        self.assertIn("{kh}", TEMPLATE["dialogues"][0]["turns"][0]["text"])
         with self.assertRaises(ValueError):
             fill_team(TEMPLATE, {"tv1": PREVIEW_TEAM["tv1"]})
 
@@ -93,7 +92,7 @@ class TeamVoicesTests(unittest.TestCase):
         self.assertNotIn("tool_context", gt)
         labels = {v[2] for v in manifest["voices"]}
         self.assertTrue(all(label.startswith("clone-") for label in labels))
-        self.assertNotIn(str(self.dir), json.dumps(manifest, ensure_ascii=False))  # không lộ đường dẫn mẫu giọng
+        self.assertNotIn(str(self.dir), json.dumps(manifest, ensure_ascii=False))
 
     def test_cache_follows_sample_content_not_path(self):
         ref = self.dir / "refs" / "tv1.wav"

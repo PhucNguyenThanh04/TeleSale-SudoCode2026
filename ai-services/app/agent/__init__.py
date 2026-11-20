@@ -1,1 +1,0 @@
-"""Explicit text-turn harness."""

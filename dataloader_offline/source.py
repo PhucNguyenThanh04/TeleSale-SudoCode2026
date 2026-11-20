@@ -1,4 +1,3 @@
-"""Read the BTC release without mutating it or confusing dates with wall time."""
 
 from __future__ import annotations
 
@@ -59,7 +58,6 @@ def read_policy(directory: Path, metadata_path: Path | None = None) -> list[Poli
             if not body:
                 raise ValueError(f"Empty policy chunk: {chunk_id}")
             safe = serving.get(chunk_id)
-            # Keep all original IDs for source accounting, but never excluded raw text.
             stored_body = safe.content if safe else "[Nội dung nội bộ đã loại khỏi chỉ mục]"
             if safe and safe.transformation != 'identity':
                 title = safe.content.splitlines()[0]
@@ -68,7 +66,6 @@ def read_policy(directory: Path, metadata_path: Path | None = None) -> list[Poli
                 body=stored_body, access_level="public" if safe else "restricted",
                 effective_from=safe.effective_from.isoformat() if safe and safe.effective_from else None,
                 effective_until=safe.effective_until.isoformat() if safe and safe.effective_until else None,
-                # Legacy reference/reviewer tables call the business date call_date.
                 date_basis="order_date" if safe and safe.date_basis == "order_date" else "call_date",
                 content_hash=digest(body),
             ))
@@ -119,7 +116,6 @@ def read_release(root: Path, metadata_path: Path | None = None) -> dict[str, Any
         nested=[item[key] for customer in customers for item in customer.get(group,[])]
         if len(set(nested))!=len(nested):
             raise ValueError('Duplicate CRM '+key)
-    # Phone numbers are deliberately not unique: BTC includes a shared phone.
     if fingerprint != source_fingerprint(root, metadata_path):
         raise ValueError('BTC source changed during parsing')
     release['source_fingerprint'] = fingerprint

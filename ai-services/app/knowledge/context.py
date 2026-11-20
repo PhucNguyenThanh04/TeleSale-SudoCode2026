@@ -1,4 +1,3 @@
-"""Release selection belongs to the trusted harness, never model tool args."""
 from app.knowledge.config import enabled, pinned_release
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -21,7 +20,6 @@ def release_context(release_id):
 
 
 async def capture_release(dsn):
-    """Resolve one release before a paired run; caller holds this ID for both modes."""
     from app.configs import get_settings
     if not enabled() and not get_settings().mcp_knowledge_url:
         return {'release_id': BASE_ONLY, 'manifest_hash': BASE_ONLY}

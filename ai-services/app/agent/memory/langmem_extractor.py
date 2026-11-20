@@ -1,4 +1,3 @@
-"""Stateless LangMem proposal extraction; canonical writes happen elsewhere."""
 
 import json
 import asyncio
@@ -7,43 +6,26 @@ from typing import Any
 from langchain_core.language_models.chat_models import BaseChatModel
 from langmem import create_memory_manager
 
-from app.agent.memory.customer_facts import _supplement_customer_facts
 from app.agent.prompts import MEMORY_PROMPT, text_prompt
 from app.mcp_servers.mcp_shared.pii import mask_pii
 from app.schemas.langmem import ProfileFactCandidate, CustomerCallEpisodeCandidate
 
 
 _INSTRUCTIONS = (
-    "Only the current source turn is new evidence. reference_context.previous_agent_text "
-    "is interpretation context, not a customer fact and never a new source turn. "
-    "Extract only customer-stated durable facts and per-call events from the supplied "
-    "Vietnamese telesale turns. Preserve source turn IDs and quote dates. "
-    "Do not infer facts from questions, jokes, hypotheticals, or another "
-    "person's words. Do not emit tool-derived prices or tool-derived quotes; those are "
-    "handled deterministically. However, DO extract customer-stated competitor_price_vnd "
-    "(when customer mentions another shop's price, e.g. 'bên kia bán 6,9 triệu' -> 6900000), "
-    "objection (e.g. 'dat_qua' when customer complains about high price), and blocker "
-    "(e.g. 'cần hỏi chồng', 'cần hỏi vợ', 'cần cân nhắc thêm'). "
-    "Use the exact schema slot keys, especially has_children, budget_vnd, "
-    "room_area_m2, competitor_price_vnd, objection, blocker, size, color, payment. "
-    "Convert Vietnamese amounts (including spoken numbers like 'năm triệu rưỡi' -> 5500000) "
-    "into integer VND and areas (like 'ba mươi lăm mét vuông' -> 35) into "
-    "integer square meters; quote the supporting customer phrase. Emit separate "
-    "facts for separate supported slots. For a customer's goal, per-product advice, "
-    "next step, or unresolved question/blocker, propose a CustomerCallEpisodeCandidate "
-    "with exact source IDs. For every EvidencedText field (blockers, questions, "
-    "customer_goal, advice_given, next_step), provide both a concise normalized "
-    "'text' (e.g. 'cần hỏi chồng') and a literal 'evidence_quote' copied verbatim "
-    "from the turn text. Use 'topics' with scope_type='product' and scope_id=<SKU> "
-    "to record advice_given and next_step per discussed product. If prior_open_items "
-    "are present in the turn payload and the customer or agent explicitly confirms "
-    "a prior blocker or question is settled (e.g. 'ông xã đồng ý rồi'), propose a "
-    "ResolvedItem in the matching topic's resolved_items with that item_id and literal "
-    "evidence_quote. If the customer defers a decision pending another person's "
-    "approval or information, record the stated dependency as an open blocker; a "
-    "callback outcome alone does not preserve it. Return no memory when evidence is "
-    "insufficient. Earlier turns are context; propose profile facts only from the "
-    "latest turn and cite its turn ID. Leave topic.consultation null; MCP derives it from committed evidence. advice_given records agent speech, not customer facts. Never infer customer selection or consent from advice, a tool quote, a resolved blocker or another person agreeing. presented_offer and accepted_offer are canonical MCP views, not LLM proposals."
+    "Extract customer-stated facts and call narratives using only the supplied typed schemas. "
+    "The current committed source turn is the only new evidence; history is interpretation "
+    "context and must not create new source turns. Cite its exact IDs and literal masked "
+    "evidence quotes. Convert explicitly stated amounts and units into the schema's numeric "
+    "units. Record uncertain or conditional statements as such; do not turn questions, "
+    "hypotheticals, negations or third-party statements into customer facts. "
+    "Tool observations supply commercial facts and completed actions separately; do not "
+    "invent prices, inventory, orders, customer selections or permission from advice. "
+    "Customer goals come from customer speech; advice comes from assistant speech. "
+    "Use scoped topics for the products/rooms actually discussed. Open items retain the "
+    "customer's stated dependencies or unanswered questions. Resolve a prior item only when "
+    "the current turn supports resolution, copying its supplied item ID and evidence quote. "
+    "Next steps are historical plans, never authorization to execute a tool. "
+    "Return no proposal when the evidence does not support one."
 )
 
 
@@ -84,7 +66,6 @@ async def extract_candidates(
     model: BaseChatModel, turns: list[dict], existing: list[dict],
     open_items: list[dict] | None = None,
 ) -> tuple[list[ProfileFactCandidate], CustomerCallEpisodeCandidate | None]:
-    """Use LangMem to propose typed records without persistence side effects."""
     instructions = await asyncio.to_thread(text_prompt, MEMORY_PROMPT, _INSTRUCTIONS)
     manager = create_memory_manager(
         model, schemas=[ProfileFactCandidate, CustomerCallEpisodeCandidate],
@@ -127,11 +108,4 @@ async def extract_candidates(
             facts.append(content)
         elif isinstance(content, CustomerCallEpisodeCandidate):
             episode = content
-    if turns:
-        facts.extend(_supplement_customer_facts(turns[-1], facts))
     return facts, episode
-
-
-
-# Consultation is optional in TopicProposal. MCP reconstructs/adopts it from
-# committed evidence; model-generated summaries never authorize a purchase.

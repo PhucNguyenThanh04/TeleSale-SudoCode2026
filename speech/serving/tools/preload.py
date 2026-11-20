@@ -1,4 +1,3 @@
-"""Download and initialize all model assets before opening the service port."""
 
 import os
 from pathlib import Path

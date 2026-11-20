@@ -1,4 +1,3 @@
-// Keep fractional positions across worklet blocks (including 44.1 kHz devices).
 export class PCMEncoder {
   constructor(sampleRate, targetRate = 16000, chunkSize = 800) {
     this.ratio = sampleRate / targetRate;
@@ -65,7 +64,6 @@ export class PCMPlayer {
   }
   finish(callback) {
     const epoch = this.epoch;
-    // Check the audio clock, since a suspended/background context may stop advancing.
     const check = () => {
       if (this.context.state === 'closed' || this.epoch !== epoch) return;
       if (this.context.currentTime >= this.until && this.sources.size === 0) callback();

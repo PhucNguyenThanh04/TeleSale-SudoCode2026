@@ -1,4 +1,3 @@
--- Run explicitly as migration administrator. Never executed on application startup.
 CREATE TABLE IF NOT EXISTS knowledge.policy_sources (
     id text PRIMARY KEY,
     data jsonb NOT NULL CHECK (jsonb_typeof(data)='object')
@@ -15,7 +14,6 @@ DO $$ BEGIN
  GRANT USAGE ON SCHEMA knowledge TO mcp_knowledge;
  GRANT SELECT ON knowledge.policy_sources, knowledge.policy_revocations,
    knowledge.releases, knowledge.active TO mcp_knowledge;
- -- Reader cannot access raw BTC, customer evidence, decisions, permissions or mutate active.
  GRANT SELECT ON knowledge.policy_sources,knowledge.policy_revocations TO knowledge_reviewer,knowledge_worker;
  GRANT INSERT,UPDATE ON knowledge.policy_sources,knowledge.policy_revocations TO knowledge_reviewer;
 END $$;

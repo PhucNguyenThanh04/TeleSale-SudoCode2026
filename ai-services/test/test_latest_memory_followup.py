@@ -1,4 +1,3 @@
-"""Latest-smoke RQR: use a verified empty lookup instead of demanding its ID."""
 import asyncio
 import json
 from pathlib import Path

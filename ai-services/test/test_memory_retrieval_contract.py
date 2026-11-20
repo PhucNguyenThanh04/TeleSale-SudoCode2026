@@ -1,4 +1,3 @@
-"""Offline recall regressions across the MCP, store and model-context boundaries."""
 import unittest
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch

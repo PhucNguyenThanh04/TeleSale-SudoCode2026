@@ -1,4 +1,3 @@
-"""Reuse B2 text cleanup for Gipformer without Whisper or model weights."""
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -40,7 +39,6 @@ class STTPostprocessTests(unittest.TestCase):
                                  expected)
 
     def test_no_hotword_echo_filter_without_hotword_prompt(self):
-        # A real comparison of brands must not be erased as a decoder prompt echo.
         result = fake_model('AirPure, Xiaomi, Karofi, RunLite').transcribe_segment(
             np.zeros(3200, dtype=np.float32))
         self.assertIn('AirPure', result)

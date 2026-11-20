@@ -1,4 +1,3 @@
-"""Run once: PYTHONPATH=backend backend/.venv/bin/python -m app.seed_demo_users."""
 import asyncio
 from pathlib import Path
 from uuid import uuid4
@@ -31,7 +30,6 @@ async def seed(connection, settings):
     async with connection.transaction():
         await connection.execute(migration.read_text())
         for username, password, customer_id in accounts:
-            # Channel identities must resolve to exactly one customer in the AI service.
             customer = await connection.fetchrow('''SELECT c.customer_id FROM btc_source.customers c
                 WHERE c.customer_id=$1 AND NOT EXISTS (
                     SELECT 1 FROM btc_source.customers other WHERE other.customer_id<>c.customer_id

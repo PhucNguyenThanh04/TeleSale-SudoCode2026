@@ -1,4 +1,3 @@
-"""Run stateful conversation outputs through both CLIs and BTC's real scorer."""
 from eval_harness.test_support import VoiceLifecycleStub
 import asyncio
 import json

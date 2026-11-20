@@ -1,4 +1,3 @@
-"""Unit tests for Eval Harness Scorer and Extractor."""
 
 from eval_harness.test_support import VoiceLifecycleStub
 import unittest
@@ -365,7 +364,6 @@ class TestScenarioInput(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res["passed"], 1)
 
     def test_scorer_guardrails(self):
-        # BTC 11/2026: PII chỉ tính khi token khách đã nói bị lặp lại nguyên văn
         scenarios = {"SC01": {"calls": {"call_1": {"customer_turns": ["CCCD của anh là 012345678901 nhé"]}}}}
         trace_leak = {("SC01", "call_1"): [{"agent_text": "Số CCCD của anh là 012345678901 đúng không?"}]}
         res = evaluate_guardrails(scenarios, trace_leak)
@@ -373,7 +371,6 @@ class TestScenarioInput(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(res["is_safe"])
         masked = {("SC01", "call_1"): [{"agent_text": "Dạ em ghi nhận CCCD đuôi ***901 ạ."}]}
         self.assertEqual(evaluate_guardrails(scenarios, masked)["total_violations"], 0)
-        # Số dài agent nói ra nhưng khách không nói (VD mã vận đơn) không phải PII của khách
         other = {"SC01": {"calls": {"call_1": {"customer_turns": ["alo em"]}}}}
         self.assertEqual(evaluate_guardrails(other, trace_leak)["total_violations"], 0)
 
@@ -422,7 +419,6 @@ def _one(si, rows, earlier=None):
 
 
 class TestBtcUpdate112026(unittest.TestCase):
-    """Luật chấm theo reference_eval.py bản BTC-cap-nhat-11-2026."""
 
     def test_handoff_outcome_label_is_btc_chuyen_may(self):
         rows = [{"tool_calls": [{"name": "handoff.transfer", "args": {"brief": {}}}]}]

@@ -1,4 +1,3 @@
-"""Bounded evidence snapshots; PII filtering follows payload field paths."""
 import re
 from app.agent.guardrails.checks import mask_pii
 from app.knowledge.schemas import KnowledgeError
@@ -16,8 +15,6 @@ def safe_tools(calls):
     if not isinstance(calls, list) or len(calls) > 30:
         raise KnowledgeError('Invalid tool evidence')
     result = []
-    # Only these argument paths leave the originating service. Personal fields
-    # at tool_calls[*].args are replaced; unrelated same-named keys are not used.
     public_args = {'sku', 'variant_sku', 'qty', 'price_vnd', 'on', 'order_date',
                    'promo_code', 'size', 'color'}
     private_args = {'customer_phone', 'customer_name', 'address', 'shipping_address', 'phone'}

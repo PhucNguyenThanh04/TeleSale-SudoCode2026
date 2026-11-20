@@ -32,7 +32,6 @@ def test_compare_rejects_model_and_code_mutations():
 
 def test_pair_audit_rejects_release_mismatch():
     from eval.trace_audit import audit_pair
-    # audit_pair also checks all existing provenance; isolate the new violation.
     a = {'config': 'full', 'run_id': 'run', 'knowledge_release': {'release_id': 'one'}}
     b = {'config': 'baseline_no_memory', 'run_id': 'run', 'knowledge_release': {'release_id': 'two'}}
     assert any('knowledge_release' in err for err in audit_pair(a, b))

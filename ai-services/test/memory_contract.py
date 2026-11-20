@@ -1,4 +1,3 @@
-"""Small, fixture-only oracle for multi-session memory snapshots."""
 
 import json
 from pathlib import Path
@@ -13,7 +12,6 @@ def load_cases(path: Path) -> list[dict]:
 
 
 def check_snapshot(expected: dict, actual: dict) -> list[str]:
-    """Compare declared fields only; never copy customer values into errors."""
     errors: list[str] = []
 
     def contains_text(value: Any, needle: str) -> bool:

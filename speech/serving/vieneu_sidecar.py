@@ -1,4 +1,3 @@
-"""Isolated VieNeu v3 Turbo CUDA service on a loopback-only port."""
 
 from __future__ import annotations
 

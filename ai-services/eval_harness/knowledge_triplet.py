@@ -1,4 +1,3 @@
-"""LIVE three-arm experiment with manual, automatic or pre-reviewed approval."""
 import argparse
 import asyncio
 import fcntl
@@ -34,7 +33,7 @@ from eval.trace_audit import audit_trace, build_manifest
 
 
 class ExperimentError(ValueError):
-    """Static operator-facing diagnostics; never raw provider/DB exceptions."""
+    pass
 
 
 def read_json(path):
@@ -407,7 +406,7 @@ async def run_experiment(args, repo, worker_repo, settings):
 
 
 def main():
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(description='LIVE three-arm experiment with manual, automatic or pre-reviewed approval.')
     p.add_argument('--scenarios', type=Path, default=PROJECT/'ai-services/eval_harness/scenarios')
     p.add_argument('--btc-root', type=Path)
     review_mode = p.add_mutually_exclusive_group()

@@ -1,4 +1,3 @@
-"""Thin FastMCP catalog handlers: validation, service call, safe errors."""
 
 from fastmcp import FastMCP
 from fastmcp.server.auth import StaticTokenVerifier

@@ -1,4 +1,3 @@
-"""Fingerprint the live, read-only BTC source tables for eval pairing."""
 
 import hashlib
 import json

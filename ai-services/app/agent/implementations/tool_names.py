@@ -1,4 +1,3 @@
-"""Provider aliases; MCP, business state and BTC retain canonical names."""
 from collections.abc import Iterable
 import re
 
@@ -35,6 +34,5 @@ def validate_model_tool_names(canonical_names: Iterable[str]) -> None:
 
 
 def model_tool_instructions(text: str) -> str:
-    """Render known tool references only in trusted instructions, never evidence."""
     pattern = r'(?<![\w.])(' + '|'.join(re.escape(n) for n in MODEL_TOOL_NAMES) + r')(?![\w.])'
     return re.sub(pattern, lambda match: MODEL_TOOL_NAMES[match[0]], text)

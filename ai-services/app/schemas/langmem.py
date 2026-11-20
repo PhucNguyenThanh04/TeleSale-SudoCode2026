@@ -1,4 +1,3 @@
-"""Typed, untrusted proposals from long-term memory distillation."""
 
 from datetime import date
 from typing import Any, Literal
@@ -7,7 +6,6 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.mcp_servers.mcp_shared.pii import mask_pii
 from app.constants import PROFILE_SLOT_KEYS
-from app.schemas.consultation import ConsultationSnapshot, mask_consultation
 
 
 FactKey = Literal.__getitem__(tuple(sorted(PROFILE_SLOT_KEYS)))
@@ -21,8 +19,7 @@ def _safe_strings(value: Any) -> bool:
     if isinstance(value, str):
         return mask_pii(value) == value
     if isinstance(value, dict):
-        return all((mask_consultation(item)==item if key=='consultation' else _safe_strings(item))
-                   for key,item in value.items() if key not in _IDENTIFIER_FIELDS)
+        return all(_safe_strings(item) for key,item in value.items() if key not in _IDENTIFIER_FIELDS)
     if isinstance(value, (list, tuple)):
         return all(_safe_strings(item) for item in value)
     return True
@@ -60,7 +57,6 @@ class ResolvedItem(SafeProposal):
 
 
 class TopicProposal(SafeProposal):
-    consultation: ConsultationSnapshot | None = None
     scope_type: Literal["global", "product", "room"] = "global"
     scope_id: str = ""
     customer_goal: EvidencedText | None = None
@@ -71,8 +67,6 @@ class TopicProposal(SafeProposal):
 
     @model_validator(mode="after")
     def validate_scope(self):
-        if self.consultation is not None and (self.scope_type != 'global' or self.scope_id):
-            raise ValueError('consultation belongs to the global topic')
         if self.scope_type == "global" and self.scope_id:
             raise ValueError("global topic must not have scope_id")
         if self.scope_type in {"product", "room"} and (

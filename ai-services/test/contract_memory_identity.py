@@ -1,4 +1,3 @@
-"""Explicit, independent identity boundary contract cases."""
 
 import unittest
 from datetime import date
@@ -117,9 +116,6 @@ class MemoryIdentityContract(unittest.IsolatedAsyncioTestCase):
         first = turn(case["calls"][0]["turns"][0]["text"]).model_copy(update={
             "channel": "chat_fanpage", "channel_identity": "fb.synthetic.104"})
         await runtime.run(first)
-        # Facts are admitted by the asynchronous worker, never by JSON embedded
-        # in the sales reply. Exercise its real evidence boundary before projecting
-        # the completed result into this identity test's in-memory store.
         from app.schemas.langmem import ProfileFactCandidate
         from app.mcp_servers.mcp_memory.services.langmem_admission import admit_profile_candidates
         sid, tid = str(first.session_id), str(first.client_msg_id)

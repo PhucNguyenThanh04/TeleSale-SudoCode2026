@@ -1,4 +1,3 @@
-"""Review judgments must cover exact candidates and cite bound source evidence."""
 import json
 
 import pytest

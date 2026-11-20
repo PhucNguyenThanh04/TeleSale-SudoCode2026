@@ -1,8 +1,3 @@
-"""Benchmark Runner CLI for AI TeleSale SudoCode 2026.
-
-Executes controlled 2x2 experiments (Deep/ReAct x Full/Baseline)
-against the configured PostgreSQL database, four MCP servers and model.
-"""
 
 from __future__ import annotations
 
@@ -22,7 +17,6 @@ from typing import Any
 from uuid import UUID, uuid4
 import asyncpg
 
-# Add ai-services to PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.agent.factory import build_runtime
@@ -45,7 +39,6 @@ from eval_harness.scorer import (
 logger = logging.getLogger("eval_runner")
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s [%(levelname)s] %(message)s")
 
-# The BTC compatibility schema requires integer ttft_ms, even without token streaming.
 CONVERSATION_MEASUREMENT = {
     "lifecycle": "prepare_session -> run(voice) -> record_playback; drain_enrichment_at_call_end",
     "delivery_mode": "voice",
@@ -120,7 +113,6 @@ async def run_scenario_call(
     safety_issues: list | None = None,
     on_turn=None, diagnostics=None, delivery_mode='text',
 ) -> list[dict[str, Any]]:
-    """Execute all turns of a single call in a scenario."""
     conversation_measurement(delivery_mode)
     session_id = uuid4()
     days_later = call_spec.get("days_later", 0)
@@ -178,8 +170,6 @@ async def run_scenario_call(
                 else:
                     resp = await runtime.run(turn_req)
                 latency_ms = (time.perf_counter() - t_start) * 1000.0
-                # The browser acknowledges delivered characters before the same
-                # runtime method commits memory. Transcript eval assumes full delivery.
                 memory_started = time.perf_counter()
                 commit_update = getattr(resp, 'memory_update', None)
                 if delivery_mode == 'voice':
@@ -199,8 +189,6 @@ async def run_scenario_call(
                 memory_finalize_ms = state.get('memory_commit_ms', 0)
             customer_name = customer_name or state.get("customer_name")
             agent_text = resp.agent_text or ""
-            # Runtime attributes actual preparation reads to their first real
-            # consumer; historical session evidence is not a new tool call.
             tool_calls = [*state.get('prepared_tool_calls', []), *state.get("tool_calls", [])]
             memory_writes = state.get("memory_writes", [])
             if prior_snapshot is None:
@@ -265,7 +253,6 @@ async def run_scenario_call(
         if on_row is not None:
             on_row(row)
         if playback_error is not None:
-            # A following turn must never consume unconfirmed assistant history.
             raise RuntimeError("playback_failed")
         if essential_not_ready:
             raise RuntimeError('essential_state_not_ready')
@@ -336,13 +323,11 @@ def scenario_call_date(calls: dict[str, dict], call_name: str,
 
 
 def make_baseline_runtime(runtime: Any) -> Any:
-    """Preserve CRM identity while isolating writes and hiding prior memory."""
     runtime.memory.include_prior = False
     return runtime
 
 
 class PreflightError(RuntimeError):
-    """Only fixed diagnostic codes and known service names cross the boundary."""
     def __init__(self, code, message, *, service=None):
         super().__init__(message)
         self.error_code = code
@@ -351,7 +336,6 @@ class PreflightError(RuntimeError):
 
 async def preflight_runtime(runtime: Any, settings: Settings, *,
                             expected_database: str, release: dict) -> dict:
-    """Read-only checks; target is supplied by the operator, never inferred."""
     if settings.app_env == "production" or not expected_database:
         raise ValueError("Non-production --expected-database is required")
     identities = []
@@ -402,7 +386,6 @@ async def run_scenario_stream(
     trace: dict[tuple[str, str], list[dict[str, Any]]] | None = None,
     safety_issues: list | None = None, on_turn=None, diagnostics=None, delivery_mode='text',
 ) -> dict[tuple[str, str], list[dict[str, Any]]]:
-    """Run all scenarios through the harness runtime."""
     trace = trace if trace is not None else {}
     base_date = date(2026, 10, 15)
 
@@ -461,7 +444,6 @@ def memory_failure_counts(trace: dict[tuple[str, str], list[dict[str, Any]]]) ->
 
 def assert_trace_ready(scenarios: dict[str, Any],
                        trace: dict[tuple[str, str], list[dict[str, Any]]]) -> None:
-    """Refuse to score a run with missing turns or operational errors."""
     expected = []
     for scenario_id, scenario in scenarios.items():
         for call_name, call in scenario.get("calls", {}).items():
@@ -487,7 +469,6 @@ def assert_trace_ready(scenarios: dict[str, Any],
 
 
 class WarmupGateway:
-    """Warm up the same graph/model without any mutable service access."""
     def __init__(self, inner):
         self.inner = inner
 
@@ -500,15 +481,12 @@ class WarmupGateway:
         if name == "memory.read":
             return {"history": [], "profile": {}, "episodes": [], "turn_no": 1}
         if name == "memory.write":
-            # Each warm-up uses a new session with exactly one synthetic turn.
-            # Persist validates the normal memory.write response contract.
             return {"turn_no": 1, "memory_writes": []}
         if name in {"order.create", "order.update", "schedule.callback", "handoff.transfer"}:
             return {"error": "warmup_write_blocked"}
         return await self.inner.invoke(name, args)
 
     async def invoke_trusted(self, name, args, *pos, **kwargs):
-        # All mutation calls, including trusted agent calls, pass the same gate.
         return await self.invoke(name, args)
 
 
@@ -583,7 +561,6 @@ async def run_configuration(*, scenarios: dict[str, dict], config: str, runtime,
                 on_row=append, trace=trace, safety_issues=safety_issues, on_turn=on_turn, diagnostics=diagnostics,
                 delivery_mode=delivery_mode)
         finally:
-            # Publish final attribution, including late identity backfill.
             write_jsonl(trace, out)
             diagnostic_refs = diagnostics.write(out)
             from app.mcp_servers.mcp_shared.decision_diagnostics import enabled as decision_enabled
@@ -605,7 +582,6 @@ async def run_configuration(*, scenarios: dict[str, dict], config: str, runtime,
 
 async def wait_for_distillation(dsn: str, source_turn_id: str,
                                 timeout_seconds: float = 180) -> None:
-    """Wait for this turn's job without including unrelated database jobs."""
     conn = await asyncpg.connect(dsn.replace("postgresql+asyncpg://",
                                             "postgresql://", 1))
     try:
@@ -641,7 +617,6 @@ class DistillationWrites(dict):
 
 
 async def read_distillation_writes(dsn: str, source_ids: list[str]) -> dict[str, list[dict]]:
-    """Read only completed, accepted writes for the exact evaluated turns."""
     if not source_ids:
         return {}
     conn = await asyncpg.connect(dsn.replace("postgresql+asyncpg://",
@@ -673,7 +648,6 @@ async def read_distillation_writes(dsn: str, source_ids: list[str]) -> dict[str,
 async def execute_configuration(*, settings, scenarios, config, run_id, out,
                                 btc_root, expected_database, release, runtime=None,
                                 worker_wait_seconds=180, on_turn=None, delivery_mode='text'):
-    """One authorized live lifecycle, shared by both single-trace CLIs."""
     measurement = conversation_measurement(delivery_mode)
     if any(path.exists() for path in (Path(out), Path(out).with_suffix('.report.json'),
             Path(out).with_suffix('.stages.json'), Path(out).with_suffix('.events.json'))):

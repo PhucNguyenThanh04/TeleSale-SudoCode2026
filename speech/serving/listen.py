@@ -1,4 +1,3 @@
-"""Continuous PCM input and per-connection turn detection; no agent orchestration."""
 from __future__ import annotations
 
 import asyncio
@@ -45,7 +44,6 @@ class ListenSession:
                 audio = np.concatenate((self.carry, audio))
                 self.carry = np.empty(0, dtype=np.float32)
             if len(audio) < MIN_SAMPLES:
-                # A detected short turn still gets an end event, but no STT job.
                 if self.turn_id is not None:
                     events.append(self.event('speech_ended', turn_id=self.turn_id, reason='silence'))
                     self.turn_id = None
@@ -122,8 +120,6 @@ async def serve_listen(websocket: WebSocket, models, inference_lock: asyncio.Loc
     closed = False
 
     async def recognize(audio):
-        # A cancelled socket must not release the shared lock while the native
-        # recognizer thread is still running.
         async with inference_lock:
             task = asyncio.create_task(asyncio.to_thread(models.transcribe_segment, audio))
             try:
@@ -161,7 +157,6 @@ async def serve_listen(websocket: WebSocket, models, inference_lock: asyncio.Loc
                 await error('audio_too_large', True)
                 await websocket.close(code=1009)
                 return
-            # VAD runs separately from STT; each session feeds its VAD serially.
             vad_task = asyncio.create_task(asyncio.to_thread(session.feed_audio, audio))
             try:
                 events = await asyncio.shield(vad_task)

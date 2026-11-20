@@ -1,4 +1,3 @@
-"""Deterministic date/applicability decisions; no intent or product classifier."""
 from app.knowledge.schemas import Applicability, Evidence
 
 

@@ -1,4 +1,3 @@
-"""Writer behavior with synthetic records; this does not certify live SQL rollback."""
 import asyncio
 import copy
 import csv
@@ -81,7 +80,7 @@ def test_writer_preserves_json_and_is_idempotent_without_pruning(monkeypatch):
         source['products']['products'][0]['extra'] = 'updated'
         source['crm']['customers'] = source['crm']['customers'][:1]
         await import_release('postgresql://synthetic', source)
-        assert 'C2' in writer.rows['customers']  # Upsert intentionally keeps removed seed records.
+        assert 'C2' in writer.rows['customers']
         assert writer.rows['products']['P1'] != first['products']['P1']
     asyncio.run(run())
 

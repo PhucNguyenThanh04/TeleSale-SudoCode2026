@@ -1,4 +1,3 @@
-"""Publish the shipped prompt texts to the production label once."""
 
 import argparse
 import hashlib
@@ -14,7 +13,7 @@ def prompt_manifest() -> dict[str, str]:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Publish the shipped prompt texts to the production label once.')
     parser.add_argument('--dry-run', action='store_true', help='Print local text and SHA-256 without network')
     args = parser.parse_args(argv)
     if args.dry_run:

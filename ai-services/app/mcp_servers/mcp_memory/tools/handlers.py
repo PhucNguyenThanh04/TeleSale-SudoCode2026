@@ -1,4 +1,3 @@
-"""Thin memory MCP handlers."""
 
 from fastmcp import FastMCP
 from fastmcp.server.auth import StaticTokenVerifier

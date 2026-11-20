@@ -1,4 +1,3 @@
-// The JWT stays in an HttpOnly cookie; browser code only reads the assigned profile.
 export async function loadProfile() {
   const response = await fetch('/api/auth/me', { cache: 'no-store' });
   if (response.status === 401) {

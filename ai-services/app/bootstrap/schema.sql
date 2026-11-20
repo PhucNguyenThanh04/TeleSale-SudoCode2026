@@ -1,7 +1,5 @@
--- Canonical managed schema for a fresh demo/eval boot. BTC data is imported separately.
 CREATE SCHEMA IF NOT EXISTS runtime;
 
--- Run after the BTC source import. Runtime conversations stay separate from btc_source.
 CREATE SCHEMA IF NOT EXISTS runtime;
 
 CREATE TABLE IF NOT EXISTS runtime.chat_sessions (
@@ -70,7 +68,6 @@ CREATE TABLE IF NOT EXISTS runtime.erasure_suppressions (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
--- Preserve original scalar order fields for single-item consumers.
 ALTER TABLE runtime.tool_orders ADD COLUMN IF NOT EXISTS lines jsonb NOT NULL DEFAULT '[]';
 UPDATE runtime.tool_orders
 SET lines = jsonb_build_array(jsonb_build_object('sku', sku, 'qty', qty, 'price_vnd', price_vnd))
@@ -86,8 +83,6 @@ CREATE TABLE IF NOT EXISTS runtime.demo_users (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
--- AI service operational memory tables.
--- LangGraph creates runtime.store and runtime.store_migrations via its own setup().
 
 
 
@@ -180,7 +175,6 @@ CREATE INDEX IF NOT EXISTS langmem_jobs_claim_idx
     ON runtime.langmem_distillation_jobs(status, lease_until, created_at);
 
 
--- Knowledge is reset only at system boot, never between arms of an experiment.
 CREATE SCHEMA IF NOT EXISTS knowledge;
 CREATE TABLE IF NOT EXISTS knowledge.events (id text PRIMARY KEY, data jsonb NOT NULL CHECK (jsonb_typeof(data)='object'));
 CREATE TABLE IF NOT EXISTS knowledge.gaps (id text PRIMARY KEY, data jsonb NOT NULL CHECK (jsonb_typeof(data)='object'));
@@ -214,7 +208,6 @@ DO $$ BEGIN
  GRANT SELECT ON btc_source.policy_chunks TO knowledge_worker, knowledge_reviewer;
 END $$;
 
--- Public serving snapshots and live revocations.
 CREATE TABLE IF NOT EXISTS knowledge.policy_sources (
     id text PRIMARY KEY,
     data jsonb NOT NULL CHECK (jsonb_typeof(data)='object')
@@ -231,12 +224,10 @@ DO $$ BEGIN
  GRANT USAGE ON SCHEMA knowledge TO mcp_knowledge;
  GRANT SELECT ON knowledge.policy_sources, knowledge.policy_revocations,
    knowledge.releases, knowledge.active TO mcp_knowledge;
- -- Reader cannot access raw BTC, customer evidence, decisions, permissions or mutate active.
  GRANT SELECT ON knowledge.policy_sources,knowledge.policy_revocations TO knowledge_reviewer,knowledge_worker;
  GRANT INSERT,UPDATE ON knowledge.policy_sources,knowledge.policy_revocations TO knowledge_reviewer;
 END $$;
 
--- Different customers may extract concurrently; one customer's revisions stay ordered across channels.
 CREATE INDEX IF NOT EXISTS langmem_customer_pending_job_idx
     ON runtime.langmem_distillation_jobs(customer_id, job_id)
     WHERE status IN ('pending', 'leased');

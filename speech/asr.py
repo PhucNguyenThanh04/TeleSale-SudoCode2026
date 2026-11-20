@@ -1,9 +1,3 @@
-"""ASR offline: Silero VAD (đi kèm faster-whisper) → faster-whisper (PhoWhisper/Whisper) → chuẩn hóa Việt-Anh.
-
-Mặc định khóa ngôn ngữ "vi": Whisper đa ngôn ngữ vẫn viết được từ tiếng Anh xen trong câu tiếng Việt
-("size", "ship", "voucher"), còn tự nhận ngôn ngữ theo từng đoạn ngắn dễ nhảy sang "en" và dịch sai cả câu.
-``language="auto"`` chỉ đổi sang "en" khi đoạn đó chắc chắn là tiếng Anh.
-"""
 from __future__ import annotations
 
 import os
@@ -34,7 +28,6 @@ PRESETS = {
 MODEL_DIR = Path(os.environ.get("SPEECH_MODEL_DIR", Path.home() / ".cache" / "telesale-speech" / "models"))
 EN_THRESHOLD = 0.75
 
-# Câu Whisper hay "bịa" khi gặp khoảng lặng/nhiễu (học từ phụ đề YouTube).
 _HALLUCINATIONS = re.compile(
     r"subscribe|đăng ký kênh|ghiền mì gõ|cảm ơn các bạn đã (?:theo dõi|xem|lắng nghe)|hẹn gặp lại các bạn|"
     r"like (?:và|and) share|bấm chuông|thanks for watching|thank you for watching|vietsub|phụ đề|"
@@ -53,15 +46,14 @@ class VadConfig:
 
 @dataclass(frozen=True)
 class DecodeConfig:
-    language: str = "vi"         # "vi" | "en" | "auto"
+    language: str = "vi"
     beam_size: int = 5
     use_hotwords: bool = True
-    segmentation: str = "utterance"  # "utterance": VAD cắt từng câu như agent thoại thật; "file": cả file
-    diarize: bool = True         # tách 2 người nói → ``turns[]`` có idx/speaker (entity theo lượt, diarization)
+    segmentation: str = "utterance"
+    diarize: bool = True
 
 
 def resolve_model(name: str) -> Path:
-    """Tên preset hoặc thư mục CTranslate2 → thư mục cục bộ (tải về MODEL_DIR nếu chưa có)."""
     if Path(name).is_dir():
         return Path(name)
     repo = PRESETS.get(name, name)
@@ -69,17 +61,15 @@ def resolve_model(name: str) -> Path:
     if not (target / "model.bin").exists():
         from huggingface_hub import snapshot_download
 
-        # local_dir: tránh lỗi symlink (WinError 1314) của cache Hugging Face trên Windows.
         snapshot_download(repo, local_dir=str(target))
     if not (target / "tokenizer.json").exists():
         donor = MODEL_DIR / PRESETS["whisper-small"].replace("/", "--") / "tokenizer.json"
-        if donor.exists():  # PhoWhisper-large CT2 thiếu tokenizer; cùng bộ từ vựng 51865 với Whisper small
+        if donor.exists():
             shutil.copy(donor, target / "tokenizer.json")
     return target
 
 
 def load_model(name: str, device: str = "auto", compute_type: str = "auto"):
-    """→ (WhisperModel, device thật sự dùng, compute_type). "auto" thử GPU rồi lùi về CPU nếu thiếu CUDA/cuDNN."""
     from faster_whisper import WhisperModel
 
     path = str(resolve_model(name))
@@ -89,10 +79,10 @@ def load_model(name: str, device: str = "auto", compute_type: str = "auto"):
         ctype = compute_type if compute_type != "auto" else ("int8_float16" if dev == "cuda" else "int8")
         try:
             model = WhisperModel(path, device=dev, compute_type=ctype, cpu_threads=os.cpu_count() or 4)
-            if dev == "cuda":  # thiếu cublas/cudnn chỉ lộ ra khi chạy thật
+            if dev == "cuda":
                 list(model.transcribe(np.zeros(au.SAMPLE_RATE, dtype=np.float32), language="vi")[0])
             return model, dev, ctype
-        except Exception as err:  # noqa: BLE001 - lùi về thiết bị kế tiếp
+        except Exception as err:
             last_error = err
     raise RuntimeError(f"Không nạp được model {name}: {last_error}")
 
@@ -107,7 +97,6 @@ def speech_chunks(audio: np.ndarray, vad: VadConfig) -> list[tuple[int, int]]:
 
 
 def clean_hypothesis(text: str, hotword_terms: frozenset[str] = frozenset()) -> str:
-    """Bỏ câu ảo giác quen thuộc, lặp n-gram, và trường hợp model đọc lại nguyên danh sách hotword."""
     text = text.strip()
     if not text or _HALLUCINATIONS.search(text):
         return ""
@@ -137,11 +126,6 @@ def _decode(model, chunk: np.ndarray, language: str, cfg: DecodeConfig, hotwords
 
 
 def _split_words(segs, start: int, parts: list[tuple[int, int, str | None]]) -> list[tuple[int, int, str | None, str]]:
-    """Chia chữ của một đoạn đã giải mã nguyên khối cho từng người nói theo mốc giữa của từng từ.
-
-    Giải mã nguyên đoạn VAD rồi mới chia (thay vì cắt audio theo người nói) giữ ngữ cảnh cho ASR: cắt audio
-    trước làm WER team22 tăng ~1,3 điểm khi tách người nói sai ở cặp giọng giống nhau.
-    """
     sr = au.SAMPLE_RATE
     texts = ["" for _ in parts]
     for seg in segs:
@@ -154,7 +138,6 @@ def _split_words(segs, start: int, parts: list[tuple[int, int, str | None]]) -> 
 
 def transcribe_audio(model, audio: np.ndarray, *, cfg: DecodeConfig, vad: VadConfig, lexicon: Lexicon,
                      catalog: tuple[Product, ...] = (), reference_date: date = REFERENCE_DATE) -> dict:
-    """Một file âm thanh → bản ghi theo format ``hypotheses.json`` của BTC (+ đoạn debug ``asr_segments``)."""
     pieces = decode_segments(model, audio, cfg=cfg, vad=vad, lexicon=lexicon)
     return finalize(pieces, lexicon, catalog, reference_date, hotword_filter_terms(lexicon, cfg))
 
@@ -166,7 +149,6 @@ def hotword_filter_terms(lexicon: Lexicon, cfg: DecodeConfig) -> frozenset[str]:
 
 def decode_segments(model, audio: np.ndarray, *, cfg: DecodeConfig, vad: VadConfig,
                     lexicon: Lexicon) -> list[dict]:
-    """Decode only; preserve every segment before cleanup or domain normalization."""
     sr = au.SAMPLE_RATE
     hotwords = lexicon_hotwords(lexicon) if cfg.use_hotwords else None
     pieces: list[dict] = []
@@ -211,7 +193,6 @@ def _overlap_speaker(start: int, end: int, speakers: list[dict]) -> str | None:
 def finalize(pieces: list[dict], lexicon: Lexicon, catalog: tuple[Product, ...] = (),
              reference_date: date = REFERENCE_DATE, hotword_terms: frozenset[str] = frozenset(),
              *, postprocess: bool = True) -> dict:
-    """Các đoạn ASR thô → chuẩn hóa + entity. Tách riêng để sửa lexicon xong chấm lại mà không cần chạy lại ASR."""
     turns = []
     for piece in pieces:
         if piece["no_speech_prob"] > 0.6 and piece["avg_logprob"] < -1.0:
@@ -234,10 +215,6 @@ def finalize(pieces: list[dict], lexicon: Lexicon, catalog: tuple[Product, ...] 
 
 
 def _with_speaker_turns(segments: list[dict], catalog: tuple[Product, ...], reference_date: date) -> dict:
-    """Gộp đoạn liền kề cùng người nói thành lượt ``turns[]`` (idx từ 1) như ``asr/ground_truth.json``.
-
-    Entity được trích trên cả lượt (không trên từng mẩu VAD), nên ngữ cảnh một câu bị VAD cắt đôi vẫn giữ nguyên.
-    """
     turns: list[dict] = []
     for seg in segments:
         if turns and turns[-1]["speaker"] == seg["speaker"]:
@@ -260,7 +237,6 @@ def transcribe_files(paths: list[Path], model_name: str, *, cfg: DecodeConfig, v
                      device: str = "auto", compute_type: str = "auto", catalog: tuple[Product, ...] = (),
                      reference_date: date = REFERENCE_DATE, lexicon: Lexicon | None = None,
                      progress=print) -> tuple[dict, dict]:
-    """→ (hypotheses theo id file, thông tin run). Chỉ in id + thời lượng, không in nội dung hội thoại (PII)."""
     lexicon = lexicon or default_lexicon()
     started = time.perf_counter()
     model, used_device, used_type = load_model(model_name, device, compute_type)

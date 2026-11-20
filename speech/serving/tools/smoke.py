@@ -1,4 +1,3 @@
-"""Exercise TTS -> VAD -> STT on actual model weights, without storing audio."""
 
 import os
 import json

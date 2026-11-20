@@ -1,4 +1,3 @@
-"""Promotion recall follows verified spoken benefits, not technical-code wording."""
 import asyncio
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock

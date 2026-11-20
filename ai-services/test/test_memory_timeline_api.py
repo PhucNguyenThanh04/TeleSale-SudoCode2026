@@ -41,7 +41,7 @@ def test_runtime_only_reads_prepared_identity_without_model_or_new_crm_lookup():
         assert args[:2] == (str(request.session_id), 'C001')
         assert kwargs['offset'] == 0 and kwargs['limit'] == 10
         assert runtime.tools.calls == before and model.seen == []
-        assert len(runtime.memory.turns) == 0  # reading timeline never commits a turn
+        assert len(runtime.memory.turns) == 0
     asyncio.run(run())
 
 

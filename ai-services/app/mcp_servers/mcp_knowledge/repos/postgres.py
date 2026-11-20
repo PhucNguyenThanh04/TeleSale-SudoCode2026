@@ -1,4 +1,3 @@
-"""Read only policy repository over immutable serving snapshots and live tombstones."""
 from app.knowledge.repos.postgres import KnowledgeRepo
 from app.knowledge.schemas import digest
 from app.knowledge.schemas import SourceChunk

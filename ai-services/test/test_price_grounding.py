@@ -1,4 +1,3 @@
-"""Price claims need quote evidence; a verified empty search may repeat a budget."""
 
 import pytest
 

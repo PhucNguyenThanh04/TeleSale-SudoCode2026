@@ -1,4 +1,3 @@
-"""Rejected drafts remain inspectable in eval state without raw contact data."""
 
 import asyncio
 import json

@@ -1,4 +1,3 @@
-"""Read-only ingestion verification; all state here is synthetic and in memory."""
 import asyncio
 import copy
 import json
@@ -52,7 +51,6 @@ async def setup_verification(tmp_path, monkeypatch, fault=None):
     if fault=='expiry_value':await client.set_payload('verify_test',{'effective_until':'2099-12-31'},[point_id('release','XX-01')])
     if fault=='snapshot':snapshot[0]['effective_until']='2099-12-31'
     if fault=='metadata':metadata['documents']['source.md']['version']='v2';meta.write_text(json.dumps(metadata))
-    # Verifier must never mutate the seeded collection or instantiate an encoder.
     for method in ['upsert','create_collection','set_payload','overwrite_payload','delete_collection']:
         monkeypatch.setattr(client,method,AsyncMock(side_effect=AssertionError('read only')))
     from app.mcp_servers.mcp_knowledge.services.embedding import PolicyEncoder

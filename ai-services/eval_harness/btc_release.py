@@ -1,4 +1,3 @@
-"""Freeze the supplied BTC package into an immutable full snapshot."""
 import hashlib
 import json
 from pathlib import Path
@@ -23,7 +22,6 @@ def release_metadata(root: Path) -> dict:
 
 
 def prepare_btc_release(base: Path, destination: Path) -> Path:
-    """Never mutate the BTC source. Pin code, schemas and data used by child processes."""
     base, destination = Path(base).resolve(), Path(destination).resolve()
     marker = base / 'btc_release.json'
     if marker.is_file():

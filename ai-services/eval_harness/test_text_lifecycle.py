@@ -1,4 +1,3 @@
-"""M1 chat evaluation must use text persistence, never simulated voice playback."""
 from eval_harness.test_support import VoiceLifecycleStub
 import asyncio
 from datetime import date

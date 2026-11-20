@@ -1,9 +1,10 @@
-"""The production graph uses Deep Agent tool calls and commits cross-session facts."""
 
 import unittest
 import asyncio
 from datetime import date
 from uuid import uuid4
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage
@@ -27,6 +28,13 @@ class FakeToolModel(BaseChatModel):
 
     def bind_tools(self, tools, **kwargs):
         return self
+
+    def with_structured_output(self, schema, **kwargs):
+        from app.agent.guardrails.semantic_grounding import GroundingReview
+        if schema is GroundingReview:
+            return SimpleNamespace(ainvoke=AsyncMock(return_value=GroundingReview(
+                supported=True, reason='supported', unsupported_claim='')))
+        return super().with_structured_output(schema, **kwargs)
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
         if "MEMORY_FACT_EXTRACTION" in str(messages):
@@ -127,9 +135,12 @@ class DeepMemoryTest(unittest.IsolatedAsyncioTestCase):
 
         model = FakeToolModel(replies=[
             AIMessage(content="", tool_calls=[{"name": "handoff_transfer",
-                "args": {"brief": {"escalation_reason": "khach_yeu_cau_gap_nguoi"}},
+                "args": {"brief": {"escalation_reason": "khach_yeu_cau_gap_nguoi",
+                    "conversation_summary": "Khách muốn gặp nhân viên phụ trách để được tư vấn thêm.",
+                    "open_questions": [], "next_action": "Nhân viên tiếp nhận yêu cầu tư vấn."}},
                 "id": "handoff_attempt"}]),
-            AIMessage(content="Dạ, em đã chuyển yêu cầu đến nhân viên tư vấn ạ.")])
+            AIMessage(content="Dạ, em đã chuyển yêu cầu đến nhân viên tư vấn ạ."),
+            AIMessage(content="Em chưa chuyển được yêu cầu đến nhân viên phụ trách.")])
         runtime = DeepHarnessRuntime(model, Gateway(), FakeMemory())
         from unittest.mock import AsyncMock, patch
         with patch('app.agent.harness.authorization.authorize_write', AsyncMock(return_value=True)):
@@ -291,7 +302,8 @@ class DeepMemoryTest(unittest.IsolatedAsyncioTestCase):
                                      FakeGateway(), FakeMemory())
         disabled = DeepHarnessRuntime(FakeToolModel(replies=[AIMessage(content=text)]),
                                       FakeGateway(), FakeMemory(), guardrails_enabled=False)
-        self.assertNotEqual((await enabled.run(turn("Giá mẫu này bao nhiêu?"))).agent_text, text)
+        with self.assertRaisesRegex(RuntimeError, "agent_reply_unavailable"):
+            await enabled.run(turn("Giá mẫu này bao nhiêu?"))
         self.assertEqual((await disabled.run(turn("Giá mẫu này bao nhiêu?"))).agent_text, text)
 
 
@@ -329,7 +341,6 @@ class DeepMemoryTest(unittest.IsolatedAsyncioTestCase):
         gateway = FakeGateway()
         runtime = DeepHarnessRuntime(model, gateway, FakeMemory())
         await runtime.run(turn("Em lên đơn giúp anh nhé"))
-        # Metadata reads are allowed to interpret speech; they cannot authorize an order.
         names = [name for name, _ in gateway.calls]
         self.assertEqual(names[0], "crm.get_customer")
         self.assertTrue(all(name == "catalog.search" for name in names[1:]))
@@ -338,7 +349,6 @@ class DeepMemoryTest(unittest.IsolatedAsyncioTestCase):
 
 
 class FakeStreamAgent:
-    """Values-only agent stream for node tests; the model stream is tested separately."""
     def __init__(self, **response_options):
         from unittest.mock import AsyncMock
         self.response = AsyncMock(**response_options)

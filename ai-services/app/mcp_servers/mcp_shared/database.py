@@ -1,4 +1,3 @@
-"""Async SQLAlchemy session lifecycle; repositories own every SQL statement."""
 
 from contextlib import asynccontextmanager
 
@@ -21,9 +20,6 @@ class Database:
         await self.engine.dispose()
 
     async def database_identity(self) -> dict:
-        """Report the database reached by this pool, without exposing credentials."""
-        # Subclasses may expose a domain UnitOfWork from transaction().
-        # This infrastructure probe needs a raw SQLAlchemy session, without locks.
         async with self.sessions() as session:
             row = (await session.execute(text(
                 "SELECT current_database() AS database, inet_server_addr()::text AS host, inet_server_port() AS port, "

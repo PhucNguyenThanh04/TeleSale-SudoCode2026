@@ -1,4 +1,3 @@
-"""Load only service-specific settings from the mounted host file, then exec."""
 import os
 from pathlib import Path
 import sys

@@ -1,4 +1,3 @@
-"""Check which tool facts were actually communicated in the final answer."""
 
 import re
 from typing import Any
@@ -13,7 +12,6 @@ def _reported_money(answer: str, value: int) -> bool:
                if kind == "price" and not negative}
     if value in amounts:
         return True
-    # Common spoken price: "năm triệu hai" = 5,200,000.
     words = {"một": 1, "hai": 2, "ba": 3, "bốn": 4, "năm": 5,
              "sáu": 6, "bảy": 7, "tám": 8, "chín": 9}
     for match in re.finditer(r"(?i)\b(" + "|".join(words) +
@@ -51,10 +49,8 @@ def _product_named(answer: str, sku: str, calls: list[dict[str, Any]]) -> bool:
 
 def _reported_promo(promo: dict[str, Any], answer: str,
                     quote: dict[str, Any]) -> bool:
-    """Match an affirmative benefit to one verified applied promotion."""
     promos = [item for item in quote.get("applied_promos", [])
               if isinstance(item, dict)]
-    # Keep punctuation in each clause so questions cannot become assertions.
     clauses = re.split(r"(?<=[!?;\n])|(?<!\d)\.(?!\d)", answer)
     for clause in clauses:
         if "?" in clause or re.search(
@@ -85,14 +81,11 @@ def _reported_promo(promo: dict[str, Any], answer: str,
                             and re.search(r"(?i)miễn phí vận chuyển|\bfreeship\b", clause))
                 if monetary or gift or shipping:
                     matches.append(item)
-            # Different benefit types may be communicated together. Ambiguity
-            # is between offers explaining the same benefit, not gift vs price.
             benefit = promo.get("type")
             kinds = {"fixed", "percent"} if benefit in {"fixed", "percent"} else {benefit}
             matches = [item for item in matches if item.get("type") in kinds]
         if len(matches) != 1 or matches[0] != promo:
             continue
-        # A stated deadline must belong to this offer, never a neighboring one.
         deadlines = re.findall(
             r"(?i)(?:đến|hạn)(?:\s+ngày)?\s+(\d{1,2})/(\d{1,2})(?:/(\d{4}))?", clause)
         expiry = str(promo.get("valid_until", ""))
@@ -109,7 +102,6 @@ def _reported_promo(promo: dict[str, Any], answer: str,
 
 
 def _product_segments(answer: str, sku: str, calls: list[dict[str, Any]]) -> list[str]:
-    """Find local claims naming a product; equal values elsewhere do not count."""
     names: dict[str, set[str]] = {}
     for call in calls:
         item_sku = call.get("args", {}).get("sku")
@@ -132,7 +124,6 @@ def _product_segments(answer: str, sku: str, calls: list[dict[str, Any]]) -> lis
 
 def reported_tool_fact(key: str, value: Any, answer: str,
                        calls: list[dict[str, Any]], sku: str | None = None) -> bool:
-    """Tool evidence alone does not prove a quote or advice was given."""
     if key == Slot.PRODUCT_ADVISED:
         return isinstance(value, str) and _product_named(answer, value, calls)
     if key == Slot.PRICE_QUOTED_VND:
@@ -194,7 +185,6 @@ def reported_tool_fact(key: str, value: Any, answer: str,
 
 
 def reported_tool_candidates(answer: str, calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Derive candidates from successful observations when the model omits them."""
     candidates: list[dict[str, Any]] = []
     for call in calls:
         result = call.get("result", {})

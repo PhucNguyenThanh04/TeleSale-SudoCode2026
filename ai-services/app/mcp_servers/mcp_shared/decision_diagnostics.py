@@ -1,4 +1,3 @@
-"""Opt-in, bounded decision evidence. Never serialize arbitrary application objects."""
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone, date
@@ -136,7 +135,6 @@ def _ref(value, state, capture):
 
 
 def _business(value, state, capture):
-    """Called only at known typed snapshot/offer/args paths, never on raw profile."""
     if not isinstance(value, dict):
         raise TypeError('invalid_snapshot')
     result = {}
@@ -229,7 +227,7 @@ def emit(event, *, state=None, component='runtime', **payload):
         if type(payload.get('prompt_version')) is int and payload['prompt_version'] >= 0:
             item['prompt_version'] = payload['prompt_version']
         if 'provenance' in payload:
-            item['provenance'] = provenance()  # never trust external arbitrary metadata
+            item['provenance'] = provenance()
         capture.append(item)
     except Exception:
         capture.errors += 1
@@ -265,17 +263,7 @@ def provenance():
         'diagnostics_initialized_at': _INITIALIZED, 'process_start': 'unknown'}
 
 
-def consultation_views(context):
-    if not isinstance(context, dict):
-        return []
-    episodes = [context.get('current_episode'), *context.get('episodes', [])]
-    return [topic['consultation'] for ep in episodes if isinstance(ep, dict)
-            for topic in ep.get('topics', []) if isinstance(topic, dict)
-            and isinstance(topic.get('consultation'), dict)]
-
-
 def memory_boundary(event):
-    """Attach a safe opt-in envelope without changing the business response consumed by runtime."""
     def decorate(fn):
         signature = inspect.signature(fn)
         @wraps(fn)
@@ -291,11 +279,6 @@ def memory_boundary(event):
                 emit('provenance', state=state, component='memory', provenance=True)
                 result = await fn(*args, **kwargs)
                 state['history'] = result.get('history', [])
-                for snapshot in consultation_views(result):
-                    emit(event, state=state, component='memory', snapshot=snapshot,
-                         status='success', history_count=len(state['history']),
-                         turn_count=result.get('turn_count'),
-                         history_truncated=result.get('turn_count', 0) > len(state['history']))
                 emit(event, state=state, component='memory',
                      status='failed' if 'error' in result else 'success',
                      reason=result.get('error', 'not_evaluated'))
@@ -317,7 +300,6 @@ def gate_boundary(fn):
 
 
 def _wire_safe(value, key=''):
-    """Validate producer output again at the trust boundary; reject unknown paths."""
     if isinstance(value, dict):
         containers = {'snapshot', 'decision', 'args', 'budget', 'delegation', 'constraints',
             'presented_offer', 'accepted_offer', 'source_refs', 'sources', 'agent', 'observation',
@@ -450,8 +432,6 @@ def context_checkpoint(event, state, context):
     if not active():
         return
     combined = {**state, 'history': context.get('history', [])}
-    for snapshot in consultation_views(context):
-        emit(event, state=combined, snapshot=snapshot, history_count=len(combined['history']))
     emit(event, state=combined, history_count=len(combined['history']))
 
 
@@ -479,14 +459,13 @@ def prompt_loaded(name, text, source, version=None):
 
 
 async def save_worker_envelope(repo, conn, job_id, stored):
-    """A failed diagnostics-only write must not abort the business transaction."""
     capture = _CURRENT.get()
     if capture is None:
         return
     value = {**stored, '_decision_diagnostics': worker_envelope()}
     try:
         if hasattr(conn, 'transaction'):
-            async with conn.transaction():  # asyncpg savepoint inside the job transaction
+            async with conn.transaction():
                 await repo.save_distillation_proposals(conn, job_id, value)
         else:
             await repo.save_distillation_proposals(conn, job_id, value)

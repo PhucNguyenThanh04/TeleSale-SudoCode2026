@@ -1,4 +1,3 @@
-"""Idempotent import into a dedicated PostgreSQL source schema."""
 
 from __future__ import annotations
 
@@ -72,7 +71,6 @@ def _asyncpg_url(database_url: str) -> str:
 
 
 async def inspect_database(database_url: str) -> dict[str, Any]:
-    """Return the actual target database and table counts, without credentials."""
     try:
         import asyncpg
     except ImportError as exc:
@@ -104,7 +102,6 @@ async def import_release(database_url: str, release: dict[str, Any]) -> dict[str
     except ImportError as exc:
         raise RuntimeError("Install dataloader_offline/requirements.txt to import into PostgreSQL") from exc
 
-    # backend/.env uses SQLAlchemy's dialect name; asyncpg expects postgresql://.
     connection = await asyncpg.connect(_asyncpg_url(database_url), timeout=10)
     try:
         async with connection.transaction():

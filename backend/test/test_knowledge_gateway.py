@@ -1,4 +1,3 @@
-"""Admin access and server-bound identity; upstream is an offline transport."""
 import json
 import httpx
 from fastapi.testclient import TestClient

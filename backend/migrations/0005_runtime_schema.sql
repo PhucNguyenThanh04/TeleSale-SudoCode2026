@@ -1,4 +1,3 @@
--- Preserve backend rows while moving the application schema to runtime.
 DO $rename_runtime$ BEGIN
     IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'app_runtime') THEN
         IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'runtime') THEN

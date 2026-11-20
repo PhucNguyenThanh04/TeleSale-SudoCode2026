@@ -1,4 +1,3 @@
-"""Idempotent event and job commit in one durable transaction."""
 from app.knowledge.events.evidence import snapshot
 from app.knowledge.schemas import Conflict, digest, timestamp
 

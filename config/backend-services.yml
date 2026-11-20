@@ -1,5 +1,3 @@
-# Backend API configuration for the text-to-text phase.
-# *_env values name variables in backend/.env; this file contains no credentials.
 service:
   name: backend
   app_name_env: APP_NAME

@@ -1,4 +1,3 @@
-"""Authenticated demo WebSocket with a server-bound BTC profile."""
 
 from fastapi import APIRouter, Depends, WebSocket
 

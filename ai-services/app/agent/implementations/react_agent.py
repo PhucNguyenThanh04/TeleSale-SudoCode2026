@@ -1,4 +1,3 @@
-"""LangChain ReAct implementation using the same business tools and harness."""
 
 from langchain.agents import create_agent
 from langchain_core.language_models.chat_models import BaseChatModel

@@ -1,4 +1,3 @@
-"""Deployment contract for the four default MCP Compose services."""
 from pathlib import Path
 import yaml
 

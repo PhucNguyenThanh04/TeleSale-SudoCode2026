@@ -1,4 +1,3 @@
-"""Offline integrity checks are separate from semantic correctness."""
 import json
 import pytest
 from eval_harness.extractor import extract_detailed

@@ -1,4 +1,3 @@
-"""Only verified customer sessions are removed; shared-phone peers survive."""
 
 import os
 import json

@@ -1,4 +1,3 @@
-"""Second-item promotion applies to both products through applies_to."""
 
 import unittest
 
@@ -39,7 +38,6 @@ class SecondItemPromotionTest(unittest.TestCase):
             "promo_code": "AIR-2ND-50", "reason": "not_cheapest_item_or_tie_use_quote_order"}])
 
     def test_single_item_order_fails_min_qty(self):
-        # basket_skus lists other products; an empty list means one item total.
         result = quote(PRODUCTS, [AIR_SECOND], {
             "sku": "SKU-AP-X", "on": "2026-10-15", "basket_skus": []})
         self.assertEqual(result["final_price_vnd"], 4_890_000)

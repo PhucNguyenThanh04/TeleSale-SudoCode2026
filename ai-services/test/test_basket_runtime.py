@@ -1,4 +1,3 @@
-"""Real graph + MCP commerce + memory services, with only storage and inference replaced."""
 import asyncio
 from datetime import date
 from uuid import uuid4

@@ -1,4 +1,3 @@
-"""Coordinate an audited BTC pair; final run.json is the publication authority."""
 import argparse
 import asyncio
 import hashlib
@@ -34,14 +33,12 @@ def require_same_seed(full_digest, baseline_digest):
 
 
 def _run_one(config, scenarios, seed, run_id, out, *, btc_root, expected_database, release):
-    # The child runs from SERVICE, while callers can pass paths relative to repo root.
     scenarios, btc_root, out = (Path(path).resolve() for path in (scenarios, btc_root, out))
     report=out/f'{config}.diagnostics.json'
     env=dict(os.environ)
     env['_EVAL_PINNED_RELEASE']=json.dumps(release)
     env['_EVAL_DECISION_ALIAS_KEY'] = _DECISION_ALIAS_KEY
     env['KNOWLEDGE_RELEASE_ID']=release['release_id']
-    # The child applies the same offline dataset validator before any mutation.
     print(f"[eval] {config}: starting", flush=True)
     completed=subprocess.run([sys.executable,'-u','-m','eval_harness.benchmark_runner',
         '--config',config,'--seed',str(seed),'--scenarios',str(scenarios),'--btc-root',str(btc_root),
@@ -49,7 +46,6 @@ def _run_one(config, scenarios, seed, run_id, out, *, btc_root, expected_databas
         cwd=SERVICE,env=env,stdout=None,stderr=subprocess.PIPE,text=True)
     suffix='baseline' if config in {'baseline','baseline_no_memory'} else config
     trace=report.with_name(report.stem+f'_{suffix}.jsonl')
-    # An invalid child deliberately exits nonzero but leaves complete safe evidence.
     side=trace.with_suffix('.report.json')
     try:
         details=json.loads(side.read_text()) if side.exists() else {}
@@ -182,7 +178,6 @@ async def run_pair(*, scenarios: Path, btc_root: Path, seed: int,
             safety_issues=safety_issues)
     except Exception as exc:
         safety_issues.extend(getattr(exc,'safety_issues',[]))
-        # Exception strings can contain PII/DSNs. Persist only a bounded type/code.
         summary.update(status='failed',error_type=type(exc).__name__,
             error_code=getattr(exc,'error_code','pair_failed'),
             phase=getattr(exc,'phase','coordinator'),service=getattr(exc,'service',None),

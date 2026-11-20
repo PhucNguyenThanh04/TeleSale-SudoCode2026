@@ -1,4 +1,3 @@
-"""M1 text demo uses the same AI runtime without speech, DB or browser-held tokens."""
 import json
 from uuid import uuid4
 
@@ -60,7 +59,7 @@ def test_text_socket_keeps_session_identity_and_forwards_memory_without_playback
             socket.send_json(START)
             ready = socket.receive_json()
             assert ready['event'] == 'ready' and ready['call_brief']['is_returning'] is True
-            assert calls == []  # brief is ready before the first model turn
+            assert calls == []
             for msg_id in ids:
                 socket.send_json({'event': 'text', 'client_msg_id': msg_id, 'text': 'Xin chào'})
                 assert socket.receive_json()['event'] == 'agent_delta'

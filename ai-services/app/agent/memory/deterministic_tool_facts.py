@@ -1,4 +1,3 @@
-"""Typed facts from successful, reported business tool observations."""
 
 from datetime import date
 
@@ -11,7 +10,6 @@ from app.schemas.langmem import ProfileFactCandidate
 
 def verified_tool_candidates(agent_text: str, calls: list[dict],
                              source_turn_id: str, on: str) -> list[ProfileFactCandidate]:
-    """Derive tool facts with source proof, independently of LangMem output."""
     proposals = []
     seen = set()
     for item in reported_tool_candidates(agent_text, calls):
@@ -48,7 +46,6 @@ def verified_tool_candidates(agent_text: str, calls: list[dict],
 
 def verified_order_details(call: dict, variant: dict | None,
                            source_turn_id: str) -> list[dict]:
-    """Use a created order and an exact catalog variant to derive stable slots."""
     result = call.get("result", {})
     args = call.get("args", {})
     if (call.get("name") != "order.create" or not isinstance(result, dict)
@@ -81,7 +78,6 @@ def verified_order_details(call: dict, variant: dict | None,
 
 def verified_variant_details(call: dict, variant: dict | None,
                              source_turn_id: str) -> list[dict]:
-    """Derive parent product, variant SKU, size and color from a variant tool call."""
     result = call.get("result", {})
     args = call.get("args", {})
     sku = (result.get("sku") if isinstance(result, dict) else None) or (
@@ -115,7 +111,6 @@ def verified_variant_details(call: dict, variant: dict | None,
 
 
 def deterministic_episode_tools(calls: list[dict], on: str) -> tuple[list[dict], list[dict]]:
-    """Derive completed business actions and quoted prices from tool observations."""
     actions: list[dict] = []
     quotes: list[dict] = []
     seen_quotes: set[tuple[str, int, str]] = set()

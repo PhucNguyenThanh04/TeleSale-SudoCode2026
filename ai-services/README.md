@@ -128,7 +128,7 @@ the existing brief rules, including orders, open blockers, known slots and stale
 warnings. The preliminary prepare response is not spoken or substituted for it.
 
 `SessionState` keeps an owner/date/full-or-baseline scoped context view across
-turns. Historical consultation annotations do not authorize tool writes. A fresh memory read replaces that
+turns. Legacy consultation/offer plans are excluded from model context. A fresh memory read replaces that
 view; failed reads invalidate it. Committed tool observations rebuild evidence
 after a process restart, including failed-read barriers that invalidate stale
 quotes. Prepared reads are attributed to their consuming turn when committed;
@@ -144,6 +144,15 @@ preconditions, identity checks, and memory evidence validation still apply.
 Missing MCP URLs or token are a configuration error at runtime startup. Chat response caching remains process-local; writes through the MCP
 services use PostgreSQL operation keys. A PostgreSQL LangGraph checkpointer is
 not connected yet.
+
+Business writes require current-request authorization and a signed grant from
+the trusted controller. The gateway and order MCP use `MCP_INTERNAL_TOKEN` as the
+default context secret; upgrade/restart both together. Direct unsigned writes
+are rejected. Grants bind the exact request, identity and normalized arguments,
+expire after 120 seconds, and preserve the existing operation keys for replay.
+Callbacks outside operating hours return an alternative for confirmation and
+insert nothing until a valid time is authorized. See the
+[runtime contract](docs/text-harness-contract.md) for enforcement and limits.
 
 Policy questions use `policy.search` on the dedicated `mcp-knowledge` service.
 Cloudflare BGE-M3 produces dense vectors and CPU BM25 produces sparse term weights; Qdrant applies IDF once and performs RRF and PostgreSQL supplies
@@ -356,9 +365,11 @@ first-turn `session_id: null` is not valid here. The response echoes both IDs,
 returns `agent_text`, handoff fields, and an optional `call_brief` on a returning
 customer's new session. The brief includes `orders`, `open_blockers` (excluding
 blockers resolved in later sessions), `must_not_ask` across all 12 BTC slots,
-outcome-aware `suggested_opening`, and concurrent refresh of up to the 3 most
-recent advised SKUs with stale warnings for expired `valid_until`, discontinued
-SKUs (`successor_sku`), and sessions older than 180 days. New chat turns may
+`suggested_opening` as an empty compatibility field, and source-backed stale
+warnings. Context loading does not select products or refresh commercial data;
+the model chooses when to call catalog, inventory and pricing tools. Pending
+memory retains bounded committed transcripts instead of deriving purchase state
+or customer facts with language rules. New chat turns may
 create profile facts from validated model proposals grounded in customer text or
 verified tool results, while the distillation worker compacts superseded store
 revisions after each completed job.

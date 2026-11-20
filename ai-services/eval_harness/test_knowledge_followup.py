@@ -1,4 +1,3 @@
-"""Normal paired evaluation proposes; a separate entrypoint runs published Full only."""
 import asyncio
 import json
 from types import SimpleNamespace

@@ -1,4 +1,3 @@
-"""Measure time to the first WAV over the public streaming TTS endpoint."""
 
 import base64
 import json

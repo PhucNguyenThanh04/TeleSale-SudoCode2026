@@ -1,7 +1,3 @@
-"""Redacted, per-turn evidence for rejected verifier drafts.
-
-This module explains an existing decision; it does not decide whether to accept it.
-"""
 
 import re
 from typing import Any
@@ -108,7 +104,6 @@ def _source_evidence(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 def rejected_draft(state: dict[str, Any], reason: str,
                    draft: str | None = None) -> dict[str, Any]:
-    """Describe candidate spans; source matches are diagnostic, not acceptance proof."""
     draft = checks.mask_pii(draft if draft is not None else state.get("agent_draft", ""))
     customer_name = state.get("customer_name")
     if isinstance(customer_name, str) and customer_name.strip():

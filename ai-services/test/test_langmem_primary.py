@@ -1,6 +1,6 @@
-"""LangGraph store is the only durable customer knowledge path."""
 
 import unittest
+from copy import deepcopy
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -13,6 +13,10 @@ from app.mcp_servers.mcp_memory.services.memory import _valid_scope
 from types import SimpleNamespace
 from datetime import date, datetime, timezone
 from test_mcp_memory import TurnRepo
+
+
+async def approve_facts(facts, *args):
+    return facts
 
 
 class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
@@ -142,7 +146,7 @@ class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
             CustomerCallEpisodeCandidate(customer_id="C1", session_id=session,
                 channel="hotline", on="2026-10-15", source_turn_ids=[turn],
                 customer_goal="màu xanh")))
-        self.assertTrue(await process_one(repo, extractor, projection))
+        self.assertTrue(await process_one(repo, extractor, projection, fact_reviewer=approve_facts))
         projection.put_facts.assert_awaited_once()
         projection.put_episode.assert_awaited_once()
         repo.insert_fact.assert_not_awaited()
@@ -172,7 +176,7 @@ class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
             key="room_area_m2", value=25, source_kind="customer",
             source_turn_id=turn, evidence_quote="Phòng tôi 25 m²",
             observed_on="2026-10-15")], None))
-        self.assertTrue(await process_one(repo, extractor, projection))
+        self.assertTrue(await process_one(repo, extractor, projection, fact_reviewer=approve_facts))
         projection.put_episode.assert_awaited_once()
         self.assertIn("Phòng tôi 25 m²", projection.put_episode.await_args.args[2]["summary"])
 
@@ -198,7 +202,7 @@ class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
         extractor = AsyncMock(return_value=([], CustomerCallEpisodeCandidate(
             customer_id="C1", session_id=session, channel="hotline", on="2026-10-15",
             source_turn_ids=[turn], open_blockers=["hỏi ông xã"])))
-        self.assertTrue(await process_one(repo, extractor, projection))
+        self.assertTrue(await process_one(repo, extractor, projection, fact_reviewer=approve_facts))
         self.assertEqual(projection.put_facts.await_args.args[4][0]["key"], "blocker")
 
     async def test_retry_reuses_admitted_proposals_after_partial_store_write(self):
@@ -212,11 +216,13 @@ class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
         job = {"job_id": 5, "customer_id": "C1", "session_id": session,
                "source_turn_id": turn, "attempts": 1, "mode": "enabled",
                "tool_observations": [], "accepted_proposals": None}
-        repo.claim_distillation.side_effect = [job, {**job, "attempts": 2,
-            "accepted_proposals": {"facts": [{"key": "room_area_m2", "value": 25,
-                "op": "set", "source_kind": "customer", "scope_type": "global",
-                "scope_id": "", "evidence_quote": "Phòng tôi 25 m²"}],
-                "delta": None, "outcome": "khac"}}]
+        pending = [job, {**job, 'attempts': 2}]
+        async def claim(*args):
+            current = deepcopy(pending.pop(0))
+            if current['attempts'] == 2:
+                current['accepted_proposals'] = deepcopy(repo.save_distillation_proposals.await_args.args[2])
+            return current
+        repo.claim_distillation.side_effect = claim
         repo.distillation_turn.return_value = {"customer_text": "Phòng tôi 25 m²",
             "agent_text": "Dạ", "on_date": "2026-10-15", "channel": "hotline"}
         repo.is_erasure_blocked.return_value = False
@@ -232,8 +238,8 @@ class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
             key="room_area_m2", value=25, source_kind="customer",
             source_turn_id=turn, evidence_quote="Phòng tôi 25 m²",
             observed_on="2026-10-15")], None))
-        self.assertTrue(await process_one(repo, extractor, projection))
-        self.assertTrue(await process_one(repo, extractor, projection))
+        self.assertTrue(await process_one(repo, extractor, projection, fact_reviewer=approve_facts))
+        self.assertTrue(await process_one(repo, extractor, projection, fact_reviewer=approve_facts))
         extractor.assert_awaited_once()
         repo.save_distillation_proposals.assert_awaited_once()
         self.assertEqual(repo.finish_distillation.await_args.kwargs["accepted_writes"][0]["key"],
@@ -259,7 +265,7 @@ class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
         projection.list_episode_versions.return_value = []
         projection.get_episode.return_value = None
         extractor = AsyncMock(return_value=([], None))
-        self.assertTrue(await process_one(repo, extractor, projection))
+        self.assertTrue(await process_one(repo, extractor, projection, fact_reviewer=approve_facts))
         self.assertEqual(projection.put_episode.await_args.args[2]["outcome"], "chot_don")
 
     async def test_successful_order_fact_survives_empty_langmem_proposal(self):
@@ -289,7 +295,7 @@ class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
         projection.put_facts.return_value = [{"key": "order_id", "value": "OD682761",
                                              "op": "set", "customer_id": "C1"}]
         extractor = AsyncMock(return_value=([], None))
-        await process_one(repo, extractor, projection)
+        await process_one(repo, extractor, projection, fact_reviewer=approve_facts)
         facts = projection.put_facts.await_args.args[4]
         self.assertIn({"key": "order_id", "value": "OD682761", "op": "set",
             "scope_type": "global", "scope_id": "", "source_kind": "tool",
@@ -324,10 +330,12 @@ class PrimaryMemoryTests(unittest.IsolatedAsyncioTestCase):
         projection.list_fact_versions.return_value = []
         projection.list_episode_versions.return_value = []
         extractor = AsyncMock(return_value=([], None))
-        await process_one(repo, extractor, projection)
+        await process_one(repo, extractor, projection, fact_reviewer=approve_facts)
         messages = extractor.await_args.args[0]
         self.assertEqual([json.loads(message["content"])["turn_id"]
                           for message in messages], [current])
         payload = json.loads(messages[0]['content'])
         self.assertEqual(payload['reference_context']['previous_agent_text'], 'Mình muốn màu nào?')
+        self.assertEqual(payload['reference_context']['session_history'][0]['turn_id'], earlier)
+        self.assertEqual(payload['reference_context']['session_history'][0]['customer_text'], 'Size 39')
         self.assertEqual(payload['customer_text'], 'Màu đen')

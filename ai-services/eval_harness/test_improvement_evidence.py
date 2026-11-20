@@ -1,4 +1,3 @@
-"""Two rounds are comparable only when the experiment controls stay fixed."""
 import json
 
 import pytest
@@ -28,7 +27,7 @@ def test_identical_results_are_not_evidence_of_improvement(tmp_path):
     assert result['comparability_valid'] is True
     assert result['improvement_demonstrated'] is False
     assert result['delta_percentage_points']['task_success_rate'] == 0
-    assert result['complete'] is False  # offline fixture has no verified execution/extraction
+    assert result['complete'] is False
 
 
 @pytest.mark.parametrize('field', ['model_id', 'model_params', 'seed_digest', 'source_digest', 'guardrails', 'hardware'])

@@ -1,4 +1,3 @@
-"""Ground-truth mismatches are not automatically unsupported tool claims."""
 from copy import deepcopy
 
 import pytest

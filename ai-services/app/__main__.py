@@ -1,4 +1,3 @@
-"""Run the API using HOST, PORT and LOG_LEVEL from ai-services/.env."""
 
 import uvicorn
 

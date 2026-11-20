@@ -1,4 +1,3 @@
-"""Hybrid policy evidence service. No fallback and no answer generation."""
 import asyncio
 import logging
 import time
@@ -55,7 +54,6 @@ class PolicySearchService:
             await self.repo.close()
 
     async def release_ref(self, release_id=None):
-        """Return an authenticated, revalidated reference for harness pinning."""
         if not self.ready:
             raise RuntimeError("Knowledge service is not ready")
         release = await self.repo.resolve_release(release_id)
@@ -120,7 +118,6 @@ class PolicySearchService:
                             evidence.applicability.status='conditional'
                         evidence.applicability.missing_required_section_ids=missing
                         missing_all.update(missing)
-                # Recheck revocation after vector and selection work, including pinned releases.
                 await call('postgres',lambda:self.repo.snapshot(release),deadline=deadline)
                 result=PolicySearchResult(retrieval_status='ok' if selected else 'no_evidence',
                     context=output_context,evidence=list(selected.values()),evidence_set=EvidenceSet(

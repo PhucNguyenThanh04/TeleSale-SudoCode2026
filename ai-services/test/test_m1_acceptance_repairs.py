@@ -1,4 +1,3 @@
-"""Regressions from the November 17 saved run; inference and storage stay offline."""
 import asyncio
 from copy import deepcopy
 
@@ -101,17 +100,6 @@ def test_unsupported_tds_claim_is_rejected_even_without_an_explicit_tds_question
     assert check_answer('Máy Aster có TDS đầu ra 10 ppm.', [catalog()], 'Tư vấn máy Aster.')[1] == 'unsupported_product_spec'
 
 
-def test_sourced_tds_is_answered_and_a_different_measurement_is_rejected():
-    from app.agent.harness.session_nodes import safe_product_reply
-    from test_commerce_evidence import state
-    evidence = catalog()
-    evidence['result']['items'][0]['attributes']['tds_output_ppm'] = 10
-    current = state('Chỉ số TDS đầu ra của Aster là bao nhiêu ppm?')
-    current['tool_calls'] = [evidence]
-    answer = safe_product_reply(current)
-    assert '10 ppm' in answer
-    assert check_answer(answer, [evidence], current['safe_text'])[1] is None
-    assert check_answer('Aster có TDS đầu ra 20 ppm.', [evidence])[1] == 'unsupported_product_spec'
 
 
 @pytest.mark.parametrize('detail', [

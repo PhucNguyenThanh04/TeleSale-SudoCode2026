@@ -1,4 +1,3 @@
-"""TTS model boundaries must use Vietnamese spoken text, without loading weights."""
 import json
 import unittest
 from unittest.mock import Mock, patch
@@ -81,7 +80,6 @@ class TTSModelBoundaryTests(unittest.TestCase):
         fake.infer_stream.side_effect = lambda text, **kwargs: iter([np.zeros(480, dtype=np.float32)])
         with patch.object(sidecar, 'model', fake), \
              patch.object(sidecar, 'voices', [{'id': 'Trúc Ly'}]):
-            # Do not enter TestClient lifespan: that would load the real SDK/model.
             client = TestClient(sidecar.app)
             body = {"text": "AirPure giá 5.200.000đ. COD nhé!", "voice": "Trúc Ly"}
             wav = client.post('/synthesize', json=body)
