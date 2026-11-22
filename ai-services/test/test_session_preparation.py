@@ -81,13 +81,13 @@ class SessionPreparationTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(response.call_brief)
         self.assertEqual(self.memory.reads, 2)
         self.assertEqual([name for name, _ in self.gateway.calls].count("crm.get_customer"), 1)
-        self.assertEqual([name for name, _ in self.gateway.calls].count("pricing.get_quote"), 1)
+        self.assertEqual([name for name, _ in self.gateway.calls].count("pricing.get_quote"), 0)
         self.assertEqual(len(self.memory.turns[str(self.request.session_id)]), 1)
         self.assertNotIn('"customer": ""', self.model.seen[0])
         second = turn("Tôi muốn hỏi tiếp", self.request.session_id)
         next_response = await self.runtime.run(second)
         self.assertIsNotNone(next_response.call_brief)
-        self.assertEqual([name for name, _ in self.gateway.calls].count('pricing.get_quote'), 1)
+        self.assertEqual([name for name, _ in self.gateway.calls].count('pricing.get_quote'), 0)
         self.assertIn("Alo", self.model.seen[-1])
 
     async def test_later_brief_uses_updated_facts_without_repricing_every_turn(self):
@@ -103,7 +103,7 @@ class SessionPreparationTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(second.call_brief)
         self.assertEqual(second.call_brief['profile_facts']['budget_vnd'], 4000000)
         self.assertEqual(second.call_brief['open_blockers'], [])
-        self.assertEqual([name for name, _ in self.gateway.calls].count('pricing.get_quote'), 1)
+        self.assertEqual([name for name, _ in self.gateway.calls].count('pricing.get_quote'), 0)
         third = await self.runtime.run(turn('Tôi nghe đây.', self.request.session_id))
         self.assertEqual(third.call_brief['profile_facts']['budget_vnd'], 4000000)
         self.assertIn('4000000', self.model.seen[-1])
@@ -115,7 +115,8 @@ class SessionPreparationTest(unittest.IsolatedAsyncioTestCase):
         self.memory.blocked = True
         response = await self.runtime.run(turn('Em nói tiếp nhé.', self.request.session_id))
         self.assertIsNone(response.call_brief)
-        self.assertEqual(len(self.model.seen), calls_before)
+        self.assertEqual(len(self.model.seen), calls_before + 1)
+        self.assertNotIn('preferred_color', self.model.seen[-1])
 
     async def test_cached_retry_rechecks_erasure_without_rerunning_model(self):
         await self.prepare()
@@ -125,9 +126,8 @@ class SessionPreparationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(retry, first)
         self.assertEqual(len(self.memory.turns[str(self.request.session_id)]), 1)
         self.memory.blocked = True
-        denied = await self.runtime.run(self.request)
-        self.assertIsNone(denied.call_brief)
-        self.assertEqual(denied.memory_update.status, 'unavailable')
+        with self.assertRaisesRegex(RuntimeError, 'memory_unavailable'):
+            await self.runtime.run(self.request)
         self.assertEqual(len(self.model.seen), calls_before)
         self.assertFalse(self.runtime._session_states.get(str(self.request.session_id)))
 
@@ -144,10 +144,10 @@ class SessionPreparationTest(unittest.IsolatedAsyncioTestCase):
         with patch.object(self.memory, 'read_context', AsyncMock(side_effect=ConnectionError('private'))):
             response = await self.runtime.run(turn('Em nói tiếp nhé.', self.request.session_id))
         self.assertIsNone(response.call_brief)
-        self.assertEqual(len(self.model.seen), calls_before)
+        self.assertEqual(len(self.model.seen), calls_before + 1)
+        self.assertNotIn('preferred_color', self.model.seen[-1])
         session = self.runtime._session_states[str(self.request.session_id)]
         self.assertEqual(session.context, {})
-        self.assertEqual(session.decision, {})
         self.memory.profile['preferred_color']['value'] = 'đen'
         recovered = await self.runtime.run(turn('Tôi nghe đây.', self.request.session_id))
         self.assertEqual(recovered.call_brief['profile_facts']['preferred_color'], 'đen')
@@ -158,29 +158,31 @@ class SessionPreparationTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, 'Conflicting turn retry'):
             await self.runtime.run(self.request)
 
-    async def test_memory_erasure_after_prepare_blocks_model_and_cached_profile(self):
+    async def test_pending_erasure_after_prepare_allows_model_without_cached_profile(self):
         await self.prepare()
         self.memory.blocked = True
         response = await self.runtime.run(self.request)
         self.assertIsNone(response.call_brief)
-        self.assertEqual(self.model.seen, [])
-        self.assertIn("gián đoạn", response.agent_text)
+        self.assertEqual(len(self.model.seen), 1)
+        self.assertNotIn('preferred_color', self.model.seen[-1])
+        self.assertEqual(response.memory_update.status, 'unavailable')
         self.assertEqual(self.memory.turns, {})
 
-    async def test_changed_date_or_expired_preparation_refreshes_commercial_reads(self):
+    async def test_changed_date_or_expired_preparation_reloads_context_without_automatic_quotes(self):
         await self.prepare()
         later = self.request.model_copy(update={"on": self.request.on + timedelta(days=1)})
         response = await self.runtime.run(later)
         self.assertIsNotNone(response.call_brief)
         quotes = [args for name, args in self.gateway.calls if name == "pricing.get_quote"]
-        self.assertEqual([quote["on"] for quote in quotes], ["2026-10-15", "2026-10-16"])
+        self.assertEqual(quotes, [])
 
         another = turn("Alo")
         await self.prepare(another)
         with patch("app.agent.harness.runtime.time.perf_counter", return_value=10**12):
             await self.runtime.run(another)
         quotes = [args for name, args in self.gateway.calls if name == "pricing.get_quote"]
-        self.assertEqual(len(quotes), 4)
+        self.assertEqual(quotes, [])
+        self.assertEqual(self.memory.reads, 4)
 
     async def test_identity_mismatch_cannot_consume_prepared_customer(self):
         await self.prepare()
@@ -200,6 +202,8 @@ class SessionPreparationTest(unittest.IsolatedAsyncioTestCase):
         await self.prepare()
         self.model.replies.insert(0, AIMessage(content="", tool_calls=[{
             "name": "catalog_search", "args": {"sku": "SKU-AP-X"}, "id": "catalog-1"}]))
+        self.model.replies.insert(1, AIMessage(content='', tool_calls=[{
+            'name': 'pricing_get_quote', 'args': {'sku': 'SKU-AP-X', 'qty': 2}, 'id': 'quote-2'}]))
         request = self.request.model_copy(update={"text": "Giá 2 chiếc SKU-AP-X bao nhiêu?"})
         await self.runtime.run(request)
         quotes = [args for name, args in self.gateway.calls if name == "pricing.get_quote"]

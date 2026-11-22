@@ -56,6 +56,21 @@ class StatefulWriter:
     async def close(self):
         pass
 
+    async def fetch(self, sql):
+        table = re.search(r'FROM btc_source\.(\w+)', sql)[1]
+        columns = {
+            'products': 'sku name category brand list_price_vnd stock attributes data source_hash',
+            'variants': 'variant_sku parent_sku size_label color price_delta_vnd stock data source_hash',
+            'promotions': 'promo_code name promo_type starts_on ends_on applies_to conditions data source_hash',
+            'inventory_events': 'sku effective_on qty note data source_hash',
+            'customers': 'customer_id name honorific phone zalo_id fb_id region shared_phone_with data source_hash',
+            'crm_orders': 'order_id customer_id sku order_date status data source_hash',
+            'crm_sessions': 'session_id customer_id session_date channel outcome data source_hash',
+            'policy_documents': 'document_id access_level effective_from effective_until date_basis',
+            'policy_chunks': 'chunk_id document_id title body access_level effective_from effective_until date_basis source_hash',
+        }
+        return [dict(zip(columns[table].split(), values)) for values in self.rows.get(table, {}).values()]
+
 
 def test_writer_preserves_json_and_is_idempotent_without_pruning(monkeypatch):
     writer = StatefulWriter()
@@ -78,10 +93,68 @@ def test_writer_preserves_json_and_is_idempotent_without_pruning(monkeypatch):
             for row in expected:
                 assert any(json.dumps(row,ensure_ascii=False) in values for values in args)
         source['products']['products'][0]['extra'] = 'updated'
-        source['crm']['customers'] = source['crm']['customers'][:1]
         await import_release('postgresql://synthetic', source)
-        assert 'C2' in writer.rows['customers']
         assert writer.rows['products']['P1'] != first['products']['P1']
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('table', ['products', 'variants', 'promotions', 'inventory_events',
+    'customers', 'crm_orders', 'crm_sessions', 'policy_documents', 'policy_chunks'])
+def test_refresh_rejects_stale_source_rows_and_rolls_back_without_deleting(monkeypatch, table):
+    writer = StatefulWriter()
+    async def connect(*args, **kwargs):
+        return writer
+    monkeypatch.setattr('asyncpg.connect', connect)
+    async def run():
+        source = synthetic_release()
+        await import_release('postgresql://synthetic', source)
+        extra = list(next(iter(writer.rows[table].values())))
+        extra[0] = 'STALE'
+        key = tuple(extra[:2]) if table == 'inventory_events' else 'STALE'
+        writer.rows[table][key] = tuple(extra)
+        previous = copy.deepcopy(writer.rows)
+        source['products']['products'][0]['extra'] = 'must roll back'
+        with pytest.raises(ValueError, match=table):
+            await import_release('postgresql://synthetic', source)
+        assert writer.rows == previous
+    asyncio.run(run())
+
+
+def test_removing_source_customer_cannot_commit_a_stale_profile(monkeypatch):
+    writer = StatefulWriter()
+    async def connect(*args, **kwargs):
+        return writer
+    monkeypatch.setattr('asyncpg.connect', connect)
+    async def run():
+        source = synthetic_release()
+        await import_release('postgresql://synthetic', source)
+        previous = copy.deepcopy(writer.rows)
+        source['crm']['customers'] = source['crm']['customers'][:1]
+        source['products']['products'][0]['extra'] = 'must roll back'
+        with pytest.raises(ValueError, match='customers'):
+            await import_release('postgresql://synthetic', source)
+        assert writer.rows == previous
+    asyncio.run(run())
+
+
+def test_loader_explains_stale_rows_without_claiming_a_commit_or_leaking_source(monkeypatch):
+    from argparse import Namespace
+    from dataloader_offline import __main__ as cli
+    writer = StatefulWriter()
+    async def connect(*args, **kwargs):
+        return writer
+    monkeypatch.setattr('asyncpg.connect', connect)
+    monkeypatch.setattr(cli, 'database_url', lambda: 'postgresql://synthetic')
+    async def run():
+        source = synthetic_release()
+        await import_release('postgresql://synthetic', source)
+        source['crm']['customers'] = source['crm']['customers'][:1]
+        with pytest.raises(cli.ImportStageError) as caught:
+            await cli.import_data(Namespace(prepare_policy=False), source)
+        message = str(caught.value)
+        assert 'stage=postgres; source_commit_confirmed=False' in message
+        assert 'source_snapshot_mismatch' in message and 'customers' in message and 'extra=1' in message
+        assert 'Synthetic buyer' not in message and '0000000000' not in message
     asyncio.run(run())
 
 

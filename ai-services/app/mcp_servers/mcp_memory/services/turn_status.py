@@ -26,7 +26,8 @@ def public_changes(writes: list[dict]) -> list[dict]:
         if isinstance(value, str):
             value = mask_pii(value)[:300]
         changes.append({"field": spec.key, "action": action, "value": value,
-                        "source": spec.evidence_source,
+                        "source": (write['source_kind'] if write.get('source_kind') in {'customer', 'tool'}
+                                   else spec.evidence_source),
                         "scope_type": scope, "scope_id": mask_pii(scope_id)})
     return changes
 

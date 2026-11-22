@@ -1,12 +1,27 @@
 # TeleSale SudoCode 2026
 
+## Dành cho BTC
+
+Clone repo GitHub theo branch hoặc tag ghi trong hồ sơ nộp. [START_HERE.md](START_HERE.md) hướng dẫn gắn dữ liệu BTC, khởi tạo DB và build các image ngay từ checkout bằng `compose.submission.yml`.
+
+Sau khi setup, lệnh dưới đây chạy Full và baseline, xuất hai trace JSONL và in bảng từ scorer BTC.
+
+```bash
+SUBMISSION_DATABASE=telesale_eval_m1 docker compose --env-file .env.submission \
+  -f compose.submission.yml -p telesale-btc-eval run --rm eval
+```
+
+Chấm chéo từng cấu hình dùng `run_eval.py` qua [lệnh `eval-trace` và đường dẫn bộ test BTC](START_HERE.md#2-eval-m1-bằng-một-lệnh). [Hướng dẫn chạy](START_HERE.md) cũng có demo chat và ASR local. [Checklist hồ sơ](docs/btc-submission-evidence.md) liệt kê các tài liệu và dữ liệu đi kèm.
+
+## Phát triển và chạy trực tiếp trên host
+
 **Eval RAG độc lập:** xem [runner retrieval, generation và chấm offline](ai-services/rag_eval/README.md).
 Không chạy chung eval hội thoại; model/embedding thật chỉ chạy khi có `--allow-live`.
 
 **Eval ba cấu hình, duyệt knowledge trên frontend:** xem
 [eval thường hai cấu hình → duyệt/phát hành → file Full K1 riêng](ai-services/eval_harness/KNOWLEDGE_TRIPLET.md#luồng-duyệt-trên-frontend).
 
-**Bản nộp M1:** xem [hướng dẫn máy mới và lệnh BTC chấm chéo](docs/submission-runbook.md).
+**Chạy M1 trực tiếp trên host:** xem [hướng dẫn Python và lệnh BTC chấm chéo](docs/submission-runbook.md).
 CLI `run_eval.py` mặc định chat text; cần cấu hình model/Knowledge và không chạy
 chat hoặc eval khác đồng thời trên cùng DB. Eval dùng hạ tầng đang chạy, reset
 runtime/memory trước mỗi cấu hình và giữ nguyên knowledge/BTC.

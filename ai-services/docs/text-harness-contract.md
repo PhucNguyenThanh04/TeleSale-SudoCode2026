@@ -63,13 +63,35 @@ receipts can be reused for the same current source/request/identity/arguments;
 old state receipts and errors cannot bypass authorization or stock/quote checks.
 Review attempts remain bounded, and an exhausted tool budget does not invoke review.
 
-Callbacks outside operating hours or holidays return `callback_reschedule_required`
-with `proposed_callback_at` and insert nothing. Rules use the configured business
-timezone. A valid callback keeps the approved instant. The model can ask the
-customer to approve another time; MCP does not silently move an approved callback.
+Callbacks use the reviewed `mcp_shared/business-calendar.json` schedule, timezone
+and dated opening exceptions. The controller normalizes `callback_at` before
+review; an actual shift adds `requested_callback_at`. The reviewer sees both and
+must respect customer constraints on changing the time. The grant binds those
+canonical arguments; MCP stores the authorized effective time and returns it with
+`moved_from`. A changed calendar that changes the canonical arguments invalidates
+the grant. A whole-day closure preserves the requested clock time on the next
+open day when within its opening windows; after-hours requests use the next opening.
 
 The special privacy-erasure route only creates a handoff for verification; it
 never reports that a whole-customer purge has already happened.
+
+`order.preview_update` is an owned-order read for return/exchange consultation.
+It uses the same current calculation as `order.update` but never claims an
+operation, locks for a write or inserts an update. Its signed identity proof binds
+the date, order, action, line, quantity and replacement. No customer write consent
+is needed to read a preview. Results explicitly mark estimates and unconfirmed
+policy eligibility; net amount fields include fees. They are not write receipts.
+Executing an update still requires a fresh authorized write and recomputes data.
+
+`catalog.get_details` is an exact parent/variant SKU lookup backed by public
+catalog and approved technical source rows. It preserves catalog field authority,
+source hashes and unresolved conflicts. Public size/prose sections are linked by
+reviewed data and returned with `scope=section_context`; conditions and other
+named models in a section must not be silently assigned to the selected product.
+Details supply catalog selection/policy provenance and durable product evidence.
+Missing technical sources/properties remain unknown. Final prices/current stock
+are verified separately. Both new tools are available through model aliases and
+the canonical MCP names, and mandatory answer review receives their actual scope.
 
 ## Source findings and changes
 
@@ -242,3 +264,113 @@ No scenario/QA labels or saved evaluation traces were used to guide this work.
 No live evaluation, database migration, knowledge publication or deployment was
 performed. Remote managed prompts, published knowledge and model training data
 were not audited; source cleanup cannot prove absence of overfitting there.
+
+## Agent/context source preservation
+
+Address masking and address recovery share the same spans. Customer clauses
+after an address retain quantities, payment, negation and purchase conditions.
+Multiple distinct addresses remain ambiguous at the recovery boundary.
+
+Memory reads retain committed `customer_statements` with their turn IDs beyond
+the recent dialogue window, including anonymous sessions and pending worker jobs.
+These are source utterances, not inferred selections or renewed write consent.
+Generation and write/answer review receive the same sources. Changes invalidate
+write review. Prompt projection removes duplicated recent dialogue and brief
+profile copies; auxiliary summaries with complete source dialogue share a
+4,000-character budget and expose `summary_truncated`. Customer sources remain
+available up to the operational and prompt budgets described below; omissions are explicit.
+
+`latest_session` is selected chronologically before relevant episodes are
+limited. Scoped room/product facts do not enter global `must_not_ask` guidance.
+
+Public catalog attributes survive observation serialization. Quotes retain a
+context hash binding customer, address and basket without persisting those raw
+private arguments. The hash is a consistency check, not an authorization grant;
+owner/date/quantity/price checks and MCP recomputation still apply. Legacy quotes
+without the binding can require a fresh read. Up to 20 supported observations
+are retained after filtering internal reads; large public evidence and later
+receipts are no longer silently discarded.
+
+The model-facing catalog argument is `max_list_price_vnd`; the canonical MCP
+argument remains `max_price_vnd`. Final affordability requires quotes rather
+than an empty list-price-filtered search. Repeated blocked reads expose recovery
+hints using model tool names. Proposal/model-round budgets bound unproductive
+loops independently of successful MCP call counts.
+
+The existing mandatory answer review also rejects unanswered requests,
+unnecessary clarification and violated customer constraints. This adds no model
+inference. Offline regression and in-process MCP tests cover the source and
+execution boundaries; they do not establish live-model semantic accuracy or
+latency. Upgrade the harness and memory service together.
+
+### Audit repair contracts (2026-11-21)
+
+Apply migrations 0006 and 0007 to an existing database before upgrading AI and
+memory. Bootstrap and role provisioning include the same changes. Offline audit
+work does not apply migrations or restart running services.
+
+The shared masker recognizes separated phone/identity/account numbers and long
+payment identifiers while retaining dated prices and product IDs. Typed phone
+numbers in an unlinked chat do not verify identity; numeric Facebook/Zalo IDs
+also cannot fall back to a phone lookup. Signed backend verification can resolve
+an unlinked channel, but cannot override another customer's linked channel.
+
+Private delivery context lives in an erasable turn column with source turn/date
+and a masked source statement. The model receives only a safe reference; the
+write reviewer receives that masked source plus current consent. Multiple new
+addresses invalidate an old reference. References older than 180 days require
+new customer evidence. Completed AI memory erasure clears owner caches and
+pending playback, cancels other in-flight replies, and starts later contact
+anonymously. The tombstone still blocks delayed jobs and old customer writes.
+This does not assert deletion of separate commercial/accounting records.
+
+Return eligibility uses verified order and receipt dates plus stored condition
+evidence. Missing conditions produce `review_pending` intake; this is neither a
+pickup schedule nor an approved refund. Definite ineligibility does not write.
+Old policy fees and refund periods remain distinct. Previews retain estimates,
+missing conditions and source policy version.
+
+Episode resolutions require independent review against the original item and
+the complete current turn. Unreviewed/conditional/negated resolutions do not
+close items. Retry-bound review digests prevent stale approval reuse. Summaries
+rebuild from current canonical topics, latest accepted facts and verified actions.
+
+Knowledge releases are pinned when policy search is first requested in a turn,
+then reused within that turn. Ordinary conversation does not call release lookup.
+Release-reference lookup validates the manifest without scanning index vectors.
+Snapshot serving batches source/revocation reads, caches up to eight validated
+snapshots, and still checks current release/source revocation and content hashes.
+
+Model context is capped at 70,000 serialized characters, preserving current input
+and prioritizing current facts, topics and observations within field budgets.
+`context_completeness` exposes omissions and up to sixteen source references.
+Writes are denied when relevant source context is incomplete. Operational replay
+reads pending turns plus twelve recent completed turns, with at most 240 rows
+per relevant session. Longer sessions are conservatively marked incomplete;
+this can require a new session and explicit customer clarification before a write.
+The runtime retains at most 128 idle/active session entries, expires idle entries
+after fifteen minutes, keeps a bounded recent response cache and 64 tool calls
+per session, and preserves pending playback entries until acknowledgement/expiry.
+
+Internal `memory.replay` binds committed replies to a request hash. Conflicting
+retries fail; a completed retry does not regenerate or execute business tools.
+Historical turns without a request hash require a new message. If a business
+write committed but its reply did not, its durable operation ledger blocks blind
+re-execution and returns `turn_recovery_required`; a new message can inspect the
+owned order. Replayed voice content is the acknowledged/heard prefix, and the
+Call Brief is not persisted as part of replay. Fresh turns rebuild context.
+
+The total turn deadline defaults to 90 seconds and includes identity, memory,
+tools, verification, repair and publication. Up to three seconds inside that
+deadline are reserved for receipt persistence on timeout. No unchecked model
+tokens are published. First-answer latency therefore includes complete answer
+generation and verification; no live latency target is claimed from offline tests.
+
+Masked tool memory retains order-update/status/preview receipts and dated policy
+provenance. A callback receipt has a consistent scheduled status. Public memory
+changes preserve actual customer/tool provenance. Historical policy evidence
+does not grant current rights. PB-01/06/09 are explicit in the main prompt, and
+repair reuses the selected compiled prompt. Split-order create payloads expose
+`basket_skus`; distinct authorized creates have distinct stable keys. An offline
+four-product flow takes seven business calls within the default budget of eight.
+The default output budget is 1,024 tokens for structured multi-line requests.

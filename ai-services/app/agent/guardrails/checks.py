@@ -1,3 +1,4 @@
+from app.mcp_servers.mcp_shared.commerce_evidence import CATALOG_TOOLS
 
 import json
 import re
@@ -128,14 +129,16 @@ def _room_area_evidenced(value: Any, customer_text: str) -> bool:
 
 
 def safe_tool_result(result: dict[str, Any]) -> dict[str, Any]:
-    def clean(value: Any) -> Any:
+    def clean(value: Any, field='') -> Any:
         if isinstance(value, str):
+            if field in {'source_hash', 'content_hash'} and re.fullmatch(r'[a-f0-9]{64}', value):
+                return value
             return mask_pii(value)
         if isinstance(value, list):
             return [clean(item) for item in value]
         if isinstance(value, dict):
             return {
-                key: clean(item) for key, item in value.items()
+                key: clean(item, key) for key, item in value.items()
                 if not key.startswith("_") and key not in {"phone", "customer_phone", "address", "candidates"}
             }
         return value
@@ -369,7 +372,7 @@ def _unsupported_attribute_feature(candidate: str, catalog_items: list[dict[str,
 
 
 def _unsupported_feature(candidate: str, successful: list[dict[str, Any]]) -> bool:
-    catalog_items = [item for call in successful if call["name"] == "catalog.search"
+    catalog_items = [item for call in successful if call["name"] in CATALOG_TOOLS
                      for item in call["result"].get("items", []) if isinstance(item, dict)]
     if _unsupported_attribute_feature(candidate, catalog_items):
         return True
@@ -451,6 +454,12 @@ def _quote_money_values(result: dict[str, Any]) -> set[int]:
 def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *, focus_sku: str | None = None) -> bool:
     from app.mcp_servers.mcp_shared.basket import basket_money_evidenced
     from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
+    previews = [call for call in successful if call.get('name') == 'order.preview_update'
+                and call.get('result', {}).get('status') == 'preview' and call['result'].get('estimate') is True]
+    if previews:
+        values = {value for call in previews for value in _vnd_values(call['result'])}
+        if all(amount in values for amount, _, _ in _money_claims(candidate)):
+            return True
     baskets = [call for call in successful if call.get('name') == 'pricing.quote_order']
     if baskets:
         basket_skus = {unit['sku'] for call in baskets for unit in call['result'].get('units', [])}
@@ -489,7 +498,7 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *, focus_
             return False
         bound = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
         direct_parents = {sku for sku in bound & quotes.keys() if any(
-            c.get('name') == 'catalog.search' and any(i.get('sku') == sku for i in c['result'].get('items', []))
+            c.get('name') in CATALOG_TOOLS and any(i.get('sku') == sku for i in c['result'].get('items', []))
             for c in successful)}
         mentioned = direct_parents if len(direct_parents) == 1 else bound
         if not bound and len(quotes) == 1:
@@ -527,10 +536,18 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *, focus_
     return True
 
 
+def _vnd_values(value, field=''):
+    if isinstance(value, dict):
+        return {amount for key, item in value.items() for amount in _vnd_values(item, key)}
+    if isinstance(value, list):
+        return {amount for item in value for amount in _vnd_values(item, field)}
+    return {value} if field.endswith('_vnd') and type(value) is int and value >= 0 else set()
+
+
 def _empty_catalog_budget_evidenced(candidate: str, customer_text: str,
                                    money_claims: list[tuple[int, str, bool]],
                                    successful: list[dict[str, Any]]) -> bool:
-    searches = [call for call in successful if call.get("name") == "catalog.search"]
+    searches = [call for call in successful if call.get("name") in CATALOG_TOOLS]
     if not searches or any(call.get("name") == "pricing.get_quote" for call in successful):
         return False
     last = searches[-1]
@@ -551,7 +568,7 @@ def _empty_catalog_budget_evidenced(candidate: str, customer_text: str,
 def _catalog_budget_repetition_evidenced(candidate: str, customer_text: str,
                                         money_claims: list[tuple[int, str, bool]],
                                         successful: list[dict[str, Any]]) -> bool:
-    searches = [call for call in successful if call.get("name") == "catalog.search"]
+    searches = [call for call in successful if call.get("name") in CATALOG_TOOLS]
     if not searches or len(money_claims) != 1:
         return False
     last = searches[-1]
@@ -619,6 +636,9 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         r'(?:là\s+)?(?P<amount>\d[\d.,]*\s*(?:triệu|tr|nghìn|ngàn|k|đồng|đ|vnd))\b',
         budget_repetition, candidate, flags=re.IGNORECASE)
     money_claims = _money_claims(money_candidate)
+    if (money_claims and 'gia niem yet' not in _fold_text(candidate)
+            and _empty_catalog_budget_evidenced(candidate, customer_text, money_claims, successful)):
+        return FALLBACK, 'final_budget_unverified'
     policy_amounts = (_money_claims(" ".join(chunk["content"] for chunk in policy_chunks))
                       if policy_claim else [])
     policy_values = {amount for amount, _, _ in policy_amounts}
@@ -643,13 +663,21 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     if _STOCK.search(candidate) or _STOCK_QTY.search(candidate):
         from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
         checks = [call for call in successful if call['name'] == 'inventory.check']
+        checks.extend({'name': 'inventory.check', 'args': {'sku': call['result']['replacement_inventory']['sku']},
+                       'result': call['result']['replacement_inventory']}
+                      for call in successful if call.get('name') == 'order.preview_update'
+                      and call.get('result', {}).get('status') == 'preview'
+                      and call['result'].get('estimate') is True and call['result'].get('replacement_inventory')
+                      and not any(c.get('args', {}).get('sku') == call['result']['replacement_inventory']['sku']
+                                  and all(c['result'].get(key) == call['result']['replacement_inventory'].get(key)
+                                          for key in ('in_stock', 'qty')) for c in checks))
         for clause in re.split(r'[;!?\n]|\.(?!\d)', candidate):
             if not (_STOCK.search(clause) or _STOCK_QTY.search(clause)):
                 continue
             bound = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
             selected = [c for c in checks if not bound or c.get('args', {}).get('sku') in bound]
             if len(bound) > 1 and not any(c.get('args', {}).get('sku') in {
-                    item.get('sku') for catalog in successful if catalog.get('name') == 'catalog.search'
+                    item.get('sku') for catalog in successful if catalog.get('name') in CATALOG_TOOLS
                     for item in catalog['result'].get('items', [])} for c in selected):
                 return FALLBACK, 'stock_sku_mismatch'
             if len(selected) != 1 or unverified_legacy_skus:
@@ -836,14 +864,12 @@ def _fact_evidence_source(
         name = call["name"]
         result = safe_tool_result(call["result"])
         supported = False
-        if key == Slot.PRODUCT_ADVISED and name in {
-            "catalog.search", "inventory.check", "pricing.get_quote"
-        }:
+        if key == Slot.PRODUCT_ADVISED and name in CATALOG_TOOLS | {"inventory.check", "pricing.get_quote"}:
             supported = value == result.get("sku") or (
                 isinstance(value, str) and isinstance(result.get("sku"), str)
                 and result["sku"].startswith(value + "-")
             ) or (
-                name == "catalog.search"
+                name in CATALOG_TOOLS
                 and any(value == item.get("sku") for item in result.get("items", []))
             )
         elif key == Slot.PRICE_QUOTED_VND and name == "pricing.get_quote":
@@ -856,7 +882,7 @@ def _fact_evidence_source(
                             for promo in result.get("applied_promos", []))
         elif key == Slot.ORDER_ID and name == "order.create":
             supported = result.get("status") == "created" and value == result.get("order_id")
-        elif key == Slot.VARIANT_SKU and name == "catalog.search":
+        elif key == Slot.VARIANT_SKU and name in CATALOG_TOOLS:
             supported = any(value == variant.get("variant_sku")
                             for item in result.get("items", []) if isinstance(item, dict)
                             for variant in item.get("variants", []) if isinstance(variant, dict))

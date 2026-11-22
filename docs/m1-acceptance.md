@@ -15,17 +15,16 @@ chuẩn bị; phần dưới nhận, kiểm tra và chạy dữ liệu đó, kh�
 
 ## 2. Chat demo M1
 
-Dùng gateway đang có, không dùng `backend/app/main.py` cũ: các module của entrypoint
-đó không còn đầy đủ trong checkout. Gateway không yêu cầu PostgreSQL/Redis riêng;
-AI và các MCP vẫn cần database/worker theo `ai-services/README.md`.
+Dùng gateway `app.voice_main:app`. Bản Compose setup PostgreSQL, các MCP, worker
+và tài khoản seed theo [hướng dẫn demo](../START_HERE.md#3-demo-chat-trên-một-project-riêng).
+Khi chạy gateway phía host với hạ tầng đã cấu hình, dùng:
 
 ```bash
 backend/.venv/bin/python -m uvicorn app.voice_main:app --app-dir backend --host 127.0.0.1 --port 8000
 ```
 
-Mở `http://127.0.0.1:8000/chat`. Không cần microphone hoặc speech service cho chat.
-Token nội bộ nằm trong backend/.env, không đưa vào trình duyệt. Đây vẫn là gateway
-demo không đăng nhập như chế độ voice hiện có, không phải triển khai tổng đài thật.
+Mở `http://127.0.0.1:8000/chat` và đăng nhập bằng tài khoản demo đã seed. Chat dùng
+text và cuộc gọi mô phỏng theo ngày nghiệp vụ. Token nội bộ do gateway giữ ở phía server.
 
 1. Nhập kênh, định danh đúng CRM và ngày nghiệp vụ. Bắt đầu phiên sẽ nhận diện
    khách và nạp brief qua API chuẩn bị phiên trước tin nhắn đầu tiên.

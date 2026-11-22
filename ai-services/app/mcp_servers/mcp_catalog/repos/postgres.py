@@ -14,6 +14,10 @@ class CatalogRepo(Database):
         return [{'promos': row[0] if isinstance(row[0], list) else json.loads(row[0])} for row in result]
 
     async def rows(self, session, table: str) -> list[dict]:
+        if table == 'policy_chunks':
+            result = await session.execute(text('''SELECT chunk_id,document_id,body,source_hash,access_level
+                FROM btc_source.policy_chunks WHERE access_level='public' '''))
+            return [dict(row._mapping) for row in result]
         if table not in {"products", "inventory_events", "promotions", "customers"}:
             raise ValueError("Unsupported BTC table")
         result = await session.execute(text(f"SELECT data FROM btc_source.{table}"))
@@ -27,11 +31,6 @@ class CatalogRepo(Database):
             f"SELECT customer_id, phone FROM btc_source.customers WHERE {column}=:identity"
         ), {"identity": identity})
         rows = [dict(row._mapping) for row in result]
-        if not rows and column != 'phone' and len(identity) == 10 and identity.startswith('0') and identity.isdigit():
-            fallback = await session.execute(text(
-                'SELECT customer_id,phone FROM btc_source.customers WHERE phone=:identity'
-            ), {'identity': identity})
-            rows = [dict(row._mapping) for row in fallback]
         return rows
 
     async def runtime_orders(self, session, customer_id: str) -> list[dict]:

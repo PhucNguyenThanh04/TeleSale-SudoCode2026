@@ -22,8 +22,11 @@ Có thể dùng venv riêng với `dataloader_offline/requirements-postgres.txt`
 AI đã cài các dependency trong `ai-services/requirements.txt` và cấu hình
 theo [runbook](../ai-services/docs/mcp-knowledge-runbook.md).
 
-Lệnh nạp mặc định ghi PostgreSQL trong một transaction, dùng upsert; không tự
-xóa bản ghi cũ. `--only-postgres` giữ tương thích và không kết hợp với
+Lệnh nạp mặc định ghi PostgreSQL trong một transaction, dùng upsert rồi đối chiếu
+đủ khóa, nội dung và hash của 9 bảng nguồn trước commit. Nếu còn record đã bị xóa
+khỏi file hoặc nội dung không khớp, loader rollback toàn transaction và báo
+`source_snapshot_mismatch` cùng bảng/số record lệch; không tự xóa bản ghi cũ.
+`--only-postgres` giữ tương thích và không kết hợp với
 `--prepare-policy`. Sau khi nạp, loader nói rõ index chưa được dựng.
 
 ## Dựng index qua cùng lệnh nạp
@@ -135,8 +138,10 @@ so với snapshot cũ và ngày hết hiệu lực đều khớp. Xem [báo cáo
 
 Luồng nạp có preflight credentials/tokenizer CPU/schema/quyền/đích trước khi ghi.
 Khi lỗi, thông báo có `stage` và `source_commit_confirmed`; lỗi build sau commit
-nguồn không được hiểu là đã nạp index thành công. Loader không tự prune seed đã
-bị xóa khỏi file; verifier báo những record đó trong `extra` để xử lý có kiểm soát.
+nguồn không được hiểu là đã nạp index thành công. Seed đã bị xóa khỏi file nhưng
+còn trong DB làm import bị từ chối trước commit (`source_commit_confirmed=False`).
+Dùng báo cáo `--verify-ingestion` phần `extra` để xác định record cần xử lý, rà soát
+việc dọn nguồn riêng rồi mới thử lại; loader không tự prune và không xóa runtime.
 
 
 ## Chuyển từ index local cũ

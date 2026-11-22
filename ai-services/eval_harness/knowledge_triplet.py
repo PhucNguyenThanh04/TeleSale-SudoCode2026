@@ -280,10 +280,20 @@ async def run_experiment(args, repo, worker_repo, settings):
                 collected = None if new_proposals else await collect_review(
                     repo, state['proposals'], actor=args.actor, run_id=out.name, base=base)
                 if collected is None:
-                    save(status='awaiting_review', phase='awaiting_review',
-                        review_url='http://127.0.0.1:8000/knowledge?run_id='+out.name)
-                    print('[knowledge] Review/edit/reject proposals and publish K1: '+state['review_url'], flush=True)
                     separate = state.get('workflow') == 'paired_then_published_full'
+                    project = os.getenv('BTC_SUBMISSION_PROJECT') if separate else None
+                    port = os.getenv('BTC_SUBMISSION_DEMO_PORT', '8000') if project else '8000'
+                    save(status='awaiting_review', phase='awaiting_review',
+                        review_url=f'http://127.0.0.1:{port}/knowledge?run_id={out.name}')
+                    if project:
+                        compose = ('SUBMISSION_DATABASE=telesale_eval_m1 docker compose '
+                                   '--env-file .env.submission -f compose.submission.yml -p ' + shlex.quote(project))
+                        print(f'[knowledge] Start the review UI: {compose} up -d --wait backend', flush=True)
+                    print('[knowledge] Review/edit/reject proposals and publish K1: '+state['review_url'], flush=True)
+                    if project:
+                        print(f'[knowledge] Run after publication: {compose} run --rm knowledge-eval '
+                              f'--base-run {shlex.quote(str(k0.resolve()))}', flush=True)
+                        return out
                     resume = ([str(PROJECT/'ai-services/.venv/bin/python'), str(PROJECT/'run_knowledge_eval.py'),
                                '--base-run', str(k0.resolve())] if separate else
                               [str(PROJECT/'ai-services/.venv/bin/python'), '-m',

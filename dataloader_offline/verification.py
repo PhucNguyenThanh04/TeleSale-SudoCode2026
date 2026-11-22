@@ -85,6 +85,15 @@ def _matches(comparison):
     return not any(comparison[k] for k in ['missing','extra','changed'])
 
 
+async def compare_source_tables(conn, release):
+    comparisons = {}
+    for table, expected in _expected_source_rows(release).items():
+        records = await conn.fetch(f'SELECT * FROM btc_source.{table}')
+        actual = {_key(table, row): _normal_row(row) for row in records}
+        comparisons[table] = _comparison(expected, actual)
+    return comparisons
+
+
 async def _identity(conn):
     return dict(await conn.fetchrow('SELECT current_database() AS database, '
         'extract(epoch from pg_postmaster_start_time())::text AS server_epoch, '
@@ -110,7 +119,6 @@ async def verify_ingestion(database_url, source_dir, *, knowledge_database_url,
             raise ValueError('Knowledge database required')
         root=Path(source_dir);meta_path=Path(metadata_path) if metadata_path else None
         source=read_release(root,meta_path)
-        expected_tables=_expected_source_rows(source)
         metadata=json.loads(meta_path.read_text()) if meta_path else default_metadata()
         config=PolicyRuntimeConfig.model_validate_json(Path(runtime_config_path).read_text())
         report['relevance_verified']=False
@@ -119,11 +127,7 @@ async def verify_ingestion(database_url, source_dir, *, knowledge_database_url,
             async with conn.transaction(readonly=True):
                 source_identity=await _identity(conn)
                 report['targets']['source_database']=source_identity
-                comparisons={}
-                for table,expected in expected_tables.items():
-                    records=await conn.fetch(f'SELECT * FROM btc_source.{table}')
-                    actual={_key(table,r):_normal_row(r) for r in records}
-                    comparisons[table]=_comparison(expected,actual)
+                comparisons=await compare_source_tables(conn, source)
                 report['counts']['source_tables']=comparisons
                 report['checks']['source']=all(_matches(c) for c in comparisons.values())
                 if not report['checks']['source']:

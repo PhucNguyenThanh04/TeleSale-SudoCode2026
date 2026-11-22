@@ -89,7 +89,12 @@ def test_catalog_mcp_routes_basket_quote_with_trusted_identity(reference):
     gateway = MCPGateway(create_server(Repo()), None, None)
     actual = asyncio.run(gateway.invoke_trusted('pricing.quote_order', args, customer['customer_id'],
                                                 channel='hotline', channel_identity=customer['phone']))
-    assert actual.get('units') == reference.pricing_quote_order(**args)['units']
+    expected = reference.pricing_quote_order(**args)['units']
+    ends = {promo['promo_code']: promo['end'] for promo in reference.PROMOS}
+    for unit in expected:
+        for promo in unit['applied_promos']:
+            promo['valid_until'] = ends[promo['promo_code']]
+    assert actual.get('units') == expected
 
 
 @pytest.mark.parametrize('payload', [

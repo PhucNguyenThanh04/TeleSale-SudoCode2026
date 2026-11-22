@@ -1,6 +1,6 @@
 
 import hashlib
-import re
+import json
 from typing import Any
 
 from app.agent.harness.observability import log_event, log_tool_input, log_tool_output
@@ -11,6 +11,11 @@ from app.schemas.agent import TextTurnRequest
 def identity_fingerprint(turn: TextTurnRequest) -> str:
     value = f"{turn.channel}\0{turn.channel_identity or ''}"
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def turn_fingerprint(turn, include_prior):
+    return hashlib.sha256(json.dumps({'request': turn.model_dump(mode='json'),
+        'include_prior': include_prior}, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
 def _empty_identity(status: str = "unknown") -> dict[str, Any]:
@@ -57,28 +62,6 @@ async def initialize_identity(turn: TextTurnRequest, tools: ToolGateway
     if "error" in result:
         raise RuntimeError("CRM identity lookup failed")
     calls = [{"name": "crm.get_customer", "args": args, "result": result}]
-    if (not result.get("found") and not result.get("ambiguous")
-            and turn.channel in {"chat_fanpage", "zalo_oa"}):
-        fallback_phone = None
-        if re.fullmatch(r"0\d{9}", turn.channel_identity or ""):
-            fallback_phone = turn.channel_identity
-        else:
-            phone_match = re.search(
-                r"(?i)\b(?:sđt|sdt|số điện thoại|so dien thoai)\D{0,20}(0\d{9})\b",
-                turn.text or "",
-            )
-            if phone_match:
-                fallback_phone = phone_match.group(1)
-        if fallback_phone:
-            fb_args = {"phone": fallback_phone}
-            log_tool_input("session_identity", "crm.get_customer", fb_args)
-            fb_result = await tools.invoke("crm.get_customer", fb_args)
-            log_event(turn, "session_identity", "tool_result", tool="crm.get_customer",
-                      success="error" not in fb_result)
-            log_tool_output({}, "session_identity", "crm.get_customer", fb_result)
-            if "error" not in fb_result:
-                calls.append({"name": "crm.get_customer", "args": fb_args, "result": fb_result})
-                result = fb_result
     if result.get("ambiguous"):
         log_event(turn, "session_identity", "identity_resolved", status="ambiguous")
         return _empty_identity("ambiguous"), calls

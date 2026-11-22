@@ -23,6 +23,10 @@ class MemoryRepo:
     async def get(self, table, key):
         return copy.deepcopy(self.tables.get(table, {}).get(key))
 
+    async def get_many(self, table, keys):
+        return {key: copy.deepcopy(self.tables[table][key]) for key in keys
+                if key in self.tables.get(table, {})}
+
     async def put(self, table, key, value):
         self.tables.setdefault(table, {})[key] = copy.deepcopy(value)
 

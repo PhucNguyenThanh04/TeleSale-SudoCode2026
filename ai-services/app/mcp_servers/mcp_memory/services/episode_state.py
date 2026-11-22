@@ -53,7 +53,8 @@ def admit_episode_resolutions(previous: dict, delta: dict, **evidence) -> tuple[
 
 def apply_episode_delta(previous: dict, delta: dict, *, source_turn_id: str,
                         customer_text: str, agent_text: str,
-                        prior_open_items: dict[str, tuple[str, str]] | None = None) -> dict:
+                        prior_open_items: dict[str, tuple[str, str]] | None = None,
+                        reviewed_resolution_ids: frozenset[str] = frozenset()) -> dict:
     try:
         UUID(source_turn_id)
     except (TypeError, ValueError) as exc:
@@ -122,6 +123,8 @@ def apply_episode_delta(previous: dict, delta: dict, *, source_turn_id: str,
         for resolution in resolutions:
             if not isinstance(resolution, dict):
                 raise ValueError("invalid resolution")
+            if resolution.get('item_id') not in reviewed_resolution_ids:
+                raise ValueError('episode resolution requires independent review')
             target = next((item for item in items if item.get("item_id") == resolution.get("item_id")), None)
             if target is None:
                 item_id = resolution.get("item_id")
@@ -136,8 +139,6 @@ def apply_episode_delta(previous: dict, delta: dict, *, source_turn_id: str,
                         "source_turn_id": source_turn_id, "evidence_quote": quote})
                 continue
             quote = _evidence(resolution.get("evidence_quote"), customer_text, agent_text)
-            if not evidence_supports(target.get("text", ""), quote):
-                raise ValueError("episode resolution lacks supporting evidence")
             target["status"] = "resolved"
             target["resolved_turn_id"] = source_turn_id
             target["resolution_evidence_quote"] = quote

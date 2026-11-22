@@ -47,14 +47,28 @@ chỉ giải thích các tham chiếu như 'mẫu đó', không tự cấp quy�
   bỏ điều kiện giao, thêm sản phẩm hay chuyển lựa chọn thành đơn.
   Mặc định một sản phẩm và COD khi khách chưa chỉ định và nghiệp vụ cho phép;
   không bắt khách xác nhận địa chỉ nếu giao dịch không yêu cầu địa chỉ.
+  Trước khi tạo đơn, offer đã trình bày phải khớp đúng biến thể, số lượng, giá
+  cuối/quyền lợi, phương thức thanh toán, tham chiếu nơi giao và thời gian giao
+  dự kiến có nguồn. Thiếu offer hoặc khách chưa đồng ý thì không cấp quyền.
   Khi có address_context, [PROPOSED_ADDRESS] đánh dấu đúng giá trị địa chỉ đang
   đề xuất trong toàn bộ lời khách hiện tại; các địa chỉ khác vẫn được che riêng.
   Phải xét cả phủ định/sửa đổi quanh dấu này. Việc nhắc địa chỉ không tự là đồng
   ý giao đến đó. Không tìm thấy giá trị trong nguồn thì không suy địa chỉ đúng.
+  source_customer_text và source_turn_id trong address_context xác định địa chỉ
+  khách đã cung cấp ở lượt trước; chỉ là nguồn cho tham chiếu địa chỉ. Khách vẫn
+  phải đồng ý giao tới địa chỉ đó trong customer_text HIỆN TẠI.
 - order.update: khách yêu cầu đúng thay đổi trên đúng đơn của mình. Hỏi về chính
   sách hoặc khả năng đổi/trả chưa phải yêu cầu tạo phiếu. Không lấy đơn người khác.
+  line_index bắt đầu từ 0 theo order.status, qty là số đơn vị đổi/trả; bỏ qty
+  nghĩa là cả dòng. return không chọn dòng nghĩa là toàn đơn. Phạm vi/số lượng
+  mặc định cũng phải được yêu cầu hiện tại hỗ trợ. Đổi địa chỉ phải đúng địa chỉ
+  mới khách cung cấp; address_context giữ liên hệ với giá trị riêng tư đã che.
 - schedule.callback: khách đã đồng ý gọi lại và thời điểm; không tự đặt lịch từ
   việc khách chưa mua hoặc muốn hỏi thêm. Phân biệt từ chối mua với từ chối gọi lại.
+  callback_at là thời điểm thực thi đã chuẩn hóa theo lịch làm việc có nguồn;
+  requested_callback_at, nếu có, giữ thời điểm đề xuất ban đầu. Xét cả hai khi
+  duyệt. Không cho phép dời nếu ràng buộc hiện tại của khách không chấp nhận
+  phương án đó; agent phải thông báo thời điểm thực tế và việc dời từ receipt.
 - handoff.transfer: cho phép khi khách yêu cầu gặp nhân viên, hoặc câu hỏi y tế/
   yêu cầu ngoài phạm vi phải chuyển theo quy định telesale. Thiếu thông tin về
   một sản phẩm không tự động là lý do chuyển máy. basis=policy_handoff chỉ dùng
@@ -78,15 +92,17 @@ def build_write_context(state, name, args):
         args_hash=write_args_digest(name, args),
         customer_text_hash=write_digest({'text': request.text, 'safe_text': state['safe_text']}),
         review_context_hash=write_digest({key: state.get(key) for key in (
-            'identity_status', 'customer_phone', 'history', 'profile', 'scoped_facts',
+            'identity_status', 'customer_phone', 'history', 'customer_statements', 'profile', 'scoped_facts',
             'episodes', 'current_episode', 'call_brief', 'tool_calls', 'session_tool_calls',
-            'tool_failed')}))
+            'tool_failed', 'private_delivery', 'context_source_complete')}))
 
 
 async def authorize_write(model, state, name, args, history_turns):
     if name not in WRITE_TOOLS:
         return False
     context = prompt_context(state, history_turns)
+    if not context['context_completeness']['complete']:
+        return False
     payload = {**context, 'proposed_write': {'tool': name, 'args': safe_tool_result(args)}}
     address = args.get('address')
     if isinstance(address, str) and address:
@@ -95,6 +111,10 @@ async def authorize_write(model, state, name, args, history_turns):
             'mentioned_in_current_customer_text': address in state['request'].text,
             'current_customer_text': '[PROPOSED_ADDRESS]'.join(
                 mask_pii(part) for part in state['request'].text.split(address))}
+        delivery = state.get('private_delivery')
+        if isinstance(delivery, dict) and delivery.get('address') == address:
+            payload['address_context'].update({key: delivery[key] for key in (
+                'source_turn_id', 'source_on', 'source_customer_text')})
     try:
         reviewer = model.with_structured_output(WriteAuthorization, method='function_calling')
         async with asyncio.timeout(REVIEW_TIMEOUT_SECONDS):

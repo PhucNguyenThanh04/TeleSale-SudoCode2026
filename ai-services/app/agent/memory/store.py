@@ -42,7 +42,9 @@ class MemoryStore(Protocol):
                           orders: list[str] | None = None,
                           outcome: str = "khac",
                           tool_observations: list[dict[str, Any]] | None = None,
-                          knowledge_evidence: dict | None = None) -> dict: ...
+                          knowledge_evidence: dict | None = None,
+                          private_delivery: dict | None = None,
+                          request_hash: str | None = None) -> dict: ...
 
 
 class MCPMemoryStore:
@@ -50,6 +52,8 @@ class MCPMemoryStore:
     supports_tool_observations = True
     supports_knowledge_signals = True
     supports_retrieval_query = True
+    supports_private_delivery = True
+    supports_durable_replay = True
 
     def __init__(self, gateway: ToolGateway, namespace: str = "",
                  include_prior: bool = True, max_episodes: int = 5) -> None:
@@ -76,6 +80,11 @@ class MCPMemoryStore:
             "session_id": session_id, "customer_id": self._id(customer_id),
             "client_msg_id": client_msg_id})
 
+    async def replay_turn(self, session_id, customer_id, client_msg_id, request_hash):
+        return await self.gateway.invoke('memory.replay', {'session_id': session_id,
+            'customer_id': self._id(customer_id), 'client_msg_id': client_msg_id,
+            'request_hash': request_hash})
+
     async def read_timeline(self, session_id: str, customer_id: str | None, on: str,
                             *, offset: int = 0, limit: int = 10, crm_sessions=()) -> dict:
         return await self.gateway.invoke('memory.timeline', {
@@ -88,10 +97,16 @@ class MCPMemoryStore:
                           orders: list[str] | None = None,
                           outcome: str = "khac",
                           tool_observations: list[dict[str, Any]] | None = None,
-                          knowledge_evidence: dict | None = None) -> dict:
+                          knowledge_evidence: dict | None = None,
+                          private_delivery: dict | None = None,
+                          request_hash: str | None = None) -> dict:
         data = {"customer_text": customer_text, "agent_text": agent_text,
                 "on": on, "channel": channel, "client_msg_id": client_msg_id,
                 "orders": orders or []}
+        if private_delivery is not None:
+            data['private_delivery'] = private_delivery
+        if request_hash is not None:
+            data['request_hash'] = request_hash
         if knowledge_evidence:
             data["knowledge_evidence"] = knowledge_evidence
         if outcome != "khac":

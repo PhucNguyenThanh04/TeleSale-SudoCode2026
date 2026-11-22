@@ -17,7 +17,7 @@ from app.agent.harness.agent_nodes import AgentNodes
 from app.agent.memory.store import MemoryStore
 from app.agent.harness.observability import log_event
 from app.agent.harness.context import load_context
-from app.agent.harness.session_identity import identity_fingerprint, initialize_identity
+from app.agent.harness.session_identity import identity_fingerprint, initialize_identity, _empty_identity, turn_fingerprint
 from app.agent.harness.state import TurnState
 from app.agent.harness.session_state import SessionState
 from app.agent.harness.tracing import LangfuseTracing
@@ -27,7 +27,7 @@ from app.schemas.agent import (PrepareSessionRequest, PrepareSessionResponse,
                                TextTurnRequest, TextTurnResponse, TurnMemoryRequest,
                                MemoryUpdate, VoicePlaybackRequest)
 from app.schemas.timeline import TimelineRequest, TimelinePage
-from app.agent.harness.streaming import GuardedStream, active_stream
+from app.agent.harness.streaming import GuardedStream, active_stream, active_turn_progress
 
 
 class AgentHarnessRuntime:
@@ -37,10 +37,12 @@ class AgentHarnessRuntime:
                  prompt_history_turns: int = DEFAULT_PROMPT_HISTORY_TURNS,
                  clock: Callable[[], datetime] | None = None,
                  guardrails_enabled: bool = True,
-                 tracing: LangfuseTracing | None = None) -> None:
+                 tracing: LangfuseTracing | None = None,
+                 turn_timeout_seconds: float = 90) -> None:
         self.memory = memory
         self.tools = tools
         self.tracing = tracing
+        self.turn_timeout_seconds = turn_timeout_seconds
         if not guardrails_enabled:
             log_event(None, "verify", "answer_check_disabled", level=logging.WARNING,
                       reason="cấu hình tắt kiểm tra bổ sung; kiểm tra bằng chứng vẫn chạy")
@@ -60,6 +62,62 @@ class AgentHarnessRuntime:
         self._playback_tasks: dict[tuple[str, str], asyncio.Task] = {}
         self._playback_receipts: dict[tuple[str, str], tuple[int, bool]] = {}
         self._stream_tasks: dict[asyncio.Task, GuardedStream] = {}
+        self._session_access: dict[str, float] = {}
+        self._cache_max_sessions = 128
+        self._turn_progress = {}
+
+    def _prune_cache(self, current_session):
+        now = time.monotonic()
+        for sid, touched in sorted(self._session_access.items(), key=lambda item: item[1]):
+            lock = self._locks.get(sid)
+            if (sid == current_session or lock and (lock.locked() or getattr(lock, '_waiters', None))
+                    or any(key[0] == sid for key in self._playback_tasks)):
+                continue
+            if now - touched <= 900 and len(self._session_access) < self._cache_max_sessions:
+                break
+            self._session_access.pop(sid, None)
+            for cache in (self._locks, self._session_states, self._session_identities,
+                          self._session_tool_calls, self._preparations):
+                cache.pop(sid, None)
+            for key in [key for key in self._states if key[0] == sid]:
+                for cache in (self._states, self._responses, self._playback_receipts):
+                    cache.pop(key, None)
+        if current_session not in self._session_access and len(self._session_access) >= self._cache_max_sessions:
+            raise RuntimeError('runtime_busy')
+        self._session_access[current_session] = now
+        for key in list(self._states)[:-32]:
+            if key not in self._playback_tasks:
+                for cache in (self._states, self._responses, self._playback_receipts):
+                    cache.pop(key, None)
+
+    def _forget_customer(self, customer_id):
+        for task, progress in list(self._turn_progress.items()):
+            if task is not asyncio.current_task() and progress.get('state', {}).get('customer_id') == customer_id:
+                stream = progress.get('stream')
+                if stream:
+                    stream.terminal({'event': 'error', 'code': 'customer_erased'})
+                    stream.disconnect()
+                task.cancel()
+        sessions = {sid for sid, (_, identity) in self._session_identities.items()
+                    if identity.get('customer_id') == customer_id}
+        sessions.update(key[0] for key, state in self._states.items()
+                        if state.get('customer_id') == customer_id)
+        for sid in sessions:
+            bound = self._session_identities.get(sid)
+            if bound:
+                self._session_identities[sid] = (bound[0], {
+                    **_empty_identity(), 'erased_customer_id': customer_id})
+            self._session_states.pop(sid, None)
+            self._session_tool_calls.pop(sid, None)
+            self._preparations.pop(sid, None)
+        for key in list(self._states):
+            if key[0] in sessions:
+                self._states.pop(key, None)
+                self._responses.pop(key, None)
+                self._playback_receipts.pop(key, None)
+                task = self._playback_tasks.pop(key, None)
+                if task:
+                    task.cancel()
 
     async def _finalize_playback(self, key, played_chars: int, interrupted: bool):
         if key in self._playback_receipts:
@@ -122,20 +180,14 @@ class AgentHarnessRuntime:
         bound = self._session_identities.get(session_id)
         if bound is not None and bound[0] != fingerprint:
             raise ValueError("Session channel identity mismatch")
-        late_phone = (
-            bound is not None and bound[1]["identity_status"] == "unknown"
-            and turn.channel in {"chat_fanpage", "zalo_oa"}
-            and bool(re.search(
-                r"(?i)\b(?:sđt|sdt|số điện thoại|so dien thoai)\D{0,20}0\d{9}\b",
-                turn.text or ""))
-        )
-        if bound is None or (bound[1]["identity_status"] != "known"
-                             and (turn.verified_customer_id or late_phone)):
+        if bound is None or (not bound[1].get('erased_customer_id') and bound[1]["identity_status"] != "known"
+                             and turn.verified_customer_id):
             identity, calls = await initialize_identity(turn, self.tools)
             self._session_identities[session_id] = (fingerprint, identity)
         else:
             identity, calls = bound[1], []
-        if turn.verified_customer_id and identity.get("customer_id") != turn.verified_customer_id:
+        if (turn.verified_customer_id and identity.get("customer_id") != turn.verified_customer_id
+                and identity.get('erased_customer_id') != turn.verified_customer_id):
             raise ValueError("Verified customer conflicts with session owner")
         return identity, calls
 
@@ -144,6 +196,7 @@ class AgentHarnessRuntime:
         turn = TextTurnRequest.model_construct(**request.model_dump(),
             client_msg_id=uuid4(), text="", input_mode="asr_transcript")
         session_id = str(request.session_id)
+        self._prune_cache(session_id)
         async with self._locks[session_id]:
             self._preparations.pop(session_id, None)
             identity, calls = await self._identity_for(turn)
@@ -155,6 +208,11 @@ class AgentHarnessRuntime:
                      "session_tool_calls": deepcopy(self._session_tool_calls[session_id])}
             context = await load_context(state, self.memory, self.tools,
                 self._clock or (lambda: datetime.now(timezone.utc)))
+            if context.get('erased_customer_id'):
+                self._forget_customer(context['erased_customer_id'])
+                identity = self._session_identities[session_id][1]
+                session = self._session_states.setdefault(session_id, SessionState(
+                    None, request.on, getattr(self.memory, 'include_prior', True)))
             session.update(context)
             if context.get("tool_failed"):
                 raise RuntimeError("session_preparation_failed")
@@ -275,12 +333,33 @@ class AgentHarnessRuntime:
                 active_stream.reset(token)
 
     async def _run_with_release(self, turn: TextTurnRequest) -> TextTurnResponse:
-        from app.knowledge.context import selected_release, release_context
-        if selected_release() or not getattr(self.tools, "transports", {}).get("knowledge"):
-            return await self._run(turn)
-        release = await self.tools.knowledge_release()
-        with release_context(release['release_id']):
-            return await self._run(turn)
+        progress = {'stream': active_stream.get()}
+        self._turn_progress[asyncio.current_task()] = progress
+        token = active_turn_progress.set(progress)
+        try:
+            async with asyncio.timeout(self.turn_timeout_seconds):
+                try:
+                    async with asyncio.timeout(self.turn_timeout_seconds - min(3, self.turn_timeout_seconds / 10)):
+                        return await self._run(turn)
+                except TimeoutError:
+                    state = progress.get('state')
+                    if state is not None:
+                        stream = active_stream.get()
+                        state.update(agent_text=stream.published if stream else '',
+                                     reply_error='turn_deadline_exceeded', verified_answer='')
+                        state['memory_include_prior'] = getattr(self.memory, 'include_prior', True)
+                        self._states[(str(turn.session_id), str(turn.client_msg_id))] = state
+                        try:
+                            await self.nodes.persist_agent(state)
+                        except Exception as exc:
+                            log_event(turn, 'persist', 'deadline_recovery_failed',
+                                      error_type=type(exc).__name__)
+                    raise RuntimeError('turn_deadline_exceeded') from None
+        except TimeoutError:
+            raise RuntimeError('turn_deadline_exceeded') from None
+        finally:
+            self._turn_progress.pop(asyncio.current_task(), None)
+            active_turn_progress.reset(token)
 
     async def _run(self, turn: TextTurnRequest) -> TextTurnResponse:
         started = time.perf_counter()
@@ -288,6 +367,7 @@ class AgentHarnessRuntime:
                   input_mode=turn.input_mode, on=turn.on.isoformat())
         session_id = str(turn.session_id)
         key = (session_id, str(turn.client_msg_id))
+        self._prune_cache(session_id)
         stream = active_stream.get()
         async with self._locks[session_id]:
             fingerprint = identity_fingerprint(turn)
@@ -296,9 +376,8 @@ class AgentHarnessRuntime:
                 raise ValueError("Session channel identity mismatch")
             if key in self._states:
                 original = self._states[key]['request']
-                if (self._states[key]['memory_include_prior'] != getattr(self.memory, 'include_prior', True)
-                        or any(getattr(original, field) != getattr(turn, field)
-                       for field in ('text', 'on', 'delivery_mode', 'verified_customer_id', 'verified_phone'))):
+                if turn_fingerprint(original, self._states[key]['memory_include_prior']) != turn_fingerprint(
+                        turn, getattr(self.memory, 'include_prior', True)):
                     raise ValueError('Conflicting turn retry')
                 if self._states[key].get('reply_error'):
                     raise RuntimeError(self._states[key]['reply_error'])
@@ -309,20 +388,53 @@ class AgentHarnessRuntime:
                         session_id, bound[1].get('customer_id') if bound else None))
                 except Exception:
                     context = {'error': 'memory_exception'}
-                if 'error' in context:
+                if context.get('error') == 'customer_erased' and bound:
+                    self._forget_customer(bound[1]['customer_id'])
+                elif 'error' in context:
                     self._session_states.pop(session_id, None)
                     self._session_tool_calls.pop(session_id, None)
                     self._preparations.pop(session_id, None)
                     raise RuntimeError('memory_unavailable')
-                log_event(turn, "chat", "cache_hit",
-                          duration_ms=round((time.perf_counter() - started) * 1000))
-                return self._responses[key]
+                if key in self._responses:
+                    log_event(turn, "chat", "cache_hit",
+                              duration_ms=round((time.perf_counter() - started) * 1000))
+                    return self._responses[key]
             for pending in list(self._playback_tasks):
                 if pending[0] == session_id:
                     await self._finalize_playback(pending, 0, True)
             try:
                 with (self.tracing.turn(turn) if self.tracing else nullcontext(None)) as trace:
                     identity, initial_calls = await self._identity_for(turn)
+                    if getattr(self.memory, 'supports_durable_replay', False) is True:
+                        replay = await self.memory.replay_turn(session_id, identity.get('customer_id'), key[1],
+                            turn_fingerprint(turn, getattr(self.memory, 'include_prior', True)))
+                        if replay.get('error') == 'customer_erased' and identity.get('customer_id'):
+                            self._forget_customer(identity['customer_id'])
+                            identity = self._session_identities[session_id][1]
+                            replay = await self.memory.replay_turn(session_id, None, key[1],
+                                turn_fingerprint(turn, getattr(self.memory, 'include_prior', True)))
+                        if replay.get('error') == 'turn_retry_conflict':
+                            raise ValueError('Conflicting turn retry')
+                        if 'error' in replay:
+                            raise RuntimeError('memory_unavailable')
+                        if replay.get('found') is True:
+                            if not replay.get('agent_text'):
+                                raise RuntimeError('turn_recovery_required')
+                            saved = {'request': turn, **identity, 'agent_text': replay['agent_text'],
+                                'verified_answer': replay['agent_text'],
+                                'memory_include_prior': getattr(self.memory, 'include_prior', True)}
+                            self._states[key] = saved
+                            handoff = next((call['result'] for call in replay.get('tool_observations', [])
+                                if call.get('name') == 'handoff.transfer'
+                                and call.get('result', {}).get('status') == 'queued'), {})
+                            response = TextTurnResponse(client_msg_id=turn.client_msg_id,
+                                session_id=turn.session_id, agent_text=replay['agent_text'],
+                                needs_handoff=bool(handoff.get('ticket_id')),
+                                handoff_ticket_id=handoff.get('ticket_id'),
+                                memory_update=MemoryUpdate(turn_saved=True,
+                                    status='pending' if identity.get('customer_id') else 'not_applicable'))
+                            self._responses[key] = response
+                            return response
                     session = self._session_states.setdefault(session_id, SessionState(
                         identity.get('customer_id'), turn.on, getattr(self.memory, 'include_prior', True)))
                     seed = session.resume(identity.get('customer_id'), turn, getattr(self.memory, 'include_prior', True))
@@ -349,6 +461,10 @@ class AgentHarnessRuntime:
                          "session_tool_calls": prior_session_calls,
                          "tool_calls": initial_calls}, config=config,
                     )
+                    if state.get('erased_customer_id'):
+                        self._forget_customer(state['erased_customer_id'])
+                        session = self._session_states.setdefault(session_id, SessionState(
+                            None, turn.on, getattr(self.memory, 'include_prior', True)))
                     response_text = state['agent_text']
                     if stream is not None:
                         state['agent_text'] = (stream.published if state.get('reply_error') else
@@ -363,6 +479,7 @@ class AgentHarnessRuntime:
                         {**deepcopy(call), 'customer_id': state.get('customer_id'),
                          'session_id': session_id, 'source_turn_id': str(turn.client_msg_id)}
                         for call in state.get('tool_calls', []))
+                    self._session_tool_calls[session_id] = self._session_tool_calls[session_id][-64:]
                     if trace:
                         trace_output = {"needs_handoff": state.get("needs_handoff", False),
                                         "tool_count": state.get("tool_count", 0),

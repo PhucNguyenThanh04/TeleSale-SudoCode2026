@@ -10,6 +10,15 @@ def build_episode_summary(confirmed_facts: list[dict], recent_turns: list[dict],
     if not isinstance(topics, list):
         topics = []
     entries = []
+    for action in reversed((episode_state or {}).get('actions_completed', [])):
+        name = action.get('action')
+        field = {'order.create': 'order_id', 'schedule.callback': 'callback_id',
+                 'handoff.transfer': 'ticket_id'}.get(name)
+        if field and action.get(field):
+            value = str(action[field])
+            if name == 'schedule.callback' and action.get('callback_at'):
+                value += ' ' + action['callback_at']
+            entries.append((name, value))
     for topic in reversed(topics):
         if not isinstance(topic, dict):
             continue

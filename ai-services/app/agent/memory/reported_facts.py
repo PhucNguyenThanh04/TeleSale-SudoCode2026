@@ -1,3 +1,4 @@
+from app.mcp_servers.mcp_shared.commerce_evidence import CATALOG_TOOLS
 
 import re
 from typing import Any
@@ -26,7 +27,7 @@ def _reported_money(answer: str, value: int) -> bool:
 def _product_named(answer: str, sku: str, calls: list[dict[str, Any]]) -> bool:
     if sku.casefold() in answer.casefold():
         return True
-    items = [item for call in calls if call.get("name") == "catalog.search"
+    items = [item for call in calls if call.get("name") in CATALOG_TOOLS
              for item in call.get("result", {}).get("items", [])
              if isinstance(item, dict) and isinstance(item.get("name"), str)
              and isinstance(item.get("sku"), str)]
@@ -107,7 +108,7 @@ def _product_segments(answer: str, sku: str, calls: list[dict[str, Any]]) -> lis
         item_sku = call.get("args", {}).get("sku")
         if isinstance(item_sku, str):
             names.setdefault(item_sku, set()).add(item_sku)
-        if call.get("name") == "catalog.search":
+        if call.get("name") in CATALOG_TOOLS:
             for item in call.get("result", {}).get("items", []):
                 if isinstance(item, dict) and isinstance(item.get("sku"), str):
                     names.setdefault(item["sku"], set()).add(item["sku"])
@@ -193,7 +194,7 @@ def reported_tool_candidates(answer: str, calls: list[dict[str, Any]]) -> list[d
         name = call.get("name")
         pairs: list[tuple[str, Any]] = []
         sku = None
-        if name == "catalog.search":
+        if name in CATALOG_TOOLS:
             pairs.extend((Slot.PRODUCT_ADVISED, item.get("sku"))
                          for item in result.get("items", []) if isinstance(item, dict))
         elif name == "pricing.get_quote":
@@ -215,7 +216,7 @@ def reported_tool_candidates(answer: str, calls: list[dict[str, Any]]) -> list[d
             pairs.append((Slot.ORDER_ID, result.get("order_id")))
             ordered_sku = call.get("args", {}).get("sku")
             catalog_variants = {variant.get("variant_sku")
-                for observation in calls if observation.get("name") == "catalog.search"
+                for observation in calls if observation.get("name") in CATALOG_TOOLS
                 for item in observation.get("result", {}).get("items", [])
                 if isinstance(item, dict)
                 for variant in item.get("variants", []) if isinstance(variant, dict)}

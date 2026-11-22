@@ -1,10 +1,10 @@
 
 from fastmcp import FastMCP
 from fastmcp.server.auth import StaticTokenVerifier
-from pydantic import ValidationError
+from pydantic import StrictInt, ValidationError
 
 from app.configs import get_settings
-from app.mcp_servers.mcp_order.schemas import CallbackInput, CreateInput, HandoffInput, StatusInput, UpdateInput, OrderLine
+from app.mcp_servers.mcp_order.schemas import CallbackInput, CreateInput, HandoffInput, StatusInput, UpdateInput, OrderLine, PreviewUpdateInput
 from app.mcp_servers.mcp_order.services.order import invoke as service_invoke
 from app.mcp_servers.mcp_shared.observability import (
     log_mcp_exception, log_mcp_validation, trace_mcp_call,
@@ -18,6 +18,7 @@ async def invoke(repo, name: str, args: dict, *, context_secret: str | None = No
 
 async def _invoke(repo, name: str, args: dict, context_secret: str | None = None) -> dict:
     models = {"order.create": CreateInput, "order.status": StatusInput,
+              'order.preview_update': PreviewUpdateInput,
               "order.update": UpdateInput, "schedule.callback": CallbackInput,
               "handoff.transfer": HandoffInput}
     if name not in models:
@@ -60,19 +61,31 @@ def create_server(repo, token: str | None = None, *, context_secret: str | None 
 
     @mcp.tool(name="order.status")
     async def order_status(order_id: str | None = None, customer_phone: str | None = None,
-                           source_channel: str | None = None, source_identity: str | None = None) -> dict:
-        return await invoke(repo, "order.status", locals())
+                           source_channel: str | None = None, source_identity: str | None = None,
+                           trusted_identity: str | None = None) -> dict:
+        return await invoke(repo, "order.status", locals(), context_secret=secret)
 
     @mcp.tool(name="order.update")
     async def order_update(order_id: str, action: str, on: str,
                            new_variant_sku: str | None = None, reason: str | None = None,
+                           line_index: int | None = None, qty: int | None = None,
+                           address: str | None = None,
                            source_channel: str | None = None, source_identity: str | None = None,
                            operation_key: str | None = None,
                            trusted_authorization: str | None = None) -> dict:
         return await invoke(repo, "order.update", locals(), context_secret=secret)
 
+    @mcp.tool(name='order.preview_update')
+    async def order_preview_update(order_id: str, action: str, on: str,
+                                   new_variant_sku: str | None = None, reason: str | None = None,
+                                   line_index: StrictInt | None = None, qty: StrictInt | None = None,
+                                   source_channel: str | None = None, source_identity: str | None = None,
+                                   trusted_identity: str | None = None) -> dict:
+        return await invoke(repo, 'order.preview_update', locals(), context_secret=secret)
+
     @mcp.tool(name="schedule.callback")
     async def schedule_callback(customer_phone: str, callback_at: str, note: str | None = None,
+                                requested_callback_at: str | None = None,
                                 source_channel: str | None = None, source_identity: str | None = None,
                                 operation_key: str | None = None,
                                 trusted_authorization: str | None = None) -> dict:

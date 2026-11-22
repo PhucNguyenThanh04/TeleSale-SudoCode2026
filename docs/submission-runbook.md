@@ -1,5 +1,8 @@
 # Chạy bản nộp M1 và chấm chéo BTC
 
+Đường chính dành cho BTC là clone repo GitHub và chạy Compose theo [START_HERE.md](../START_HERE.md).
+Các bước bên dưới mô tả đường chạy trên host cho phát triển và kiểm chứng độc lập.
+
 Nguồn yêu cầu: `BTC-Data-Vong1-TEAMS/README.md` (Quy trình chấm chéo),
 `DIEU-CHINH-DE.md` và `GIAI-DAP-MENTOR.md`. Deadline cụ thể không nằm trong gói;
 BTC thông báo riêng. Hướng dẫn này chốt đường M1: chat text + ASR local offline.
@@ -7,8 +10,7 @@ Voice/TTS và simulator/LLM judge M2 không phải điều kiện khởi động
 
 ## 1. Những gì người chấm cần nhận
 
-- Checkout đủ source, `ai-services/app/bootstrap/schema.sql`, `config/policy-runtime.json`, metadata policy
-  và lệnh root `run_eval.py`. Không bỏ file mới chưa track.
+- URL repo GitHub, branch hoặc tag của bản nộp và commit tương ứng. Commit cần chứa các file hướng dẫn, Compose, Dockerfile, lock dependency, schema, policy metadata và `run_eval.py`.
 - Gói BTC đầy đủ, đã cập nhật scorer/mock tools/schema, bên cạnh repo hoặc đường
   dẫn riêng do `--btc-root` chỉ định; không cần thư mục patch riêng.
   Hidden scenarios do BTC cấp qua `--scenarios`, không hardcode 7 sample.
@@ -149,9 +151,9 @@ voice chỉ bật tường minh khi đo voice. CLI giữ tên full/baseline_no_m
 schema trace BTC. Baseline vẫn có working memory trong phiên, không đọc prior
 profile/episode giữa phiên. Không bơm facts_established hoặc ground truth vào agent.
 
-Runner ghép gói BTC gốc + bản cập nhật tháng 11 thành `.btc-release` bất biến
-cạnh trace; dùng **scorer trong snapshot đó** để không chấm tool semantics mới
-bằng scorer cũ. Các source gốc không bị sửa. Toàn bộ full/baseline phải dùng cùng
+Runner tạo `.btc-release` bất biến từ gói đã truyền qua `--btc-root`.
+Chọn gói có scorer và schema do BTC chỉ định, rồi dùng **scorer trong snapshot đó**
+để tái lập kết quả. Toàn bộ full/baseline phải dùng cùng
 model/config/source seed/knowledge release. Để có manifest/score có hash và
 run.json cuối cùng, ưu tiên paired runner:
 
@@ -181,11 +183,9 @@ config/hardware/chi phí/cuộc, ít nhất hai vòng Knowledge Gap có nguồn 
 và so sánh cùng controls; video/demo UI chat/brief/memory và quy trình review.
 Frontend review hoạt động không thay bằng chứng chất lượng K0→K1.
 
-Chi tiết nghiệm thu: [M1 acceptance](m1-acceptance.md). Không tự ghi “đạt” khi
-run chỉ validated nhưng execution degraded/extraction needs_review. Hiện kết
-quả đã xem mới có 7 sample/39 lượt: TSR 57,1%, CCR19%, 17 lỗi model; RQR đạt
-trên sample nhưng chưa đủ nghiệm thu toàn bộ. Run còn tắt guardrails và chưa có
-bằng chứng loop hai vòng đạt; cần xử lý/đo trước khi ghi số trong báo cáo.
+Chi tiết nghiệm thu: [M1 acceptance](m1-acceptance.md). Dùng run manifest tương
+ứng với bản nộp khi công bố chỉ số, và ghi riêng trạng thái execution,
+extraction review, ASR và hai vòng cải tiến.
 
 ## 7. Trạng thái kiểm chứng bản hướng dẫn
 

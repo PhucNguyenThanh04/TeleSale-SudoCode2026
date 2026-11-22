@@ -7,6 +7,8 @@ from app.mcp_servers.mcp_memory.schemas import (ReadInput, WriteInput, TurnStatu
                                                 validate_read_response)
 from app.mcp_servers.mcp_memory.services.memory import read, write
 from app.mcp_servers.mcp_memory.services.turn_status import read_turn_status
+from app.mcp_servers.mcp_memory.schemas import ReplayInput
+from app.mcp_servers.mcp_memory.services.replay import replay_turn
 from app.mcp_servers.mcp_memory.services.timeline import read_timeline
 from app.mcp_servers.mcp_memory.repos.langmem_projection import LangMemProjection
 from app.mcp_servers.mcp_shared.observability import (
@@ -20,6 +22,9 @@ async def invoke(repo, name: str, args: dict) -> dict:
 
 async def _invoke(repo, name: str, args: dict) -> dict:
     try:
+        if name == 'memory.replay':
+            payload = ReplayInput.model_validate(args).model_dump(mode='json')
+            return await replay_turn(repo, **payload)
         if name == "memory.timeline":
             payload = TimelineInput.model_validate(args).model_dump(mode='json')
             projector = LangMemProjection(repo.dsn) if hasattr(repo, 'dsn') else None
@@ -66,6 +71,11 @@ def create_server(repo, token: str | None = None) -> FastMCP:
     async def memory_turn_status(customer_id: str | None, session_id: str,
                                  client_msg_id: str) -> dict:
         return await invoke(repo, "memory.turn_status", locals())
+
+    @mcp.tool(name='memory.replay')
+    async def memory_replay(customer_id: str | None, session_id: str,
+                            client_msg_id: str, request_hash: str) -> dict:
+        return await invoke(repo, 'memory.replay', locals())
 
     @mcp.tool(name="memory.timeline")
     async def memory_timeline(customer_id: str | None, session_id: str, on: str,

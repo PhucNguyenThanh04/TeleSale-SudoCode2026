@@ -1,0 +1,15 @@
+........................................................................ [ 12%]
+........................................................................ [ 25%]
+........................................................................ [ 37%]
+........................................................................ [ 50%]
+........................................................................ [ 62%]
+........................................................................ [ 75%]
+........................................................................ [ 88%]
+..................................................sssssssssssssss...     [100%]
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/trustcall/_base.py:46
+  /home/thanh-phuc/PyProject/sudocode/TeleSale-SudoCode2026/ai-services/.venv/lib/python3.12/site-packages/trustcall/_base.py:46: LangGraphDeprecatedSinceV10: Importing Send from langgraph.constants is deprecated. Please use 'from langgraph.types import Send' instead. Deprecated in LangGraph V1.0 to be removed in V2.0.
+    from langgraph.constants import Send
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+557 passed, 15 skipped, 1 warning in 11.21s

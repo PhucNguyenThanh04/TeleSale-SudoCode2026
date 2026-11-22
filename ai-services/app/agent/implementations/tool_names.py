@@ -3,6 +3,7 @@ import re
 
 MODEL_TOOL_NAMES = {
     'catalog.search': 'catalog_search', 'inventory.check': 'inventory_check',
+    'catalog.get_details': 'catalog_get_details', 'order.preview_update': 'order_preview_update',
     'pricing.get_quote': 'pricing_get_quote', 'order.create': 'order_create',
     'pricing.quote_order': 'pricing_quote_order',
     'order.update': 'order_update', 'order.status': 'order_status',

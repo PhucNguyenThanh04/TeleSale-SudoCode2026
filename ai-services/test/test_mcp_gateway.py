@@ -96,6 +96,8 @@ class GatewayTest(unittest.IsolatedAsyncioTestCase):
 
         class CatalogRepo(FakeRepo):
             async def rows(self, _session, table):
+                if table == 'policy_chunks':
+                    return []
                 self_table = table
                 if self_table != "products":
                     raise AssertionError(table)
@@ -109,7 +111,7 @@ class GatewayTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_catalog_and_order_routes_keep_btc_names(self):
         repo = FakeRepo()
-        gateway = MCPGateway(catalog_server(repo), order_server(repo, context_secret=WRITE_TEST_SECRET),
+        gateway = MCPGateway(catalog_server(repo, context_secret=WRITE_TEST_SECRET), order_server(repo, context_secret=WRITE_TEST_SECRET),
                              None, context_secret=WRITE_TEST_SECRET)
         with patch("app.mcp_servers.mcp_catalog.tools.handlers.service.get_quote", new_callable=AsyncMock) as quote:
             quote.return_value = {"final_price_vnd": 4890000}

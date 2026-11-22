@@ -1,0 +1,24 @@
+{
+  "documents": ["spec-gia-dung.md", "spec-thoi-trang-me-be.md"],
+  "sku_headers": ["SKU"],
+  "fields": {
+    "stages": {"headers": ["Số lõi"], "type": "integer", "minimum": 1, "authority": "technical_spec"},
+    "room_area_m2": {"headers": ["Diện tích phù hợp"], "type": "upper_bound", "minimum": 1, "authority": "technical_spec"},
+    "child_safe_lock": {"headers": ["Khóa trẻ em"], "type": "boolean", "values": {"Có": true, "Không": false}, "authority": "technical_spec"},
+    "warranty_months": {"headers": ["Bảo hành"], "type": "integer", "minimum": 0, "authority": "catalog"},
+    "list_price_vnd": {"headers": ["Giá bán", "Giá niêm yết", "Giá (VND)"], "type": "integer", "minimum": 0, "authority": "catalog"},
+    "stock": {"headers": ["Tồn kho"], "type": "integer", "minimum": 0, "authority": "catalog"}
+  },
+  "section_bindings": [
+    {"skus": ["SKU-AP-X", "SKU-AP-Y", "SKU-AP-MINI", "SKU-AP-PRO", "SKU-XM-4L", "SKU-XM-4P", "SKU-SS-AX40"], "section_ids": ["SP-AIR-02"]},
+    {"skus": ["SKU-AP-X", "SKU-AP-Y", "SKU-AP-PRO", "SKU-XM-4L", "SKU-XM-4P", "SKU-SS-AX40", "SKU-AP-FLT-X", "SKU-AP-FLT-P", "SKU-XM-FLT", "SKU-AP-X-2024"], "section_ids": ["SP-AIR-03"]},
+    {"skus": ["SKU-WF-RO9", "SKU-WF-RO10", "SKU-WF-CORE"], "section_ids": ["SP-WF-02"]},
+    {"skus": ["SKU-FAN-DC1", "SKU-FAN-SEN", "SKU-FAN-TWR"], "section_ids": ["SP-FAN-01"]},
+    {"skus": ["SKU-AF-4L", "SKU-AF-6L", "SKU-AF-XM"], "section_ids": ["SP-AF-01"]},
+    {"skus": ["SKU-SN-RUN1", "SKU-SN-RUN2", "SKU-SN-CAS", "SKU-SN-TRK"], "section_ids": ["SP-SN-01", "SP-SN-02"]},
+    {"skus": ["SKU-JK-WND", "SKU-JK-DWN"], "section_ids": ["SP-JK-01"]},
+    {"skus": ["SKU-MB-PUMP1", "SKU-MB-PUMP2", "SKU-MB-BOT"], "section_ids": ["SP-MB-01"]},
+    {"skus": ["SKU-MB-STR1", "SKU-MB-STR2"], "section_ids": ["SP-MB-02"]},
+    {"skus": ["SKU-MB-MON", "SKU-MB-STER", "SKU-MB-CAR"], "section_ids": ["SP-MB-03"]}
+  ]
+}

@@ -36,8 +36,9 @@ def test_prompt_manifest_and_dry_run_are_offline_and_use_both_local_contracts(ca
     from app.agent.memory.langmem_extractor import _INSTRUCTIONS
     manifest=publisher.prompt_manifest()
     assert manifest=={SALES_PROMPT:_SYSTEM_PROMPT,MEMORY_PROMPT:_INSTRUCTIONS}
-    assert 'presented_offer' in manifest[SALES_PROMPT] and 'accepted_offer' in manifest[SALES_PROMPT]
-    assert 'advice_given' in manifest[MEMORY_PROMPT] and 'consent' in manifest[MEMORY_PROMPT]
+    assert 'PB-09' in manifest[SALES_PROMPT] and 'chờ khách đồng ý' in manifest[SALES_PROMPT]
+    assert 'Customer goals come from customer speech' in manifest[MEMORY_PROMPT]
+    assert 'never authorization to execute a tool' in manifest[MEMORY_PROMPT]
     with patch.object(publisher,'_client',side_effect=AssertionError('no external API')):
         publisher.main(['--dry-run'])
     output=capsys.readouterr().out
@@ -64,8 +65,8 @@ def test_followup_prompt_contract_reuses_prepared_tools_and_keeps_btc_price_rule
     from scripts.publish_langfuse_prompts import prompt_manifest
     from app.agent.prompts import SALES_PROMPT
     content = prompt_manifest()[SALES_PROMPT]
-    assert 'tool_observations' in content
-    assert 'cân nhắc thêm' in content
-    assert 'Không so giá' in content and 'giá đối thủ' in content
-    assert 'không đủ điều kiện' in content and 'không cộng dồn' in content
-    assert 'không thấy mã' in content
+    assert 'bằng chứng còn thiếu' in content
+    assert 'chỉ thị' in content and 'giá đối thủ' in content
+    assert 'Giá niêm yết khác giá cuối' in content
+    assert 'ngày hiệu lực, điều kiện và ngoại lệ' in content
+    assert 'không cấp quyền mới' in content

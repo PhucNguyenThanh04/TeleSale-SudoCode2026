@@ -15,6 +15,9 @@ def _bounded_observations(calls: list[dict]) -> list[dict]:
 
 
 class MemoryRepo:
+    supports_private_delivery = True
+    supports_erasure_state = True
+
     def __init__(self, dsn: str, min_size: int = 1, max_size: int = 5) -> None:
         self.dsn = dsn.replace("postgresql+asyncpg://", "postgresql://", 1)
         self.min_size = min_size
@@ -63,9 +66,54 @@ class MemoryRepo:
             WHERE session_id=$1 ORDER BY turn_no DESC LIMIT $2""", UUID(session_id), maximum)
         return list(reversed(rows))
 
+    async def session_context_turns(self, conn, session_id: str) -> list:
+        rows = await conn.fetch('''SELECT customer_text,client_msg_id,tool_observations
+            FROM runtime.turns WHERE session_id=$1 ORDER BY turn_no DESC LIMIT 240''', UUID(session_id))
+        return list(reversed(rows))
+
+    async def operational_session_turns(self, conn, session_id, customer_id, through_turn_no):
+        rows = await conn.fetch('''SELECT t.client_msg_id,t.customer_text,t.agent_text,
+            t.on_date,t.channel,COALESCE(j.tool_observations,t.tool_observations) AS tool_observations,
+            j.job_id,j.status AS memory_status FROM runtime.turns t
+            LEFT JOIN runtime.langmem_distillation_jobs j ON j.session_id=t.session_id
+                AND j.source_turn_id=t.client_msg_id AND j.customer_id=t.customer_id
+            WHERE t.session_id=$1 AND t.customer_id=$2 AND t.turn_no<=$3
+              AND (j.status IS DISTINCT FROM 'completed' OR t.turn_no>$3-12)
+            ORDER BY t.turn_no DESC LIMIT 240''', UUID(session_id), customer_id, through_turn_no)
+        return [dict(row) for row in reversed(rows)]
+
+    async def latest_delivery(self, conn, session_id: str, customer_id: str | None,
+                               *, include_prior: bool = True) -> dict | None:
+        value = await conn.fetchval('''SELECT t.private_delivery FROM runtime.turns t
+            LEFT JOIN runtime.langmem_distillation_jobs j
+              ON j.session_id=t.session_id AND j.source_turn_id=t.client_msg_id
+                 AND j.customer_id=t.customer_id
+            WHERE t.private_delivery IS NOT NULL AND
+              (t.session_id=$1 OR ($3 AND $2::text IS NOT NULL AND t.customer_id=$2))
+            ORDER BY t.on_date DESC, j.job_id DESC NULLS LAST,
+                     (t.session_id=$1) DESC, t.turn_no DESC LIMIT 1''',
+            UUID(session_id), customer_id, include_prior)
+        return json.loads(value) if isinstance(value, str) else value
+
     async def turn_count(self, conn, session_id: str) -> int:
         return await conn.fetchval("SELECT COUNT(*) FROM runtime.turns WHERE session_id=$1",
                                    UUID(session_id))
+
+    async def replay_turn(self, conn, session_id, client_msg_id):
+        row = await conn.fetchrow('''SELECT request_hash,agent_text,tool_observations
+            FROM runtime.turns WHERE session_id=$1 AND client_msg_id=$2''',
+            UUID(session_id), UUID(client_msg_id))
+        if not row:
+            return None
+        value = dict(row)
+        calls = value.get('tool_observations') or []
+        value['tool_observations'] = json.loads(calls) if isinstance(calls, str) else calls
+        return value
+
+    async def has_committed_writes(self, conn, session_id, client_msg_id):
+        return bool(await conn.fetchval('''SELECT EXISTS(SELECT 1 FROM runtime.tool_operations
+            WHERE operation_key LIKE $1 || ':%' AND result IS NOT NULL
+              AND NOT (result ? 'error'))''', f'{session_id}:{client_msg_id}'))
 
     async def order_links(self, conn, customer_id: str) -> list[str]:
         rows = await conn.fetch("SELECT order_id FROM runtime.order_links WHERE customer_id=$1", customer_id)
@@ -78,6 +126,11 @@ class MemoryRepo:
         return bool(await conn.fetchval("""SELECT EXISTS(
             SELECT 1 FROM runtime.erasure_requests WHERE customer_id=$1
         )""", customer_id))
+
+    async def erasure_state(self, conn, customer_id: str) -> str | None:
+        return await conn.fetchval('''SELECT CASE
+            WHEN bool_and(status='completed') THEN 'completed' ELSE 'pending' END
+            FROM runtime.erasure_requests WHERE customer_id=$1 HAVING count(*)>0''', customer_id)
 
     async def create_erasure_request(self, conn, request_key: str, customer_id: str,
                                      verification_ref: str, verified_by: str,
@@ -145,13 +198,15 @@ class MemoryRepo:
     async def insert_turn(self, conn, session_id: str, number: int, customer_id: str | None,
                           channel: str, on, customer_text: str, agent_text: str,
                           client_msg_id: str, tool_observations: list[dict] | None = None,
-                          outcome: str = 'khac') -> None:
+                          outcome: str = 'khac', *, private_delivery: dict | None = None,
+                          request_hash: str | None = None) -> None:
         await conn.execute("""INSERT INTO runtime.turns
             (session_id,turn_no,customer_id,channel,on_date,customer_text,agent_text,client_msg_id,
-             tool_observations,verified_outcome)
-            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10)""", UUID(session_id), number, customer_id,
+             tool_observations,verified_outcome,private_delivery,request_hash)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11::jsonb,$12)""", UUID(session_id), number, customer_id,
             channel, on, customer_text, agent_text, UUID(client_msg_id),
-            json.dumps(tool_observations or [], ensure_ascii=False), outcome)
+            json.dumps(tool_observations or [], ensure_ascii=False), outcome,
+            json.dumps(private_delivery, ensure_ascii=False) if private_delivery is not None else None, request_hash)
 
     async def attribute_anonymous_turns(self, conn, session_id: str,
                                         customer_id: str) -> list[dict]:

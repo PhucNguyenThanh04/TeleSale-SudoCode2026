@@ -6,6 +6,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 
 from app.agent.harness.context import load_context
 from app.agent.guardrails.checks import mask_pii
+from app.mcp_servers.mcp_shared.pii import private_delivery_context
 from app.agent.memory.store import MemoryStore
 from app.agent.harness.observability import log_event, trace_node
 from app.agent.harness.state import TurnState
@@ -27,9 +28,11 @@ class SessionNodes:
     async def accept(self, state: TurnState) -> dict[str, Any]:
         return {
             "safe_text": mask_pii(state["request"].text),
+            'private_delivery': private_delivery_context(state['request'].text,
+                str(state['request'].client_msg_id), state['request'].on.isoformat()),
             "reply_context": {}, "reply_error": None, 'verified_answer': '',
             "received_at_monotonic": state.get("received_at_monotonic", time.perf_counter()),
-            "tool_calls": state.get("tool_calls", []), "tool_count": 0,
+            "tool_calls": state.get("tool_calls", []), "tool_count": 0, 'tool_attempts': 0,
             "tool_failed": False,
             "needs_handoff": False, "handoff_ticket_id": None,
         }

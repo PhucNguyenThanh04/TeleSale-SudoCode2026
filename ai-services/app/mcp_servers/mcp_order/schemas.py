@@ -44,19 +44,43 @@ class CreateInput(WriteInput):
 class StatusInput(Context):
     order_id: str | None = None
     customer_phone: str | None = None
+    trusted_identity: str | None = None
 
-class UpdateInput(WriteInput):
+class OrderChangeInput(Context):
     order_id: str
     action: Literal["exchange_size", "exchange_product", "return", "update_address"]
     on: date
     new_variant_sku: str | None = None
     reason: str | None = None
+    line_index: int | None = Field(default=None, ge=0, strict=True)
+    qty: int | None = Field(default=None, ge=1, strict=True)
+
+
+class PreviewUpdateInput(OrderChangeInput):
+    action: Literal['exchange_size', 'exchange_product', 'return']
+    trusted_identity: str | None = None
+
+
+class UpdateInput(OrderChangeInput):
+    trusted_authorization: str | None = None
+    address: str | None = None
+
+    @model_validator(mode='after')
+    def address_contract(self):
+        if self.action == 'update_address':
+            if not self.address or not self.address.strip() or self.line_index is not None or self.qty is not None:
+                raise ValueError('A new address without a line selection is required')
+            self.address = self.address.strip()
+        elif self.address is not None:
+            raise ValueError('Address is only valid for update_address')
+        return self
 
 
 class CallbackInput(WriteInput):
     customer_phone: str
     callback_at: datetime
     note: str | None = None
+    requested_callback_at: datetime | None = None
 
 
 class HandoffInput(WriteInput):

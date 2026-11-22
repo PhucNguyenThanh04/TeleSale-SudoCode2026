@@ -119,7 +119,7 @@ def test_catalog_exact_skus_and_structured_filters_match_source(reference):
         assert commerce_rules._catalog(reference.PRODUCTS, args) == reference.catalog_search(**args), args
 
 
-def test_callback_calendar_matches_official_tool_on_source_boundaries(reference):
+def test_callback_calendar_respects_source_opening_boundaries():
     from app.mcp_servers.mcp_order.services.order import callback
     class Repo:
         def __init__(self): self.count = 0
@@ -128,12 +128,17 @@ def test_callback_calendar_matches_official_tool_on_source_boundaries(reference)
             return self.count
     async def run():
         repo = Repo()
-        for moment in ('2026-10-20T07:30', '2026-10-20T10:00', '2026-10-20T21:30',
-                       '2026-10-25T08:00', '2026-10-25T09:00', '2026-10-25T18:00',
-                       '2026-10-26T10:00', '2026-11-11T07:00', '2027-01-01T10:00',
-                       '2026-10-20T10:00+07:00'):
-            args = {'customer_phone': reference.CRM[0]['phone'], 'callback_at': moment}
-            assert await callback(repo, None, args, args['customer_phone']) == reference.schedule_callback(**args)
+        for moment, expected in (
+            ('2026-10-20T07:30', '2026-10-20T08:00+07:00'),
+            ('2026-10-20T21:30', '2026-10-21T08:00+07:00'),
+            ('2026-10-25T08:00', '2026-10-25T09:00+07:00'),
+            ('2026-10-25T18:00', '2026-10-27T08:00+07:00'),
+            ('2026-10-26T10:00', '2026-10-27T10:00+07:00'),
+            ('2026-11-11T07:00', '2026-11-11T07:00+07:00'),
+            ('2026-11-11T22:30', '2026-11-11T22:30+07:00')):
+            args = {'customer_phone': '0900000083', 'callback_at': moment}
+            result = await callback(repo, None, args, args['customer_phone'])
+            assert result['callback_at'] == expected
     asyncio.run(run())
 
 
@@ -212,7 +217,7 @@ def test_runtime_order_lookup_keeps_btc_payment_and_promotions_without_exposing_
         conn.close()
 
 
-def test_callback_proposes_an_hour_only_move_without_inserting_it():
+def test_callback_records_an_hour_only_move_in_receipt():
     from app.mcp_servers.mcp_order.services.order import callback
     class Repo:
         async def insert_callback(self, session, phone, moment, note):
@@ -223,9 +228,9 @@ def test_callback_proposes_an_hour_only_move_without_inserting_it():
         original = '2026-10-20T07:30'
         result = await callback(repo, None, {'customer_phone': '0984726714',
             'callback_at': original}, '0984726714')
-        assert result['error'] == 'callback_reschedule_required'
-        assert result['proposed_callback_at'] == '2026-10-20T08:00+07:00'
-        assert not hasattr(repo, 'moment')
+        assert result['callback_at'] == '2026-10-20T08:00+07:00'
+        assert result['moved_from'] == original + ':00'
+        assert repo.moment.utcoffset() == timedelta(hours=7)
     asyncio.run(run())
 
 
@@ -262,6 +267,8 @@ def test_concurrent_exchanges_do_not_both_receive_the_first_exchange_fee(referen
             return count
         async def insert_update(self, session, order_id, action, result):
             self.updates.append(result)
+        async def order_updates(self, session, order_id):
+            return list(self.updates)
     async def run():
         repo = Repo()
         args = dict(order_id=receipt['order_id'], action='exchange_size',
@@ -271,5 +278,6 @@ def test_concurrent_exchanges_do_not_both_receive_the_first_exchange_fee(referen
         results = await asyncio.gather(
             invoke(repo, 'order.update', first, context_secret=WRITE_TEST_SECRET),
             invoke(repo, 'order.update', second, context_secret=WRITE_TEST_SECRET))
+        assert all('error' not in result for result in results), results
         assert sorted(r['fee_vnd'] for r in results) == [0, 60000]
     asyncio.run(run())

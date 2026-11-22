@@ -1,6 +1,9 @@
 
 from datetime import date
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool, StrictFloat, StrictInt, StrictStr
+
+
+AttributeFilters = dict[str, StrictStr | StrictInt | StrictFloat | StrictBool]
 
 
 class CRMInput(BaseModel):
@@ -15,11 +18,16 @@ class SearchInput(BaseModel):
     max_price_vnd: int | None = Field(default=None, ge=0)
     min_room_area_m2: float | None = Field(default=None, ge=0)
     include_discontinued: bool = False
+    attribute_filters: AttributeFilters | None = None
 
 
 class InventoryInput(BaseModel):
     sku: str = Field(min_length=1)
     on: date
+
+
+class DetailsInput(BaseModel):
+    sku: str = Field(min_length=1)
 
 
 class QuoteInput(InventoryInput):
@@ -29,6 +37,7 @@ class QuoteInput(InventoryInput):
     basket_skus: list[str] | None = None
     source_channel: str | None = None
     source_identity: str | None = None
+    trusted_identity: str | None = None
 
 
 class QuoteLine(BaseModel):
@@ -43,3 +52,4 @@ class OrderQuoteInput(BaseModel):
     address: str | None = None
     source_channel: str | None = None
     source_identity: str | None = None
+    trusted_identity: str | None = None

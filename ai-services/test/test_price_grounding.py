@@ -23,17 +23,17 @@ def _quote(price=4_890_000):
                         "final_price_vnd": price, "applied_promos": []}}]
 
 
-def test_empty_search_may_repeat_exact_customer_budget_with_room_area():
+def test_empty_list_price_search_does_not_prove_final_budget_unavailability():
     customer = "Tư vấn máy lọc, ngân sách 2 tr trong phòng 25m2."
     answer = "Dạ, chưa có mẫu phù hợp trong ngân sách 2 tr cho phòng 25m2 ạ."
     assert _money_claims(answer) == [(2_000_000, "price", False)]
-    assert check_answer(answer, _empty_search(), customer) == (answer, None)
+    assert check_answer(answer, _empty_search(), customer)[1] == 'final_budget_unverified'
 
 
-def test_empty_search_can_repeat_another_budget_wording():
+def test_empty_list_price_search_does_not_prove_another_final_budget_wording():
     customer = "Tư vấn máy lọc cho phòng 25m2, ngân sách tối đa 1 triệu."
     answer = "Dạ, chưa có mẫu phù hợp trong tầm giá 1 triệu cho phòng 25m2 ạ."
-    assert check_answer(answer, _empty_search(1_000_000), customer) == (answer, None)
+    assert check_answer(answer, _empty_search(1_000_000), customer)[1] == 'final_budget_unverified'
 
 
 @pytest.mark.parametrize("answer", [

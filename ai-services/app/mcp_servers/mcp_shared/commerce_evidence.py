@@ -1,7 +1,9 @@
 from copy import deepcopy
+import hashlib
 import json
 
-COMMERCIAL_TOOLS = frozenset({'catalog.search', 'pricing.get_quote', 'pricing.quote_order', 'inventory.check'})
+CATALOG_TOOLS = frozenset({'catalog.search', 'catalog.get_details'})
+COMMERCIAL_TOOLS = CATALOG_TOOLS | {'pricing.get_quote', 'pricing.quote_order', 'inventory.check', 'order.preview_update'}
 
 
 def successful(call: dict) -> bool:
@@ -23,6 +25,18 @@ def _signature(args):
     return json.dumps(args, sort_keys=True, default=str, ensure_ascii=False)
 
 
+def quote_context_hash(args: dict) -> str:
+    return hashlib.sha256(_signature({key: args.get(key) for key in
+        ('customer_phone', 'address', 'basket_skus')}).encode()).hexdigest()
+
+
+def quote_context_matches(call: dict, args: dict) -> bool:
+    if call.get('quote_context_hash'):
+        return call['quote_context_hash'] == quote_context_hash(args)
+    return all(call.get('args', {}).get(key) == args.get(key)
+               for key in ('customer_phone', 'address', 'basket_skus'))
+
+
 def build_commerce_evidence(state: dict, *, args: dict | None = None) -> list[dict]:
     current = [c for c in state.get('tool_calls', []) if isinstance(c, dict) and _bound(c, state)]
     prior = [c for c in state.get('session_tool_calls', []) if isinstance(c, dict) and _bound(c, state)]
@@ -41,7 +55,7 @@ def build_commerce_evidence(state: dict, *, args: dict | None = None) -> list[di
         if name in {'pricing.get_quote', 'pricing.quote_order'} and index <= quote_barrier:
             continue
         proposed = call.get('args') or {}
-        key = (name, _signature(proposed) if name == 'catalog.search' else proposed.get('sku'))
+        key = (name, _signature(proposed) if name in CATALOG_TOOLS | {'order.preview_update'} else proposed.get('sku'))
         previous = latest.get(key)
         same_order = (previous and call.get('observation_order') is not None
                       and call['observation_order'] == previous[1].get('observation_order'))
@@ -61,15 +75,16 @@ def build_commerce_evidence(state: dict, *, args: dict | None = None) -> list[di
             continue
         name = call['name']
         proposed, result = call.get('args') or {}, call['result']
-        if name != 'catalog.search':
+        if name not in CATALOG_TOOLS:
             if on and proposed.get('on') != on:
                 continue
             if args and args.get('on') and args['on'] != proposed.get('on'):
                 continue
-            if result.get('sku', proposed.get('sku')) != proposed.get('sku'):
-                continue
-            if args and args.get('sku') and args['sku'] != proposed.get('sku'):
-                continue
+            if name != 'order.preview_update':
+                if result.get('sku', proposed.get('sku')) != proposed.get('sku'):
+                    continue
+                if args and args.get('sku') and args['sku'] != proposed.get('sku'):
+                    continue
             if name == 'pricing.get_quote':
                 if desired_qty is not None and proposed.get('qty', 1) != desired_qty:
                     continue
@@ -79,7 +94,7 @@ def build_commerce_evidence(state: dict, *, args: dict | None = None) -> list[di
         selected.append((index, deepcopy(call)))
     catalog_barriers = {}
     for index, call in enumerate(observations):
-        if call.get('name') == 'catalog.search':
+        if call.get('name') in CATALOG_TOOLS:
             sku = (call.get('args') or {}).get('sku')
             if sku:
                 catalog_barriers[sku] = index
@@ -87,7 +102,7 @@ def build_commerce_evidence(state: dict, *, args: dict | None = None) -> list[di
                 if isinstance(item, dict) and item.get('sku'):
                     catalog_barriers[item['sku']] = index
     for index, call in selected:
-        if call['name'] == 'catalog.search' and isinstance(call['result'].get('items'), list):
+        if call['name'] in CATALOG_TOOLS and isinstance(call['result'].get('items'), list):
             call['result']['items'] = [item for item in call['result']['items']
                 if isinstance(item, dict) and catalog_barriers.get(item.get('sku'), index) <= index]
     selected.extend((len(prior) + i, deepcopy(call)) for i, call in enumerate(current)

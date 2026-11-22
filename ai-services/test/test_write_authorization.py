@@ -232,6 +232,10 @@ class OrderRepo:
     async def insert_update(self, session, order_id, action, result):
         self.writes.append(('order.update', deepcopy(result)))
 
+    async def order_updates(self, session, order_id):
+        return [deepcopy(result) for name, result in self.writes
+                if name == 'order.update' and result.get('order_id') == order_id]
+
     async def insert_callback(self, session, phone, moment, note):
         self.writes.append(('schedule.callback', {'moment': moment, 'note': note}))
         return len(self.writes)
@@ -414,14 +418,18 @@ def test_unavailable_review_has_a_distinct_error_and_no_side_effect():
     ('2032-05-16T08:30', None), ('2032-05-11T10:30', '2032-05-11'),
     ('2032-05-11T00:30:00+00:00', None),
 ])
-def test_callback_alternative_is_not_inserted_until_customer_approves(moment, holiday):
+def test_callback_receipt_records_a_calendar_shift(moment, holiday):
     from app.mcp_servers.mcp_order.services import order
+    from app.mcp_servers.mcp_shared import business_calendar as calendar
     repo = OrderRepo()
-    with patch.object(order, 'HOLIDAYS', {holiday} if holiday else set()):
+    rules = deepcopy(calendar.load_calendar())
+    if holiday:
+        rules['dates'][holiday] = {'hours': []}
+    with patch.object(calendar, 'load_calendar', return_value=rules):
         result = asyncio.run(order.callback(repo, None,
             {'customer_phone': '0900000027', 'callback_at': moment}, '0900000027'))
-    assert result.get('error') == 'callback_reschedule_required'
-    assert result['proposed_callback_at'] != moment and not repo.writes
+    assert 'error' not in result and len(repo.writes) == 1
+    assert datetime.fromisoformat(result['moved_from']) == datetime.fromisoformat(moment)
 
 
 def test_valid_callback_checks_business_timezone_and_preserves_the_instant():

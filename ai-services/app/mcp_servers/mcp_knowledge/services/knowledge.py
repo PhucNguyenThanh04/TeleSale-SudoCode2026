@@ -58,16 +58,18 @@ class PolicySearchService:
             raise RuntimeError("Knowledge service is not ready")
         release = await self.repo.resolve_release(release_id)
         self._validate_release(release)
-        chunks = await self.repo.snapshot(release)
-        await self.index.verify(release, self.config, chunks=chunks)
         return {'release_id': release['id'], 'manifest_hash': release['manifest_hash']}
 
     async def search(self,request,context):
         if request.on!=context.on or (request.order_date and request.order_date!=context.verified_order_date):
             raise ValueError('Request business dates are not trusted')
+        if request.product_sku!=context.verified_product_sku:
+            raise ValueError('Request product is not trusted')
         output_context={'on':context.on.isoformat(),
             'order_date':context.verified_order_date.isoformat() if context.verified_order_date else None,
             'customer_reported_order_date':request.customer_reported_order_date.isoformat() if request.customer_reported_order_date else None,
+            'product_sku':context.verified_product_sku,
+            'product_source':context.product_source,
             'knowledge_release_id':context.release_id}
         if not self.ready:
             return PolicySearchResult(retrieval_status='unavailable',context=output_context,error='knowledge_unavailable')

@@ -1,0 +1,407 @@
+x-ai: &ai
+  image: telesale-btc-ai:${SUBMISSION_IMAGE_TAG:-local}
+  build:
+    context: .
+    dockerfile: Dockerfile.submission
+    target: ai
+
+x-backend: &backend
+  image: telesale-btc-backend:${SUBMISSION_IMAGE_TAG:-local}
+  build:
+    context: .
+    dockerfile: Dockerfile.submission
+    target: backend
+
+x-db: &db
+  APP_ENV: development
+  MCP_DB_HOST: postgres
+  MCP_DB_NAME: ${SUBMISSION_DATABASE:-telesale_demo}
+  SYSTEM_BOOT_ID: btc-submission-v1
+
+x-mcp: &mcp
+  <<: *db
+  MCP_HOST: 0.0.0.0
+  MCP_INTERNAL_TOKEN_FILE: /run/secrets/mcp_internal_token
+  LLM_API_KEY: unused-for-mcp
+  LLM_MODEL: unused-for-mcp
+
+x-llm: &llm
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  LLM_MODEL: ${LLM_MODEL:-gpt-6-luna}
+  LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+  LANGMEM_MODEL: ${LANGMEM_MODEL:-}
+  LLM_MAX_TOKENS: 1024
+  AGENT_MAX_TOOL_CALLS: 8
+  AGENT_GUARDRAILS_ENABLED: 'true'
+  KNOWLEDGE_ENABLED: 'true'
+
+x-policy: &policy
+  CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID:-}
+  CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+  KNOWLEDGE_POLICY_CONFIG_FILE: /workspace/config/policy-runtime.json
+  QDRANT_URL: http://qdrant:6333
+
+x-tools: &tools
+  MCP_CATALOG_URL: http://mcp-catalog:8011/mcp
+  MCP_ORDER_URL: http://mcp-order:8012/mcp
+  MCP_MEMORY_URL: http://mcp-memory:8013/mcp
+  MCP_KNOWLEDGE_URL: http://mcp-knowledge:8014/mcp
+
+x-tools-deps: &tools-deps
+  mcp-catalog:
+    condition: service_healthy
+  mcp-order:
+    condition: service_healthy
+  mcp-memory:
+    condition: service_healthy
+  mcp-knowledge:
+    condition: service_healthy
+  langmem-worker:
+    condition: service_started
+
+x-btc: &btc
+  type: bind
+  source: ${BTC_ROOT:-../BTC-Data-Vong1-TEAMS}
+  target: /btc
+  read_only: true
+  bind:
+    create_host_path: false
+
+x-results: &results
+  type: bind
+  source: ${RESULTS_DIR:-./results-submission}
+  target: /results
+  bind:
+    create_host_path: false
+
+x-eval: &eval
+  <<: *ai
+  profiles: [eval]
+  user: ${SUBMISSION_RUN_AS:-0:0}
+  depends_on: *tools-deps
+  environment:
+    <<: [*db, *llm, *tools]
+    HOME: /tmp
+    BTC_DATA_DIR: /btc
+    BTC_SUBMISSION_PROJECT: ${COMPOSE_PROJECT_NAME}
+    BTC_SUBMISSION_DEMO_PORT: ${DEMO_PORT:-8000}
+  secrets: [postgres_password, mcp_internal_token, reviewer_password, worker_password]
+  volumes:
+    - *btc
+    - type: bind
+      source: ${SCENARIOS_DIR:-./ai-services/eval_harness/scenarios}
+      target: /scenarios
+      read_only: true
+      bind:
+        create_host_path: false
+    - type: bind
+      source: ${BTC_ASR_DATASET_DIR:-./dataset}
+      target: /asr-btc-input
+      read_only: true
+      bind:
+        create_host_path: false
+    - type: bind
+      source: ${TEAM_ASR_DATASET_DIR:-./dataset}
+      target: /asr-team-input
+      read_only: true
+      bind:
+        create_host_path: false
+    - *results
+
+x-demo-env: &demo-env
+  <<: *db
+  AI_SERVICE_URL: http://ai:8001
+  AI_SERVICE_TIMEOUT_SECONDS: 120
+  REDIS_URL: redis://redis:6379/0
+  BTC_DATA_DIR: /btc
+
+services:
+  postgres:
+    image: postgres:16.15-alpine
+    environment:
+      POSTGRES_USER: btc_admin
+      POSTGRES_DB: ${SUBMISSION_DATABASE:-telesale_demo}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      TZ: Asia/Ho_Chi_Minh
+    secrets: [postgres_password]
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  qdrant:
+    image: qdrant/qdrant:v1.19.1
+    volumes:
+      - qdrant:/qdrant/storage
+
+  redis:
+    image: redis:7-alpine
+    profiles: [demo]
+    command: [redis-server, --appendonly, 'yes']
+    volumes:
+      - redis:/data
+
+  setup:
+    <<: *ai
+    profiles: [setup]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    entrypoint: [python, /workspace/scripts/btc_container.py, setup, python, -m, app.bootstrap.submission]
+    environment:
+      <<: [*db, *llm, *policy]
+      BTC_DATA_DIR: /btc
+      KNOWLEDGE_POLICY_SOURCE_DIR: /btc/policy
+    secrets: [postgres_password, reviewer_password, worker_password, backend_password]
+    volumes:
+      - *btc
+      - tokenizer:/workspace/ai-services/app/mcp_servers/mcp_knowledge/assets
+
+  mcp-db-roles:
+    image: postgres:16.15-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: btc_admin
+      PGDATABASE: ${SUBMISSION_DATABASE:-telesale_demo}
+    secrets: [postgres_password, mcp_catalog_password, mcp_order_password, mcp_memory_password, mcp_knowledge_password]
+    volumes:
+      - ./ai-services/scripts/provision_mcp_roles.sh:/provision_mcp_roles.sh:ro
+    entrypoint: [sh, /provision_mcp_roles.sh]
+
+  mcp-catalog:
+    <<: *ai
+    command: [python, -m, app.mcp_servers.mcp_catalog.server]
+    depends_on:
+      mcp-db-roles:
+        condition: service_completed_successfully
+    environment:
+      <<: *mcp
+      MCP_DB_USER: mcp_catalog
+      MCP_DB_PASSWORD_FILE: /run/secrets/mcp_catalog_password
+    secrets: [mcp_internal_token, mcp_catalog_password]
+    healthcheck:
+      test: [CMD, python, -c, 'import socket; socket.create_connection(("127.0.0.1", 8011), 2).close()']
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+  mcp-order:
+    <<: *ai
+    command: [python, -m, app.mcp_servers.mcp_order.server]
+    depends_on:
+      mcp-db-roles:
+        condition: service_completed_successfully
+    environment:
+      <<: *mcp
+      MCP_DB_USER: mcp_order
+      MCP_DB_PASSWORD_FILE: /run/secrets/mcp_order_password
+    secrets: [mcp_internal_token, mcp_order_password]
+    healthcheck:
+      test: [CMD, python, -c, 'import socket; socket.create_connection(("127.0.0.1", 8012), 2).close()']
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+  mcp-memory:
+    <<: *ai
+    command: [python, -m, app.mcp_servers.mcp_memory.server]
+    depends_on:
+      mcp-db-roles:
+        condition: service_completed_successfully
+    environment:
+      <<: *mcp
+      KNOWLEDGE_ENABLED: 'true'
+      MCP_DB_USER: mcp_memory
+      MCP_DB_PASSWORD_FILE: /run/secrets/mcp_memory_password
+    secrets: [mcp_internal_token, mcp_memory_password]
+    healthcheck:
+      test: [CMD, python, -c, 'import socket; socket.create_connection(("127.0.0.1", 8013), 2).close()']
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+  mcp-knowledge:
+    <<: *ai
+    command: [python, -m, app.mcp_servers.mcp_knowledge.server]
+    depends_on:
+      mcp-db-roles:
+        condition: service_completed_successfully
+      qdrant:
+        condition: service_started
+    environment:
+      <<: [*mcp, *policy]
+      MCP_DB_USER: mcp_knowledge
+      MCP_DB_PASSWORD_FILE: /run/secrets/mcp_knowledge_password
+    secrets: [mcp_internal_token, mcp_knowledge_password]
+    volumes:
+      - tokenizer:/workspace/ai-services/app/mcp_servers/mcp_knowledge/assets:ro
+    healthcheck:
+      test: [CMD, python, -c, 'import socket; socket.create_connection(("127.0.0.1", 8014), 2).close()']
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+  langmem-worker:
+    <<: *ai
+    command: [python, -m, app.mcp_servers.mcp_memory.distiller_worker]
+    depends_on:
+      mcp-db-roles:
+        condition: service_completed_successfully
+    environment:
+      <<: [*db, *llm]
+      MCP_DB_USER: mcp_memory
+      MCP_DB_PASSWORD_FILE: /run/secrets/mcp_memory_password
+    secrets: [mcp_memory_password]
+
+  knowledge-worker:
+    <<: *ai
+    profiles: [demo]
+    entrypoint: [python, /workspace/scripts/btc_container.py, worker, python, -m, app.knowledge.worker]
+    depends_on:
+      mcp-db-roles:
+        condition: service_completed_successfully
+    environment:
+      <<: [*db, *llm]
+    secrets: [worker_password]
+
+  ai:
+    <<: *ai
+    profiles: [demo]
+    entrypoint: [python, /workspace/scripts/btc_container.py, ai, python, -m, app]
+    depends_on: *tools-deps
+    environment:
+      <<: [*db, *llm, *tools, *policy]
+      MCP_DB_USER: btc_reviewer
+      MCP_DB_PASSWORD_FILE: /run/secrets/reviewer_password
+      KNOWLEDGE_POLICY_SOURCE_DIR: /btc/policy
+      HOST: 0.0.0.0
+    secrets: [reviewer_password, ai_internal_token, mcp_internal_token]
+    volumes:
+      - *btc
+      - tokenizer:/workspace/ai-services/app/mcp_servers/mcp_knowledge/assets:ro
+    healthcheck:
+      test: [CMD, python, -c, 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8001/openapi.json",timeout=2).close()']
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+  seed-demo:
+    <<: *backend
+    profiles: [demo]
+    entrypoint: [python, /workspace/scripts/btc_container.py, seed, python, -m, app.seed_demo_users]
+    depends_on:
+      mcp-db-roles:
+        condition: service_completed_successfully
+    environment:
+      <<: *demo-env
+      DEMO_USER_1_USERNAME: demo1
+      DEMO_USER_2_USERNAME: demo2
+      DEMO_USER_1_CUSTOMER_ID: ${DEMO_USER_1_CUSTOMER_ID:-C001}
+      DEMO_USER_2_CUSTOMER_ID: ${DEMO_USER_2_CUSTOMER_ID:-C002}
+    secrets: [postgres_password, demo_jwt_secret, demo_user_1_password, demo_user_2_password]
+
+  backend:
+    <<: *backend
+    profiles: [demo]
+    entrypoint: [python, /workspace/scripts/btc_container.py, backend, python, -m, uvicorn, app.voice_main:app, --host, 0.0.0.0, --port, '8000']
+    depends_on:
+      ai:
+        condition: service_healthy
+      seed-demo:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+      knowledge-worker:
+        condition: service_started
+    environment: *demo-env
+    secrets: [backend_password, ai_internal_token, demo_jwt_secret]
+    ports:
+      - "${DEMO_HOST:-127.0.0.1}:${DEMO_PORT:-8000}:8000"
+    volumes:
+      - *btc
+    healthcheck:
+      test: [CMD, python, -c, 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/chat",timeout=2).close()']
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+  eval:
+    <<: *eval
+    entrypoint: [python, /workspace/scripts/btc_container.py, eval, python, -m, eval_harness.run_official]
+    command: [--btc-root, /btc, --scenarios, /scenarios, --out-root, /results]
+
+  eval-trace:
+    <<: *eval
+    entrypoint: [python, /workspace/scripts/btc_container.py, eval, python, /workspace/run_eval.py]
+
+  knowledge-eval:
+    <<: *eval
+    entrypoint: [python, /workspace/scripts/btc_container.py, eval, python, /workspace/run_knowledge_eval.py]
+
+  asr:
+    image: telesale-btc-asr:${SUBMISSION_IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: Dockerfile.submission
+      target: asr
+    profiles: [asr]
+    user: ${SUBMISSION_RUN_AS:-0:0}
+    environment:
+      HOME: /tmp
+      HF_HOME: /models/.cache
+    volumes:
+      - *btc
+      - type: bind
+        source: ${AUDIO_DATASET_DIR:-./dataset}
+        target: /audio-dataset
+        read_only: true
+        bind:
+          create_host_path: false
+      - *results
+      - type: bind
+        source: ${RESULTS_DIR:-./results-submission}/models
+        target: /models
+        bind:
+          create_host_path: false
+
+volumes:
+  postgres:
+  qdrant:
+  redis:
+  tokenizer:
+
+secrets:
+  postgres_password:
+    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/postgres_password
+  mcp_catalog_password:
+    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/mcp_catalog_password
+  mcp_order_password:
+    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/mcp_order_password
+  mcp_memory_password:
+    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/mcp_memory_password
+  mcp_knowledge_password:
+    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/mcp_knowledge_password
+  mcp_internal_token:
+    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/mcp_internal_token
+  ai_internal_token:
+    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/ai_internal_token
+  worker_password:
+    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/worker_password
+  reviewer_password:
+    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/reviewer_password
+  backend_password:
+    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/backend_password
+  demo_jwt_secret:
+    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/demo_jwt_secret
+  demo_user_1_password:
+    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/demo_user_1_password
+  demo_user_2_password:
+    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/demo_user_2_password
