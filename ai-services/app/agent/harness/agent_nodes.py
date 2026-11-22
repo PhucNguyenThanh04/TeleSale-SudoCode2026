@@ -26,7 +26,7 @@ from app.agent.harness.observability import log_event, trace_node
 from app.mcp_servers.mcp_shared.commerce_evidence import build_commerce_evidence
 from app.agent.harness.state import TurnState
 from app.agent.harness.policy import transaction_selection_mismatch
-from app.agent.harness.streaming import active_stream, invoke_agent, internal_output
+from app.agent.harness.streaming import active_stream, active_turn_progress, invoke_agent, internal_output
 
 
 def _answer_text(message) -> str:
@@ -55,6 +55,9 @@ class AgentNodes(SessionNodes):
     @trace_node("run_agent")
     @execution_node("preparation")
     async def run_agent(self, state: TurnState) -> dict[str, Any]:
+        progress = active_turn_progress.get()
+        if progress is not None:
+            progress['state'] = state
         stream = active_stream.get()
         if stream is not None:
             stream.state = state
@@ -74,6 +77,7 @@ class AgentNodes(SessionNodes):
         try:
             set_execution_phase("build")
             system_prompt = await asyncio.to_thread(text_prompt, SALES_PROMPT, _SYSTEM_PROMPT)
+            state['selected_system_prompt'] = system_prompt
             agent = build_agent("deep", self.llm, business, system_prompt)
             context = prompt_context(state, self.prompt_history_turns)
             set_execution_phase("model_invocation", "initial")
@@ -96,8 +100,10 @@ class AgentNodes(SessionNodes):
                       error_type=type(exc).__name__)
         set_execution_phase("postprocess")
         return {"agent_draft": mask_pii(draft), "reply_context": reply_context,
+                'selected_system_prompt': state.get('selected_system_prompt', _SYSTEM_PROMPT),
                 "tool_calls": state["tool_calls"],
                 "tool_count": state.get("tool_count", 0),
+                'tool_attempts': state.get('tool_attempts', 0),
                 "policy_order_bindings": state.get("policy_order_bindings", {}),
                 "needs_handoff": state.get("needs_handoff", False),
                 "handoff_ticket_id": state.get("handoff_ticket_id")}
@@ -105,10 +111,13 @@ class AgentNodes(SessionNodes):
     @trace_node("verify")
     @execution_node("verification")
     async def verify_agent(self, state: TurnState) -> dict[str, Any]:
+        progress = active_turn_progress.get()
+        if progress is not None:
+            progress['state'] = state
         draft = state.get("agent_draft", "")
         model_state = state
         if state.get('tool_failed'):
-            model_state = {**state, 'history': [], 'profile': {},
+            model_state = {**state, 'history': [], 'customer_statements': [], 'profile': {},
                 'scoped_facts': {'product': {}, 'room': {}}, 'episodes': [],
                 'current_episode': None, 'call_brief': None, 'session_tool_calls': []}
         calls = build_commerce_evidence(model_state)
@@ -141,7 +150,8 @@ class AgentNodes(SessionNodes):
             import json
             from langchain_core.messages import SystemMessage
             context = prompt_context(model_state, self.prompt_history_turns)
-            messages = [SystemMessage(content=_SYSTEM_PROMPT), *prompt_messages(context)]
+            messages = [SystemMessage(content=state.get('selected_system_prompt', _SYSTEM_PROMPT)),
+                        *prompt_messages(context)]
             if draft:
                 messages.append(AIMessage(content=mask_pii(draft)))
             messages.append(HumanMessage(content=json.dumps({
@@ -177,6 +187,13 @@ class AgentNodes(SessionNodes):
             diagnostic_emit("final_verified", state=state, status="success")
         tool_calls = [*state.get('prepared_tool_calls', []), *state.get("tool_calls", [])]
         knowledge_kwargs = {}
+        if getattr(self.memory, 'supports_durable_replay', False) is True:
+            from app.agent.harness.session_identity import turn_fingerprint
+            knowledge_kwargs['request_hash'] = turn_fingerprint(request, getattr(self.memory, 'include_prior', True))
+        if (getattr(self.memory, 'supports_private_delivery', False) is True
+                and state.get('private_delivery')
+                and state['private_delivery'].get('source_turn_id') == str(request.client_msg_id)):
+            knowledge_kwargs['private_delivery'] = state['private_delivery']
         from app.knowledge.config import enabled
         if enabled() and getattr(self.memory, 'supports_knowledge_signals', False):
             from app.knowledge.events.evidence import safe_tools

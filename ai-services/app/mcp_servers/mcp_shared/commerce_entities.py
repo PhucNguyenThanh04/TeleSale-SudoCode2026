@@ -1,3 +1,4 @@
+from app.mcp_servers.mcp_shared.commerce_evidence import CATALOG_TOOLS
 import re
 from app.mcp_servers.mcp_shared.commerce_rules import _search_text
 
@@ -14,7 +15,7 @@ def variant_option_values(text: str, variants: list[dict], key: str) -> set[str]
 
 def resolve_claim_skus(text: str, calls: list[dict], *, focus_sku: str | None = None) -> set[str]:
     folded = _search_text(text)
-    items = {item['sku']: item for call in calls if call.get('name') == 'catalog.search'
+    items = {item['sku']: item for call in calls if call.get('name') in CATALOG_TOOLS
              and 'error' not in call.get('result', {})
              for item in call['result'].get('items', []) if isinstance(item, dict) and item.get('sku')}
     known = set(items)

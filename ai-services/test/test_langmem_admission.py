@@ -219,5 +219,6 @@ class AdmissionTests(unittest.TestCase):
         state2 = apply_episode_delta({"topics": []}, delta2, source_turn_id=turn2_id,
                                      customer_text=turns2[0]["customer_text"],
                                      agent_text=turns2[0]["agent_text"],
-                                     prior_open_items=prior_open)
+                                     prior_open_items=prior_open,
+                                     reviewed_resolution_ids=frozenset({item_id}))
         self.assertEqual(state2["resolved_prior_items"][0]["item_id"], item_id)

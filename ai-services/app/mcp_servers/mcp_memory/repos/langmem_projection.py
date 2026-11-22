@@ -138,6 +138,7 @@ class LangMemProjection:
                         "scope_id": scope_id, "deleted": True,
                         "revision": revision}, index=False)
                     written.append({"key": fact["key"], "op": "delete",
+                                    'source_kind': fact['source_kind'],
                                     "customer_id": customer_id,
                                     "scope_type": scope_type, "scope_id": scope_id})
                     continue
@@ -157,6 +158,7 @@ class LangMemProjection:
                 value = _safe(raw_record)
                 await store.aput(namespace, key, value, index=False)
                 entry = {"key": fact["key"], "value": fact["value"],
+                         'source_kind': fact['source_kind'],
                          "op": write_op, "customer_id": customer_id,
                          "scope_type": scope_type, "scope_id": scope_id,
                          "evidence_quote": fact.get("evidence_quote")}

@@ -158,7 +158,6 @@ def test_prepare_preflight_failure_prevents_source_writes(monkeypatch, tmp_path,
 
 def test_import_and_prepare_builds_complete_snapshot_without_activation(monkeypatch, tmp_path):
     from argparse import Namespace
-    import re
     from qdrant_client import AsyncQdrantClient
     from dataloader_offline import __main__ as loader
     from app.knowledge import cli, config
@@ -170,23 +169,7 @@ def test_import_and_prepare_builds_complete_snapshot_without_activation(monkeypa
     from test_knowledge_repo import MemoryRepo
     from test_policy_embedding import Backend, runtime_config
 
-    class Writer:
-        def __init__(self):
-            self.rows = {}
-
-        @asynccontextmanager
-        async def transaction(self):
-            yield self
-
-        async def execute(self, sql, *args):
-            match = re.search(r'INSERT INTO btc_source\.(\w+)', sql)
-            if match:
-                table = match[1]
-                key = args[:2] if table == 'inventory_events' else args[0]
-                self.rows.setdefault(table, {})[key] = args
-
-        async def close(self):
-            pass
+    from test_dataloader_postgres import StatefulWriter as Writer
 
     async def run():
         repo = MemoryRepo()

@@ -55,7 +55,7 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
                      "upsert_episode_state",
                      "enqueue_distillation", "claim_distillation",
                      "distillation_turn", "save_distillation_proposals",
-                     "finish_distillation"):
+                     "finish_distillation", "enqueue_knowledge_event"):
             setattr(repo, name, AsyncMock())
         repo.attribute_anonymous_turns.return_value = []
         repo.distillation_claim_current = AsyncMock(return_value=True)

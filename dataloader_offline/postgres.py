@@ -60,6 +60,10 @@ CREATE TABLE IF NOT EXISTS btc_source.policy_chunks (
 """
 
 
+class SourceSnapshotMismatch(ValueError):
+    pass
+
+
 def _date(value: str | None) -> date | None:
     return date.fromisoformat(value) if value else None
 
@@ -97,6 +101,8 @@ async def inspect_database(database_url: str) -> dict[str, Any]:
 
 
 async def import_release(database_url: str, release: dict[str, Any]) -> dict[str, int]:
+    from .verification import _expected_source_rows, _key, _normal_row, _comparison, _matches
+    expected_tables = _expected_source_rows(release)
     try:
         import asyncpg
     except ImportError as exc:
@@ -106,6 +112,8 @@ async def import_release(database_url: str, release: dict[str, Any]) -> dict[str
     try:
         async with connection.transaction():
             await connection.execute(DDL)
+            await connection.execute('LOCK TABLE ' + ','.join('btc_source.' + table for table in expected_tables)
+                                     + ' IN SHARE ROW EXCLUSIVE MODE')
             products = release["products"]["products"]
             for item in products:
                 await connection.execute(
@@ -199,6 +207,14 @@ async def import_release(database_url: str, release: dict[str, Any]) -> dict[str
                     chunk.chunk_id, chunk.document_id, chunk.title, chunk.body, chunk.access_level,
                     _date(chunk.effective_from), _date(chunk.effective_until), chunk.date_basis, chunk.content_hash,
                 )
+            for table, expected in expected_tables.items():
+                records = await connection.fetch(f'SELECT * FROM btc_source.{table}')
+                actual = {_key(table, row): _normal_row(row) for row in records}
+                comparison = _comparison(expected, actual)
+                if not _matches(comparison):
+                    counts = ', '.join(f'{kind}={len(comparison[kind])}' for kind in ('missing', 'extra', 'changed'))
+                    raise SourceSnapshotMismatch(f'Source snapshot mismatch in {table}: {counts}; transaction rolled back. '
+                                                 'Review stale source rows before retrying; no automatic deletion.')
     finally:
         await connection.close()
     return release_counts(release)

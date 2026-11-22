@@ -35,6 +35,7 @@ GRANT SELECT ON btc_source.products, btc_source.variants, btc_source.promotions,
     btc_source.crm_sessions TO mcp_catalog, mcp_order;
 GRANT SELECT ON btc_source.policy_chunks TO mcp_catalog;
 GRANT SELECT ON btc_source.variants TO mcp_memory;
+GRANT SELECT ON runtime.tool_operations TO mcp_memory;
 GRANT SELECT ON runtime.tool_orders, runtime.promo_uses TO mcp_catalog;
 GRANT SELECT, INSERT, UPDATE ON runtime.tool_orders, runtime.tool_updates,
     runtime.tool_callbacks, runtime.tool_handoffs, runtime.promo_uses,

@@ -22,6 +22,7 @@ EVENTS = frozenset({'context_loaded', 'context_masked', 'memory_read', 'memory_c
     'gate_input', 'gate_result', 'tool_attempt', 'tool_prepared', 'tool_result',
     'continuation', 'final_verified', 'final_commit', 'provenance', 'prompt'})
 TOOLS = frozenset({'catalog.search', 'pricing.get_quote', 'pricing.quote_order', 'inventory.check', 'order.create',
+    'catalog.get_details', 'order.preview_update',
     'order.update', 'order.status', 'policy.search', 'crm.get_customer', 'handoff.transfer',
     'schedule.callback'})
 RETRIEVAL_STATUSES = frozenset({'ok', 'no_evidence', 'unavailable', 'timeout', 'overloaded'})

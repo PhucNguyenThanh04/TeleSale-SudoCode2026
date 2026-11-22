@@ -74,7 +74,8 @@ class EpisodeStateTest(unittest.TestCase):
             "resolve_items": [{"item_id": item["item_id"],
                                "evidence_quote": "Có giao cuối tuần ạ."}],
         }]}, source_turn_id=second,
-            customer_text="Vâng", agent_text="Có giao cuối tuần ạ.")
+            customer_text="Vâng", agent_text="Có giao cuối tuần ạ.",
+            reviewed_resolution_ids=frozenset({item['item_id']}))
         updated = resolved["topics"][0]["items"][0]
         self.assertEqual(updated["status"], "resolved")
         self.assertEqual(updated["source_turn_id"], first)
@@ -122,7 +123,8 @@ class EpisodeStateTest(unittest.TestCase):
                                "evidence_quote": "Có giao cuối tuần ạ."}]}]},
             source_turn_id=str(uuid4()), customer_text="Vâng",
             agent_text="Có giao cuối tuần ạ.",
-            prior_open_items={"old-question-1": ("unknown", "")})
+            prior_open_items={"old-question-1": ("unknown", "")},
+            reviewed_resolution_ids=frozenset({'old-question-1'}))
         self.assertEqual(state["resolved_prior_items"][0]["item_id"], "old-question-1")
 
 
@@ -161,7 +163,8 @@ class ResolutionAdmissionTest(unittest.TestCase):
             'narrative_evidence_quote': 'Tôi muốn mua áo khoác'}]}
         saved = deepcopy(delta)
         kwargs = dict(source_turn_id=str(uuid4()), customer_text='Tôi muốn mua áo khoác',
-                      agent_text='phí giao hàng miễn phí', prior_open_items={})
+                      agent_text='phí giao hàng miễn phí', prior_open_items={},
+                      reviewed_resolution_ids=frozenset({'shipping'}))
         clean, rejected = admit_episode_resolutions(old, delta, **kwargs)
         self.assertEqual(rejected, 2)
         self.assertEqual(delta, saved)
@@ -176,7 +179,8 @@ class ResolutionAdmissionTest(unittest.TestCase):
             'resolve_items': [{'item_id': 'prior', 'evidence_quote': 'Chồng tôi đồng ý rồi'}],
             'customer_goal': 'không có bằng chứng'}]}
         kwargs = dict(source_turn_id=str(uuid4()), customer_text='Chồng tôi đồng ý rồi',
-                      agent_text='', prior_open_items={'prior': ('global', '')})
+                      agent_text='', prior_open_items={'prior': ('global', '')},
+                      reviewed_resolution_ids=frozenset({'prior'}))
         clean, rejected = admit_episode_resolutions({'topics': []}, delta, **kwargs)
         self.assertEqual(rejected, 0)
         self.assertEqual(clean['topic_updates'][0]['resolve_items'], delta['topic_updates'][0]['resolve_items'])

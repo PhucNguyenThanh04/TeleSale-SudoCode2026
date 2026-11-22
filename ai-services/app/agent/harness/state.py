@@ -15,8 +15,10 @@ class Decision(BaseModel):
 class TurnState(TypedDict, total=False):
     request: TextTurnRequest
     safe_text: str
+    private_delivery: dict[str, Any] | None
     identity_status: str
     customer_id: str | None
+    erased_customer_id: str
     customer_phone: str | None
     customer_name: str | None
     honorific: str | None
@@ -25,6 +27,8 @@ class TurnState(TypedDict, total=False):
     received_at_monotonic: float
     owned_order_ids: list[str]
     history: list[dict[str, str]]
+    customer_statements: list[dict[str, str]]
+    context_source_complete: bool
     profile: dict[str, dict[str, Any]]
     scoped_facts: dict[str, dict[str, dict[str, Any]]]
     episodes: list[dict[str, Any]]
@@ -37,6 +41,8 @@ class TurnState(TypedDict, total=False):
     prepared_tool_calls: list[dict[str, Any]]
     tool_calls: list[dict[str, Any]]
     tool_count: int
+    tool_attempts: int
+    tool_precondition_error: str
     tool_failed: bool
     memory_failure: str
     memory_blocked: bool
@@ -44,10 +50,12 @@ class TurnState(TypedDict, total=False):
     agent_text: str
     verified_answer: str
     agent_draft: str
+    selected_system_prompt: str
     reply_context: dict[str, Any]
     reply_error: str | None
     verifier_events: list[dict[str, Any]]
     policy_order_bindings: dict[int, str | None]
+    knowledge_release_id: str
     needs_handoff: bool
     handoff_ticket_id: str | None
     memory_writes: list[dict[str, Any]]

@@ -3,8 +3,8 @@ from dataclasses import dataclass, field
 from datetime import date
 
 
-_CONTEXT_FIELDS = ('history', 'profile', 'scoped_facts', 'episodes', 'current_episode',
-                   'call_brief', 'remembered_order_ids')
+_CONTEXT_FIELDS = ('history', 'customer_statements', 'profile', 'scoped_facts', 'episodes', 'current_episode',
+                   'call_brief', 'remembered_order_ids', 'context_source_complete')
 
 
 @dataclass

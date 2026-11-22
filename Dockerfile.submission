@@ -1,0 +1,38 @@
+FROM python:3.12-slim AS base
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+WORKDIR /workspace
+
+FROM base AS ai
+COPY config/submission/ai.txt /tmp/requirements.txt
+RUN python -m pip install --no-cache-dir -r /tmp/requirements.txt
+COPY ai-services/app ./ai-services/app
+COPY ai-services/migrations ./ai-services/migrations
+COPY ai-services/eval_harness ./ai-services/eval_harness
+COPY ai-services/requirements.txt ./ai-services/requirements.txt
+COPY ai-services/scripts/container_start.py ./container_start.py
+COPY backend/migrations/0007_demo_users.sql ./backend/migrations/0007_demo_users.sql
+COPY config ./config
+COPY dataloader_offline ./dataloader_offline
+COPY eval ./eval
+COPY run_eval.py run_knowledge_eval.py ./
+COPY scripts/btc_container.py scripts/prepare_knowledge_tokenizer.py ./scripts/
+RUN chmod -R a+rX /workspace
+ENV PYTHONPATH=/workspace/ai-services:/workspace
+ENTRYPOINT ["python", "/workspace/container_start.py"]
+
+FROM base AS backend
+COPY config/submission/backend.txt /tmp/requirements.txt
+RUN python -m pip install --no-cache-dir -r /tmp/requirements.txt
+COPY backend/app ./backend/app
+COPY backend/migrations/0007_demo_users.sql ./backend/migrations/0007_demo_users.sql
+COPY frontend ./frontend
+COPY scripts/btc_container.py ./scripts/btc_container.py
+ENV PYTHONPATH=/workspace/backend:/workspace
+
+FROM base AS asr
+COPY config/submission/asr.txt /tmp/requirements.txt
+RUN python -m pip install --no-cache-dir -r /tmp/requirements.txt
+COPY speech ./speech
+RUN chmod -R a+rX /workspace
+ENV SPEECH_MODEL_DIR=/models BTC_DATA_DIR=/btc
+ENTRYPOINT ["python", "-m", "speech"]

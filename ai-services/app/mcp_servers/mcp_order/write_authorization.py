@@ -9,6 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.mcp_servers.mcp_order.schemas import CallbackInput, CreateInput, HandoffInput, UpdateInput
+from app.mcp_servers.mcp_shared.business_calendar import callback_arguments
 
 
 WRITE_MODELS = {'order.create': CreateInput, 'order.update': UpdateInput,
@@ -42,8 +43,9 @@ def write_digest(value):
 
 
 def normalized_write(name, args):
-    return WRITE_MODELS[name].model_validate(args).model_dump(
+    payload = WRITE_MODELS[name].model_validate(args).model_dump(
         mode='json', exclude_none=True, exclude={'trusted_authorization'})
+    return callback_arguments(payload) if name == 'schedule.callback' else payload
 
 
 def write_args_digest(name, args):
@@ -53,6 +55,8 @@ def write_args_digest(name, args):
 
 def write_operation_key(context, args):
     key = f'{context.session_id}:{context.request_id}:{context.tool}'
+    if context.tool == 'order.create':
+        return key + ':' + context.args_hash
     return key + ':' + args['order_id'] if context.tool == 'order.update' else key
 
 

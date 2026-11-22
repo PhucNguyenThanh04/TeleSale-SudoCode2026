@@ -6,6 +6,9 @@
 !.env.example
 !.env.sample
 !.env.template
+!.env.submission.example
+/secrets-submission/
+/results-submission/
 *.pem
 *.key
 *.p12
@@ -72,6 +75,7 @@ artifacts/
 
 /dataset/*
 !/dataset/README.md
+!/dataset/M1-CORPUS.md
 
 speech/data/
 speech/voices.json

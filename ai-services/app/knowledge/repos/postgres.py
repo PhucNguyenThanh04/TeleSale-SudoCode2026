@@ -19,6 +19,12 @@ class UnitOfWork:
                                           {'id': key})).scalar_one_or_none()
         return row
 
+    async def get_many(self, table, keys):
+        rows = (await self.session.execute(text(
+            f'SELECT id,data FROM {self.table(table)} WHERE id=ANY(CAST(:ids AS text[]))'),
+            {'ids': list(keys)})).mappings()
+        return {row['id']: row['data'] for row in rows}
+
     async def put(self, table, key, value):
         await self.session.execute(text(f'''INSERT INTO {self.table(table)} (id,data)
             VALUES (:id,CAST(:data AS jsonb)) ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data'''),

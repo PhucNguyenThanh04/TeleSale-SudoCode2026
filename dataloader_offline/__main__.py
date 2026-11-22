@@ -107,7 +107,7 @@ class ImportStageError(ValueError):
 
 
 async def import_data(args, release):
-    from .postgres import import_release
+    from .postgres import import_release, SourceSnapshotMismatch
     from .knowledge import prepare_policy, validate_policy_prepare
 
     stage, committed = 'preflight', False
@@ -136,6 +136,8 @@ async def import_data(args, release):
             print("MCP Knowledge index not built; use --prepare-policy for an explicit build.")
     except Exception as exc:
         details = 'reason='+type(exc).__name__
+        if isinstance(exc, SourceSnapshotMismatch):
+            details = 'reason=source_snapshot_mismatch; '+str(exc)
         try:
             from app.mcp_servers.mcp_knowledge.services.cloudflare import PolicyProviderError
         except ImportError:

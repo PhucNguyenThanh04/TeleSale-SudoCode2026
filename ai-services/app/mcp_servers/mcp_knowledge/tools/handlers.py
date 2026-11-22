@@ -28,11 +28,12 @@ def create_server(service, token=None, *, context_secret=None):
     @server.tool(name='policy.search')
     async def policy_search(query:str,on:str,order_date:str|None=None,
                             customer_reported_order_date:str|None=None,top_k:int=5,
+                            product_sku:str|None=None,
                             trusted_context:str|None=None)->dict:
         async def run():
             try:
                 request=PolicySearchInput(query=query,on=on,order_date=order_date,
-                    customer_reported_order_date=customer_reported_order_date,top_k=top_k)
+                    customer_reported_order_date=customer_reported_order_date,top_k=top_k,product_sku=product_sku)
             except ValidationError:
                 return {'error':'invalid_args','evidence':[]}
             try:

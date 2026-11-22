@@ -1,4 +1,6 @@
-from app.mcp_servers.mcp_shared.commerce_rules import _catalog, _inventory, _delivery, quote, quote_order
+from app.mcp_servers.mcp_shared.commerce_rules import _catalog, _inventory, _delivery, _parent, quote, quote_order
+from app.mcp_servers.mcp_shared.identity import resolve_identity
+from app.mcp_servers.mcp_shared.catalog_evidence import enrich_products, product_details
 
 
 async def get_customer(repo, session, args: dict) -> dict:
@@ -25,7 +27,16 @@ async def get_customer(repo, session, args: dict) -> dict:
 
 
 async def search(repo, session, args: dict) -> dict:
-    return _catalog(await repo.rows(session, "products"), args)
+    products = enrich_products(await repo.rows(session, 'products'), await repo.rows(session, 'policy_chunks'))
+    return _catalog(products, args)
+
+
+async def get_details(repo, session, args: dict) -> dict:
+    product, variant = _parent(await repo.rows(session, 'products'), args['sku'])
+    if product is None:
+        return {'error': 'unknown_sku'}
+    item = product_details(product, await repo.rows(session, 'policy_chunks'), args['sku'], selected_variant=variant)
+    return {'requested_sku': args['sku'], 'items': [item], 'total': 1}
 
 
 async def inventory(repo, session, args: dict) -> dict:
@@ -34,31 +45,47 @@ async def inventory(repo, session, args: dict) -> dict:
     return _inventory(products, events, args["sku"], args["on"])
 
 
-async def _pricing_context(repo, session, args: dict):
+async def _pricing_context(repo, session, args: dict, verified_customer_id=None):
     payload = dict(args)
-    matches = await repo.identity_matches(session, args.get("source_channel"), args.get("source_identity"))
-    if len(matches) != 1 or payload.get("customer_phone") != matches[0]["phone"]:
+    identity = await resolve_identity(repo, session, args.get('source_channel'),
+                                      args.get('source_identity'), verified_customer_id)
+    if verified_customer_id is not None and identity is None:
+        raise PermissionError('Verified identity no longer matches')
+    if identity is None or payload.get("customer_phone") != identity["phone"]:
         payload.pop("customer_phone", None)
     owned = set()
     if payload.get("customer_phone"):
         customers = await repo.rows(session, "customers")
-        customer = next((c for c in customers if c["customer_id"] == matches[0]["customer_id"]), None)
+        customer = next((c for c in customers if c["customer_id"] == identity["customer_id"]), None)
         if customer:
             owned = {o["sku"] for o in customer.get("orders", []) if o.get("status") == "delivered"}
     return payload, owned
 
 
-async def get_quote_order(repo, session, args: dict) -> dict:
-    payload, owned = await _pricing_context(repo, session, args)
+async def get_quote_order(repo, session, args: dict, *, verified_customer_id=None) -> dict:
+    payload, owned = await _pricing_context(repo, session, args, verified_customer_id)
     same_day = (await repo.same_day_orders(session, payload['customer_phone'], payload['on'])
                 if payload.get('customer_phone') else [])
-    return quote_order(await repo.rows(session, 'products'), await repo.rows(session, 'promotions'),
+    promotions = await repo.rows(session, 'promotions')
+    result = quote_order(await repo.rows(session, 'products'), promotions,
                        payload, owned, await repo.used_promos(session),
                        used_today={code for order in same_day for code in order['promos']})
+    _promotion_validity(result, promotions)
+    return result
 
 
-async def get_quote(repo, session, args: dict) -> dict:
-    payload, owned = await _pricing_context(repo, session, args)
+def _promotion_validity(result, promotions):
+    ends = {promo['promo_code']: promo.get('end') for promo in promotions}
+    applied = [*result.get('applied_promos', []), *result.get('order_promos', []),
+               *(promo for unit in result.get('units', []) for promo in unit.get('applied_promos', []))]
+    for promo in applied:
+        until = ends.get(promo.get('promo_code'))
+        if until:
+            promo['valid_until'] = str(until)
+
+
+async def get_quote(repo, session, args: dict, *, verified_customer_id=None) -> dict:
+    payload, owned = await _pricing_context(repo, session, args, verified_customer_id)
     promotions = await repo.rows(session, "promotions")
     products = await repo.rows(session, "products")
     result = quote(products, promotions,
@@ -67,9 +94,5 @@ async def get_quote(repo, session, args: dict) -> dict:
         stock = _inventory(products, await repo.rows(session, "inventory_events"), args["sku"], args["on"])
         if stock.get("in_stock") and stock.get("qty", 0) >= args.get("qty", 1):
             result["estimated_delivery"] = _delivery(args["on"], args.get("address"))
-        ends = {promo.get("promo_code"): promo.get("end") for promo in promotions}
-        for applied in result.get("applied_promos", []):
-            until = ends.get(applied.get("promo_code"))
-            if until:
-                applied["valid_until"] = str(until)
+        _promotion_validity(result, promotions)
     return result

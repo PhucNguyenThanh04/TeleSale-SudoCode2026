@@ -1,12 +1,14 @@
 
 import unicodedata
 import re
+import json
 from datetime import date, timedelta
 
 from app.constants import CATALOG_RESULT_LIMIT
+from app.mcp_servers.mcp_shared.business_calendar import load_calendar
 
 
-HOLIDAYS = {"2026-10-26", "2027-01-01"}
+HOLIDAYS = {day for day, rule in load_calendar()['dates'].items() if rule.get('delivery_closed')}
 
 def _parent(products: list[dict], sku: str) -> tuple[dict | None, dict | None]:
     for product in products:
@@ -53,6 +55,12 @@ def _catalog(products: list[dict], args: dict) -> dict:
     ranked = []
     def tokens(value):
         return set(re.findall(r"[^\W\d_]+|\d+(?:[.,]\d+)?", _search_text(value)))
+    def matches(actual, expected):
+        if type(actual) is bool or type(expected) is bool:
+            return type(actual) is type(expected) and actual == expected
+        if type(expected) in {int, float}:
+            return type(actual) in {int, float} and actual == expected
+        return isinstance(actual, str) and _search_text(expected) in _search_text(actual)
     query = _search_text(args.get("query") or "")
     query_terms = tokens(query)
     brands = {p['brand'] for p in products if any(
@@ -68,6 +76,9 @@ def _catalog(products: list[dict], args: dict) -> dict:
     model_terms = {term for term in query_terms if any(char.isdigit() for char in term)
                    or term in {'pro', 'lite', 'mini', 'max', 'plus', 'ultra'}} if len(brands) == 1 else set()
     for p in products:
+        if any(key not in p['attributes'] or not matches(p['attributes'][key], value)
+               for key, value in (args.get('attribute_filters') or {}).items()):
+            continue
         if args.get("sku") and p["sku"] != args["sku"] and not any(v["variant_sku"] == args["sku"] for v in p.get("variants", [])):
             continue
         if args.get("category") and not _search_text(p["category"]).startswith(
@@ -81,7 +92,8 @@ def _catalog(products: list[dict], args: dict) -> dict:
             continue
         if categories and p['category'] not in categories:
             continue
-        searchable = tokens(" ".join((p["name"], p["brand"], p["category"], p["sku"])))
+        searchable = tokens(" ".join((p["name"], p["brand"], p["category"], p["sku"],
+                                      json.dumps(p['attributes'], ensure_ascii=False))))
         if not model_terms <= searchable:
             continue
         score = len(query_terms & searchable)
@@ -91,7 +103,8 @@ def _catalog(products: list[dict], args: dict) -> dict:
             continue
         ranked.append((score, {"sku": p["sku"], "name": p["name"], "category": p["category"],
                       "list_price_vnd": p["list_price_vnd"], "attributes": p["attributes"],
-                      "variants": [{key: v[key] for key in ("variant_sku", "size", "color", "price_delta_vnd")} for v in p.get("variants", [])]}))
+                      "variants": [{key: v[key] for key in ("variant_sku", "size", "color", "price_delta_vnd")} for v in p.get("variants", [])],
+                      **{key: p[key] for key in ('attribute_sources', 'attribute_conflicts') if key in p}}))
     ranked.sort(key=lambda entry: -entry[0])
     items = [item for _, item in ranked]
     return {"items": items[:CATALOG_RESULT_LIMIT], "total": len(items)}

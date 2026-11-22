@@ -7,6 +7,7 @@ from app.agent.guardrails.checks import mask_pii
 
 
 active_stream = ContextVar('guarded_chat_stream', default=None)
+active_turn_progress = ContextVar('turn_progress', default=None)
 _INTERNAL = re.compile(r'<\/?(?:think|analysis|tool_call)|"(?:tool_calls|function_call)"', re.I)
 
 

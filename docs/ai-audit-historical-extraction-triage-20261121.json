@@ -1,0 +1,2073 @@
+{
+  "reviewer": {
+    "kind": "assistant",
+    "name": "Codex audit triage"
+  },
+  "source_run": "20261118T054721Z-ac17f7e7",
+  "source_report_sha256": "e6a116e20f547cae73b1cc12b810a0da610463e63e895240e81e51033e378089",
+  "stored_artifact_hashes_verified": true,
+  "current_extractor_verification": "incompatible_fingerprint_or_candidates",
+  "scope": "Triage of every historically unresolved candidate in both configurations; no semantic acceptance labels.",
+  "counts": {
+    "full": 38,
+    "baseline_no_memory": 29
+  },
+  "categories": {
+    "cross_turn_customer_source": 6,
+    "write_receipt_and_eligibility": 6,
+    "policy_scope_and_exceptions": 32,
+    "fresh_owned_order_status": 7,
+    "fragment_or_conversational_text": 15,
+    "masked_payment_wording": 1
+  },
+  "human_review_complete": false,
+  "historical_conversation_accepted": false,
+  "limitations": [
+    "Original traces, sidecars and BTC scores remain unchanged.",
+    "The current extractor rejects the historical report; this artifact is hash-bound assistant triage, not a valid current extraction review.",
+    "Source references locate evidence; their hashes do not prove semantic support.",
+    "No current-agent model evaluation, measured latency or human agreement was produced."
+  ],
+  "candidates": [
+    {
+      "config": "full",
+      "trace_row": 10,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T02",
+      "call": "call_2",
+      "turn": 1,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "be09bd1ec2a410c28129d64df0f953bd54a72a627753ffe1de90997070d8c237",
+      "text": "em đã nắm được thông tin anh nhận áo vào ngày 19/10 và muốn đổi vì mặc hơi chật ạ",
+      "triage": "cross_turn_customer_source",
+      "decision": "requires_source_review",
+      "note": "Cần đối chiếu nguyên lời khách và lượt trước cùng chủ thể; không coi trí nhớ agent hay sự đồng ý cũ là quyền ghi mới.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "57916408cd99c2063a1d43f85c2f3da82d12766a40f52934651f4d0940670ccc"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "0c60bc1b0ee9fee652b4ff4a05c236d4cb44040f65c27fcea3403ae325c81118"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "inventory.check",
+          "sha256": "37c946dd119616a6468e7a2d42a6bb0f72468d117d90bc290282716efa896fd0"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "pricing.get_quote",
+          "sha256": "42c214a75a85c9dc5af9967bb2553e6a34d544091b3429687d5649fbd44d6944"
+        },
+        {
+          "pointer": "/tool_calls/3/result",
+          "tool": "catalog.search",
+          "sha256": "8d801b4b508bd3f2d42f297bd4afa7da609034f0869db4f26e8817abe2938252"
+        },
+        {
+          "pointer": "/tool_calls/4/result",
+          "tool": "pricing.get_quote",
+          "sha256": "e30a5ecbc5c86d401ee5e4eb3d8b6b38e0bbb1ab642738bd2d37932fbb6e1588"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 12,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T02",
+      "call": "call_2",
+      "turn": 3,
+      "candidate_id": "claim-0",
+      "candidate_sha256": "fae0d68c6fe134ba8ac02bd90aa05759cb2ed44ebb36a041716c4ab444eb0936",
+      "text": "em đã ghi nhận yêu cầu đổi biến thể sang SKU-JK-WND-L-NAVY cho đơn OD600002",
+      "triage": "write_receipt_and_eligibility",
+      "decision": "requires_source_review",
+      "note": "Có biên nhận order.update trong lượt lưu. Biên nhận lịch sử không chứng minh điều kiện đổi/trả đã được xác minh; bản sửa hiện tại yêu cầu kiểm tra riêng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "16957edf5020d44c6ebfb273e919eddc83298977119e150c5f40cf14af80e3b9"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "pricing.get_quote",
+          "sha256": "8aa49261e1cd4bfd47e45891cd2cbc980c3fc1e480929d579f3b3993c9c691e2"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "order.update",
+          "sha256": "67650ef9f23e13e1e001640c3f7e9e897c9307a624019d10c88ee27c72141629"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 13,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T02",
+      "call": "call_3",
+      "turn": 1,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "018d38cd20b4875825114f174b976ed261e6433bb7434f87479daf952d9e435c",
+      "text": "núm ti đã bóc seal **không** được đổi trả vì lý do vệ sinh",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "1b8b87317bfe45ee9cd31b32bf5ed641dd758656b76199ac8e25023fa08664c7"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "0c60bc1b0ee9fee652b4ff4a05c236d4cb44040f65c27fcea3403ae325c81118"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "inventory.check",
+          "sha256": "37c946dd119616a6468e7a2d42a6bb0f72468d117d90bc290282716efa896fd0"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "pricing.get_quote",
+          "sha256": "b230c50e25c9f16abcdb7196bba6646fd9ebd7d8bbc9a84b2346f643d19d1521"
+        },
+        {
+          "pointer": "/tool_calls/3/result",
+          "tool": "order.status",
+          "sha256": "e0cdc154995d9d7cbbc077fa5ca0893cd8868716d20e908e77eb70210e247b48"
+        },
+        {
+          "pointer": "/tool_calls/4/result",
+          "tool": "policy.search",
+          "sha256": "89be3c43fef0ae64519639f3684034c0f5ede5d69e58f2068ebddc6cbbbc739b"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 16,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T03",
+      "call": "call_1",
+      "turn": 2,
+      "candidate_id": "claim-3",
+      "candidate_sha256": "5582bed65619224db6b88dabe04409aaa4f95b616bb1ded98b3427119b5b8696",
+      "text": "còn lõi lọc thì không được bảo hành anh nhé",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "edc05c6c6facfd13864df241f70cbc72dbd9a379f24e26980e9b45eadc179bc9"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "44555994a54a5147609c61f14b349c68151193e5e40f02d53ce1505ff70d961b"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "catalog.search",
+          "sha256": "873786e1df817759adab606617f92e2c4ed28385b7bc766569f4c7da7544ee96"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "pricing.get_quote",
+          "sha256": "c048b1ad5f01eeeaea941206a5a0940994dcfd861ce12761c7e808f6da996055"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 23,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T04",
+      "call": "call_1",
+      "turn": 2,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "869ad38d0ed838aa10e0fd6dca0c1ae9817c302906b63bb55b92c442abfee1ba",
+      "text": "Khách có thể mua gói bảo hành mở rộng thêm 12 tháng với giá bằng 8% giá sản phẩm",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "9ec18d84043b78d65d15d4390cc70d470c79796d6114c8f3da301a3220f0c4bc"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "4ed43199bcd53d4596e9e5b4189d553063b6398e4dd1c094ec14c16ac6d8fb57"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 26,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T04",
+      "call": "call_2",
+      "turn": 2,
+      "candidate_id": "claim-0",
+      "candidate_sha256": "1078d5fe9d1c022866a72bd7e797094c53c03d950597451dfed08e756427c688",
+      "text": "nên vẫn chưa xuất kho giao cho đơn vị vận chuyển chị nhé",
+      "triage": "fresh_owned_order_status",
+      "decision": "requires_source_review",
+      "note": "Cần trạng thái đơn đúng chủ thể ở thời điểm phát ngôn. Trạng thái created hoặc lời agent trước đó không thay thế lần tra trạng thái hiện tại.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "33e5b0c32b46e0432340fcc11158b78029510dbc9a0cc1b143845ef68b2e9e14"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "catalog.search",
+          "sha256": "e02b76bcef123d8ab42d337d267e50f30d814f6a4b6d9a72ddb6ae3b29c271a4"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 56,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T10",
+      "call": "call_1",
+      "turn": 1,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "e62f1a82e0bc6ffbe2d42d7bbf8702b7aebefbfa95432051870817b715e04dab",
+      "text": "Giá cụ thể như sau:",
+      "triage": "fragment_or_conversational_text",
+      "decision": "requires_source_review",
+      "note": "Tiêu đề, đoạn câu bị tách hoặc lời kết hội thoại có thể không phải khẳng định độc lập; cần xét nguyên câu trước khi đưa vào mẫu số claim.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "3234e35b6e14880695452f65e8b7dbfdb1bffa5c59e1468fbbc2d945758a3969"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "978ab7bc82325d9ab715d5f7b8412c714ab22d5bbbd100b3ab7676fc91305a04"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "catalog.search",
+          "sha256": "50ddedf90c6df9548a855dcccdfd373b02b73637e02b715079224106ed23acce"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "catalog.search",
+          "sha256": "f1bf6e401224686f53e3237e6ca40a02dbc2437b24d8da286365886631217b07"
+        },
+        {
+          "pointer": "/tool_calls/3/result",
+          "tool": "pricing.get_quote",
+          "sha256": "8ea5fdc2be9d19e102d2419aadc966399c78ec58020960dd9fb6c0a9bb089bf9"
+        },
+        {
+          "pointer": "/tool_calls/4/result",
+          "tool": "pricing.get_quote",
+          "sha256": "fea84c2fd3094e335b1f245ae2cf0259abee80ecfa069cff1ee4b0f37ddf2aca"
+        },
+        {
+          "pointer": "/tool_calls/5/result",
+          "tool": "inventory.check",
+          "sha256": "83395364f103d8c5b007e1e0efcc99a3db4daf45e674d15ac61b440e82998696"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 62,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T11",
+      "call": "call_1",
+      "turn": 2,
+      "candidate_id": "claim-0",
+      "candidate_sha256": "237f88bf0306f30ce69fb6e8fdc92717c562442f11d8261d8d669f662acd655e",
+      "text": "Em kiểm tra đơn OD301177: đơn đang giao ạ",
+      "triage": "fresh_owned_order_status",
+      "decision": "requires_source_review",
+      "note": "Cần trạng thái đơn đúng chủ thể ở thời điểm phát ngôn. Trạng thái created hoặc lời agent trước đó không thay thế lần tra trạng thái hiện tại.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "562354698e17ac94a1c72dc4a0fe05c6a5f60cf809c32dfa97c7ee96749375e5"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "order.status",
+          "sha256": "c8c96983f25bbbf4485b4ec0696e4c84685f11bed757f7ce6066fc96a6bfc1ce"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "policy.search",
+          "sha256": "aee6e25d53cc81d3080368faf2c099023b6a3b1b1ea3b13241ec22a21c09abd3"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 62,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T11",
+      "call": "call_1",
+      "turn": 2,
+      "candidate_id": "claim-2",
+      "candidate_sha256": "8ecc7046258af59b9ab18a511a6392ac8f1c8c115fa647f98d3223ea9391bd9a",
+      "text": "Theo thông tin chính sách đã kiểm tra: Giao hàng thất bại",
+      "triage": "fragment_or_conversational_text",
+      "decision": "requires_source_review",
+      "note": "Tiêu đề, đoạn câu bị tách hoặc lời kết hội thoại có thể không phải khẳng định độc lập; cần xét nguyên câu trước khi đưa vào mẫu số claim.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "562354698e17ac94a1c72dc4a0fe05c6a5f60cf809c32dfa97c7ee96749375e5"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "order.status",
+          "sha256": "c8c96983f25bbbf4485b4ec0696e4c84685f11bed757f7ce6066fc96a6bfc1ce"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "policy.search",
+          "sha256": "aee6e25d53cc81d3080368faf2c099023b6a3b1b1ea3b13241ec22a21c09abd3"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 62,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T11",
+      "call": "call_1",
+      "turn": 2,
+      "candidate_id": "claim-3",
+      "candidate_sha256": "6ad920c32313cd73a4a7807297fcf3a5e43858a027f7c50feff4b09fff6ed0c0",
+      "text": "Đơn vị vận chuyển giao tối đa 3 lần",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "562354698e17ac94a1c72dc4a0fe05c6a5f60cf809c32dfa97c7ee96749375e5"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "order.status",
+          "sha256": "c8c96983f25bbbf4485b4ec0696e4c84685f11bed757f7ce6066fc96a6bfc1ce"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "policy.search",
+          "sha256": "aee6e25d53cc81d3080368faf2c099023b6a3b1b1ea3b13241ec22a21c09abd3"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 62,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T11",
+      "call": "call_1",
+      "turn": 2,
+      "candidate_id": "claim-4",
+      "candidate_sha256": "204e43215804366d3bb851bbd5b35565a2c595e6d183dbc49b86e8a45b2cdd0e",
+      "text": "khách muốn giao lại phải đặt đơn mới",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "562354698e17ac94a1c72dc4a0fe05c6a5f60cf809c32dfa97c7ee96749375e5"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "order.status",
+          "sha256": "c8c96983f25bbbf4485b4ec0696e4c84685f11bed757f7ce6066fc96a6bfc1ce"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "policy.search",
+          "sha256": "aee6e25d53cc81d3080368faf2c099023b6a3b1b1ea3b13241ec22a21c09abd3"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 65,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T12",
+      "call": "call_1",
+      "turn": 1,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "1b1a9ace459df1accff92a14712ab25910ee1868f79ef99d16e11530032a63e6",
+      "text": "Theo thông tin chính sách đã kiểm tra: Tài liệu này quy định cách áp dụng các chương trình trong `catalog/promotions",
+      "triage": "fragment_or_conversational_text",
+      "decision": "requires_source_review",
+      "note": "Tiêu đề, đoạn câu bị tách hoặc lời kết hội thoại có thể không phải khẳng định độc lập; cần xét nguyên câu trước khi đưa vào mẫu số claim.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "fd2f216a0aaa4e084c8b5101415c94d1c8acde9c7eed72bdba035eb885fd0eb4"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "a228f288295fe75e180bf386318808cf23c93a7615d819cda5ba971b1cc02eb1"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "order.status",
+          "sha256": "acf1f3a87c901820db9dd82f8fba45bab24748eccf4bd9113b4893cfc90247dc"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "policy.search",
+          "sha256": "a3a6f649ec168e5f890efae390feb37b606b7a0aaba33ddf64d3e33660d5e10e"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 65,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T12",
+      "call": "call_1",
+      "turn": 1,
+      "candidate_id": "claim-4",
+      "candidate_sha256": "f88a6232716c639b6b4653eaa86f7074157f30cc1e00c9ddeca187618a6d2f1f",
+      "text": "máy cũ do đơn vị vận chuyển thu khi giao máy mới",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "fd2f216a0aaa4e084c8b5101415c94d1c8acde9c7eed72bdba035eb885fd0eb4"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "a228f288295fe75e180bf386318808cf23c93a7615d819cda5ba971b1cc02eb1"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "order.status",
+          "sha256": "acf1f3a87c901820db9dd82f8fba45bab24748eccf4bd9113b4893cfc90247dc"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "policy.search",
+          "sha256": "a3a6f649ec168e5f890efae390feb37b606b7a0aaba33ddf64d3e33660d5e10e"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 87,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T16",
+      "call": "call_1",
+      "turn": 2,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "65fafa0d8bd2f91b8bcda7f685d561e9b0c49006534ed7c4b4a63fe407a38df6",
+      "text": "bảo hành lấy từ catalog",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "2c6a364aeac320ba5fe9845bd05cd6bfb6500b85e5d735d2a4b2d392d958724b"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "2bf209d9a5b2379b5111f3c3bdfbba2636fee35e4165e479a7f0ded42b0cb6d1"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 90,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T16",
+      "call": "call_2",
+      "turn": 2,
+      "candidate_id": "claim-0",
+      "candidate_sha256": "61658dd4e2078875fa5a534704e1a95b8b60367510e635497254ed9a4135f93e",
+      "text": "nên vẫn chưa được xuất kho giao đi anh nhé",
+      "triage": "fresh_owned_order_status",
+      "decision": "requires_source_review",
+      "note": "Cần trạng thái đơn đúng chủ thể ở thời điểm phát ngôn. Trạng thái created hoặc lời agent trước đó không thay thế lần tra trạng thái hiện tại.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "b2cf697cb7761dd978ad406b4742e41fac322c3162f6b56da6a83f9020b58cb0"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "catalog.search",
+          "sha256": "252e921ec91fec60493a6380627bc0370fa15d76dc4924c13afd10998abeb25e"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 98,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T18",
+      "call": "call_1",
+      "turn": 1,
+      "candidate_id": "claim-2",
+      "candidate_sha256": "18931b2c40f123d5568bece21983ba39c919b9e06636b798933a64db777dd3d5",
+      "text": "em gửi anh giá của hai sản phẩm này ạ:",
+      "triage": "fragment_or_conversational_text",
+      "decision": "requires_source_review",
+      "note": "Tiêu đề, đoạn câu bị tách hoặc lời kết hội thoại có thể không phải khẳng định độc lập; cần xét nguyên câu trước khi đưa vào mẫu số claim.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "14069af9c99c6c77fb27d6dafcbf202f3e377c5491231513b7be1cd3f47f7c9a"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "a0431df3c2fa71cc630fd7113ddb5a90b87d2236cc90a5f44cd566ed0bb859d0"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "catalog.search",
+          "sha256": "6b75076ffc586e381b3c76e94031293e7c8efe3674bbc00835661da1d979042c"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "catalog.search",
+          "sha256": "3ec08429c09e299f93acdbd6e3378e0c65771c2fd1391633bf52385d10464498"
+        },
+        {
+          "pointer": "/tool_calls/3/result",
+          "tool": "pricing.get_quote",
+          "sha256": "94fa4d693a72ed73be72d67d137459442ad6f3a2895d4d358bda40d3491343f5"
+        },
+        {
+          "pointer": "/tool_calls/4/result",
+          "tool": "pricing.get_quote",
+          "sha256": "bc9f0ccaafd710fcced0bdba361343d71fdf075d7f8fef34809181996fff2875"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 99,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T18",
+      "call": "call_1",
+      "turn": 2,
+      "candidate_id": "claim-2",
+      "candidate_sha256": "2428ed8b7cddab2f321da97840b3a3f778afc1167b1cadf15603b0b12c848ec1",
+      "text": "núm ti đã bóc seal **không** được đổi trả vì lý do vệ sinh",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "636d7a1b91820314e40ee7c46adb23256d924d5f448b25dbf759def91cfb8a88"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "288c5451c1ad9d9fae319a2ad4acd4294b492cf91efef4316b997d36b6551e58"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 104,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T19",
+      "call": "call_1",
+      "turn": 2,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "869ad38d0ed838aa10e0fd6dca0c1ae9817c302906b63bb55b92c442abfee1ba",
+      "text": "Khách có thể mua gói bảo hành mở rộng thêm 12 tháng với giá bằng 8% giá sản phẩm",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "ced4ca774f6960d27d76ec348cd7b6c79e12a6984704c588050a900500606bb9"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "15ff3fadcac065b61b4331e6b4bca126d79d64a27bcb0dfffde5a81aeed96215"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 111,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T20",
+      "call": "call_2",
+      "turn": 1,
+      "candidate_id": "claim-0",
+      "candidate_sha256": "cb374921e25c76245e21fa1dbab85543da76c6a5651931a088bbdc91b1b4ebf0",
+      "text": "em đã ghi nhận chị nhận được áo và muốn đổi sang size XL màu be do mặc hơi chật ạ",
+      "triage": "cross_turn_customer_source",
+      "decision": "requires_source_review",
+      "note": "Cần đối chiếu nguyên lời khách và lượt trước cùng chủ thể; không coi trí nhớ agent hay sự đồng ý cũ là quyền ghi mới.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "e625e932470b88d95e36242dca1517053aa33cc831b5d718d3bacefcb4bc727d"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "7d6a4b8e5ea020c529e3b249ff9d6bd6b4b2d895860b9f175dddf1f55d56ce7c"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "inventory.check",
+          "sha256": "37c946dd119616a6468e7a2d42a6bb0f72468d117d90bc290282716efa896fd0"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "pricing.get_quote",
+          "sha256": "5808021a3c763c138eaa6512f2de8c058d0775a991cc718f48a03a8dd923eaa1"
+        },
+        {
+          "pointer": "/tool_calls/3/result",
+          "tool": "catalog.search",
+          "sha256": "8d801b4b508bd3f2d42f297bd4afa7da609034f0869db4f26e8817abe2938252"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 113,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T20",
+      "call": "call_2",
+      "turn": 3,
+      "candidate_id": "claim-0",
+      "candidate_sha256": "6e4c20cdf6851334f9d87c81cff9e4460e3bf7e82fe586dbf42ebf753a420247",
+      "text": "em đã ghi nhận yêu cầu đổi biến thể sang SKU-JK-WND-XL-NAVY cho đơn OD600016",
+      "triage": "write_receipt_and_eligibility",
+      "decision": "requires_source_review",
+      "note": "Có biên nhận order.update trong lượt lưu. Biên nhận lịch sử không chứng minh điều kiện đổi/trả đã được xác minh; bản sửa hiện tại yêu cầu kiểm tra riêng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "ccba2586b4b0149144d28a6adecdfbb931ebd287f4d5dc25e77fabf81eb1628d"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "order.update",
+          "sha256": "2aa1c49bd96a2ed6ec831ef997e33afb8281fa45215246be79fdf13597be0376"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 114,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T20",
+      "call": "call_3",
+      "turn": 1,
+      "candidate_id": "claim-0",
+      "candidate_sha256": "6528256fe986ad4f53b5664b24c20e600e309af0f7d7886f70c5a192fcdaf2d8",
+      "text": "về quy trình thu hồi và điều kiện đổi hàng",
+      "triage": "fragment_or_conversational_text",
+      "decision": "requires_source_review",
+      "note": "Tiêu đề, đoạn câu bị tách hoặc lời kết hội thoại có thể không phải khẳng định độc lập; cần xét nguyên câu trước khi đưa vào mẫu số claim.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "9886d78df8744ebb1277c6648aa9173868c3fe0b57bafc7bb6350c808b0ed309"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "7d6a4b8e5ea020c529e3b249ff9d6bd6b4b2d895860b9f175dddf1f55d56ce7c"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "inventory.check",
+          "sha256": "37c946dd119616a6468e7a2d42a6bb0f72468d117d90bc290282716efa896fd0"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "pricing.get_quote",
+          "sha256": "ad2601c4974bfe1095fe70ce9155b3514187b16a534748e238297ca16d798c00"
+        },
+        {
+          "pointer": "/tool_calls/3/result",
+          "tool": "order.status",
+          "sha256": "052f681b56f0e5e1bf2b11ac52f58a0aa08eb8ecc5217f84c6501a39673041f5"
+        },
+        {
+          "pointer": "/tool_calls/4/result",
+          "tool": "policy.search",
+          "sha256": "b7e1b12f72f269519e3b6ec97e7e17c581d7aa7bcd45dadead5ef9dd5d74e0be"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 114,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T20",
+      "call": "call_3",
+      "turn": 1,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "961a4c17f6451fa62ac397adff1d309dd471e21b1609e042f70a71cd02adbc6f",
+      "text": "hộp đựng trong chính sách hiện có",
+      "triage": "fragment_or_conversational_text",
+      "decision": "requires_source_review",
+      "note": "Tiêu đề, đoạn câu bị tách hoặc lời kết hội thoại có thể không phải khẳng định độc lập; cần xét nguyên câu trước khi đưa vào mẫu số claim.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "9886d78df8744ebb1277c6648aa9173868c3fe0b57bafc7bb6350c808b0ed309"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "7d6a4b8e5ea020c529e3b249ff9d6bd6b4b2d895860b9f175dddf1f55d56ce7c"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "inventory.check",
+          "sha256": "37c946dd119616a6468e7a2d42a6bb0f72468d117d90bc290282716efa896fd0"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "pricing.get_quote",
+          "sha256": "ad2601c4974bfe1095fe70ce9155b3514187b16a534748e238297ca16d798c00"
+        },
+        {
+          "pointer": "/tool_calls/3/result",
+          "tool": "order.status",
+          "sha256": "052f681b56f0e5e1bf2b11ac52f58a0aa08eb8ecc5217f84c6501a39673041f5"
+        },
+        {
+          "pointer": "/tool_calls/4/result",
+          "tool": "policy.search",
+          "sha256": "b7e1b12f72f269519e3b6ec97e7e17c581d7aa7bcd45dadead5ef9dd5d74e0be"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 115,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T20",
+      "call": "call_3",
+      "turn": 2,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "018d38cd20b4875825114f174b976ed261e6433bb7434f87479daf952d9e435c",
+      "text": "núm ti đã bóc seal **không** được đổi trả vì lý do vệ sinh",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "42b3390dfa85b72a93ae52fd630eaa9a19b069c1e14ba081a3530c0a43b4eba0"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "order.status",
+          "sha256": "052f681b56f0e5e1bf2b11ac52f58a0aa08eb8ecc5217f84c6501a39673041f5"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "policy.search",
+          "sha256": "f72ae18c939ef50f0787cb9f8a692aaf310175616c64c28ceb71f8cc74f42abb"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 126,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC-T22",
+      "call": "call_2",
+      "turn": 1,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "018d38cd20b4875825114f174b976ed261e6433bb7434f87479daf952d9e435c",
+      "text": "núm ti đã bóc seal **không** được đổi trả vì lý do vệ sinh",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "824e13e2d6a0bb7918cb033667cca3fe7b28346485754f01bd009419400b8300"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "3a0a44dfef7dac651368811f32c86fd3060a50a0bb8c8470b01d772627b42c1b"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "inventory.check",
+          "sha256": "b5b752cc90a4b9c196aac69f06254114b13a28fcdab9888baf5e6609b4b33489"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "pricing.get_quote",
+          "sha256": "73560c8976bf8a3d06cc02c4ab37744d1129b86fb71ef26a4ac0ded8f6e52508"
+        },
+        {
+          "pointer": "/tool_calls/3/result",
+          "tool": "order.status",
+          "sha256": "782f2a3b8b49e9d0bea15ffd11dfb1dd99d4050f7d6eceb5f1557f5a13945b03"
+        },
+        {
+          "pointer": "/tool_calls/4/result",
+          "tool": "policy.search",
+          "sha256": "318329e41e416e163fef049f97e57adb44c53cf0e7ed0dda30c45a6d732b2b78"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 140,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC02",
+      "call": "call_1",
+      "turn": 3,
+      "candidate_id": "claim-0",
+      "candidate_sha256": "922ad6e82b4ad61bf41d7525bf3320af7fa77939cc2a358abc364301c20961eb",
+      "text": "Theo thông tin chính sách đã kiểm tra: Cách bảo hành",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "87af1844f8df770defaf1a9af36112231a3d829259679b2ebf18b725d5395245"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "ab0c36dedc28064b41d6c7acf173f0a2ac1fdfcbc93e6e9e22e5874129960859"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 140,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC02",
+      "call": "call_1",
+      "turn": 3,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "02c14e368140b741ae2d3073145d254f69b0c17d0382b45b75e57b143aad0a3a",
+      "text": "Khách mang sản phẩm đến trung tâm bảo hành hãng hoặc gửi về shop (shop hỗ trợ chuyển đến hãng",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "87af1844f8df770defaf1a9af36112231a3d829259679b2ebf18b725d5395245"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "ab0c36dedc28064b41d6c7acf173f0a2ac1fdfcbc93e6e9e22e5874129960859"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 140,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC02",
+      "call": "call_1",
+      "turn": 3,
+      "candidate_id": "claim-2",
+      "candidate_sha256": "369aa6d28eff98e73f4dd2bdcd536ac7096a1efab5dfa3fffb82dc1558d55fe8",
+      "text": "Trong thời gian bảo hành máy lọc nước",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "87af1844f8df770defaf1a9af36112231a3d829259679b2ebf18b725d5395245"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "ab0c36dedc28064b41d6c7acf173f0a2ac1fdfcbc93e6e9e22e5874129960859"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 140,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC02",
+      "call": "call_1",
+      "turn": 3,
+      "candidate_id": "claim-3",
+      "candidate_sha256": "3f67f688770a13647531bb96a14636347450d5cdd13a66b7797a415a5201266a",
+      "text": "Phạm vi bảo hành",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "87af1844f8df770defaf1a9af36112231a3d829259679b2ebf18b725d5395245"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "ab0c36dedc28064b41d6c7acf173f0a2ac1fdfcbc93e6e9e22e5874129960859"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 140,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC02",
+      "call": "call_1",
+      "turn": 3,
+      "candidate_id": "claim-4",
+      "candidate_sha256": "3b882796636e7bb48d1d5fc145b957410478a0bdb0a20b5f2fbdfb810f0c1509",
+      "text": "Không bảo hành: hao mòn tự nhiên (màng lọc",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "87af1844f8df770defaf1a9af36112231a3d829259679b2ebf18b725d5395245"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "ab0c36dedc28064b41d6c7acf173f0a2ac1fdfcbc93e6e9e22e5874129960859"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 140,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC02",
+      "call": "call_1",
+      "turn": 3,
+      "candidate_id": "claim-5",
+      "candidate_sha256": "eccec88ce1e97ab0331b4b9cd6d6429a55536c45ab9fc818c8514e54de4dd10e",
+      "text": "Bảo hành mở rộng",
+      "triage": "fragment_or_conversational_text",
+      "decision": "requires_source_review",
+      "note": "Tiêu đề, đoạn câu bị tách hoặc lời kết hội thoại có thể không phải khẳng định độc lập; cần xét nguyên câu trước khi đưa vào mẫu số claim.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "87af1844f8df770defaf1a9af36112231a3d829259679b2ebf18b725d5395245"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "ab0c36dedc28064b41d6c7acf173f0a2ac1fdfcbc93e6e9e22e5874129960859"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 140,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC02",
+      "call": "call_1",
+      "turn": 3,
+      "candidate_id": "claim-6",
+      "candidate_sha256": "242950184296bdd3188dac4404880747b009404b6d5992591b902457cb2fbfc7",
+      "text": "Khách có thể mua gói bảo hành mở rộng thêm 12 tháng với giá bằng 8% giá sản phẩm",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "87af1844f8df770defaf1a9af36112231a3d829259679b2ebf18b725d5395245"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "ab0c36dedc28064b41d6c7acf173f0a2ac1fdfcbc93e6e9e22e5874129960859"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 141,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC02",
+      "call": "call_2",
+      "turn": 1,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "f989984d2f886a87e412256a6687f68a486867bf273b298c57e9f9e891bd20d3",
+      "text": "Mình đang cân nhắc Máy lọc không khí AirPure X và mức giá",
+      "triage": "cross_turn_customer_source",
+      "decision": "requires_source_review",
+      "note": "Cần đối chiếu nguyên lời khách và lượt trước cùng chủ thể; không coi trí nhớ agent hay sự đồng ý cũ là quyền ghi mới.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "70593f266221490da5a1579df6cf844c66e1391b3845e56d69fc21b1df7fa2a3"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "15f807c51601c2320ed5a08592df328a25943b2780cf45d21bc2265e7045efdd"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "inventory.check",
+          "sha256": "47fd69653fa23c5db0aa235b230ddec0a742a1007bb9a4bed6ced2b3aab52a08"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "pricing.get_quote",
+          "sha256": "ba45aebc299a2617611be18aab34d6f29d41f17beab5b2b240aa6812986f8d67"
+        },
+        {
+          "pointer": "/tool_calls/3/result",
+          "tool": "catalog.search",
+          "sha256": "520283b555396c69e512ce3290ec0663b72240e7af7d1854f8efba6a1943cb3b"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 142,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC02",
+      "call": "call_2",
+      "turn": 2,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "f989984d2f886a87e412256a6687f68a486867bf273b298c57e9f9e891bd20d3",
+      "text": "Mình đang cân nhắc Máy lọc không khí AirPure X và mức giá",
+      "triage": "cross_turn_customer_source",
+      "decision": "requires_source_review",
+      "note": "Cần đối chiếu nguyên lời khách và lượt trước cùng chủ thể; không coi trí nhớ agent hay sự đồng ý cũ là quyền ghi mới.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "72b90d53a5ebf59b6c8d4d0f6b6eb6d74152f2878430d8541a015089ee88acfc"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 149,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC03",
+      "call": "call_2",
+      "turn": 3,
+      "candidate_id": "claim-0",
+      "candidate_sha256": "b802d7deaaed596dd134309fcb305471ea1d52b9f18c5bf6411db72d2c22942f",
+      "text": "em đã ghi nhận yêu cầu đổi biến thể sang SKU-SN-CAS-40-DEN cho đơn OD600021",
+      "triage": "write_receipt_and_eligibility",
+      "decision": "requires_source_review",
+      "note": "Có biên nhận order.update trong lượt lưu. Biên nhận lịch sử không chứng minh điều kiện đổi/trả đã được xác minh; bản sửa hiện tại yêu cầu kiểm tra riêng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "e18d5fc1b3c37c43b2e499c073dc8b908f1367941c34c3cb6567b598d0de85e7"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "order.update",
+          "sha256": "6366e1ab31d247db29819f08fbaaf991135de6e57d82472548e14d5d164d2257"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 153,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC04",
+      "call": "call_2",
+      "turn": 1,
+      "candidate_id": "claim-0",
+      "candidate_sha256": "d116b501b9e7025c412bbd299ca383497289db9f027054794f0c54d9ee71f021",
+      "text": "lần trước mình đã trao đổi về mẫu Giày chạy bộ RunLite 2 Pro",
+      "triage": "cross_turn_customer_source",
+      "decision": "requires_source_review",
+      "note": "Cần đối chiếu nguyên lời khách và lượt trước cùng chủ thể; không coi trí nhớ agent hay sự đồng ý cũ là quyền ghi mới.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "dce6dc1b832bf1229eabe160673950aca7fea6195736cd82fd09b1d3f9ee000e"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "d956b3806ddb517048075886e690aa4b64cd3d6bfb3c94d46c14e6eed05e0302"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "inventory.check",
+          "sha256": "02c70aadb78b8a1662a73c0c30088ece71948cb4ee2cfb69258763fa20a72c1c"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "pricing.get_quote",
+          "sha256": "03cac8f625ff5dbcf5d286887578cb656f17dd94e5a96294670967c4e6be29cb"
+        },
+        {
+          "pointer": "/tool_calls/3/result",
+          "tool": "catalog.search",
+          "sha256": "4e9daef352a8e4cc36210c63ff1a377d97d5a3a914cb58e6f640115615ac9ac3"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 158,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC05",
+      "call": "call_2",
+      "turn": 1,
+      "candidate_id": "claim-2",
+      "candidate_sha256": "4ab2849e7c6585c593e41635e411b06c99568e443d7a219bd9941a38c5fca8c8",
+      "text": "Giá hiện tại cao hơn mức mình đã đồng ý trước đó",
+      "triage": "cross_turn_customer_source",
+      "decision": "requires_source_review",
+      "note": "Cần đối chiếu nguyên lời khách và lượt trước cùng chủ thể; không coi trí nhớ agent hay sự đồng ý cũ là quyền ghi mới.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "b21eb7946196a7874e49a0b0fafdc71a2d820cd466138faf76797d95f26c3c1e"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "2f80e02d91973fc9afb7937d01cc226ce3c553d75b594cb9169124ea021752f6"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "inventory.check",
+          "sha256": "47fd69653fa23c5db0aa235b230ddec0a742a1007bb9a4bed6ced2b3aab52a08"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "pricing.get_quote",
+          "sha256": "b3ef0f72ea95b944dc8b0958f985627f6ea03dd59a52951a5679bd15e44a5776"
+        },
+        {
+          "pointer": "/tool_calls/3/result",
+          "tool": "catalog.search",
+          "sha256": "2bacf859fdd87e9d0c2f703f3a9e7707b999ba5c8b8889c9404378e273c0ee25"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 159,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC05",
+      "call": "call_2",
+      "turn": 2,
+      "candidate_id": "claim-5",
+      "candidate_sha256": "4df27b301b1cf4d62d2a46af9ad757f0db983f7cfcbcb2fb10a5dca1ccc0cb73",
+      "text": "miễn phí [TÊN ĐÃ ẨN] hộ COD ạ",
+      "triage": "masked_payment_wording",
+      "decision": "requires_source_review",
+      "note": "Cụm từ đã bị masker cũ che một phần; cần đối chiếu quote và nguyên câu đã lưu, không suy từ bản trích rằng ưu đãi được áp dụng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "f3f7165276f824339d1bdb176368ced70be49998c30f610d779dda1d8620bb24"
+        }
+      ]
+    },
+    {
+      "config": "full",
+      "trace_row": 163,
+      "run_id": "20261118T054721Z-ac17f7e7-full",
+      "scenario_id": "SC06",
+      "call": "call_1",
+      "turn": 3,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "00bcc517717445aec8bf912cc7412892239abbedafb9c7160e5d7d2b202462e5",
+      "text": "Anh cứ trao đổi với chị nhà rồi báo lại em nhé",
+      "triage": "fragment_or_conversational_text",
+      "decision": "requires_source_review",
+      "note": "Tiêu đề, đoạn câu bị tách hoặc lời kết hội thoại có thể không phải khẳng định độc lập; cần xét nguyên câu trước khi đưa vào mẫu số claim.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "3521a50e2c55b719970262d86e1f1f3058a7ed760aeabd1d6d34c9c9bfa76dc4"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 12,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC-T02",
+      "call": "call_2",
+      "turn": 3,
+      "candidate_id": "claim-0",
+      "candidate_sha256": "dc24f4a0791bc0fb3de804570e9f77d16003480363e6bf98540c54380cf48143",
+      "text": "em đã ghi nhận yêu cầu đổi biến thể sang SKU-JK-WND-L-NAVY cho đơn OD600001",
+      "triage": "write_receipt_and_eligibility",
+      "decision": "requires_source_review",
+      "note": "Có biên nhận order.update trong lượt lưu. Biên nhận lịch sử không chứng minh điều kiện đổi/trả đã được xác minh; bản sửa hiện tại yêu cầu kiểm tra riêng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "16957edf5020d44c6ebfb273e919eddc83298977119e150c5f40cf14af80e3b9"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "pricing.get_quote",
+          "sha256": "8aa49261e1cd4bfd47e45891cd2cbc980c3fc1e480929d579f3b3993c9c691e2"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "pricing.get_quote",
+          "sha256": "6715411e4dbc7275a6a623df0b235caa77eb7ac48e1f52d6f8bda20a6d588f9d"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "order.update",
+          "sha256": "53f0137f50c1dc2c26cf0cb9cc7fdb6517a7e18ebca748337c5e41a0b599fe44"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 23,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC-T04",
+      "call": "call_1",
+      "turn": 2,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "869ad38d0ed838aa10e0fd6dca0c1ae9817c302906b63bb55b92c442abfee1ba",
+      "text": "Khách có thể mua gói bảo hành mở rộng thêm 12 tháng với giá bằng 8% giá sản phẩm",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "9ec18d84043b78d65d15d4390cc70d470c79796d6114c8f3da301a3220f0c4bc"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "4ed43199bcd53d4596e9e5b4189d553063b6398e4dd1c094ec14c16ac6d8fb57"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 61,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC-T11",
+      "call": "call_1",
+      "turn": 1,
+      "candidate_id": "claim-0",
+      "candidate_sha256": "f9816cda4e9a420e7b70307ff9708c346ccca16d138414a8bc952ad8fcbbec7f",
+      "text": "em kiểm tra đơn hàng OD301177 máy hút sữa của chị thì trạng thái hiện đang là đang giao (shipping) với mã vận đơn là GHN7781234 chị nhé",
+      "triage": "fresh_owned_order_status",
+      "decision": "requires_source_review",
+      "note": "Cần trạng thái đơn đúng chủ thể ở thời điểm phát ngôn. Trạng thái created hoặc lời agent trước đó không thay thế lần tra trạng thái hiện tại.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "69e2aa51107ae8ff8f31549da04bfa8bbe4f7a69ec2bedb3608eab126673040e"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "3fce5b169703d8a0441e703e15b2d458ed26453987a8b4caaadad5d0f3e45f54"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "order.status",
+          "sha256": "c8c96983f25bbbf4485b4ec0696e4c84685f11bed757f7ce6066fc96a6bfc1ce"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "catalog.search",
+          "sha256": "80b849c08499f369bff57ba8d9967563ed249813e47380dd417e3f476713e389"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 62,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC-T11",
+      "call": "call_1",
+      "turn": 2,
+      "candidate_id": "claim-0",
+      "candidate_sha256": "237f88bf0306f30ce69fb6e8fdc92717c562442f11d8261d8d669f662acd655e",
+      "text": "Em kiểm tra đơn OD301177: đơn đang giao ạ",
+      "triage": "fresh_owned_order_status",
+      "decision": "requires_source_review",
+      "note": "Cần trạng thái đơn đúng chủ thể ở thời điểm phát ngôn. Trạng thái created hoặc lời agent trước đó không thay thế lần tra trạng thái hiện tại.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "562354698e17ac94a1c72dc4a0fe05c6a5f60cf809c32dfa97c7ee96749375e5"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "order.status",
+          "sha256": "c8c96983f25bbbf4485b4ec0696e4c84685f11bed757f7ce6066fc96a6bfc1ce"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "policy.search",
+          "sha256": "aee6e25d53cc81d3080368faf2c099023b6a3b1b1ea3b13241ec22a21c09abd3"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 62,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC-T11",
+      "call": "call_1",
+      "turn": 2,
+      "candidate_id": "claim-2",
+      "candidate_sha256": "8ecc7046258af59b9ab18a511a6392ac8f1c8c115fa647f98d3223ea9391bd9a",
+      "text": "Theo thông tin chính sách đã kiểm tra: Giao hàng thất bại",
+      "triage": "fragment_or_conversational_text",
+      "decision": "requires_source_review",
+      "note": "Tiêu đề, đoạn câu bị tách hoặc lời kết hội thoại có thể không phải khẳng định độc lập; cần xét nguyên câu trước khi đưa vào mẫu số claim.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "562354698e17ac94a1c72dc4a0fe05c6a5f60cf809c32dfa97c7ee96749375e5"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "order.status",
+          "sha256": "c8c96983f25bbbf4485b4ec0696e4c84685f11bed757f7ce6066fc96a6bfc1ce"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "policy.search",
+          "sha256": "aee6e25d53cc81d3080368faf2c099023b6a3b1b1ea3b13241ec22a21c09abd3"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 62,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC-T11",
+      "call": "call_1",
+      "turn": 2,
+      "candidate_id": "claim-3",
+      "candidate_sha256": "6ad920c32313cd73a4a7807297fcf3a5e43858a027f7c50feff4b09fff6ed0c0",
+      "text": "Đơn vị vận chuyển giao tối đa 3 lần",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "562354698e17ac94a1c72dc4a0fe05c6a5f60cf809c32dfa97c7ee96749375e5"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "order.status",
+          "sha256": "c8c96983f25bbbf4485b4ec0696e4c84685f11bed757f7ce6066fc96a6bfc1ce"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "policy.search",
+          "sha256": "aee6e25d53cc81d3080368faf2c099023b6a3b1b1ea3b13241ec22a21c09abd3"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 62,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC-T11",
+      "call": "call_1",
+      "turn": 2,
+      "candidate_id": "claim-4",
+      "candidate_sha256": "204e43215804366d3bb851bbd5b35565a2c595e6d183dbc49b86e8a45b2cdd0e",
+      "text": "khách muốn giao lại phải đặt đơn mới",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "562354698e17ac94a1c72dc4a0fe05c6a5f60cf809c32dfa97c7ee96749375e5"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "order.status",
+          "sha256": "c8c96983f25bbbf4485b4ec0696e4c84685f11bed757f7ce6066fc96a6bfc1ce"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "policy.search",
+          "sha256": "aee6e25d53cc81d3080368faf2c099023b6a3b1b1ea3b13241ec22a21c09abd3"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 63,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC-T11",
+      "call": "call_2",
+      "turn": 1,
+      "candidate_id": "claim-0",
+      "candidate_sha256": "b6a67e4f14abb5ad4d5a3136af09fe12eb368b95edcfd47457db4a54b80ab44d",
+      "text": "đơn hàng máy hút sữa OD301177 của chị hiện đang ở trạng thái đang giao (shipping) với mã vận đơn là GHN7781234 chị nhé",
+      "triage": "fresh_owned_order_status",
+      "decision": "requires_source_review",
+      "note": "Cần trạng thái đơn đúng chủ thể ở thời điểm phát ngôn. Trạng thái created hoặc lời agent trước đó không thay thế lần tra trạng thái hiện tại.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "12d9d7a7d0909f8b6a45165b500d70e632ec6444dec83eae74886f74511f5e7f"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "3fce5b169703d8a0441e703e15b2d458ed26453987a8b4caaadad5d0f3e45f54"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "order.status",
+          "sha256": "c8c96983f25bbbf4485b4ec0696e4c84685f11bed757f7ce6066fc96a6bfc1ce"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 64,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC-T11",
+      "call": "call_2",
+      "turn": 2,
+      "candidate_id": "claim-0",
+      "candidate_sha256": "b233da95c0d8c1ee76e75ac8734c9bf6788913fe21d6bbaacafbb211854cc7f1",
+      "text": "trên hệ thống ghi nhận đơn hàng máy hút sữa của chị hiện vẫn đang trong trạng thái đang giao (shipping) với mã vận đơn là GHN7781234 ạ",
+      "triage": "fresh_owned_order_status",
+      "decision": "requires_source_review",
+      "note": "Cần trạng thái đơn đúng chủ thể ở thời điểm phát ngôn. Trạng thái created hoặc lời agent trước đó không thay thế lần tra trạng thái hiện tại.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "d6a3d1d00831298c6b0756f1131d2623857fcc2d3e6d25007d1bb93d5e38cdd5"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "order.status",
+          "sha256": "c8c96983f25bbbf4485b4ec0696e4c84685f11bed757f7ce6066fc96a6bfc1ce"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 65,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC-T12",
+      "call": "call_1",
+      "turn": 1,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "1b1a9ace459df1accff92a14712ab25910ee1868f79ef99d16e11530032a63e6",
+      "text": "Theo thông tin chính sách đã kiểm tra: Tài liệu này quy định cách áp dụng các chương trình trong `catalog/promotions",
+      "triage": "fragment_or_conversational_text",
+      "decision": "requires_source_review",
+      "note": "Tiêu đề, đoạn câu bị tách hoặc lời kết hội thoại có thể không phải khẳng định độc lập; cần xét nguyên câu trước khi đưa vào mẫu số claim.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "fd2f216a0aaa4e084c8b5101415c94d1c8acde9c7eed72bdba035eb885fd0eb4"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "a228f288295fe75e180bf386318808cf23c93a7615d819cda5ba971b1cc02eb1"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "order.status",
+          "sha256": "acf1f3a87c901820db9dd82f8fba45bab24748eccf4bd9113b4893cfc90247dc"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "policy.search",
+          "sha256": "a3a6f649ec168e5f890efae390feb37b606b7a0aaba33ddf64d3e33660d5e10e"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 65,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC-T12",
+      "call": "call_1",
+      "turn": 1,
+      "candidate_id": "claim-4",
+      "candidate_sha256": "f88a6232716c639b6b4653eaa86f7074157f30cc1e00c9ddeca187618a6d2f1f",
+      "text": "máy cũ do đơn vị vận chuyển thu khi giao máy mới",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "fd2f216a0aaa4e084c8b5101415c94d1c8acde9c7eed72bdba035eb885fd0eb4"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "a228f288295fe75e180bf386318808cf23c93a7615d819cda5ba971b1cc02eb1"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "order.status",
+          "sha256": "acf1f3a87c901820db9dd82f8fba45bab24748eccf4bd9113b4893cfc90247dc"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "policy.search",
+          "sha256": "a3a6f649ec168e5f890efae390feb37b606b7a0aaba33ddf64d3e33660d5e10e"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 87,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC-T16",
+      "call": "call_1",
+      "turn": 2,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "65fafa0d8bd2f91b8bcda7f685d561e9b0c49006534ed7c4b4a63fe407a38df6",
+      "text": "bảo hành lấy từ catalog",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "2c6a364aeac320ba5fe9845bd05cd6bfb6500b85e5d735d2a4b2d392d958724b"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "2bf209d9a5b2379b5111f3c3bdfbba2636fee35e4165e479a7f0ded42b0cb6d1"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 98,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC-T18",
+      "call": "call_1",
+      "turn": 1,
+      "candidate_id": "claim-0",
+      "candidate_sha256": "b10062c435db48dfe6adf66dca9d26ae5b337fc24b8c6ee9b2c192f5e7a583eb",
+      "text": "em gửi anh giá của hai sản phẩm này ạ:",
+      "triage": "fragment_or_conversational_text",
+      "decision": "requires_source_review",
+      "note": "Tiêu đề, đoạn câu bị tách hoặc lời kết hội thoại có thể không phải khẳng định độc lập; cần xét nguyên câu trước khi đưa vào mẫu số claim.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "14069af9c99c6c77fb27d6dafcbf202f3e377c5491231513b7be1cd3f47f7c9a"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "a0431df3c2fa71cc630fd7113ddb5a90b87d2236cc90a5f44cd566ed0bb859d0"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "catalog.search",
+          "sha256": "6b75076ffc586e381b3c76e94031293e7c8efe3674bbc00835661da1d979042c"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "catalog.search",
+          "sha256": "3ec08429c09e299f93acdbd6e3378e0c65771c2fd1391633bf52385d10464498"
+        },
+        {
+          "pointer": "/tool_calls/3/result",
+          "tool": "pricing.get_quote",
+          "sha256": "94fa4d693a72ed73be72d67d137459442ad6f3a2895d4d358bda40d3491343f5"
+        },
+        {
+          "pointer": "/tool_calls/4/result",
+          "tool": "pricing.get_quote",
+          "sha256": "bc9f0ccaafd710fcced0bdba361343d71fdf075d7f8fef34809181996fff2875"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 99,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC-T18",
+      "call": "call_1",
+      "turn": 2,
+      "candidate_id": "claim-2",
+      "candidate_sha256": "2428ed8b7cddab2f321da97840b3a3f778afc1167b1cadf15603b0b12c848ec1",
+      "text": "núm ti đã bóc seal **không** được đổi trả vì lý do vệ sinh",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "636d7a1b91820314e40ee7c46adb23256d924d5f448b25dbf759def91cfb8a88"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "288c5451c1ad9d9fae319a2ad4acd4294b492cf91efef4316b997d36b6551e58"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 104,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC-T19",
+      "call": "call_1",
+      "turn": 2,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "869ad38d0ed838aa10e0fd6dca0c1ae9817c302906b63bb55b92c442abfee1ba",
+      "text": "Khách có thể mua gói bảo hành mở rộng thêm 12 tháng với giá bằng 8% giá sản phẩm",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "ced4ca774f6960d27d76ec348cd7b6c79e12a6984704c588050a900500606bb9"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "15ff3fadcac065b61b4331e6b4bca126d79d64a27bcb0dfffde5a81aeed96215"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 113,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC-T20",
+      "call": "call_2",
+      "turn": 3,
+      "candidate_id": "claim-0",
+      "candidate_sha256": "24d497355ba5fbc3ee3d3c1f5bd45cf573240f35b5deb934595ad5f81e268e77",
+      "text": "em đã ghi nhận yêu cầu đổi biến thể sang SKU-JK-WND-XL-NAVY cho đơn OD600013",
+      "triage": "write_receipt_and_eligibility",
+      "decision": "requires_source_review",
+      "note": "Có biên nhận order.update trong lượt lưu. Biên nhận lịch sử không chứng minh điều kiện đổi/trả đã được xác minh; bản sửa hiện tại yêu cầu kiểm tra riêng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "ccba2586b4b0149144d28a6adecdfbb931ebd287f4d5dc25e77fabf81eb1628d"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "order.update",
+          "sha256": "80c7b3257d707d2d20977e34ba15a2582d87a91347bb136c6b5255c630b59a34"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 114,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC-T20",
+      "call": "call_3",
+      "turn": 1,
+      "candidate_id": "claim-0",
+      "candidate_sha256": "6528256fe986ad4f53b5664b24c20e600e309af0f7d7886f70c5a192fcdaf2d8",
+      "text": "về quy trình thu hồi và điều kiện đổi hàng",
+      "triage": "fragment_or_conversational_text",
+      "decision": "requires_source_review",
+      "note": "Tiêu đề, đoạn câu bị tách hoặc lời kết hội thoại có thể không phải khẳng định độc lập; cần xét nguyên câu trước khi đưa vào mẫu số claim.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "9886d78df8744ebb1277c6648aa9173868c3fe0b57bafc7bb6350c808b0ed309"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "55fb75a37e270a41e372b56df21b5ba1a877b4751c91e4a5235d7dcd6f2ff0ad"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "order.status",
+          "sha256": "43a406d07b8236dafdbe1fb3afd993e7350fde941def12a2537b3b3e77b47273"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "policy.search",
+          "sha256": "cadef47ec606d767d9e2a69f7b0f08f7cc11e8cadd7aad211f052c61704d8251"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 114,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC-T20",
+      "call": "call_3",
+      "turn": 1,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "248622cc8954152fcf3750a54629a0e851c65db847dc325bd318d96268a49437",
+      "text": "bao bì trong chính sách đổi trả",
+      "triage": "fragment_or_conversational_text",
+      "decision": "requires_source_review",
+      "note": "Tiêu đề, đoạn câu bị tách hoặc lời kết hội thoại có thể không phải khẳng định độc lập; cần xét nguyên câu trước khi đưa vào mẫu số claim.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "9886d78df8744ebb1277c6648aa9173868c3fe0b57bafc7bb6350c808b0ed309"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "55fb75a37e270a41e372b56df21b5ba1a877b4751c91e4a5235d7dcd6f2ff0ad"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "order.status",
+          "sha256": "43a406d07b8236dafdbe1fb3afd993e7350fde941def12a2537b3b3e77b47273"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "policy.search",
+          "sha256": "cadef47ec606d767d9e2a69f7b0f08f7cc11e8cadd7aad211f052c61704d8251"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 115,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC-T20",
+      "call": "call_3",
+      "turn": 2,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "018d38cd20b4875825114f174b976ed261e6433bb7434f87479daf952d9e435c",
+      "text": "núm ti đã bóc seal **không** được đổi trả vì lý do vệ sinh",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "42b3390dfa85b72a93ae52fd630eaa9a19b069c1e14ba081a3530c0a43b4eba0"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "order.status",
+          "sha256": "43a406d07b8236dafdbe1fb3afd993e7350fde941def12a2537b3b3e77b47273"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "policy.search",
+          "sha256": "f72ae18c939ef50f0787cb9f8a692aaf310175616c64c28ceb71f8cc74f42abb"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 126,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC-T22",
+      "call": "call_2",
+      "turn": 1,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "018d38cd20b4875825114f174b976ed261e6433bb7434f87479daf952d9e435c",
+      "text": "núm ti đã bóc seal **không** được đổi trả vì lý do vệ sinh",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "824e13e2d6a0bb7918cb033667cca3fe7b28346485754f01bd009419400b8300"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "crm.get_customer",
+          "sha256": "ba5e0103d7a2dca4f2a66f505812c2444cf283ac2534eefba9223e765e134452"
+        },
+        {
+          "pointer": "/tool_calls/1/result",
+          "tool": "order.status",
+          "sha256": "fdd0539766df61d9ce101530ad01d096b0a16985f7f3134da13f19e4d0b631cc"
+        },
+        {
+          "pointer": "/tool_calls/2/result",
+          "tool": "policy.search",
+          "sha256": "3ffcebe84c29f1c4980bf12d31c234fe007a7fefdbd75e0471da0c735aa8266b"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 140,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC02",
+      "call": "call_1",
+      "turn": 3,
+      "candidate_id": "claim-0",
+      "candidate_sha256": "922ad6e82b4ad61bf41d7525bf3320af7fa77939cc2a358abc364301c20961eb",
+      "text": "Theo thông tin chính sách đã kiểm tra: Cách bảo hành",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "87af1844f8df770defaf1a9af36112231a3d829259679b2ebf18b725d5395245"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "ab0c36dedc28064b41d6c7acf173f0a2ac1fdfcbc93e6e9e22e5874129960859"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 140,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC02",
+      "call": "call_1",
+      "turn": 3,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "02c14e368140b741ae2d3073145d254f69b0c17d0382b45b75e57b143aad0a3a",
+      "text": "Khách mang sản phẩm đến trung tâm bảo hành hãng hoặc gửi về shop (shop hỗ trợ chuyển đến hãng",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "87af1844f8df770defaf1a9af36112231a3d829259679b2ebf18b725d5395245"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "ab0c36dedc28064b41d6c7acf173f0a2ac1fdfcbc93e6e9e22e5874129960859"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 140,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC02",
+      "call": "call_1",
+      "turn": 3,
+      "candidate_id": "claim-2",
+      "candidate_sha256": "369aa6d28eff98e73f4dd2bdcd536ac7096a1efab5dfa3fffb82dc1558d55fe8",
+      "text": "Trong thời gian bảo hành máy lọc nước",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "87af1844f8df770defaf1a9af36112231a3d829259679b2ebf18b725d5395245"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "ab0c36dedc28064b41d6c7acf173f0a2ac1fdfcbc93e6e9e22e5874129960859"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 140,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC02",
+      "call": "call_1",
+      "turn": 3,
+      "candidate_id": "claim-3",
+      "candidate_sha256": "3f67f688770a13647531bb96a14636347450d5cdd13a66b7797a415a5201266a",
+      "text": "Phạm vi bảo hành",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "87af1844f8df770defaf1a9af36112231a3d829259679b2ebf18b725d5395245"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "ab0c36dedc28064b41d6c7acf173f0a2ac1fdfcbc93e6e9e22e5874129960859"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 140,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC02",
+      "call": "call_1",
+      "turn": 3,
+      "candidate_id": "claim-4",
+      "candidate_sha256": "3b882796636e7bb48d1d5fc145b957410478a0bdb0a20b5f2fbdfb810f0c1509",
+      "text": "Không bảo hành: hao mòn tự nhiên (màng lọc",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "87af1844f8df770defaf1a9af36112231a3d829259679b2ebf18b725d5395245"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "ab0c36dedc28064b41d6c7acf173f0a2ac1fdfcbc93e6e9e22e5874129960859"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 140,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC02",
+      "call": "call_1",
+      "turn": 3,
+      "candidate_id": "claim-5",
+      "candidate_sha256": "eccec88ce1e97ab0331b4b9cd6d6429a55536c45ab9fc818c8514e54de4dd10e",
+      "text": "Bảo hành mở rộng",
+      "triage": "fragment_or_conversational_text",
+      "decision": "requires_source_review",
+      "note": "Tiêu đề, đoạn câu bị tách hoặc lời kết hội thoại có thể không phải khẳng định độc lập; cần xét nguyên câu trước khi đưa vào mẫu số claim.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "87af1844f8df770defaf1a9af36112231a3d829259679b2ebf18b725d5395245"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "ab0c36dedc28064b41d6c7acf173f0a2ac1fdfcbc93e6e9e22e5874129960859"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 140,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC02",
+      "call": "call_1",
+      "turn": 3,
+      "candidate_id": "claim-6",
+      "candidate_sha256": "242950184296bdd3188dac4404880747b009404b6d5992591b902457cb2fbfc7",
+      "text": "Khách có thể mua gói bảo hành mở rộng thêm 12 tháng với giá bằng 8% giá sản phẩm",
+      "triage": "policy_scope_and_exceptions",
+      "decision": "requires_source_review",
+      "note": "Phải đọc đầy đủ phạm vi, điều kiện và ngoại lệ trong policy evidence cùng lượt; câu bị tách khỏi điều kiện không đủ để đánh giá là đúng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "87af1844f8df770defaf1a9af36112231a3d829259679b2ebf18b725d5395245"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "policy.search",
+          "sha256": "ab0c36dedc28064b41d6c7acf173f0a2ac1fdfcbc93e6e9e22e5874129960859"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 149,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC03",
+      "call": "call_2",
+      "turn": 3,
+      "candidate_id": "claim-0",
+      "candidate_sha256": "5f52a23387344cea3b4585e45920998561c1c841ee6b9e995afa24e6f38e8dec",
+      "text": "em đã ghi nhận yêu cầu đổi biến thể sang SKU-SN-CAS-40-DEN cho đơn OD600017",
+      "triage": "write_receipt_and_eligibility",
+      "decision": "requires_source_review",
+      "note": "Có biên nhận order.update trong lượt lưu. Biên nhận lịch sử không chứng minh điều kiện đổi/trả đã được xác minh; bản sửa hiện tại yêu cầu kiểm tra riêng.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "e18d5fc1b3c37c43b2e499c073dc8b908f1367941c34c3cb6567b598d0de85e7"
+        },
+        {
+          "pointer": "/tool_calls/0/result",
+          "tool": "order.update",
+          "sha256": "6fc4b75a664f4734e0584a87d896a24f9e7a258e14496c907372a57c514a2d95"
+        }
+      ]
+    },
+    {
+      "config": "baseline_no_memory",
+      "trace_row": 163,
+      "run_id": "20261118T054721Z-ac17f7e7-baseline",
+      "scenario_id": "SC06",
+      "call": "call_1",
+      "turn": 3,
+      "candidate_id": "claim-1",
+      "candidate_sha256": "00bcc517717445aec8bf912cc7412892239abbedafb9c7160e5d7d2b202462e5",
+      "text": "Anh cứ trao đổi với chị nhà rồi báo lại em nhé",
+      "triage": "fragment_or_conversational_text",
+      "decision": "requires_source_review",
+      "note": "Tiêu đề, đoạn câu bị tách hoặc lời kết hội thoại có thể không phải khẳng định độc lập; cần xét nguyên câu trước khi đưa vào mẫu số claim.",
+      "source_references": [
+        {
+          "pointer": "/user_text",
+          "sha256": "3521a50e2c55b719970262d86e1f1f3058a7ed760aeabd1d6d34c9c9bfa76dc4"
+        }
+      ]
+    }
+  ]
+}

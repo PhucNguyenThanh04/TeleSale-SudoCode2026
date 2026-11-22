@@ -36,7 +36,8 @@ def test_real_model_tool_roundtrip(kind, model_name, base_url):
             assert payload['model'] == model_name
             assert payload['reasoning_effort'] == 'none'
             names = [t['function']['name'] for t in payload['tools']]
-            assert len(names) == 10 and all(re.fullmatch(r'[A-Za-z0-9_-]{1,64}', n) for n in names)
+            assert len(names) == 12 and all(re.fullmatch(r'[A-Za-z0-9_-]{1,64}', n) for n in names)
+            assert {'catalog_get_details', 'order_preview_update'} <= set(names)
             assert 'pricing_quote_order' in names
             assert 'catalog_search' in names and 'write_file' not in names
             if len(requests) == 1:

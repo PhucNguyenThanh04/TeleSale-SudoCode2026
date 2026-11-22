@@ -154,11 +154,11 @@ def quoted(name):
     return '"' + name.replace('"', '""') + '"'
 
 
-async def setup_logins(boot, settings):
+async def setup_logins(boot, settings, *, backend_dsn=None):
     conn = boot.connection
     for dsn, group in [(configured_url('KNOWLEDGE_DATABASE_URL'), 'knowledge_reviewer'),
                        (configured_url('KNOWLEDGE_WORKER_DATABASE_URL'), 'knowledge_worker'),
-                       (backend_values().get('DATABASE_URL'), 'knowledge_backend')]:
+                       (backend_dsn or backend_values().get('DATABASE_URL'), 'knowledge_backend')]:
         if not dsn: continue
         url = make_url(dsn)
         if not url.username: raise StartupError('Application DB login is required')

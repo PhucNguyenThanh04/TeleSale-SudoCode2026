@@ -31,11 +31,6 @@ class OrderRepo(Database):
             f"SELECT customer_id,phone FROM btc_source.customers WHERE {column}=:identity"
         ), {"identity": identity})
         rows = [dict(row._mapping) for row in result]
-        if not rows and column != "phone" and len(identity) == 10 and identity.startswith("0") and identity.isdigit():
-            fallback = await session.execute(text(
-                "SELECT customer_id,phone FROM btc_source.customers WHERE phone=:identity"
-            ), {"identity": identity})
-            rows = [dict(row._mapping) for row in fallback]
         return rows
 
     async def phone_owned(self, session, phone: str, customer_id: str) -> bool:
@@ -89,6 +84,11 @@ class OrderRepo(Database):
         await session.execute(text("""INSERT INTO runtime.tool_updates(order_id,action,result)
             VALUES (:id,:action,CAST(:result AS jsonb))"""),
             {"id": order_id, "action": action, "result": json.dumps(result)})
+
+    async def order_updates(self, session, order_id: str) -> list[dict]:
+        rows = await session.execute(text('''SELECT result FROM runtime.tool_updates
+            WHERE order_id=:id ORDER BY id'''), {'id': order_id})
+        return [json.loads(row[0]) if isinstance(row[0], str) else row[0] for row in rows]
 
     async def insert_callback(self, session, phone: str, moment: datetime, note: str | None) -> int:
         result = await session.execute(text("""INSERT INTO runtime.tool_callbacks(customer_phone,callback_at,note)

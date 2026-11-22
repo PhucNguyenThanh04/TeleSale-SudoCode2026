@@ -1,3 +1,4 @@
+from app.mcp_servers.mcp_shared.commerce_evidence import CATALOG_TOOLS
 import re
 from datetime import date
 from typing import Any
@@ -41,7 +42,7 @@ def _gift_supported(clause: str, promos: list[dict], items: list[dict]) -> bool:
 def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], *, focus_sku: str | None = None) -> str | None:
     candidate = assertion_text(candidate)
     successful = [c for c in tool_calls if isinstance(c.get("result"), dict) and "error" not in c["result"]]
-    items = [item for c in successful if c.get("name") == "catalog.search"
+    items = [item for c in successful if c.get("name") in CATALOG_TOOLS
              for item in c["result"].get("items", []) if isinstance(item, dict)]
     quotes = [c for c in successful if c.get("name") == "pricing.get_quote"]
     order_ids = {str(row['order_id']) for call in successful

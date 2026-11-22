@@ -52,18 +52,39 @@ class ReadEpisode(BaseModel):
     topics: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class PrivateDelivery(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    address: str | None = Field(default=None, min_length=1, max_length=1000)
+    source_turn_id: str
+    source_on: str
+    source_customer_text: str = Field(max_length=8000)
+
+    @model_validator(mode='after')
+    def validate_source(self):
+        from app.mcp_servers.mcp_shared.pii import mask_pii
+        UUID(self.source_turn_id)
+        date.fromisoformat(self.source_on)
+        if mask_pii(self.source_customer_text) != self.source_customer_text:
+            raise ValueError('Delivery source must be masked')
+        return self
+
+
 class ReadResponse(BaseModel):
     model_config = ConfigDict(extra="allow", strict=True)
     schema_version: Literal[1] = 1
     history: list[ReadTurn]
+    customer_statements: list[ReadTurn] = Field(default_factory=list)
     profile: dict[str, ReadFact]
     scoped_facts: ReadScopes = Field(default_factory=ReadScopes)
     episodes: list[ReadEpisode] = Field(default_factory=list)
+    latest_session: ReadEpisode | None = None
     current_episode: ReadEpisode | None = None
     prior_session_ids: list[str] = Field(default_factory=list)
     owned_order_ids: list[str] = Field(default_factory=list)
     session_tool_calls: list[dict[str, Any]] = Field(default_factory=list)
     turn_count: int = Field(default=0, ge=0)
+    private_delivery: PrivateDelivery | None = None
 
 
 def validate_read_response(value: Any) -> dict:
@@ -79,6 +100,10 @@ class TurnStatusInput(BaseModel):
     customer_id: str | None = None
     session_id: UUID
     client_msg_id: UUID
+
+
+class ReplayInput(TurnStatusInput):
+    request_hash: str = Field(pattern=r'^[a-f0-9]{64}$')
 
 
 class TimelineInput(BaseModel):

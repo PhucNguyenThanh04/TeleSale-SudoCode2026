@@ -6,6 +6,9 @@ def apply_policy_rules(chunks, request, context):
         raise ValueError('Business date does not match trusted context')
     if request.order_date and request.order_date != context.verified_order_date:
         raise ValueError('Unverified order date')
+    if request.product_sku != context.verified_product_sku:
+        raise ValueError('Unverified product')
+    verified_product = bool(context.verified_product_sku and context.product_source)
     result = []
     for chunk in chunks:
         missing = list(chunk.required_context)
@@ -23,6 +26,8 @@ def apply_policy_rules(chunks, request, context):
             continue
         if context.verified_order_date and 'order_date' in missing:
             missing.remove('order_date')
+        if verified_product and 'product' in missing:
+            missing.remove('product')
         applied_rules = []
         for rule in chunk.rules:
             rule_date = context.verified_order_date or request.customer_reported_order_date if rule.date_basis == 'order_date' else context.on
@@ -32,6 +37,8 @@ def apply_policy_rules(chunks, request, context):
             applied_rules.append(rule)
             for field in rule.required_context:
                 if field == 'order_date' and context.verified_order_date:
+                    continue
+                if field == 'product' and verified_product:
                     continue
                 if field not in missing:
                     missing.append(field)

@@ -1,6 +1,6 @@
 
-from app.mcp_servers.mcp_shared.commerce_evidence import build_commerce_evidence
-from app.mcp_servers.mcp_shared.pii import resolve_redacted_address
+from app.mcp_servers.mcp_shared.commerce_evidence import CATALOG_TOOLS, build_commerce_evidence, successful, quote_context_matches
+from app.mcp_servers.mcp_shared.pii import private_delivery_context
 
 from collections import Counter
 from dataclasses import dataclass
@@ -15,18 +15,20 @@ from app.agent.harness.state import TurnState
 ALLOWED_TOOLS = {
     "catalog.search", "inventory.check", "pricing.get_quote", "pricing.quote_order", "order.create",
     "order.update", "order.status", "schedule.callback", "handoff.transfer",
-    "policy.search",
+    "policy.search", 'catalog.get_details', 'order.preview_update',
 }
 DATED_TOOLS = {"inventory.check", "pricing.get_quote", "pricing.quote_order", "order.create", "order.update",
-               "policy.search"}
+               "policy.search", 'order.preview_update'}
 PHONE_REQUIRED_TOOLS = {"order.create", "schedule.callback"}
 _READ_TOOL_ARGS = {
+    'catalog.get_details': {'sku'},
+    'order.preview_update': {'order_id', 'action', 'on', 'line_index', 'qty', 'new_variant_sku', 'reason'},
     "catalog.search": {"query", "category", "sku", "max_price_vnd",
-                       "min_room_area_m2", "include_discontinued"},
+                       "min_room_area_m2", "include_discontinued", 'attribute_filters'},
     "inventory.check": {"sku", "on"},
     "pricing.get_quote": {"sku", "on", "qty", "customer_phone", "address", "basket_skus"},
     "pricing.quote_order": {"lines", "on", "customer_phone", "address"},
-    "policy.search": {"query", "on", "order_id", "order_date", "customer_reported_order_date", "top_k"},
+    "policy.search": {"query", "on", "order_id", "order_date", "customer_reported_order_date", "top_k", 'product_sku'},
 }
 @dataclass(frozen=True)
 class ProductSelection:
@@ -39,7 +41,7 @@ class ProductSelection:
 def resolve_product_selection(state: TurnState, args: dict[str, Any]) -> ProductSelection:
     sku = args.get("sku")
     items = [item for call in build_commerce_evidence(state)
-             if call.get("name") == "catalog.search" and "error" not in call.get("result", {})
+             if call.get("name") in CATALOG_TOOLS and "error" not in call.get("result", {})
              for item in call.get("result", {}).get("items", []) if isinstance(item, dict)]
     parent = next((item for item in reversed(items) if item.get("sku") == sku or any(
         v.get("variant_sku") == sku for v in item.get("variants", []) if isinstance(v, dict))), None)
@@ -70,17 +72,59 @@ def catalog_variant(state: TurnState, args: dict[str, Any]) -> str | None:
     return resolve_product_selection(state, args).sku
 
 
+def _policy_order(state, order_id):
+    for call in reversed(state.get('tool_calls', [])):
+        if call.get('name') != 'order.status':
+            continue
+        if not successful(call):
+            if call.get('args', {}).get('order_id') in {None, order_id}:
+                return None
+            continue
+        orders = [order for order in call.get('result', {}).get('orders', [])
+                  if isinstance(order, dict) and order.get('order_id') == order_id]
+        if orders:
+            return orders[0] if len(orders) == 1 else None
+        if call.get('args', {}).get('order_id') in {None, order_id}:
+            return None
+    return None
+
+
+def verified_policy_product(state, args, order_id=None):
+    sku = args.get('product_sku')
+    if order_id:
+        order = _policy_order(state, order_id)
+        if order is None:
+            return None, None
+        skus = {line.get('sku') for line in order.get('lines', []) if isinstance(line, dict)}
+        if not skus and order.get('sku'):
+            skus.add(order['sku'])
+        skus.discard(None)
+        if sku in skus or not sku and len(skus) == 1:
+            return sku or next(iter(skus)), 'order.status'
+        return None, None
+    if sku:
+        for call in reversed(build_commerce_evidence(state)):
+            if call.get('name') in CATALOG_TOOLS and any(item.get('sku') == sku or any(
+                    v.get('variant_sku') == sku for v in item.get('variants', []) if isinstance(v, dict))
+                    for item in call.get('result', {}).get('items', []) if isinstance(item, dict)):
+                return sku, call['name']
+    return None, None
+
+
 def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[str, dict[str, Any]] | None:
+    state.pop('tool_precondition_error', None)
     request = state["request"]
     decision = state["decision"]
     name = decision.tool_name or ""
     if name not in ALLOWED_TOOLS:
         return None
     args = dict(decision.tool_args)
-    if name in {'pricing.get_quote', 'pricing.quote_order', 'order.create'}:
+    if name in {'pricing.get_quote', 'pricing.quote_order', 'order.create', 'order.update'}:
         address = args.get('address')
         if isinstance(address, str) and '[' in address:
-            actual = resolve_redacted_address(request.text)
+            current = private_delivery_context(request.text, str(request.client_msg_id), request.on.isoformat())
+            delivery = current if current is not None else state.get('private_delivery')
+            actual = delivery.get('address') if isinstance(delivery, dict) else None
             if address.strip() != '[ĐỊA CHỈ ĐÃ ẨN]' or not actual or '[' in actual:
                 return None
             args['address'] = actual
@@ -101,15 +145,16 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
     if name == "policy.search":
         order_id = args.pop("order_id", None)
         args.pop("order_date", None)
+        product, _ = verified_policy_product(state, args, order_id)
+        if args.get('product_sku') and not product:
+            return None
+        if product:
+            args['product_sku'] = product
         if order_id:
-            orders = [order for call in state.get("tool_calls", [])
-                      if call.get("name") == "order.status"
-                      and "error" not in call.get("result", {})
-                      for order in call["result"].get("orders", [])
-                      if isinstance(order, dict) and order.get("order_id") == order_id]
-            if len(orders) != 1:
+            order = _policy_order(state, order_id)
+            if order is None:
                 return None
-            created = orders[0].get("created_on") or orders[0].get("created_at") or orders[0].get("date")
+            created = order.get("created_on") or order.get("created_at") or order.get("date")
             if not created:
                 return None
             args["order_date"] = str(created)[:10]
@@ -131,7 +176,7 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
             payload.setdefault(nullable, None)
         args = {"brief": payload}
     owned_orders = set(state.get("owned_order_ids", [])) | set(state.get("remembered_order_ids", []))
-    if name in {"order.status", "order.update"}:
+    if name in {"order.status", "order.update", 'order.preview_update'}:
         if state.get("identity_status") != "known" or not state.get("customer_phone"):
             return None
         requested_id = args.get("order_id")
@@ -158,7 +203,27 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
             args = CreateInput.model_validate(args).model_dump(mode='json', exclude_none=True)
         except ValueError:
             return None
-        if order_evidence_error(state, args) is not None:
+        evidence_error = order_evidence_error(state, args)
+        if evidence_error is not None:
+            state['tool_precondition_error'] = evidence_error
+            return None
+    if name == 'order.update':
+        from app.mcp_servers.mcp_order.schemas import UpdateInput
+        try:
+            args = UpdateInput.model_validate(args).model_dump(mode='json', exclude_none=True)
+        except ValueError:
+            return None
+    if name == 'order.preview_update':
+        from app.mcp_servers.mcp_order.schemas import PreviewUpdateInput
+        try:
+            args = PreviewUpdateInput.model_validate(args).model_dump(mode='json', exclude_none=True)
+        except ValueError:
+            return None
+    if name == 'schedule.callback':
+        from app.mcp_servers.mcp_order.write_authorization import normalized_write
+        try:
+            args = normalized_write(name, args)
+        except ValueError:
             return None
     return name, args
 
@@ -172,7 +237,7 @@ def order_evidence_error(state: TurnState, args: dict[str, Any]) -> str | None:
     for line in lines:
         quantities[line['sku']] += line.get('qty', 1)
     calls = build_commerce_evidence(state)
-    items = [item for call in calls if call.get('name') == 'catalog.search'
+    items = [item for call in calls if call.get('name') in CATALOG_TOOLS
              for item in call['result'].get('items', []) if isinstance(item, dict)]
     for sku in quantities:
         parent = next((item for item in items if item.get('sku') == sku or any(
@@ -193,8 +258,7 @@ def order_evidence_error(state: TurnState, args: dict[str, Any]) -> str | None:
     if args.get('lines') is not None:
         quotes = [call for call in calls if call.get('name') == 'pricing.quote_order'
                   and call.get('args', {}).get('on') == on
-                  and call['args'].get('customer_phone') == state.get('customer_phone')
-                  and call['args'].get('address') == args.get('address')]
+                  and quote_context_matches(call, {**args, 'customer_phone': state.get('customer_phone')})]
         if not quotes:
             return 'current_quote_required'
         quoted = quotes[-1]['result']
@@ -206,10 +270,9 @@ def order_evidence_error(state: TurnState, args: dict[str, Any]) -> str | None:
     else:
         quotes = [call for call in calls if call.get('name') == 'pricing.get_quote'
                   and call.get('args', {}).get('sku') == args['sku']
-                  and call['args'].get('customer_phone') == state.get('customer_phone')
                   and call['args'].get('on') == on
                   and call['args'].get('qty', 1) == args['qty']
-                  and all(call['args'].get(key) == args.get(key) for key in ('address', 'basket_skus'))]
+                  and quote_context_matches(call, {**args, 'customer_phone': state.get('customer_phone')})]
         if not quotes:
             return 'current_quote_required'
         if quotes[-1]['result'].get('final_price_vnd') != args['price_vnd']:

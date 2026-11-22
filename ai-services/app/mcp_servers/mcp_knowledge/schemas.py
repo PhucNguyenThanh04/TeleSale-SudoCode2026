@@ -10,6 +10,7 @@ class PolicySearchInput(Contract):
     on: date
     order_date: date | None = None
     customer_reported_order_date: date | None = None
+    product_sku: str | None = Field(default=None, min_length=1)
     top_k: int = Field(default=5, ge=1, le=10)
 
     @field_validator('query')
@@ -27,6 +28,8 @@ class TrustedPolicyContext(Contract):
     release_id: str | None = None
     verified_order_date: date | None = None
     date_source: str | None = None
+    verified_product_sku: str | None = Field(default=None, min_length=1)
+    product_source: Literal['catalog.search', 'catalog.get_details', 'order.status'] | None = None
     purpose: Literal['customer'] = 'customer'
     include_supplements: bool = True
 
@@ -34,6 +37,8 @@ class TrustedPolicyContext(Contract):
     def date_provenance(self):
         if self.verified_order_date and not self.date_source:
             raise ValueError('Verified date requires provenance')
+        if bool(self.verified_product_sku) != bool(self.product_source):
+            raise ValueError('Verified product requires provenance')
         return self
 
 

@@ -1,29 +1,35 @@
 
 import hashlib
 import json
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import date, datetime
 
-from app.mcp_servers.mcp_shared.commerce_rules import HOLIDAYS, _delivery, _inventory, _parent, quote, quote_order
+from app.mcp_servers.mcp_shared.commerce_rules import _delivery, _inventory, _parent, quote_order
+from app.mcp_servers.mcp_shared.business_calendar import callback_arguments
 from app.mcp_servers.mcp_order.write_authorization import (
     WRITE_TOOLS, normalized_write, verify_write_authorization)
+from app.mcp_servers.mcp_shared.identity import resolve_identity, verify_identity
 
 
-async def _identity(repo, session, args: dict) -> tuple[str | None, str | None]:
-    matches = await repo.identity_matches(session, args.get("source_channel"), args.get("source_identity"))
-    return (matches[0]["customer_id"], matches[0]["phone"]) if len(matches) == 1 else (None, None)
+async def _identity(repo, session, args: dict, verified_customer_id=None) -> tuple[str | None, str | None]:
+    identity = await resolve_identity(repo, session, args.get('source_channel'),
+                                      args.get('source_identity'), verified_customer_id)
+    return (identity['customer_id'], identity['phone']) if identity else (None, None)
 
 
-async def _quote(repo, session, args: dict, customer_id: str | None) -> dict:
+async def _quote(repo, session, args: dict, customer_id: str | None, qty: int) -> dict:
     products = await repo.rows(session, "products")
     promos = await repo.rows(session, "promotions")
     owned = set()
-    if customer_id and args.get("customer_phone"):
+    args = dict(args)
+    if customer_id:
         customers = await repo.rows(session, "customers")
         customer = next((c for c in customers if c["customer_id"] == customer_id), None)
         if customer:
             owned = {o["sku"] for o in customer.get("orders", []) if o.get("status") == "delivered"}
-    return quote(products, promos, args, owned, await repo.used_promos(session))
+            if customer.get('phone'):
+                args['customer_phone'] = customer['phone']
+    return quote_order(products, promos, {**args, 'lines': [{'sku': args['sku'], 'qty': qty}]},
+                       owned, await repo.used_promos(session))
 
 
 async def status(repo, session, args: dict, customer_id: str) -> dict:
@@ -37,7 +43,37 @@ async def status(repo, session, args: dict, customer_id: str) -> dict:
     customers = await repo.rows(session, "customers")
     historical = [order for customer in customers if customer["customer_id"] == customer_id
                   for order in customer.get("orders", []) if not order_id or order["order_id"] == order_id]
-    return {"orders": historical + await repo.runtime_orders(session, customer_id, order_id)}
+    orders = [dict(order) for order in historical + await repo.runtime_orders(session, customer_id, order_id)]
+    for order in orders:
+        changes = await repo.order_updates(session, order['order_id'])
+        if changes:
+            order['updates'] = changes
+        for change in changes:
+            if change.get('action') == 'update_address' and change.get('address'):
+                order['address'] = change['address']
+        try:
+            order['lines'] = _order_lines(order)
+        except (ValueError, TypeError, KeyError):
+            order['data_status'] = 'inconsistent'
+    return {"orders": orders}
+
+
+def _order_lines(order):
+    lines = order.get('lines')
+    if isinstance(lines, str):
+        lines = json.loads(lines)
+    if lines is None:
+        lines = [{'sku': order['sku'], 'qty': order.get('qty', 1), 'price_vnd': order['price_vnd']}]
+    if (not isinstance(lines, list) or not lines or any(not isinstance(line, dict)
+            or not isinstance(line.get('sku'), str) or not line['sku']
+            or type(line.get('qty', 1)) is not int or line.get('qty', 1) < 1
+            or type(line.get('price_vnd')) is not int or line['price_vnd'] < 0 for line in lines)):
+        raise ValueError('Invalid stored order lines')
+    total = sum(line.get('qty', 1) * line['price_vnd'] for line in lines)
+    if order.get('total_vnd') is not None and (type(order['total_vnd']) is not int or order['total_vnd'] != total):
+        raise ValueError('Inconsistent stored total')
+    return [{'line_index': i, 'sku': line['sku'], 'qty': line.get('qty', 1), 'price_vnd': line['price_vnd']}
+            for i, line in enumerate(lines)]
 
 
 async def create(repo, session, args: dict, customer_id: str, phone: str) -> dict:
@@ -97,40 +133,167 @@ async def create(repo, session, args: dict, customer_id: str, phone: str) -> dic
             "estimated_delivery": _delivery(args["on"], args.get("address"))}
 
 
-async def update(repo, session, args: dict, customer_id: str) -> dict:
+def _order_date(order, *fields):
+    for field in fields:
+        value = order.get(field)
+        if isinstance(value, (str, date)):
+            try:
+                return date.fromisoformat(str(value)[:10])
+            except ValueError:
+                pass
+    return None
+
+
+def _return_eligibility(order, lines, products, on):
+    created = _order_date(order, 'created_on', 'created_at', 'date')
+    received = _order_date(order, 'received_on', 'delivered_on', 'received_at', 'delivered_at')
+    today = date.fromisoformat(on)
+    old = created is not None and created < date(2026, 10, 1)
+    conditions = order.get('return_conditions')
+    conditions = conditions if isinstance(conditions, dict) else {}
+    missing = []
+    if created is None:
+        missing.append('order_date')
+    if received is None:
+        missing.append('received_on')
+    if created and created > today or received and (received > today or created and received < created):
+        missing.append('consistent_order_dates')
+    if order.get('status') != 'delivered':
+        missing.append('delivered_status')
+    selected = [_parent(products, line['sku'])[0] for line in lines]
+    if any(product is None for product in selected):
+        missing.append('product')
+    result = {'policy_version': '2026-06' if old else '2026-10' if created else 'unverified'}
+    for field, error in (('customer_damage', 'return_customer_damage'),
+                          ('clearance_no_return', 'return_clearance_excluded')):
+        if conditions.get(field) is True:
+            return {**result, 'status': 'ineligible', 'error': error, 'missing_fields': []}
+        if conditions.get(field) is not False:
+            missing.append(field)
+    defect = conditions.get('manufacturer_defect_confirmed')
+    extended = old or all(product and product.get('category', '').split('/')[0] in {'gia-dung', 'me-be'}
+                          for product in selected)
+    days = 14 if old else 7
+    maximum = 15 if old else 30
+    if received and 'consistent_order_dates' not in missing:
+        elapsed = (today - received).days
+        if elapsed > days:
+            if elapsed > maximum or created and (not extended and 'product' not in missing or defect is False):
+                return {**result, 'status': 'ineligible', 'error': 'return_window_expired', 'missing_fields': []}
+            if defect is not True:
+                missing.append('manufacturer_defect_confirmed')
+    for field in ('tags_intact', 'packaging_intact', 'unused'):
+        if field == 'unused' and defect is True:
+            continue
+        if conditions.get(field) is False:
+            return {**result, 'status': 'ineligible', 'error': 'return_condition_not_met', 'missing_fields': []}
+        if conditions.get(field) is not True:
+            missing.append(field)
+    hygiene = any(product and (product['sku'] == 'SKU-MB-BOT'
+        or product.get('attributes', {}).get('hygiene_sensitive') is True) for product in selected)
+    if hygiene:
+        if conditions.get('seal_intact') is False:
+            return {**result, 'status': 'ineligible', 'error': 'return_hygiene_excluded', 'missing_fields': []}
+        if conditions.get('seal_intact') is not True:
+            missing.append('seal_intact')
+    return {**result, 'status': 'pending' if missing else 'eligible', 'missing_fields': missing}
+
+
+async def _update_plan(repo, session, args: dict, customer_id: str) -> dict:
     order_id = args["order_id"]
     if not await repo.order_owned(session, order_id, customer_id):
         return {"error": "order_not_owned"}
     current = await status(repo, session, {"order_id": order_id}, customer_id)
+    if not current['orders']:
+        return {'error': 'order_not_found'}
     order = current["orders"][0]
     action = args["action"]
+    if action == 'update_address':
+        address = args.get('address')
+        if not isinstance(address, str) or not address.strip():
+            return {'error': 'address_required'}
+        result = {'order_id': order_id, 'action': action, 'address': address.strip(), 'status': 'updated'}
+        return result
+    if action not in {'return', 'exchange_size', 'exchange_product'}:
+        return {'error': 'unknown_action'}
+    try:
+        lines = _order_lines(order)
+    except (ValueError, TypeError, KeyError):
+        return {'error': 'order_data_inconsistent'}
+    index, quantity = args.get('line_index'), args.get('qty')
+    if index is None and (action != 'return' or quantity is not None):
+        if len(lines) != 1:
+            return {'error': 'order_line_required'}
+        index = 0
+    if index is not None and (type(index) is not int or not 0 <= index < len(lines)):
+        return {'error': 'invalid_order_line'}
+    selected = [dict(lines[index])] if index is not None else [dict(line) for line in lines]
+    if quantity is not None:
+        if type(quantity) is not int or not 1 <= quantity <= selected[0]['qty']:
+            return {'error': 'invalid_update_quantity'}
+        selected[0]['qty'] = quantity
+    paid = sum(line['qty'] * line['price_vnd'] for line in selected)
+    products = await repo.rows(session, 'products')
+    eligibility = _return_eligibility(order, selected, products, args['on'])
+    if eligibility['status'] == 'ineligible':
+        return {'error': eligibility['error'], 'eligibility': eligibility}
+    old_policy = eligibility['policy_version'] == '2026-06'
+    policy_known = eligibility['policy_version'] != 'unverified'
+    refund_days = ('7 ngày làm việc' if old_policy else '3-5 ngày làm việc') if policy_known else None
     if action in {"exchange_size", "exchange_product"}:
         sku = args.get("new_variant_sku")
         if not sku:
             return {"error": "missing_new_variant_sku"}
-        inv = _inventory(await repo.rows(session, "products"), await repo.rows(session, "inventory_events"),
+        product, variant = _parent(products, sku)
+        if product and product.get('variants') and variant is None:
+            return {'error': 'variant_selection_required'}
+        inv = _inventory(products, await repo.rows(session, "inventory_events"),
                          sku, args["on"])
-        if not inv.get("in_stock"):
+        quantity = selected[0]['qty']
+        if not inv.get("in_stock") or inv.get('qty', 0) < quantity:
             return {"error": "new_variant_out_of_stock", **inv}
         quoted = await _quote(repo, session, {"sku": sku, "on": args["on"],
-                                             "customer_phone": order.get("customer_phone")}, customer_id)
+                                             "customer_phone": order.get("customer_phone")}, customer_id, quantity)
         if "error" in quoted:
             return quoted
-        fee = 0 if await repo.exchange_count(session, order_id) == 0 else 60_000
-        diff = quoted["final_price_vnd"] - order["price_vnd"]
+        fee = 20_000 if old_policy else 0 if await repo.exchange_count(session, order_id) == 0 else 60_000
+        if not policy_known:
+            fee = None
+        diff = quoted['total_vnd'] - paid
         result = {"order_id": order_id, "action": action, "new_variant_sku": sku,
                   "fee_vnd": fee, "price_diff_vnd": diff, "refund_vnd": max(-diff, 0),
-                  "extra_payment_vnd": max(diff, 0), "refund_days": "3-5 ngày làm việc",
+                  "extra_payment_vnd": max(diff, 0), "refund_days": refund_days,
                   "status": "pickup_scheduled"}
+        result['replacement_lines'] = quoted['lines']
+        result['replacement_inventory'] = {'sku': sku, 'on': args['on'], **inv}
     elif action == "return":
         result = {"order_id": order_id, "action": action, "reason": args.get("reason"),
-                  "refund_vnd": order["price_vnd"], "refund_days": "3-5 ngày làm việc",
+                  "refund_vnd": paid, "refund_days": refund_days,
                   "status": "pickup_scheduled"}
-    elif action == "update_address":
-        result = {"order_id": order_id, "action": action, "status": "updated"}
-    else:
-        return {"error": "unknown_action"}
-    await repo.insert_update(session, order_id, action, result)
+    result['selected_lines'] = selected
+    result['eligibility'] = eligibility
+    if eligibility['status'] == 'pending':
+        result.update(status='review_pending', estimate=True, requires_policy_check=True)
+    return result
+
+
+async def preview_update(repo, session, args: dict, customer_id: str) -> dict:
+    result = await _update_plan(repo, session, args, customer_id)
+    if 'error' in result:
+        return result
+    fee = result.get('fee_vnd', 0)
+    settlement = result.get('extra_payment_vnd', 0) + fee - result['refund_vnd'] if fee is not None else None
+    return {**result, 'status': 'preview', 'estimate': True, 'on': args['on'],
+            'requires_policy_check': result['eligibility']['status'] != 'eligible',
+            'estimated_total_payment_vnd': max(settlement, 0) if settlement is not None else None,
+            'estimated_total_refund_vnd': max(-settlement, 0) if settlement is not None else None}
+
+
+async def update(repo, session, args: dict, customer_id: str) -> dict:
+    result = await _update_plan(repo, session, args, customer_id)
+    if 'error' not in result:
+        result.pop('replacement_inventory', None)
+        await repo.insert_update(session, args['order_id'], args['action'], result)
     return result
 
 
@@ -139,26 +302,15 @@ async def callback(repo, session, args: dict, phone: str,
     if args.get("customer_phone") != phone:
         return {"error": "identity_required"}
     try:
-        moment = datetime.fromisoformat(args["callback_at"])
+        payload = callback_arguments(args, naive_timezone=timezone_name)
+        moment = datetime.fromisoformat(payload['callback_at'])
     except (KeyError, ValueError):
         return {"error": "invalid_callback_at"}
-    zone = ZoneInfo(timezone_name)
-    moment = moment.astimezone(zone) if moment.tzinfo else moment.replace(tzinfo=zone)
-    moved = False
-    while moment.date().isoformat() in HOLIDAYS or (moment.weekday() == 6 and not 9 <= moment.hour < 18):
-        moment += timedelta(days=1)
-        moment = moment.replace(hour=max(moment.hour, 8))
-        moved = True
-    if not 8 <= moment.hour < 21:
-        moment = moment.replace(hour=8, minute=0)
-        moved = True
-    if moved:
-        return {'error': 'callback_reschedule_required',
-                'proposed_callback_at': moment.isoformat(timespec='minutes')}
     number = await repo.insert_callback(session, phone, moment, args.get("note"))
     return {"callback_id": f"CB{number:04d}", "customer_phone": phone,
+            'status': 'scheduled',
             "callback_at": moment.isoformat(timespec="minutes"),
-            "moved_from": args["callback_at"] if moved else None, "note": args.get("note")}
+            "moved_from": payload.get('requested_callback_at'), "note": args.get("note")}
 
 
 async def handoff(repo, session, args: dict, customer_id: str | None, phone: str | None) -> dict:
@@ -190,29 +342,39 @@ async def invoke(repo, name: str, args: dict,
                  timezone_name: str = "Asia/Ho_Chi_Minh", *,
                  context_secret: str | None = None) -> dict:
     functions = {"order.create": create, "order.status": status, "order.update": update,
+                 'order.preview_update': preview_update,
                  "schedule.callback": callback, "handoff.transfer": handoff}
     if name not in functions:
         return {"error": "unknown_tool"}
     context = None
+    verified_customer_id = None
     if name in WRITE_TOOLS:
         try:
             context = verify_write_authorization(name, args, context_secret)
+            verified_customer_id = context.customer_id
             args = normalized_write(name, args)
         except PermissionError:
             return {'error': 'write_authorization_required'}
+    elif name in {'order.status', 'order.preview_update'} and args.get('trusted_identity'):
+        try:
+            verified_customer_id = verify_identity(name, args, context_secret)
+        except PermissionError:
+            return {'error': 'identity_required'}
     key = args.get("operation_key")
     clean = {k: v for k, v in args.items() if k != "operation_key"}
     digest = hashlib.sha256(json.dumps(clean, sort_keys=True, ensure_ascii=False,
                                        default=str).encode()).hexdigest()
     async with repo.transaction() as session:
-        customer_id, phone = await _identity(repo, session, args)
+        customer_id, phone = await _identity(repo, session, args, verified_customer_id)
+        if verified_customer_id is not None and customer_id != verified_customer_id:
+            return {'error': 'identity_changed'}
         if context is not None and context.customer_id != customer_id:
             return {'error': 'identity_changed'}
         if name != "handoff.transfer" and not customer_id:
             return {"error": "identity_required"}
         if name in {"order.create", "order.update"}:
             await repo.lock_customer(session, phone)
-        if key and name != "order.status":
+        if key and name in WRITE_TOOLS:
             previous = await repo.claim_operation(session, key, name, digest)
             if previous is not None:
                 return previous
@@ -223,6 +385,6 @@ async def invoke(repo, name: str, args: dict,
         else:
             result = await functions[name](repo, session, args, customer_id) if name != "order.create" else \
                 await create(repo, session, args, customer_id, phone)
-        if key and name != "order.status":
+        if key and name in WRITE_TOOLS:
             await repo.finish_operation(session, key, result)
         return result

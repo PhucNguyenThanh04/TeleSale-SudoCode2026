@@ -1,3 +1,4 @@
+from app.mcp_servers.mcp_shared.commerce_evidence import CATALOG_TOOLS
 
 import asyncio
 import hashlib
@@ -74,6 +75,22 @@ def _valid_fact(fact: dict) -> bool:
                     and mask_pii(value) == value)))))
 
 
+def _customer_statements(rows):
+    return [{'source_turn_id': str(row['client_msg_id']), 'customer': mask_pii(row['customer_text'])}
+            for row in rows if row.get('client_msg_id') and isinstance(row.get('customer_text'), str)]
+
+
+def _session_observations(rows, customer_id, session_id):
+    calls = []
+    for row in rows:
+        observed = row.get('tool_observations') or []
+        observed = json.loads(observed) if isinstance(observed, str) else observed
+        calls.extend({**call, 'source_turn_id': str(row['client_msg_id']),
+            'customer_id': customer_id, 'session_id': session_id}
+            for call in observed if isinstance(call, dict) and row.get('client_msg_id'))
+    return calls
+
+
 async def _committed_episode_view(repo, conn, customer_id, session_id, previous, *, rows_cache=None):
     if not hasattr(repo, 'recent_session_turns') or await repo.owner(conn, session_id) != customer_id:
         return previous
@@ -83,7 +100,9 @@ async def _committed_episode_view(repo, conn, customer_id, session_id, previous,
         count = await repo.turn_count(conn, session_id)
         if type(count) is not int:
             return previous
-        rows = await repo.recent_session_turns(conn, session_id, customer_id, count, limit=None)
+        rows = (await repo.operational_session_turns(conn, session_id, customer_id, count)
+                if callable(getattr(type(repo), 'operational_session_turns', None)) else
+                await repo.recent_session_turns(conn, session_id, customer_id, count, limit=None))
     if not isinstance(rows, list):
         return previous
     if rows_cache is not None:
@@ -110,6 +129,7 @@ async def _committed_episode_view(repo, conn, customer_id, session_id, previous,
         'committed_turns': [{'source_turn_id': str(row['client_msg_id']),
             'customer': mask_pii(row['customer_text']), 'agent': mask_pii(row['agent_text'])}
             for row in rows[-12:]], 'turn_count': len(rows)}
+    view['customer_statements'] = _customer_statements(rows)
     if view:
         view = {**view, 'on': on,
             'summary': view.get('summary') or build_episode_summary([], [], 800, episode_state=view),
@@ -129,8 +149,12 @@ async def _operational_facts(repo, conn, customer_id, sessions, facts, rows_cach
         if await repo.owner(conn, session_id) != customer_id:
             continue
         count = await repo.turn_count(conn, session_id)
-        rows = await repo.recent_session_turns(conn, session_id, customer_id, count, limit=None)
+        rows = (await repo.operational_session_turns(conn, session_id, customer_id, count)
+                if callable(getattr(type(repo), 'operational_session_turns', None)) else
+                await repo.recent_session_turns(conn, session_id, customer_id, count, limit=None))
         rows_cache[session_id] = rows
+        if count > 240:
+            rows_cache['_context_truncated'] = True
         variants = {}
         for row in rows:
             tid = str(row['client_msg_id'])
@@ -141,7 +165,7 @@ async def _operational_facts(repo, conn, customer_id, sessions, facts, rows_cach
             observed = json.loads(observed) if isinstance(observed, str) else observed
             calls = [{**call, 'source_turn_id': tid} for call in observed if isinstance(call, dict)]
             for call in calls:
-                if call.get('name') == 'catalog.search' and 'error' not in call.get('result', {}):
+                if call.get('name') in CATALOG_TOOLS and 'error' not in call.get('result', {}):
                     for item in call['result'].get('items', []):
                         for variant in item.get('variants', []):
                             variants[variant['variant_sku']] = {**variant, 'parent_sku': item['sku']}
@@ -189,6 +213,9 @@ async def read(repo, customer_id: str | None, session_id: str,
         if customer_id and hasattr(repo, "is_erasure_blocked"):
             await repo.lock_key(conn, f"erasure:{customer_id}")
             if await repo.is_erasure_blocked(conn, customer_id):
+                if (getattr(repo, 'supports_erasure_state', False) is True
+                        and await repo.erasure_state(conn, customer_id) == 'completed'):
+                    return {'error': 'customer_erased'}
                 return {"error": "customer_erasure_in_progress"}
         owner = await repo.owner(conn, session_id)
         if owner is not None and owner != customer_id:
@@ -203,7 +230,16 @@ async def read(repo, customer_id: str | None, session_id: str,
                   "prior_session_ids": [], "owned_order_ids": [],
                   "turn_count": (await repo.turn_count(conn, session_id)
                                  if hasattr(repo, "turn_count") else len(turns))}
+        result['context_complete'] = result['turn_count'] <= 240
+        if getattr(repo, 'supports_private_delivery', False) is True:
+            delivery = await repo.latest_delivery(conn, session_id, customer_id, include_prior=include_prior)
+            if isinstance(delivery, dict):
+                result['private_delivery'] = delivery
         if not customer_id:
+            source_rows = (await repo.session_context_turns(conn, session_id)
+                           if hasattr(repo, 'session_context_turns') else turns)
+            result['customer_statements'] = _customer_statements(source_rows)
+            result['session_tool_calls'] = _session_observations(source_rows, None, session_id)
             return result
         if projector is None:
             return {"error": "memory_store_unavailable"}
@@ -251,6 +287,12 @@ async def read(repo, customer_id: str | None, session_id: str,
                     if session_id not in operational_sessions:
                         operational_sessions.append(session_id)
                     facts = await _operational_facts(repo, conn, customer_id, operational_sessions, facts, rows_cache, revision_barriers)
+                    recent_by_session = {str(item['session_id']): item for item in recent}
+                    for episode in all_episodes:
+                        session = recent_by_session.get(str(episode.get('session_id')))
+                        if session:
+                            episode['on'] = str(session['on_date'])
+                            episode['channel'] = session['channel']
                     recency = {str(item['session_id']): len(recent) - index for index, item in enumerate(recent)}
                     all_episodes.sort(key=lambda item: (str(item.get('on', item.get('on_date', ''))),
                         recency.get(str(item.get('session_id')), 0)), reverse=True)
@@ -260,6 +302,8 @@ async def read(repo, customer_id: str | None, session_id: str,
                     if item.get('session_id') != session_id
                     and item.get('status', 'active') == 'active'] if include_prior else []
                 prior_episodes = resolved_episode_view(prior_episodes, all_episodes)
+                result['latest_session'] = max(prior_episodes,
+                    key=lambda item: str(item.get('on') or item.get('on_date') or ''), default=None)
                 episodes = (rank_episodes(prior_episodes, mask_pii(query), max_episodes)
                             if query else prior_episodes[:max_episodes])
                 if include_prior:
@@ -269,15 +313,11 @@ async def read(repo, customer_id: str | None, session_id: str,
                             episodes[index] = await _committed_episode_view(
                                 repo, conn, customer_id, prior_id, episode, rows_cache=rows_cache)
                 current = await _committed_episode_view(repo, conn, customer_id, session_id, current, rows_cache=rows_cache)
-                session_calls = []
-                for row in rows_cache.get(session_id, []):
-                    observed = row.get('tool_observations') or []
-                    observed = json.loads(observed) if isinstance(observed, str) else observed
-                    session_calls.extend({**call, 'source_turn_id': str(row['client_msg_id']),
-                        'customer_id': customer_id, 'session_id': session_id}
-                        for call in observed if isinstance(call, dict))
-                result['session_tool_calls'] = session_calls
+                source_rows = rows_cache.get(session_id, [])
+                result['customer_statements'] = _customer_statements(source_rows)
+                result['session_tool_calls'] = _session_observations(source_rows, customer_id, session_id)
                 episodes = resolved_episode_view(episodes, [*all_episodes, *([current] if current else [])])
+                result['context_complete'] = result['context_complete'] and not rows_cache.get('_context_truncated', False)
         except Exception as exc:
             logging.getLogger(__name__).warning(
                 "LangMem store read failed: %s", type(exc).__name__)
@@ -345,6 +385,22 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
     outcome = data.get("outcome", "khac")
     if outcome not in {"khac", "hen_goi_lai", "chot_don", "tu_choi", "chuyen_may"}:
         return {"error": "invalid_outcome"}
+    private = {}
+    if data.get('request_hash') is not None:
+        request_hash = data['request_hash']
+        if (not isinstance(request_hash, str) or len(request_hash) != 64
+                or any(char not in '0123456789abcdef' for char in request_hash)):
+            return {'error': 'invalid_turn_data'}
+        private['request_hash'] = request_hash
+    if data.get('private_delivery') is not None:
+        from app.mcp_servers.mcp_memory.schemas import PrivateDelivery
+        try:
+            delivery = PrivateDelivery.model_validate(data['private_delivery']).model_dump()
+        except ValueError:
+            return {'error': 'invalid_turn_data'}
+        if delivery['source_turn_id'] != str(source_turn_id) or delivery['source_on'] != on.isoformat():
+            return {'error': 'invalid_turn_data'}
+        private['private_delivery'] = delivery
     digest = hashlib.sha256(json.dumps({"action": action, "customer_id": customer_id,
         "session_id": session_id, "data": data}, sort_keys=True, default=str,
         ensure_ascii=False).encode()).hexdigest()
@@ -379,7 +435,7 @@ async def write(repo, action: str, customer_id: str | None, session_id: str,
             number = await repo.next_turn(conn, session_id)
             await repo.insert_turn(conn, session_id, number, customer_id,
                                    channel, on, customer_text, agent_text,
-                                   str(source_turn_id), observations, outcome)
+                                   str(source_turn_id), observations, outcome, **private)
             from app.knowledge.config import enabled
             if enabled() and hasattr(repo, "enqueue_knowledge_event"):
                 await repo.enqueue_knowledge_event(conn, data, session_id, customer_id)

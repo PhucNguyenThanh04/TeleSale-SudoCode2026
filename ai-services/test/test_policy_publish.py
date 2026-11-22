@@ -6,7 +6,9 @@ from test_knowledge_repo import MemoryRepo
 from test_policy_embedding import runtime_config, Backend
 
 
-def test_release_build_is_idempotent_and_requires_index_ready_before_activation():
+def test_release_build_is_idempotent_and_requires_index_ready_before_activation(monkeypatch):
+    monkeypatch.setattr('app.mcp_servers.mcp_knowledge.config.load_policy_config',
+                        lambda settings: runtime_config(max_tokens=8000))
     from app.knowledge.services.publish import build_policy_release
     from app.mcp_servers.mcp_knowledge.services.embedding import PolicyEncoder
     from app.mcp_servers.mcp_knowledge.repos.qdrant import HybridPolicyIndex
@@ -200,7 +202,9 @@ def test_snapshot_metadata_tampering_is_detected_even_when_body_hash_matches():
     asyncio.run(run())
 
 
-def test_integrity_ready_does_not_claim_relevance_verified(tmp_path):
+def test_integrity_ready_does_not_claim_relevance_verified(tmp_path, monkeypatch):
+    monkeypatch.setattr('app.mcp_servers.mcp_knowledge.config.load_policy_config',
+                        lambda settings: runtime_config(relevance_verified=False))
     from app.knowledge.services.publish import build_policy_release
     from app.knowledge.services.releases import activate_release
     from app.mcp_servers.mcp_knowledge.services.embedding import PolicyEncoder

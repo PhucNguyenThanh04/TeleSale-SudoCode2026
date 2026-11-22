@@ -47,6 +47,12 @@ no live model evaluation is performed by this migration.
 
 The [text harness contract and repair notes](docs/text-harness-contract.md) describe
 model-led tool execution, write authorization, publication timing and migration 0005.
+Existing databases also require `migrations/0006_private_delivery_context.sql`
+and `migrations/0007_turn_retry_hash.sql` before this harness upgrade. They add private delivery data and request hashes to
+`runtime.turns`; prompts and public memory keep masked source references. Customer
+memory erasure removes this data with the customer's turns. Migration 0007 also
+grants the memory role read access to the business operation ledger for retry protection.
+Upgrade AI and memory together; these migrations have not been applied by the offline audit.
 
 
 The submission uses Deep Agent with an OpenAI-compatible API and guarded text
@@ -71,7 +77,7 @@ settings needed for your run.
 |---|---|---|
 | API | `APP_NAME`, `APP_ENV`, `DEBUG`, `HOST`, `PORT`, `LOG_LEVEL`, `TIMEZONE` | API identity, environment label, debug flag, bind address, logging, callback timezone |
 | OpenAI-compatible API | `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, `LLM_TIMEOUT_SECONDS`, `LLM_TEMPERATURE`, `LLM_MAX_TOKENS`, `LLM_SEED` | Model, authentication, timeout, response budget and reproducible sampling |
-| Harness | `AGENT_MAX_TOOL_CALLS`, `AGENT_PROMPT_HISTORY_TURNS`, `AGENT_GUARDRAILS_ENABLED` | Deep Agent tool/context limits and answer checks |
+| Harness | `AGENT_MAX_TOOL_CALLS`, `AGENT_PROMPT_HISTORY_TURNS`, `AGENT_GUARDRAILS_ENABLED`, `AGENT_TURN_TIMEOUT_SECONDS` | Deep Agent tool/context limits, answer checks and total turn deadline (90s by default) |
 | Memory | `MEMORY_MAX_EPISODES`, `LANGMEM_MODEL` | Customer-scoped LangMem knowledge and a separate distillation model; LangMem is the only runtime memory path |
 | Langfuse | `LANGFUSE_ENABLED`, `LANGFUSE_PROMPTS_ENABLED`, `LANGFUSE_CAPTURE_CONTENT`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` | Optional tracing and production-labeled prompt management; content capture is opt-in for development/test |
 | Internal transport | `AI_INTERNAL_TOKEN`, `MCP_INTERNAL_TOKEN`, `MCP_CATALOG_URL`, `MCP_ORDER_URL`, `MCP_MEMORY_URL` | Backend-to-AI and AI-to-MCP authentication and endpoints |
@@ -150,9 +156,47 @@ the trusted controller. The gateway and order MCP use `MCP_INTERNAL_TOKEN` as th
 default context secret; upgrade/restart both together. Direct unsigned writes
 are rejected. Grants bind the exact request, identity and normalized arguments,
 expire after 120 seconds, and preserve the existing operation keys for replay.
-Callbacks outside operating hours return an alternative for confirmation and
-insert nothing until a valid time is authorized. See the
+Callback times are normalized from the reviewed shared business calendar before
+authorization. Review receives the requested and effective times; the signed grant
+binds the effective time, and the receipt exposes `moved_from` for a shift.
+Customer constraints that prohibit a shift still prevent the write. See the
 [runtime contract](docs/text-harness-contract.md) for enforcement and limits.
+
+The [MCP data contract changes](../docs/superpowers/specs/2026-11-21-mcp-data-contracts-design.md)
+cover signed shared-phone identity, line/quantity returns and exchanges, journaled
+address updates, typed catalog attribute filters, technical-source conflict
+provenance, verified policy product context and promotion validity in basket quotes.
+Upgrade the harness and catalog/order/knowledge MCP processes together so their
+schemas and context signatures agree. The new calendar and catalog evidence JSON
+files ship with `app`; changing them requires restarting those processes. Existing
+source/journal tables suffice; this change does not require an index rebuild.
+
+Two read-only tools support detailed consultation before a transaction:
+
+- `catalog.get_details` (`catalog_get_details` for the model) accepts an exact
+  parent/variant `sku`. It returns one catalog item, selected variant context,
+  `specifications`, public `technical_evidence` and source hashes. Exact SKU tables
+  provide properties; reviewed section bindings provide prose/size context whose
+  product names and conditions must be respected. `technical_data_status` reports
+  source availability; an absent property remains unknown. Price, stock and
+  warranty keep catalog authority; final prices and current stock need their
+  corresponding tools.
+- `order.preview_update` (`order_preview_update` for the model) accepts `order_id`,
+  return/exchange `action`, optional zero-based `line_index`, `qty` and replacement
+  `new_variant_sku`. The harness supplies the business date and scoped identity.
+  It reports paid lines, estimated amounts/fees and replacement inventory without
+  creating a request. `estimated_total_payment_vnd` and
+  `estimated_total_refund_vnd` include net fees; `requires_policy_check=true`
+  leaves policy eligibility unconfirmed. After the customer accepts, `order.update`
+  still needs authorization and recomputes current amounts/stock. Previewing never
+  reserves stock or confirms a completed refund.
+
+Details remain trusted catalog evidence for later pricing/policy and durable
+observations. Preview refreshes replace older equivalent estimates within the
+current turn; failures invalidate them, and estimates are not persisted as
+long-lived price facts. Both tools use existing tables and perform no embedding
+calls. Upgrade/restart the harness and catalog/order/knowledge MCP together; no
+schema migration or index rebuild is needed.
 
 Policy questions use `policy.search` on the dedicated `mcp-knowledge` service.
 Cloudflare BGE-M3 produces dense vectors and CPU BM25 produces sparse term weights; Qdrant applies IDF once and performs RRF and PostgreSQL supplies

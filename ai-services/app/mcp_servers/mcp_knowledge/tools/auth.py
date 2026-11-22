@@ -23,7 +23,9 @@ def verify_policy_context(request,envelope,secret):
         if not hmac.compare_digest(value['signature'],expected) or payload['request_hash']!=digest(request.model_dump(mode='json')):
             raise ValueError('Untrusted request')
         context=TrustedPolicyContext.model_validate(payload['context'])
-        if context.principal!='harness' or request.on!=context.on or (request.order_date is not None and request.order_date!=context.verified_order_date):
+        if (context.principal!='harness' or request.on!=context.on
+                or (request.order_date is not None and request.order_date!=context.verified_order_date)
+                or request.product_sku!=context.verified_product_sku):
             raise ValueError('Untrusted business context')
         return context
     except (TypeError,ValueError,KeyError,AttributeError):

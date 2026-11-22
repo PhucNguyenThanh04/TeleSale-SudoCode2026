@@ -66,9 +66,9 @@ class MCPGateway:
         if name == "policy.search":
             return await self._policy_search(args, policy_context)
         group = "memory" if name.startswith("memory.") else (
-            "catalog" if name in {"crm.get_customer", "catalog.search", "inventory.check",
+            "catalog" if name in {"crm.get_customer", "catalog.search", 'catalog.get_details', "inventory.check",
                                   "pricing.get_quote", "pricing.quote_order"} else "order")
-        if group == "order" and name not in {"order.create", "order.status", "order.update",
+        if group == "order" and name not in {"order.create", "order.status", "order.update", 'order.preview_update',
                                                 "schedule.callback", "handoff.transfer"}:
             return {"error": "unknown_tool"}
         payload = dict(args)
@@ -78,14 +78,21 @@ class MCPGateway:
         payload.pop("source_identity", None)
         payload.pop("operation_key", None)
         payload.pop('trusted_authorization', None)
+        payload.pop('trusted_identity', None)
         if (name in {"pricing.get_quote", "pricing.quote_order", "order.create", "order.status",
-                     "order.update", "schedule.callback", "handoff.transfer"}
+                     "order.update", 'order.preview_update', "schedule.callback", "handoff.transfer"}
                 and channel and channel_identity):
             payload["source_channel"] = channel
             payload["source_identity"] = channel_identity
         if operation_key and name in {"order.create", "order.update", "schedule.callback",
                                       "handoff.transfer", "memory.write"}:
             payload["operation_key"] = operation_key
+        from app.mcp_servers.mcp_shared.identity import IDENTITY_READS, sign_identity
+        if name in IDENTITY_READS and customer_id is not None and self.context_secret:
+            try:
+                payload['trusted_identity'] = sign_identity(name, payload, customer_id, self.context_secret)
+            except PermissionError:
+                return {'error': 'identity_required'}
         from app.mcp_servers.mcp_order.write_authorization import (
             WRITE_TOOLS, AuthorizedWriteContext, sign_write_authorization)
         if name in WRITE_TOOLS:
@@ -126,9 +133,14 @@ class MCPGateway:
                 context = TrustedPolicyContext(request_id=str(uuid4()),principal='harness',on=payload['on'])
             if context.verified_order_date:
                 payload['order_date'] = context.verified_order_date.isoformat()
+            if context.verified_product_sku:
+                payload['product_sku'] = context.verified_product_sku
             request = PolicySearchInput.model_validate(payload)
+            release_id = selected_release() or pinned_release() or context.release_id
+            if not release_id:
+                release_id = (await self.knowledge_release())['release_id']
             context = context.model_copy(update={
-                'release_id': selected_release() or pinned_release() or context.release_id,
+                'release_id': release_id,
                 'include_supplements': enabled()})
             payload = request.model_dump(mode='json',exclude_none=True)
             payload['trusted_context'] = sign_policy_context(request,context,self.context_secret)

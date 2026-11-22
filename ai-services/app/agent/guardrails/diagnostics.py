@@ -75,7 +75,7 @@ def _source_evidence(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
                         chunk_ids.append(checks.mask_pii(chunk["chunk_id"]))
                     policy_amounts.update(amount for amount, _, _
                                           in checks._money_claims(chunk["content"]))
-        elif call.get("name") == "catalog.search":
+        elif call.get("name") in checks.CATALOG_TOOLS:
             sources["catalog.search"]["available"] = True
             items = [
                 {"sku": checks.mask_pii(item["sku"]),

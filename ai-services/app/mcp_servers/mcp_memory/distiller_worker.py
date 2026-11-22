@@ -11,6 +11,8 @@ from datetime import date
 from app.agent.memory.langmem_extractor import extract_candidates
 from app.agent.memory.fact_review import (
     FactReviewUnavailable, fact_review_digest, review_profile_facts)
+from app.agent.memory.episode_review import review_episode_resolutions, EpisodeReviewUnavailable
+from app.knowledge.schemas import digest
 from app.agent.memory.deterministic_tool_facts import (deterministic_episode_tools,
                                                        verified_order_details,
                                                        verified_tool_candidates,
@@ -107,7 +109,8 @@ async def _review_customer_facts(facts, reviewer, turn, history, existing, calls
 
 
 @worker_boundary
-async def process_one(repo: MemoryRepo, extractor, projector, *, fact_reviewer=None) -> bool:
+async def process_one(repo: MemoryRepo, extractor, projector, *, fact_reviewer=None,
+                      episode_reviewer=None) -> bool:
     async with repo.transaction() as conn:
         job = await repo.claim_distillation(conn, 120)
     if not job:
@@ -282,6 +285,29 @@ async def process_one(repo: MemoryRepo, extractor, projector, *, fact_reviewer=N
                     if hasattr(repo, 'distillation_claim_current') and not await repo.distillation_claim_current(conn, job_id, job['attempts']):
                         return True
                     await repo.save_distillation_proposals(conn, job_id, stored)
+        reviewed_resolution_ids = frozenset()
+        resolution_ids = {entry['item_id'] for topic in (delta or {}).get('topic_updates', [])
+                          for entry in topic.get('resolve_items', [])}
+        if resolution_ids:
+            episode_versions = await projector.list_episode_versions(customer_id)
+            completed_eps = await completed_revisions(repo, customer_id, episode_versions)
+            open_items = collect_prior_open_items(select_episodes(episode_versions, completed_eps), '')
+            review_turn = {**committed, 'tool_observations': calls}
+            review_digest = digest({'version': 1, 'delta': delta, 'turn': review_turn, 'open_items': open_items})
+            if stored.get('episode_review_digest') == review_digest:
+                reviewed_resolution_ids = frozenset(stored.get('reviewed_resolution_ids', []))
+            elif episode_reviewer is not None:
+                reviewed_resolution_ids = await episode_reviewer(delta, review_turn, open_items)
+                if not isinstance(reviewed_resolution_ids, frozenset) or not reviewed_resolution_ids <= resolution_ids:
+                    raise EpisodeReviewUnavailable()
+                stored = {**stored, 'episode_review_digest': review_digest,
+                          'reviewed_resolution_ids': sorted(reviewed_resolution_ids)}
+                async with repo.transaction() as conn:
+                    if hasattr(repo, 'distillation_claim_current') and not await repo.distillation_claim_current(conn, job_id, job['attempts']):
+                        return True
+                    await repo.save_distillation_proposals(conn, job_id, stored)
+            if not reviewed_resolution_ids <= resolution_ids:
+                raise EpisodeReviewUnavailable()
         if diagnostic_active():
             from types import SimpleNamespace
             diagnostic_state = {'customer_id': customer_id, 'request': SimpleNamespace(session_id=session_id, client_msg_id=source_turn_id), 'history': [{'source_turn_id': t['turn_id']} for t in source_turns]}
@@ -320,30 +346,31 @@ async def process_one(repo: MemoryRepo, extractor, projector, *, fact_reviewer=N
                     delta, rejected_resolutions = admit_episode_resolutions(
                         old, delta, source_turn_id=source_turn_id,
                         customer_text=turn["customer_text"], agent_text=turn["agent_text"],
-                        prior_open_items=prior_open_map)
+                        prior_open_items=prior_open_map,
+                        reviewed_resolution_ids=reviewed_resolution_ids)
                     if rejected_resolutions:
                         logger.info("LangMem rejected %d resolutions for job %d",
                                     rejected_resolutions, job_id)
                 state = (apply_episode_delta(old, delta, source_turn_id=source_turn_id,
                     customer_text=turn["customer_text"], agent_text=turn["agent_text"],
-                    prior_open_items=prior_open_map)
+                    prior_open_items=prior_open_map,
+                    reviewed_resolution_ids=reviewed_resolution_ids)
                     if delta else old)
                 fragments = []
-                previous_summary = prior.get("summary") if prior else None
-                if previous_summary and previous_summary != "Chưa có diễn biến riêng được xác minh.":
-                    fragments.append(previous_summary)
-                narrative = build_episode_summary([], [], 800, episode_state=state)
-                if narrative != "Chưa có diễn biến riêng được xác minh." and narrative not in fragments:
-                    fragments.append(narrative)
                 for fact in accepted:
                     quote = fact.get("evidence_quote")
                     if (fact.get("source_kind") == "customer" and quote
                             and quote not in " | ".join(fragments)):
                         fragments.append(quote)
+                prior_actions = decoded(prior.get("actions_completed") or []) if prior else []
+                narrative = build_episode_summary([], [], 800, episode_state={**state,
+                    'actions_completed': [*(prior_actions if isinstance(prior_actions, list) else []),
+                                          *actions_completed]})
+                if narrative != "Chưa có diễn biến riêng được xác minh." and narrative not in fragments:
+                    fragments.append(narrative)
                 summary = " | ".join(fragments)[:800]
                 if not summary:
                     summary = "Chưa có diễn biến riêng được xác minh."
-                prior_actions = decoded(prior.get("actions_completed") or []) if prior else []
                 prior_quotes = decoded(prior.get("quoted_prices") or []) if prior else []
                 merged_actions = list(prior_actions) if isinstance(prior_actions, list) else []
                 for act in actions_completed:
@@ -400,9 +427,12 @@ async def run() -> None:
         return await extract_candidates(model, turns, existing, open_items)
     async def fact_reviewer(facts, turn, history, existing, calls):
         return await review_profile_facts(model, facts, turn, history, existing, calls)
+    async def episode_reviewer(delta, turn, items):
+        return await review_episode_resolutions(model, delta, turn, items)
     try:
         while True:
-            if not await process_one(repo, extractor, projector, fact_reviewer=fact_reviewer):
+            if not await process_one(repo, extractor, projector, fact_reviewer=fact_reviewer,
+                                     episode_reviewer=episode_reviewer):
                 await asyncio.sleep(1)
     finally:
         await repo.close()
