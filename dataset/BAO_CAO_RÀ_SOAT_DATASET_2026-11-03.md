@@ -14,17 +14,17 @@ Báo cáo này kiểm tra nội dung và nhãn dữ liệu; không kết luận 
 
 ### Dữ liệu được đọc
 
-- [GT synth — T01, T03–T12](team22-edge-synth-20261103T002954Z-1-001/team22-edge-synth/ground_truth.json).
-- [GT clone — T02, T13–T22](team22-edge-clone-20261103T002948Z-1-001/team22-edge-clone/ground_truth.json).
+- GT synth cho T01, T03–T12 trong `team22-edge-synth/ground_truth.json` của archive audio synth.
+- GT clone cho T02, T13–T22 trong `team22-edge-clone/ground_truth.json` của archive audio clone.
 - Manifest, segment annotation và WAV header của hai bộ; kiểm tra tính toàn vẹn ZIP và đối chiếu bản giải nén.
 - Kịch bản nguồn: [team_synthetic.json](../speech/dialogues/team_synthetic.json) và [team_clone.template.json](../speech/dialogues/team_clone.template.json).
 
 ### Nguồn đối chiếu trong workspace
 
-- [7 sample BTC](../../BTC-Data-Vong1-TEAMS/test_set/public_sample/).
-- [Schema scenario BTC](../../BTC-Data-Vong1-TEAMS/schemas/scenario_format.md).
-- [Điều chỉnh đề](../../BTC-Data-Vong1-TEAMS/DIEU-CHINH-DE.md) và [giải đáp mentor](../../BTC-Data-Vong1-TEAMS/GIAI-DAP-MENTOR.md).
-- [Evaluator tham chiếu BTC](../../BTC-Data-Vong1-TEAMS/eval/reference_eval.py).
+- Bảy mẫu trong `test_set/public_sample/` của gói BTC.
+- Schema scenario BTC trong `schemas/scenario_format.md`.
+- Điều chỉnh đề và giải đáp mentor trong `DIEU-CHINH-DE.md` và `GIAI-DAP-MENTOR.md`.
+- Evaluator tham chiếu BTC trong `eval/reference_eval.py`.
 - [Registry slot memory của AI service](../ai-services/app/constants.py), [schema proposal memory](../ai-services/app/schemas/langmem.py).
 - [Validator dữ liệu speech](../speech/validate.py) và [pipeline replay](../speech/replay.py).
 

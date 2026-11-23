@@ -1,5 +1,5 @@
 {
- "description": "17 khách mới T30–T46 (khách có thật trong crm_seed.json của BTC), mỗi khách 4 cuộc gọi nối tiếp S01–S04. Soạn bằng LLM (Claude) theo catalog, chính sách và mock_tools của BTC; chưa tạo audio, chưa nghe rà.",
+ "description": "17 khách mới T30–T46 liên kết CRM seed BTC, mỗi khách có nhiều phiên; bổ sung phiên chat tổng hợp T31-S05. Transcript do team soạn theo catalog và chính sách BTC.",
  "reference_date": "2026-10-15",
  "tts_engine": "vieneu",
  "normalization_rule": "NFC, chữ thường, bỏ dấu câu và gộp khoảng trắng khi chấm theo BTC.",
@@ -722,6 +722,85 @@
     "color": "den",
     "price_vnd": 1740000,
     "payment": "COD",
+    "return_days": 7
+   }
+  },
+  {
+   "id": "T31-S05",
+   "source_dialogue_id": "T31",
+   "session_index": 5,
+   "harness_ref": "SC-T31",
+   "crm_customer_id": "C018",
+   "channel": "chat_fanpage",
+   "call_date": "2026-11-04",
+   "split": "holdout",
+   "customer_region": "nam",
+   "customer_gender": "m",
+   "agent_region": "bac",
+   "agent_gender": "f",
+   "noisy": false,
+   "note": "Phiên fanpage tổng hợp tiếp nối các cuộc hotline: hỏi kiểm hàng và đổi trả cho đôi giày mua cho bạn.",
+   "turns": [
+    {
+     "idx": 1,
+     "speaker": "C",
+     "text": "chào shop, anh là khách hôm trước gọi mua giày run lai hai pro. anh nhắn fanpage để hỏi về đôi giày của bạn anh nhé.",
+     "tts_text": "Chào shop, anh là khách hôm trước gọi mua giày run lai hai pro. Anh nhắn fanpage để hỏi về đôi giày của bạn anh nhé.",
+     "entities": {}
+    },
+    {
+     "idx": 2,
+     "speaker": "A",
+     "text": "dạ em chào anh. em thấy anh đã gọi hỏi đôi run lai hai pro cho bạn anh. anh cần em hỗ trợ gì thêm ạ?",
+     "tts_text": "Dạ em chào anh. Em thấy anh đã gọi hỏi đôi run lai hai pro cho bạn anh. Anh cần em hỗ trợ gì thêm ạ?",
+     "entities": {}
+    },
+    {
+     "idx": 3,
+     "speaker": "C",
+     "text": "bạn anh muốn kiểm tra đôi đó khi nhận hàng thì có được mở hộp xem không em?",
+     "tts_text": "Bạn anh muốn kiểm tra đôi đó khi nhận hàng thì có được mở hộp xem không em?",
+     "entities": {}
+    },
+    {
+     "idx": 4,
+     "speaker": "A",
+     "text": "dạ bạn anh được kiểm tra ngoại quan khi nhận hàng, nhưng chưa được sử dụng thử ạ.",
+     "tts_text": "Dạ bạn anh được kiểm tra ngoại quan khi nhận hàng, nhưng chưa được sử dụng thử ạ.",
+     "entities": {}
+    },
+    {
+     "idx": 5,
+     "speaker": "C",
+     "text": "nếu đôi giày không vừa chân thì bạn anh đổi được trong bao lâu? bạn anh sợ chọn nhầm size nên muốn hỏi trước cho yên tâm.",
+     "tts_text": "Nếu đôi giày không vừa chân thì bạn anh đổi được trong bao lâu? Bạn anh sợ chọn nhầm size nên muốn hỏi trước cho yên tâm.",
+     "entities": {}
+    },
+    {
+     "idx": 6,
+     "speaker": "A",
+     "text": "dạ anh có thể yêu cầu đổi trả trong bảy ngày kể từ khi nhận hàng, giày chưa sử dụng và còn nguyên tem hộp ạ.",
+     "tts_text": "Dạ anh có thể yêu cầu đổi trả trong bảy ngày kể từ khi nhận hàng, giày chưa sử dụng và còn nguyên tem hộp ạ.",
+     "entities": {
+      "return_days": 7
+     }
+    },
+    {
+     "idx": 7,
+     "speaker": "C",
+     "text": "được rồi, anh sẽ chuyển thông tin đó cho bạn. cảm ơn shop nhé.",
+     "tts_text": "Được rồi, anh sẽ chuyển thông tin đó cho bạn. Cảm ơn shop nhé.",
+     "entities": {}
+    },
+    {
+     "idx": 8,
+     "speaker": "A",
+     "text": "dạ vâng, cảm ơn anh đã nhắn tin cho shop. khi cần hỗ trợ thêm anh cứ liên hệ bên em ạ.",
+     "tts_text": "Dạ vâng, cảm ơn anh đã nhắn tin cho shop. Khi cần hỗ trợ thêm anh cứ liên hệ bên em ạ.",
+     "entities": {}
+    }
+   ],
+   "entities": {
     "return_days": 7
    }
   },

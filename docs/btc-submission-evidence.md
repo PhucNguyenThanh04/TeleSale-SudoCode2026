@@ -2,18 +2,23 @@
 
 | Hạng mục | File hoặc cách tái lập |
 |---|---|
-| Mã nguồn, môi trường, setup dữ liệu | URL repo GitHub, branch hoặc tag để clone và commit để đối chiếu. Repo chứa `compose.submission.yml`, `Dockerfile.submission`, lock Python cho mỗi image và [hướng dẫn bắt đầu](../START_HERE.md). |
-| Kiến trúc và tool | [Kiến trúc M1](m1-architecture.md), [hợp đồng harness](../ai-services/docs/text-harness-contract.md). |
-| Corpus và bộ test hội thoại | Dataset ZIP có transcript, audio gốc, manifest và báo cáo validator. [Mô tả corpus](../dataset/M1-CORPUS.md) và [bộ scenario team](../ai-services/eval_harness/scenarios/README.md). BTC truyền bộ ẩn khi chấm. |
+| Mã nguồn, môi trường, setup dữ liệu | Repo chứa `compose.submission.yml`, `Dockerfile.submission`, lock Python cho mỗi image và [README](../README.md). |
+| Kiến trúc và tool | [Kiến trúc M1](m1-architecture.md) và [hợp đồng harness](../ai-services/docs/text-harness-contract.md). |
+| Corpus và bộ test hội thoại | Dataset ZIP có transcript, audio gốc, manifest và báo cáo validator. [Mô tả corpus](../dataset/M1-CORPUS.md) và [bộ scenario team](../eval/scenario_final/). BTC truyền bộ ẩn khi chấm. |
 | Eval tự động và chấm chéo | `eval` chạy cả cặp và in bảng. `eval-trace` chạy `run_eval.py` cho một cấu hình. Output chuẩn nằm trong `RESULTS_DIR`. |
 | ASR local | Image `asr` có CLI xử lý audio và tính WER/CER/Entity Accuracy. Model weights được cấp ngoài source. |
 | Web demo | Compose service `backend`, các trang `/chat` và `/knowledge`, hai tài khoản gắn hồ sơ BTC. |
-| Báo cáo và vòng cải tiến | [Báo cáo đánh giá](btc-m1-evaluation-report.md) có bảng Full/baseline, K0/K1 lịch sử và phân tích 15 lỗi. [Quy trình chạy hai vòng](m1-acceptance.md#5-knowledge-gap-loop-hai-vòng) dùng cho kết quả của bản nộp. |
-| Video và slide | [Kịch bản quay 6 phút 40 giây](../START_HERE.md#3-demo-chat-trên-một-project-riêng), [nội dung slide](btc-m1-slides.md) và PPTX 12 slide. Cập nhật số liệu và quay video sau khi kiểm với stack thật. |
+| Báo cáo và vòng cải tiến | [Báo cáo đánh giá](btc-m1-evaluation-report.md) có bảng Full/baseline, K0/K1 lịch sử và phân tích 15 lỗi. |
+| Video và slide | Có [nội dung slide](btc-m1-slides.md) và PPTX 12 slide. Video còn thiếu trong hồ sơ diễn tập. |
 
-Corpus hiện có 120 transcript, 39 nhóm đa phiên, 9 nhóm có cuộc gọi và chat. Hai ZIP Edge TTS gốc chứa 22 WAV, khoảng 19 phút 33 giây. Bộ `team22-edge-clone` đánh dấu `team_preview=true`. Còn thiếu 1 nhóm đa kênh, ít nhất 18 file audio, khoảng 40 phút 27 giây và bằng chứng hai vùng giọng. [Mô tả corpus](../dataset/M1-CORPUS.md) · [Rà soát audio](../dataset/BAO_CAO_RÀ_SOAT_DATASET_2026-11-03.md)
+Corpus hiện có 121 transcript, 39 nhóm đa phiên, 10 nhóm có cuộc gọi và chat; phiên T31-S05 là dữ liệu tổng hợp bổ sung. Hai ZIP Edge TTS gốc chứa 22 WAV, khoảng 19 phút 33 giây. Bộ `team22-edge-clone` đánh dấu `team_preview=true`. Còn thiếu ít nhất 18 file audio, khoảng 40 phút 27 giây và bằng chứng hai vùng giọng. [Mô tả corpus](../dataset/M1-CORPUS.md) · [Rà soát audio](../dataset/BAO_CAO_RÀ_SOAT_DATASET_2026-11-03.md)
 
-Hồ sơ cuối còn cần video 5–8 phút có hai cuộc gọi, slide với số liệu của bản nộp, dataset đủ audio và kết quả chạy gắn với bản phát hành. Bộ audio BTC đầy đủ và bộ test ẩn đến từ BTC. Bảng hội thoại có thể xuất trước, rồi đính kèm điểm ASR khi nhận được audio.
+Hồ sơ cuối còn cần dataset đủ audio và kết quả chạy gắn với bản phát hành. Video 5–8 phút có hai cuộc gọi và slide với số liệu của bản nộp cần chuẩn bị cho buổi bảo vệ; theo thông báo BTC, hai mục này không bắt buộc nộp vào ngày 20/11. Bộ audio BTC đầy đủ và bộ test ẩn đến từ BTC. Bảng hội thoại có thể xuất trước, rồi đính kèm điểm ASR khi nhận được audio.
+
+## Artifact diễn tập hiện có
+
+- Dataset `dist/telesale-btc-m1-dataset-20261122-rc2.zip` có 121 transcript, gồm T31-S05, hai ZIP audio Edge và báo cáo validator. SHA-256: `06dbf764bb376a8855ee7848d12aaa9a814703ee00c30429701f38bd288af698`. Đây là snapshot phát triển chưa đủ 40 audio/1 giờ và chưa chứng minh hai vùng giọng; file nằm ngoài Git nên phải cấp riêng. Bản dataset `rc1` cũ chưa có T31-S05.
+- Bộ scenario của đợt diễn tập được preflight offline xác nhận có 29 ca, 67 phiên, 170 lượt, trong đó 28 ca đa phiên và 15 ca khó; kiểm tra nhãn memory và task đều qua. Các số liệu này áp dụng cho bộ của đợt diễn tập. README BTC nhắc `eval/validate_scenarios.py`, nhưng file không có trong gói BTC cục bộ nên chưa chạy được phép kiểm này.
 
 ## Mức kiểm chứng của mã nguồn
 
@@ -23,8 +28,4 @@ Hồ sơ cuối còn cần video 5–8 phút có hai cuộc gọi, slide với s
 - Sau khi có quyền Docker, build ba image AI, backend và ASR từ ZIP giải nén. Hai project Compose riêng khởi động được với model và embedding giả lập cục bộ. Eval đi qua scorer BTC, còn image ASR tải được thư viện và chọn được CPU `int8`. Dữ liệu chấm cuối cần kết quả hội thoại trên corpus đủ quy mô và điểm ASR của hai bộ dữ liệu.
 - Gateway Docker qua kiểm thử đăng nhập, hai phiên WebSocket có streaming, lưu lượt và timeline. Sau khi chạy job với UID/GID của người vận hành, host đọc trực tiếp `run.json`, `btc_score.json`, hai trace của lệnh eval và trace chấm chéo. Image ASR ghi được vào cả thư mục kết quả và cache model bằng UID/GID đó.
 
-## Chốt commit trên GitHub
-
-Commit của bản nộp cần chứa đủ code runtime, hướng dẫn và cấu hình mẫu. Đối chiếu nội dung tại branch hoặc tag đã push trước khi gửi URL cho BTC. Bản ZIP mã nguồn được dùng cho kiểm thử nội bộ từ thư mục sạch. Corpus, video và slide đi theo hồ sơ nộp. Thông tin truy cập provider được cấp qua kênh riêng.
-
-Khi kiểm lại bản clone, đối chiếu `git rev-parse HEAD` với commit đã chốt, chạy setup bằng dữ liệu BTC và kiểm cả hai lệnh eval trong README. File `.env.submission`, secret, model weights, audio lớn và trace chạy thật được cấp hoặc tạo theo đường dẫn trong hướng dẫn chạy.
+Bản ZIP mã nguồn được dùng để diễn tập từ thư mục sạch. Bản nộp qua GitHub và cấu hình đi kèm theo [README](../README.md#6-hồ-sơ-nộp).

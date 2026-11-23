@@ -49,6 +49,7 @@ def publish_pair(scenarios_dir: Path, full_trace: Path, baseline_trace: Path,
     traces = {"full": full_trace, "baseline_no_memory": baseline_trace}
     outputs = [score_out, score_out.with_suffix('.inputs.json'),
                *(score_out.parent / f'{config}.manifest.json' for config in traces)]
+    outputs.append(score_out.parent / 'supplemental_evaluation.json')
     if extraction_sidecars is not None:
         outputs.append(score_out.parent / "extraction_report.json")
     if any(path.exists() for path in outputs):
@@ -125,6 +126,17 @@ def publish_pair(scenarios_dir: Path, full_trace: Path, baseline_trace: Path,
                 if verify_report_turn_diagnostics(trace) != turn_refs[config]:
                     raise ValueError('Published turn diagnostics mismatch')
             diagnostic_ref['turn_diagnostics'] = turn_refs
+    from eval_harness.scenario_contract import load_scenarios
+    scenarios = load_scenarios(scenarios_dir, btc_root=btc_root)
+    if any(call.get('supplemental_checks') or call.get('semantic_requirements')
+           for scenario in scenarios.values() for call in scenario['calls'].values()):
+        from eval_harness.semantic_eval import bound_evaluation
+        report = {config: bound_evaluation(scenarios, trace, btc_root=btc_root)
+                  for config, trace in traces.items()}
+        supplemental_path = score_out.parent / 'supplemental_evaluation.json'
+        atomic_json(supplemental_path, report)
+        diagnostic_ref['supplemental_evaluation'] = {'path': supplemental_path.name,
+            'sha256': hashlib.sha256(supplemental_path.read_bytes()).hexdigest()}
     from app.agent.harness.execution_diagnostics import pair_execution_health
     health = pair_execution_health(m.get('execution_health','unknown') for m in manifests.values())
     return {"status": "validated", "execution_health": health, "score": score, "manifests": manifests, "provenance": provenance, **diagnostic_ref}

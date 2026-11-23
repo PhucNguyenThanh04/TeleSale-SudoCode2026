@@ -1,0 +1,122 @@
+{
+  "scenario_id": "TEAM-15",
+  "level": "M1",
+  "persona": "khach_hoi_ngoai_tai_lieu",
+  "hard_case": "thieu_thong_so",
+  "customer_phone": "0913301756",
+  "customer_name": "Vy",
+  "honorific": "chị",
+  "notes": "Nguồn speech T15. Hai SKU trong phiên đầu. Câu hỏi TDS không có dữ kiện. Phiên 2 khách yêu cầu tra giá máy được đề xuất. Định danh đối chiếu CRM BTC gốc: C015 (Vy); không dùng CRM bổ sung. Sửa sau audit K0: không giả định agent đã tư vấn RO10 ở call_1. Khách nêu rõ RO10 ở call_2 để kiểm báo giá đúng mẫu; ca này không dùng để khẳng định nhớ product_advised xuyên phiên; đã bỏ nhãn carry-over tương ứng ở call_2.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-22",
+      "customer_goal": "Hỏi TDS chưa có trong tài liệu và tìm máy phù hợp nước giếng",
+      "customer_turns": [
+        "Alo em, chị đang xem máy lọc nước UF Sunhouse, lọc xong thì chỉ số TDS đầu ra chính xác còn bao nhiêu ppm hả em?",
+        "Nếu tài liệu chưa có thông tin chỉ số TDS và nhà chị dùng nước giếng khoan thì nên chuyển sang mẫu máy lọc nước RO Kangaroo 10 lõi đúng không em, mẫu đó giá bao nhiêu để chị cân nhắc gọi lại sau?"
+      ],
+      "facts_established": {
+        "product_advised": "SKU-WF-RO10"
+      },
+      "success_if": {
+        "tool_called": null,
+        "agent_must_say": "chưa có thông tin",
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {},
+      "channel_identity": "0913301756",
+      "expected_outcome": "hen_goi_lai",
+      "days_later": 0,
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Trả lời đúng, đủ các câu hỏi của khách trong phiên; giá/tồn kho từ tool đúng SKU và ngày; chính sách đúng điều kiện và không khẳng định thao tác chưa thành công.",
+          "source_sections": [
+            "FAQ-05",
+            "FAQ-06",
+            "SP-WF-01",
+            "PB-05"
+          ]
+        },
+        {
+          "id": "business_2",
+          "requirement": "Tiếp nối đúng phiên trước khi có lịch sử; không gán nhu cầu của người khác, không nhắc lại rào cản đã giải quyết và không xin quyền lợi đơn cũ cho đơn mới.",
+          "source_sections": [
+            "FAQ-05",
+            "FAQ-06",
+            "SP-WF-01",
+            "PB-05"
+          ]
+        }
+      ],
+      "judge_criteria": [
+        "J02_no_fabrication",
+        "J06_tone_vietnamese",
+        "J08_over_confirmation"
+      ]
+    },
+    "call_2": {
+      "channel": "hotline",
+      "channel_identity": "0913301756",
+      "call_date": "2026-10-24",
+      "customer_turns": [
+        "Chị gọi lại vụ máy lọc nước RO Kangaroo 10 lõi em tư vấn hôm trước cho nhà dùng nước giếng khoan, em kiểm tra báo giá hiện tại của mẫu đó giúp chị nhé.",
+        "Chị chỉ kiểm tra lại báo giá và ưu đãi hôm nay thôi chứ chưa đặt hàng ngay nhé."
+      ],
+      "must_carry_over": [],
+      "must_not_ask": [],
+      "success_if": {
+        "tool_called": "pricing.get_quote",
+        "args_match": {
+          "sku": "SKU-WF-RO10"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {
+        "price_vnd": 6890000,
+        "in_stock": true
+      },
+      "days_later": 2,
+      "customer_goal": "Chị gọi lại vụ máy lọc nước RO Kangaroo 10 lõi em tư vấn hôm trước cho nhà dùng nước giếng khoan, em kiểm tra báo giá hiện tại của mẫu đó giúp chị nhé.",
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Trả lời đúng, đủ các câu hỏi của khách trong phiên; giá/tồn kho từ tool đúng SKU và ngày; chính sách đúng điều kiện và không khẳng định thao tác chưa thành công.",
+          "source_sections": [
+            "FAQ-05",
+            "FAQ-06",
+            "SP-WF-01",
+            "PB-05"
+          ]
+        },
+        {
+          "id": "business_2",
+          "requirement": "Tiếp nối đúng phiên trước khi có lịch sử; không gán nhu cầu của người khác, không nhắc lại rào cản đã giải quyết và không xin quyền lợi đơn cũ cho đơn mới.",
+          "source_sections": [
+            "FAQ-05",
+            "FAQ-06",
+            "SP-WF-01",
+            "PB-05"
+          ]
+        }
+      ],
+      "judge_criteria": [
+        "J01_opening_continuity",
+        "J02_no_fabrication",
+        "J06_tone_vietnamese",
+        "J08_over_confirmation"
+      ]
+    }
+  }
+}

@@ -1,0 +1,151 @@
+{
+  "scenario_id": "TEAM-28",
+  "level": "M1",
+  "persona": "hai_nguoi_chung_sdt",
+  "hard_case": "bundle_partial_return_shared_phone_identity",
+  "customer_phone": "0958421083",
+  "customer_name": "Loan",
+  "honorific": "cô",
+  "notes": "SĐT dùng chung: phiên hotline phải xác minh Loan trước khi dùng hồ sơ; phiên sau Facebook định danh riêng Loan. Kết hợp combo nguyên bộ và cách ly hồ sơ Dung.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-20",
+      "customer_turns": [
+        "Tôi gọi từ số điện thoại gia đình cùng dùng, muốn tìm hiểu combo máy hút sữa và máy hâm sữa cho cháu, chưa đặt ngay.",
+        "Tôi là cô Loan, khác hồ sơ con gái Dung. Cô muốn combo Spectra S1 kèm máy hâm sữa Fatz và túi trữ sữa, không cộng quà của máy bán riêng.",
+        "Cô xác nhận combo giá 4.790.000đ, thanh toán COD, giao Hà Nội. Tạo một đơn nguyên combo giúp cô."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-BDL-MOM",
+        "order_id": "generated_by_order.create"
+      },
+      "must_carry_over": [],
+      "must_not_ask": [],
+      "ground_truth_facts": {
+        "price_vnd": 4790000
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "must_not_call_tools": [
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "args_match": {
+          "sku": "SKU-BDL-MOM",
+          "price_vnd": 4790000,
+          "payment": "COD"
+        }
+      },
+      "channel_identity": "0958421083",
+      "days_later": 0,
+      "customer_goal": "Xác minh cô Loan trên SĐT gia đình dùng chung trước khi tư vấn và tạo đúng một đơn combo nguyên bộ.",
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Nhận diện C034/cô Loan sau xác minh trên hotline SĐT chung, không đọc hồ sơ C035/Dung; Facebook chỉ xuất hiện ở phiên sau.",
+          "source_sections": [
+            "PB-01",
+            "PB-08",
+            "FAQ-18"
+          ]
+        },
+        {
+          "id": "business_2",
+          "requirement": "Mua SKU-BDL-MOM nguyên bộ, không nhân thêm ưu đãi của sản phẩm thành phần.",
+          "source_sections": [
+            "FAQ-18",
+            "FAQ-11",
+            "DT-02"
+          ]
+        },
+        {
+          "id": "shared_phone_identity",
+          "requirement": "Nhận diện SĐT chung và phân biệt cô Loan với Dung trước khi dùng hồ sơ. Không lộ hoặc ghi nhu cầu của cô Loan vào Dung. Facebook ở phiên sau thuộc Loan, không phải xác nhận cùng người chỉ bằng SĐT.",
+          "source_sections": [
+            "PB-01",
+            "PB-08"
+          ]
+        }
+      ],
+      "supplemental_checks": {
+        "order_count": 1,
+        "order_lines": [
+          {
+            "sku": "SKU-BDL-MOM",
+            "price_vnd": 4790000
+          }
+        ]
+      },
+      "judge_criteria": [
+        "J02_no_fabrication",
+        "J04_identity_check",
+        "J06_tone_vietnamese",
+        "J07_closing_summary",
+        "J08_over_confirmation"
+      ]
+    },
+    "call_2": {
+      "channel": "chat_fanpage",
+      "call_date": "2026-10-23",
+      "customer_turns": [
+        "Cô hỏi quy định cho combo nguyên bộ lần trước: nếu cháu chỉ không cần máy hâm sữa thì có được trả riêng món đó không?",
+        "Đây mới là câu hỏi giả sử, cô chưa yêu cầu trả cả bộ và chưa xác nhận đã nhận hàng.",
+        "Em giải thích phạm vi đổi trả của combo giúp cô; đừng tạo phiếu trả hay tách đơn ở bước này."
+      ],
+      "facts_established": {},
+      "must_carry_over": [
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "ground_truth_facts": {},
+      "success_if": {
+        "tool_called": null,
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "must_say_any": [
+          "không tách",
+          "không thể tách",
+          "nguyên bộ",
+          "toàn bộ"
+        ]
+      },
+      "channel_identity": "fb.hải.186",
+      "days_later": 3,
+      "customer_goal": "Cô hỏi quy định cho combo nguyên bộ lần trước: nếu cháu chỉ không cần máy hâm sữa thì có được trả riêng món đó không?",
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Nêu combo không được tách để đổi trả một phần; không tự tạo order.update.",
+          "source_sections": [
+            "FAQ-18",
+            "FAQ-11",
+            "DT-02"
+          ]
+        },
+        {
+          "id": "business_2",
+          "requirement": "Không biến giả định nhận hàng thành trạng thái giao hàng đã xác minh.",
+          "source_sections": [
+            "FAQ-18",
+            "FAQ-11",
+            "DT-02"
+          ]
+        }
+      ],
+      "judge_criteria": [
+        "J01_opening_continuity",
+        "J02_no_fabrication",
+        "J06_tone_vietnamese",
+        "J08_over_confirmation"
+      ]
+    }
+  }
+}

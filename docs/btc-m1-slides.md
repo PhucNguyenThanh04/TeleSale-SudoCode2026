@@ -40,7 +40,7 @@ Schema, xác nhận mua và bằng chứng tool kiểm soát giá, quyền ghi v
 
 ## Corpus và tiếng Việt
 
-- 120 transcript, 39 nhóm khách đa phiên, 9 nhóm dùng cả hotline và chat.
+- 121 transcript, 39 nhóm khách đa phiên, 10 nhóm dùng cả hotline và chat; phiên bổ sung là dữ liệu tổng hợp.
 - Thoại gồm khách do dự hỏi người nhà, khách so giá và khách đổi size.
 - 22 WAV Edge TTS, khoảng 19 phút 33 giây. Hai vùng giọng và 1 giờ audio còn cần bổ sung bằng chứng.
 - ASR local xử lý thoại Việt, từ mượn, số tiền và thực thể. WER, CER và Entity Accuracy báo riêng cho bộ team và BTC.

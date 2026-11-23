@@ -60,6 +60,7 @@ def conversation_measurement(delivery_mode='text'):
         'response_scope': 'chat_to_complete_reply',
         'excluded': ['prepare', 'memory_worker_wait', 'asr', 'tts', 'http_transport'],
         'ttft_is_proxy': False, 'ttft_basis': 'streaming_guarded_answer_delta',
+        'total_basis': 'streaming_last_answer_delta',
     }
 
 
@@ -68,7 +69,7 @@ class StreamingMeasurementError(RuntimeError):
 
 
 async def measured_stream(runtime, request, started):
-    first, answer, sequence = None, '', 1
+    first, last, answer, sequence = None, None, '', 1
     async with aclosing(runtime.stream(request)) as stream:
         async for event in stream:
             if (not isinstance(event, dict) or any(event.get(key) != str(getattr(request, key))
@@ -79,15 +80,16 @@ async def measured_stream(runtime, request, started):
                 if (type(event.get('seq')) is not int or event['seq'] != sequence
                         or not isinstance(text, str) or not text):
                     raise StreamingMeasurementError('invalid_stream_delta')
+                last = (time.perf_counter() - started) * 1000
                 if first is None and text.strip():
-                    first = (time.perf_counter() - started) * 1000
+                    first = last
                 answer += text
                 sequence += 1
             elif event.get('event') == 'done':
                 response = TextTurnResponse.model_validate(event)
                 if first is None or response.agent_text != answer:
                     raise StreamingMeasurementError('stream_answer_changed')
-                return response, first, sequence - 1
+                return response, first, last, sequence - 1
             else:
                 raise StreamingMeasurementError('stream_failed')
     raise StreamingMeasurementError('stream_missing_done')
@@ -111,7 +113,7 @@ async def run_scenario_call(
     rows_out: list[dict[str, Any]] | None = None,
     customer_name: str | None = None,
     safety_issues: list | None = None,
-    on_turn=None, diagnostics=None, delivery_mode='text',
+    on_turn=None, diagnostics=None, delivery_mode='text', customer_simulator=None,
 ) -> list[dict[str, Any]]:
     conversation_measurement(delivery_mode)
     session_id = uuid4()
@@ -135,7 +137,11 @@ async def run_scenario_call(
             session_id=session_id, channel=channel, channel_identity=channel_identity, on=call_date))
         prepare_ms = round((time.perf_counter() - prepare_started) * 1000)
 
-    for turn_idx, user_text in enumerate(customer_turns, start=1):
+    for turn_idx in range(1, (12 if customer_simulator is not None else len(customer_turns)) + 1):
+        user_text = (await customer_simulator.next_turn(trace_rows[-1] if trace_rows else None)
+                     if customer_simulator is not None else customer_turns[turn_idx - 1])
+        if user_text is None:
+            break
         turn_req = TextTurnRequest(
             client_msg_id=str(uuid4()),
             session_id=session_id,
@@ -161,12 +167,12 @@ async def run_scenario_call(
         playback_error = None
         essential_not_ready = False
         usage_evidence = []
-        first_delta_ms, delta_count = None, 0
+        first_delta_ms, last_delta_ms, delta_count = None, None, 0
         try:
             with (capture_decisions(aliases=diagnostics.decision_aliases) if diagnostics is not None and decision_enabled() else nullcontext(None)) as decision_capture, capture_diagnostic_events() as runtime_events:
                 decision_emit("provenance", provenance=True)
                 if delivery_mode == 'text':
-                    resp, first_delta_ms, delta_count = await measured_stream(runtime, turn_req, t_start)
+                    resp, first_delta_ms, last_delta_ms, delta_count = await measured_stream(runtime, turn_req, t_start)
                 else:
                     resp = await runtime.run(turn_req)
                 latency_ms = (time.perf_counter() - t_start) * 1000.0
@@ -224,7 +230,7 @@ async def run_scenario_call(
                               prepare_ms=prepare_ms if turn_idx == 1 else 0,
                               ttft_is_proxy=delivery_mode != 'text')
         if delivery_mode == 'text':
-            row['latency'].update(ttft_ms=int(first_delta_ms), streaming=True,
+            row['latency'].update(ttft_ms=int(first_delta_ms), total_ms=int(last_delta_ms), streaming=True,
                                   answer_delta_count=delta_count, stream_completed=True)
         if playback_error is not None:
             row["memory_error"] = "playback_failed"
@@ -256,6 +262,9 @@ async def run_scenario_call(
             raise RuntimeError("playback_failed")
         if essential_not_ready:
             raise RuntimeError('essential_state_not_ready')
+
+    if customer_simulator is not None:
+        await customer_simulator.finish(trace_rows[-1] if trace_rows else None)
 
     if (capture_writes is not None or wait_for_jobs is not None) and source_ids:
         ready = []

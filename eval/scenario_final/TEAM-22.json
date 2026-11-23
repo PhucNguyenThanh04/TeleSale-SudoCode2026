@@ -1,0 +1,220 @@
+{
+  "scenario_id": "TEAM-22",
+  "level": "M1",
+  "persona": "khach_da_mua_doi_size",
+  "hard_case": "bao_mat_thong_tin_hoan_tien",
+  "customer_phone": "0925877188",
+  "customer_name": "Huy",
+  "honorific": "anh",
+  "notes": "Nguồn speech T22, điều chỉnh tiền điều kiện theo BTC gốc. Khách C014 (Huy) mua sản phẩm BTC ở call_1; call_2/call_3 tra mã đơn thực nhận từ order.create, không có đơn seed bổ sung. Ngày nhận và tình trạng hàng là lời khách khai, không phải trạng thái giao hàng được tool xác nhận. Gộp câu hỏi hoàn tiền vào call_2 để giữ ba phiên; không thu thập số tài khoản qua thoại. Không giữ speech_dialogue_ref cũ sau đổi cấu trúc phiên.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "channel_identity": "0925877188",
+      "call_date": "2026-10-20",
+      "customer_goal": "Mua nồi chiên Xiaomi 4.5L để tạo đơn thật cho phiên hậu mãi sau.",
+      "customer_turns": [
+        "Chào em, anh đang xem mẫu nồi chiên không dầu Xiaomi 4.5L, em kiểm tra giá bán và tồn kho giúp anh nhé.",
+        "Chính sách đổi trả hoàn tiền đối với hàng gia dụng chưa qua sử dụng bên em quy định trong mấy ngày?",
+        "Ok em lên đơn cho anh 1 chiếc nồi chiên không dầu đó, thanh toán COD nhé."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-AF-XM",
+        "payment": "COD",
+        "order_id": "generated_by_order.create"
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-AF-XM",
+          "qty": 1,
+          "payment": "COD",
+          "price_vnd": 1590000
+        }
+      },
+      "ground_truth_facts": {
+        "price_vnd": 1590000,
+        "in_stock": true
+      },
+      "expected_outcome": "chot_don",
+      "days_later": 0,
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Trả lời đúng, đủ các câu hỏi của khách trong phiên; giá/tồn kho từ tool đúng SKU và ngày; chính sách đúng điều kiện và không khẳng định thao tác chưa thành công.",
+          "source_sections": [
+            "DT-01",
+            "DT-02",
+            "DT-04",
+            "DT-07",
+            "QT-04",
+            "VC-06"
+          ]
+        },
+        {
+          "id": "business_2",
+          "requirement": "Tiếp nối đúng phiên trước khi có lịch sử; không gán nhu cầu của người khác, không nhắc lại rào cản đã giải quyết và không xin quyền lợi đơn cũ cho đơn mới.",
+          "source_sections": [
+            "DT-01",
+            "DT-02",
+            "DT-04",
+            "DT-07",
+            "QT-04",
+            "VC-06"
+          ]
+        }
+      ],
+      "supplemental_checks": {
+        "order_count": 1,
+        "order_lines": [
+          {
+            "sku": "SKU-AF-XM",
+            "qty": 1,
+            "price_vnd": 1590000
+          }
+        ]
+      },
+      "judge_criteria": [
+        "J02_no_fabrication",
+        "J06_tone_vietnamese",
+        "J07_closing_summary",
+        "J08_over_confirmation"
+      ]
+    },
+    "call_2": {
+      "channel": "hotline",
+      "call_date": "2026-10-29",
+      "customer_goal": "Trả nồi chiên chưa dùng và hỏi cách hoàn tiền COD",
+      "customer_turns": [
+        "Hi em, chiếc nồi chiên không dầu đặt lần trước anh nhận ngày 24/10 nhưng đổi ý không dùng nữa, hàng chưa mở hộp còn nguyên seal và phụ kiện. Em tra đơn cũ và kiểm tra điều kiện trả hàng giúp anh nhé.",
+        "Đơn đó anh thanh toán COD thì hoàn tiền trong mấy ngày làm việc, và thông tin tài khoản nhận hoàn tiền anh điền vào biểu mẫu nào của hệ thống chứ không đọc qua cuộc gọi đúng không em?",
+        "Ok em xác nhận tạo yêu cầu trả hàng trên hệ thống cho đơn nồi chiên đó giúp anh nhé."
+      ],
+      "facts_established": {
+        "order_id": "generated_by_order.create",
+        "payment": "COD"
+      },
+      "success_if": {
+        "tool_called": "order.update",
+        "args_match": {
+          "order_id": "generated_by_order.create",
+          "action": "return"
+        },
+        "must_say_any": [
+          "biểu mẫu",
+          "form hoàn tiền",
+          "điền vào form"
+        ]
+      },
+      "ground_truth_facts": {
+        "refund_vnd": 1590000
+      },
+      "channel_identity": "0925877188",
+      "must_carry_over": [
+        "order_id",
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "order_id",
+        "product_advised"
+      ],
+      "days_later": 9,
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Trả lời đúng, đủ các câu hỏi của khách trong phiên; giá/tồn kho từ tool đúng SKU và ngày; chính sách đúng điều kiện và không khẳng định thao tác chưa thành công.",
+          "source_sections": [
+            "DT-01",
+            "DT-02",
+            "DT-04",
+            "DT-07",
+            "QT-04",
+            "VC-06"
+          ]
+        },
+        {
+          "id": "business_2",
+          "requirement": "Tiếp nối đúng phiên trước khi có lịch sử; không gán nhu cầu của người khác, không nhắc lại rào cản đã giải quyết và không xin quyền lợi đơn cũ cho đơn mới.",
+          "source_sections": [
+            "DT-01",
+            "DT-02",
+            "DT-04",
+            "DT-07",
+            "QT-04",
+            "VC-06"
+          ]
+        }
+      ],
+      "judge_criteria": [
+        "J01_opening_continuity",
+        "J02_no_fabrication",
+        "J06_tone_vietnamese",
+        "J08_over_confirmation"
+      ]
+    },
+    "call_3": {
+      "channel": "hotline",
+      "channel_identity": "0925877188",
+      "call_date": "2026-11-07",
+      "customer_goal": "Theo dõi đơn và yêu cầu trả nồi Xiaomi ở phiên trước; không tạo phiếu trả thứ hai.",
+      "customer_turns": [
+        "Anh gọi tiếp về yêu cầu trả chiếc nồi chiên hôm trước, em tra lại đơn hàng cũ xem trên hệ thống đang ghi nhận trạng thái nào nhé.",
+        "Nếu trạng thái đơn đang xử lý trả hàng thì anh chờ thêm chứ không tạo phiếu mới, cảm ơn em nhé."
+      ],
+      "must_carry_over": [
+        "payment",
+        "order_id"
+      ],
+      "must_not_ask": [
+        "payment",
+        "order_id"
+      ],
+      "success_if": {
+        "tool_called": "order.status",
+        "args_match": {
+          "order_id": "generated_by_order.create"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {},
+      "days_later": 9,
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Trả lời đúng, đủ các câu hỏi của khách trong phiên; giá/tồn kho từ tool đúng SKU và ngày; chính sách đúng điều kiện và không khẳng định thao tác chưa thành công.",
+          "source_sections": [
+            "DT-01",
+            "DT-02",
+            "DT-04",
+            "DT-07",
+            "QT-04",
+            "VC-06"
+          ]
+        },
+        {
+          "id": "business_2",
+          "requirement": "Tiếp nối đúng phiên trước khi có lịch sử; không gán nhu cầu của người khác, không nhắc lại rào cản đã giải quyết và không xin quyền lợi đơn cũ cho đơn mới.",
+          "source_sections": [
+            "DT-01",
+            "DT-02",
+            "DT-04",
+            "DT-07",
+            "QT-04",
+            "VC-06"
+          ]
+        }
+      ],
+      "judge_criteria": [
+        "J01_opening_continuity",
+        "J02_no_fabrication",
+        "J06_tone_vietnamese",
+        "J08_over_confirmation"
+      ]
+    }
+  }
+}

@@ -10,7 +10,7 @@ from eval_harness.test_entrypoint_parity import Runtime
 
 
 @pytest.mark.parametrize('config', ['full', 'baseline_no_memory'])
-def test_stream_ttft_is_first_delta_and_total_includes_terminal_persistence(monkeypatch, config):
+def test_stream_total_ends_at_last_delta_and_response_includes_persistence(monkeypatch, config):
     clock = [0.0]
     class StreamRuntime(Runtime):
         async def stream(self, request):
@@ -27,7 +27,8 @@ def test_stream_ttft_is_first_delta_and_total_includes_terminal_persistence(monk
         call_spec={'customer_turns': ['Giá bao nhiêu?']}, base_date=date(2026, 11, 17),
         customer_phone='0900000000', config=config, delivery_mode='text'))
     latency = rows[0]['latency']
-    assert latency['ttft_ms'] == 50 and latency['total_ms'] == 140
+    assert latency['ttft_ms'] == 50 and latency['total_ms'] == 120
+    assert latency['response_ms'] == 140
     assert latency['ttft_is_proxy'] is False and latency['answer_delta_count'] == 2
     assert latency['stream_completed'] is True
 
@@ -52,6 +53,7 @@ def test_broken_stream_never_becomes_a_fabricated_ttft(fault):
 def test_text_measurement_always_uses_guarded_streaming():
     value = conversation_measurement('text')
     assert value['ttft_basis'] == 'streaming_guarded_answer_delta'
+    assert value['total_basis'] == 'streaming_last_answer_delta'
     assert value['ttft_is_proxy'] is False
 
 
