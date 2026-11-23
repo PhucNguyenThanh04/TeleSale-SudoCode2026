@@ -1,0 +1,113 @@
+{
+  "scenario_id": "TEAM-47",
+  "level": "M2",
+  "persona": "khach_hoi_ngoai_tai_lieu",
+  "hard_case": "old_policy_order_date_vs_receipt_date",
+  "customer_phone": "0976158464",
+  "customer_name": "Thu",
+  "honorific": "chị",
+  "notes": "Lời thoại tổng hợp của nhóm dựa trên chính sách BTC; không sao chép kịch bản public. Chưa có người độc lập duyệt hoặc đánh giá model.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-09",
+      "customer_goal": "Phân biệt phiên bản chính sách và mốc tính thời hạn với đơn giả định cũ.",
+      "customer_turns": [
+        "Chị hỏi giả sử một đơn áo tạo ngày 28/09, nhận ngày 30/09, đến hôm nay 09/10 muốn đổi size lần đầu thì áp bản chính sách nào?",
+        "Em phân biệt ngày tạo đơn quyết định phiên bản và ngày nhận hàng quyết định thời hạn, đây chỉ là câu hỏi giả sử chứ chưa có mã đơn.",
+        "Chị muốn biết thời hạn đổi trả và phí đổi size theo bản cũ, chưa yêu cầu cập nhật đơn nào."
+      ],
+      "facts_established": {},
+      "must_carry_over": [],
+      "must_not_ask": [],
+      "success_if": {
+        "tool_called": null,
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {
+        "historical_return_days": 14,
+        "historical_exchange_fee_vnd": 20000
+      },
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Đơn tạo trước 01/10 áp bản 2026-06: 14 ngày từ nhận, phí đổi size 20.000đ/lần và khách chịu chiều trả; không bịa mã đơn hay tạo phiếu.",
+          "source_sections": [
+            "CL-01",
+            "DT-OLD-01",
+            "DT-OLD-03"
+          ]
+        }
+      ],
+      "channel_identity": "0976158464",
+      "days_later": 0,
+      "judge_criteria": [
+        "J02_no_fabrication",
+        "J06_tone_vietnamese",
+        "J08_over_confirmation"
+      ]
+    },
+    "call_2": {
+      "channel": "hotline",
+      "call_date": "2026-10-15",
+      "customer_goal": "Không mang chính sách đơn cũ sang đơn mới.",
+      "customer_turns": [
+        "Chị hỏi tiếp nhưng đổi giả định: một đơn mới tạo và nhận sau ngày 01/10 thì có còn 14 ngày và phí 20 nghìn không?",
+        "Đây là đơn mới khác đơn giả sử cũ, em nói rõ bản đang áp dụng hôm nay.",
+        "Chị chỉ cần quy định, không tạo yêu cầu đổi hay hoàn tiền."
+      ],
+      "facts_established": {},
+      "must_carry_over": [],
+      "must_not_ask": [],
+      "success_if": {
+        "tool_called": null,
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "forbidden_claims": [
+          {
+            "field": "return_days",
+            "value": 14
+          },
+          {
+            "field": "exchange_fee_vnd",
+            "value": 20000
+          }
+        ]
+      },
+      "ground_truth_facts": {
+        "return_days": 7,
+        "exchange_fee_vnd": 0,
+        "policy_version": "2026-10"
+      },
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Bản 2026-10 cho đơn mới: đổi trả 7 ngày, đổi size lần đầu miễn phí hai chiều; nêu điều kiện thay vì giữ 14 ngày/20.000đ của bản cũ.",
+          "source_sections": [
+            "CL-01",
+            "DT-01",
+            "DT-03"
+          ]
+        }
+      ],
+      "channel_identity": "0976158464",
+      "days_later": 6,
+      "judge_criteria": [
+        "J01_opening_continuity",
+        "J02_no_fabrication",
+        "J03_conflict_handling",
+        "J06_tone_vietnamese",
+        "J08_over_confirmation"
+      ]
+    }
+  }
+}

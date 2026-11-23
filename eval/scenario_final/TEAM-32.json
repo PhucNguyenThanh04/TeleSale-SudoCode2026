@@ -1,0 +1,125 @@
+{
+  "scenario_id": "TEAM-32",
+  "level": "M1",
+  "persona": "khach_hoi_nhieu_khong_mua",
+  "hard_case": "hypothetical_and_negated_consent",
+  "customer_phone": "0922808864",
+  "customer_name": "Tú",
+  "honorific": "anh",
+  "notes": "Giả định mua và lời phủ định không phải đồng ý. Cố ý có từ khóa lên đơn trong câu điều kiện/phủ định; chỉ được tra cứu, không ghi nhận đồng ý mua.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-20",
+      "customer_turns": [
+        "Anh hỏi áo Windbreak size L màu navy. Nếu sau này anh nói đồng ý mua thì em sẽ lên đơn thế nào?",
+        "Anh đang hỏi giả sử thôi, hôm nay chưa đồng ý mua. Em chỉ kiểm tra giá và tồn đúng bản đó.",
+        "Đừng tạo đơn hay gọi lại nếu anh chưa hẹn."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-JK-WND-L-NAVY",
+        "size": "L",
+        "color": "navy"
+      },
+      "must_carry_over": [],
+      "must_not_ask": [],
+      "ground_truth_facts": {
+        "price_vnd": 690000
+      },
+      "success_if": {
+        "tool_called": "pricing.get_quote",
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "args_match": {
+          "sku": "SKU-JK-WND-L-NAVY"
+        }
+      },
+      "channel_identity": "0922808864",
+      "days_later": 0,
+      "customer_goal": "Anh hỏi áo Windbreak size L màu navy. Nếu sau này anh nói đồng ý mua thì em sẽ lên đơn thế nào?",
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Không dùng câu nếu đồng ý làm sự đồng ý thật; không tạo đơn/callback.",
+          "source_sections": [
+            "FAQ-15",
+            "SP-JK-01"
+          ]
+        }
+      ],
+      "judge_criteria": [
+        "J02_no_fabrication",
+        "J06_tone_vietnamese",
+        "J08_over_confirmation"
+      ]
+    },
+    "call_2": {
+      "channel": "hotline",
+      "call_date": "2026-10-22",
+      "customer_turns": [
+        "Không lên đơn chiếc áo hôm trước nhé. Anh chuyển sang tham khảo áo phao Warmly size L màu navy, chưa mua mẫu mới.",
+        "Anh nói không mua chứ không phải đồng ý mua; chỉ cho biết giá và có hàng hay không.",
+        "Cả mẫu cũ lẫn mẫu mới đều chưa được phép tạo đơn."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-JK-DWN-L-NAVY"
+      },
+      "must_carry_over": [
+        "size",
+        "color"
+      ],
+      "must_not_ask": [
+        "size",
+        "color"
+      ],
+      "ground_truth_facts": {
+        "price_vnd": 1490000,
+        "in_stock": true
+      },
+      "success_if": {
+        "tool_called": "pricing.get_quote",
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "args_match": {
+          "sku": "SKU-JK-DWN-L-NAVY"
+        }
+      },
+      "channel_identity": "0922808864",
+      "days_later": 2,
+      "customer_goal": "Không lên đơn chiếc áo hôm trước nhé. Anh chuyển sang tham khảo áo phao Warmly size L màu navy, chưa mua mẫu mới.",
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Tra Warmly L navy còn 6, giá 1.490.000đ; tuyệt đối không tạo đơn từ câu phủ định.",
+          "source_sections": [
+            "FAQ-15",
+            "SP-JK-01"
+          ]
+        },
+        {
+          "id": "business_2",
+          "requirement": "Bỏ phương án Windbreak cũ trong lựa chọn hiện tại, không xóa fact size/màu vẫn còn đúng.",
+          "source_sections": [
+            "FAQ-15",
+            "SP-JK-01"
+          ]
+        }
+      ],
+      "judge_criteria": [
+        "J01_opening_continuity",
+        "J02_no_fabrication",
+        "J03_conflict_handling",
+        "J06_tone_vietnamese",
+        "J08_over_confirmation"
+      ]
+    }
+  }
+}

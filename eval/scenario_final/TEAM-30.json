@@ -1,0 +1,141 @@
+{
+  "scenario_id": "TEAM-30",
+  "level": "M1",
+  "persona": "khach_hoi_nhieu_khong_mua",
+  "hard_case": "water_source_revocation",
+  "customer_phone": "0910285940",
+  "customer_name": "Dũng",
+  "honorific": "anh",
+  "notes": "Đổi nguồn nước làm thay đổi tính phù hợp công nghệ. Ràng buộc nguồn nước được sửa rõ ràng; phải bỏ kết luận dựa trên giếng khoan ở phiên trước.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-20",
+      "customer_turns": [
+        "Anh dùng nước giếng khoan mà chỗ đặt máy chưa có điện, muốn máy UF Sunhouse vì không cần điện. Có hợp không?",
+        "Anh không đồng ý lấy UF nếu nó không xử lý đúng nguồn nước, cũng chưa thể lắp RO khi chưa có điện.",
+        "Em chỉ phân tích mâu thuẫn này, chưa chọn máy thay anh hay đặt hàng."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-WF-UF"
+      },
+      "must_carry_over": [],
+      "must_not_ask": [],
+      "ground_truth_facts": {},
+      "success_if": {
+        "tool_called": null,
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "must_say_any": [
+          "RO",
+          "giếng khoan"
+        ]
+      },
+      "channel_identity": "0910285940",
+      "days_later": 0,
+      "customer_goal": "Anh dùng nước giếng khoan mà chỗ đặt máy chưa có điện, muốn máy UF Sunhouse vì không cần điện. Có hợp không?",
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "UF chỉ cho nước máy đạt chuẩn; giếng khoan cần RO và RO cần điện.",
+          "source_sections": [
+            "FAQ-05",
+            "FAQ-06",
+            "SP-WF-01"
+          ]
+        },
+        {
+          "id": "business_2",
+          "requirement": "Không khẳng định UF đáp ứng giếng khoan để cố chốt đơn.",
+          "source_sections": [
+            "FAQ-05",
+            "FAQ-06",
+            "SP-WF-01"
+          ]
+        }
+      ],
+      "judge_criteria": [
+        "J02_no_fabrication",
+        "J06_tone_vietnamese",
+        "J08_over_confirmation"
+      ]
+    },
+    "call_2": {
+      "channel": "hotline",
+      "call_date": "2026-10-23",
+      "customer_turns": [
+        "Anh đã chuyển chỗ lắp sang căn hộ dùng nước máy đạt chuẩn, không dùng nguồn giếng khoan nữa. Chỗ đó vẫn không có ổ điện.",
+        "Với nguồn nước mới này, anh chọn UF Sunhouse không cần điện. Em kiểm tra giá và tồn đúng mẫu đã hỏi.",
+        "Anh xác nhận mua một máy giá 3.290.000đ, chuyển khoản ngân hàng, giao nội thành Hà Nội."
+      ],
+      "facts_established": {},
+      "must_carry_over": [
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "ground_truth_facts": {
+        "price_vnd": 3290000,
+        "in_stock": true
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "must_not_call_tools": [
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "args_match": {
+          "sku": "SKU-WF-UF",
+          "price_vnd": 3290000,
+          "payment": "bank"
+        }
+      },
+      "channel_identity": "0910285940",
+      "days_later": 3,
+      "customer_goal": "Anh đã chuyển chỗ lắp sang căn hộ dùng nước máy đạt chuẩn, không dùng nguồn giếng khoan nữa. Chỗ đó vẫn không có ổ điện.",
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Chấp nhận nguồn nước mới do khách sửa; không tiếp tục ép RO vì nguồn giếng cũ.",
+          "source_sections": [
+            "FAQ-05",
+            "FAQ-06",
+            "SP-WF-01"
+          ]
+        },
+        {
+          "id": "business_2",
+          "requirement": "Không coi không cần điện là đặc tính chung của mọi máy RO/UF.",
+          "source_sections": [
+            "FAQ-05",
+            "FAQ-06",
+            "SP-WF-01"
+          ]
+        }
+      ],
+      "supplemental_checks": {
+        "order_count": 1,
+        "order_lines": [
+          {
+            "sku": "SKU-WF-UF",
+            "price_vnd": 3290000
+          }
+        ]
+      },
+      "judge_criteria": [
+        "J01_opening_continuity",
+        "J02_no_fabrication",
+        "J03_conflict_handling",
+        "J06_tone_vietnamese",
+        "J07_closing_summary",
+        "J08_over_confirmation"
+      ]
+    }
+  }
+}

@@ -61,7 +61,7 @@ def main() -> None:
             parser.error(
                 f"--runtime-config file does not exist: {args.runtime_config}. "
                 "Provide an existing policy runtime JSON; /path/to/... is only an example. "
-                "See dataloader_offline/README.md for required setup."
+                "See the setup section in the root README.md."
             )
     elif args.actor or (args.runtime_config and not args.verify_ingestion) or args.expected_active or args.revision_id:
         parser.error("Policy build options require --prepare-policy")

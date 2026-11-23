@@ -12,6 +12,18 @@ def _check(name, passed, evidence):
             'evidence': evidence}
 
 
+def _call_brief_check(rows, expected):
+    returning = [r for r in rows if r.get('turn') == 1 and r.get('call') != 'call_1']
+    observed = {(r['scenario_id'], r['call']) for r in returning}
+    values = [r.get('call_brief_latency_ms') for r in returning]
+    complete = bool(expected) and observed == expected and len(returning) == len(expected) and all(
+        type(value) is int and value >= 0 for value in values)
+    maximum = max(values) if complete else None
+    return _check('call_brief_max', maximum <= 5000 if complete else None,
+                  {'max_ms': maximum, 'maximum_ms': 5000, 'measured': sum(
+                      type(value) is int and value >= 0 for value in values), 'expected': len(expected)})
+
+
 def _read(path):
     value = json.loads(path.read_text())
     if not isinstance(value, dict):
@@ -192,13 +204,15 @@ def inspect_run(directory, *, btc_root, extraction_review=None):
                          'BTC rule 7: nonstreaming chat TTFT = Total; voice proxies are excluded.'))
     for name, field, limit in [('ttft_p95', 'ttft', 3000), ('total_p95', 'total', 8000)]:
         values = [m.get('latency', {}).get(field, {}).get('p95_ms') for m in (full, baseline)]
-        available = sample_ok and all(type(v) in (int, float) for v in values) and (measured or field != 'ttft')
+        available = (sample_ok and all(type(v) in (int, float) for v in values) and measured
+                     and (field != 'total' or not streamed
+                          or measurement.get('total_basis') == 'streaming_last_answer_delta'))
         checks.append(_check(name, all(v <= limit for v in values) if available else None,
                              {'p95_ms': values, 'maximum_ms': limit}))
-    brief = full.get('latency', {}).get('call_brief') or {}
-    brief_value = brief.get('p95_ms')
-    checks.append(_check('call_brief_p95', brief_value <= 5000 if type(brief_value) in (int, float)
-                         and brief.get('n', 0) > 0 else None, {'p95_ms': brief_value, 'maximum_ms': 5000}))
+    scenarios = load_scenarios(directory / 'scenarios', btc_root=Path(btc_root))
+    expected_briefs = {(sid, name) for sid, scenario in scenarios.items()
+                       for name in scenario['calls'] if name != 'call_1'}
+    checks.append(_call_brief_check(rows['full'], expected_briefs))
     return {'scope': 'm1_conversation_only', 'run_id': run.get('run_id'),
             'conversation_accepted': all(c['status'] == 'pass' for c in checks),
             'coverage': dataset['coverage'], 'checks': checks,

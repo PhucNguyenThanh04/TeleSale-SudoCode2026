@@ -20,6 +20,9 @@ def test_release_snapshots_supplied_package_without_changing_sources(tmp_path):
         assert (release / relative).read_bytes() == (BTC / relative).read_bytes()
     assert (release / 'catalog/products.json').read_bytes() == (BTC / 'catalog/products.json').read_bytes()
     assert (release / 'schemas/trace_log.schema.json').is_file()
+    assert (release / 'eval/llm_judge_rubric.json').read_bytes() == (BTC / 'eval/llm_judge_rubric.json').read_bytes()
+    from eval_harness.scenario_contract import load_scenarios
+    assert len(load_scenarios(ROOT / 'eval/scenario_final', btc_root=release)) == 48
     spec = importlib.util.spec_from_file_location('resolved_mock', release / 'eval/mock_tools.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

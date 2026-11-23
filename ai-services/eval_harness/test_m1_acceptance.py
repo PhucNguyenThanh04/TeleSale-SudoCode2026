@@ -146,3 +146,50 @@ def test_nonstreaming_measurement_uses_btc_rule_7_and_requires_equal_times(tmp_p
     assert gates['m1_text_lifecycle']['status'] == 'pass'
     assert gates['ttft_measured']['status'] == ('missing' if unequal else 'pass')
     assert report['conversation_accepted'] is False
+
+
+def test_call_brief_gate_checks_every_returning_call_and_maximum():
+    from eval_harness.m1_acceptance import _call_brief_check
+    rows = [dict(scenario_id=f'S{i}', call='call_2', turn=1, call_brief_latency_ms=100)
+            for i in range(99)]
+    rows.append(dict(scenario_id='S99', call='call_2', turn=1, call_brief_latency_ms=6000))
+    expected = {(row['scenario_id'], row['call']) for row in rows}
+    check = _call_brief_check(rows, expected)
+    assert check['status'] == 'fail'
+    assert check['evidence']['max_ms'] == 6000
+    rows[-1]['call_brief_latency_ms'] = 5000
+    assert _call_brief_check(rows, expected)['status'] == 'pass'
+    rows[-1].pop('call_brief_latency_ms')
+    assert _call_brief_check(rows, expected)['status'] == 'missing'
+    assert _call_brief_check([], set())['status'] == 'missing'
+
+
+@pytest.mark.parametrize('total_basis, expected', [
+    (None, 'missing'), ('streaming_last_answer_delta', 'pass'),
+])
+def test_stream_total_gate_requires_last_delta_provenance(monkeypatch, tmp_path, total_basis, expected):
+    from eval_harness import m1_acceptance
+    from eval_harness.benchmark_runner import conversation_measurement
+    measurement = conversation_measurement('text')
+    if total_basis is None:
+        measurement.pop('total_basis')
+    run = {'conversation_measurement': measurement, 'subset': False}
+    latency = {'ttft_ms': 10, 'total_ms': 20, 'ttft_is_proxy': False,
+               'streaming': True, 'stream_completed': True, 'answer_delta_count': 1}
+    row = {'scenario_id': 'S', 'call': 'call_1', 'turn': 1, 'latency': latency}
+    rows = {'full': [row] * 100, 'baseline_no_memory': [row] * 100}
+    metrics = {'latency': {'ttft': {'p95_ms': 10}, 'total': {'p95_ms': 20}},
+               'task_success_rate': {'value': 100},
+               'hallucination_rate': {'price_promo_only': {'value': 0, 'total': 1}},
+               'guardrail_violations': {'total': 0}}
+    score = {'system': metrics, 'baseline': metrics, 'comparison': {'rqr_relative_reduction_pct': 50}}
+    manifests = {key: {'model_params': {'conversation_measurement': measurement, 'streaming': True,
+                                         'warmup_turns': 3}, 'guardrails': {'enabled': True}}
+                 for key in rows}
+    traces = {key: tmp_path / (key + '.jsonl') for key in rows}
+    monkeypatch.setattr(m1_acceptance, 'load_pair', lambda *a, **k: (run, score, manifests, traces, rows))
+    monkeypatch.setattr(m1_acceptance, 'inspect_dataset', lambda *a, **k: {'coverage': {}, 'checks': []})
+    monkeypatch.setattr(m1_acceptance, 'load_scenarios', lambda *a, **k: {})
+    monkeypatch.setattr(m1_acceptance, '_read', lambda *a, **k: {'warmup_turns': 3, 'streaming': True})
+    report = m1_acceptance.inspect_run(tmp_path, btc_root=BTC)
+    assert checks(report)['total_p95']['status'] == expected

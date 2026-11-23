@@ -167,6 +167,8 @@ async def run_pair(*, scenarios: Path, btc_root: Path, seed: int,
                     raise ValueError('Turn diagnostic reference mismatch')
             summary.update(extraction_report=reference, extraction_status=report['extraction_status'],
                            turn_diagnostics=turn_refs)
+        if result.get('supplemental_evaluation'):
+            summary['supplemental_evaluation'] = result['supplemental_evaluation']
         print(f"[eval] execution health: {result.get('execution_health', 'unknown')}", flush=True)
         summary.update(status=result['status'], execution_health=result.get('execution_health','unknown'),
             score='btc_score.json' if result['status']=='validated' else None,

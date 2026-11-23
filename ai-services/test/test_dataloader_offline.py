@@ -82,7 +82,7 @@ def test_missing_runtime_config_explains_setup_before_reading_source_or_db(monke
     assert exc.value.code == 2
     captured = capsys.readouterr()
     assert '--runtime-config file does not exist' in captured.err
-    assert 'dataloader_offline/README.md' in captured.err
+    assert 'root README.md' in captured.err
     assert not captured.out
 
 

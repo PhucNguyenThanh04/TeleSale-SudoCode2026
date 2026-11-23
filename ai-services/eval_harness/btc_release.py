@@ -45,6 +45,9 @@ def prepare_btc_release(base: Path, destination: Path) -> Path:
         (destination / 'eval').mkdir()
         for path in sorted((base / 'eval').glob('*.py')):
             shutil.copy2(path, destination / 'eval' / path.name)
+        rubric = base / 'eval/llm_judge_rubric.json'
+        if rubric.is_file():
+            shutil.copy2(rubric, destination / 'eval' / rubric.name)
         for path in sorted(base.glob('*.md')):
             shutil.copy2(path, destination / path.name)
         source_files = _files(destination)
