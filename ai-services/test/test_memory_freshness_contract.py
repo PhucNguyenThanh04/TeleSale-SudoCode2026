@@ -93,7 +93,7 @@ class MemoryFreshnessContract(unittest.IsolatedAsyncioTestCase):
                                  "source_kind": "tool"}})
         gateway = ReferenceGateway()
         result = await load_context(state, memory, gateway,
-                                    lambda: datetime(2026, 10, 18, tzinfo=timezone.utc))
+                                    lambda: datetime(2026, 10, 18, tzinfo=timezone.utc), refresh_brief=True)
         self.assertEqual(result["call_brief"]["profile_facts"]["preferred_color"],
                          "trắng")
         self.assertIn(("pricing.get_quote", "2026-10-18"),
@@ -117,7 +117,7 @@ class MemoryFreshnessContract(unittest.IsolatedAsyncioTestCase):
                                  "source_kind": "tool"}})
         gateway = ReferenceGateway()
         result = await load_context(state, memory, gateway,
-                                    lambda: datetime(2027, 6, 15, tzinfo=timezone.utc))
+                                    lambda: datetime(2027, 6, 15, tzinfo=timezone.utc), refresh_brief=True)
         expected = case["calls"][1]["turns"][0]["expected_after_turn"]
         self.assertEqual(check_snapshot(expected, {
             "customer_id": state["customer_id"], "profile": result["profile"]}), [])

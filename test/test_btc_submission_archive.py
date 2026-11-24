@@ -15,7 +15,9 @@ def test_archive_delivers_current_source_and_excludes_tracked_secrets_and_local_
     files = {
         'README.md': 'old',
         'run_eval.py': 'tracked runner',
-        '.env.submission.example': 'LLM_API_KEY=',
+        'run_submission.py': 'submission launcher',
+        '.env.example': 'LLM_API_KEY=',
+        '.env': 'local config',
         'backend/.env': 'private',
         'ai-services/eval_harness/results/trace.jsonl': 'old trace',
         'secrets-submission/postgres_password': 'private',
@@ -40,7 +42,7 @@ def test_archive_delivers_current_source_and_excludes_tracked_secrets_and_local_
         manifest = json.loads(delivery.read('MANIFEST.json'))
         assert delivery.read('README.md') == b'updated'
         assert delivery.read('scripts/new.py') == b'untracked delivery code'
-        assert set(manifest['files']) == {'README.md', 'run_eval.py', '.env.submission.example',
+        assert set(manifest['files']) == {'README.md', 'run_eval.py', 'run_submission.py', '.env.example',
                                           'scripts/new.py', 'dataset/README.md'}
         assert manifest['files']['README.md'] == hashlib.sha256(b'updated').hexdigest()
     assert subprocess.run(command, capture_output=True).returncode == 1

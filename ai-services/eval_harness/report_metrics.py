@@ -98,7 +98,8 @@ def _asr_lines(evidence, btc_root):
         cells = [MISSING if value is None else str(value) for value in values]
         lines.append(f'| ASR {group.upper() if group == "btc" else group} | ' + ' | '.join(cells)
                      + (' | ĐẠT |' if report.get('asr_evidence_ready') else ' | CHƯA ĐỦ |'))
-    lines.append('Bằng chứng ASR M1: ' + ('ĐẠT' if ready else 'CHƯA ĐỦ'))
+    lines.append('Bằng chứng pipeline ASR M1: ' + ('ĐẠT' if ready else 'CHƯA ĐỦ'))
+    lines.append('Điểm xếp hạng ASR do BTC đo trên audio private ngày chấm; điểm public/team chỉ chứng minh pipeline và phân tích lỗi.')
     lines.append('ASR dùng scorer BTC, báo riêng BTC/team; không lấy trung bình WER hai nhóm và không chạy lại ASR.')
     return lines
 
@@ -147,7 +148,16 @@ def render_run(directory: Path, *, btc_root: Path | None = None, asr_sources=Non
     lines.append('')
     lines.append('Chênh lệch tỷ lệ dùng điểm phần trăm (đpt); số âm tốt hơn với RQR/HR.')
     reduction = score.get('comparison', {}).get('rqr_relative_reduction_pct')
-    lines.append(f'RQR giảm tương đối: {str(reduction)+"%" if reduction is not None else MISSING}')
+    from eval_harness.m1_acceptance import _rqr_check
+    rqr_check = _rqr_check(full, baseline, score.get('comparison', {}))
+    if rqr_check['status'] == 'not_applicable':
+        lines.append('RQR giảm tương đối: Không áp dụng (Full và baseline đều RQR=0).')
+        ccr = full.get('context_carryover_rate', {}).get('value')
+        lines.append(f'BGK xét CCR thay thế: {str(ccr)+"%" if ccr is not None else MISSING}; cần đánh giá của BGK.')
+    elif baseline.get('repeat_question_rate', {}).get('value') == 0 and rqr_check['status'] == 'fail':
+        lines.append('RQR giảm tương đối: Không xác định (baseline=0, Full>0); không đạt theo BTC.')
+    else:
+        lines.append(f'RQR giảm tương đối: {str(reduction)+"%" if reduction is not None else MISSING}')
     if voice_measurement:
         lines.append('Response đo từ transcript đến câu trả lời đầy đủ; không gồm prepare, lưu memory, '
                      'ASR/TTS, thời gian phát tiếng hoặc HTTP. TTFT proxy = Response để tương thích '
@@ -165,7 +175,9 @@ def render_run(directory: Path, *, btc_root: Path | None = None, asr_sources=Non
     for label, key in [('RQR giảm ≥40%', 'meets_rqr_threshold_40pct'),
                        ('TSR ≥70%', 'meets_tsr_70pct'), ('HR giá/KM ≤5%', 'meets_hr_price_5pct')]:
         value = score.get('comparison', {}).get(key)
-        status = 'ĐẠT' if value is True else 'CHƯA ĐẠT' if value is False else MISSING
+        status = ('KHÔNG ÁP DỤNG — BGK xét CCR' if key == 'meets_rqr_threshold_40pct'
+                  and rqr_check['status'] == 'not_applicable'
+                  else 'ĐẠT' if value is True else 'CHƯA ĐẠT' if value is False else MISSING)
         lines.append(f'{label}: {status}')
     if not run.get('latency_scale_sufficient'):
         lines.append('Chưa đủ ≥100 lượt/cấu hình để đánh giá p95 theo hướng dẫn BTC.')
@@ -175,7 +187,9 @@ def render_run(directory: Path, *, btc_root: Path | None = None, asr_sources=Non
     if (root/'eval/reference_eval.py').is_file():
         from eval_harness.m1_acceptance import inspect_run
         acceptance = inspect_run(directory, btc_root=root)
-        verdict = 'ĐẠT' if acceptance['conversation_accepted'] else 'CHƯA ĐẠT'
+        jury_only = (not acceptance['conversation_accepted'] and bool(acceptance['checks'])
+                     and all(c['status'] in {'pass', 'not_applicable'} for c in acceptance['checks']))
+        verdict = 'ĐẠT' if acceptance['conversation_accepted'] else 'CẦN BGK XÉT CCR' if jury_only else 'CHƯA ĐẠT'
         lines.extend(['', f'Nghiệm thu hội thoại M1: {verdict}'])
         for check in acceptance['checks']:
             if check['status'] != 'pass':

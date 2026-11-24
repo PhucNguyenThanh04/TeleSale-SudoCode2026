@@ -1,5 +1,5 @@
 import asyncio
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from itertools import combinations_with_replacement
 
 from app.mcp_servers.mcp_shared import commerce_rules
@@ -140,6 +140,29 @@ def test_callback_calendar_respects_source_opening_boundaries():
             result = await callback(repo, None, args, args['customer_phone'])
             assert result['callback_at'] == expected
     asyncio.run(run())
+
+
+def test_eval_callback_matches_btc_mock_when_the_policy_calendar_disagrees(reference, monkeypatch):
+    from app.mcp_servers.mcp_order.services.order import callback
+    from app.mcp_servers.mcp_order.write_authorization import normalized_write
+
+    monkeypatch.setenv('BTC_CALLBACK_MOCK', '1')
+
+    class Repo:
+        async def insert_callback(self, session, phone, moment, note):
+            self.moment = moment
+            return 1
+
+    for moment in ('2026-10-25T08:00:00+07:00', '2026-10-25T19:00:00+07:00',
+                   '2026-10-26T10:00:00+07:00', '2026-11-11T22:00:00+07:00'):
+        repo = Repo()
+        phone = '0900000083'
+        expected = reference.schedule_callback(phone, moment)
+        args = normalized_write('schedule.callback', {'customer_phone': phone, 'callback_at': moment})
+        result = asyncio.run(callback(repo, None, args, phone))
+        assert result['callback_at'] == expected['callback_at']
+        assert result['moved_from'] == expected['moved_from']
+        assert repo.moment == datetime.fromisoformat(expected['callback_at'])
 
 
 def test_basket_quotes_match_complete_november_result(reference):

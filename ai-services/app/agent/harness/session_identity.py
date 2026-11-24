@@ -27,7 +27,12 @@ def _empty_identity(status: str = "unknown") -> dict[str, Any]:
 async def initialize_identity(turn: TextTurnRequest, tools: ToolGateway
                               ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     if turn.verified_customer_id and turn.verified_phone:
-        result = await tools.invoke("crm.get_customer", {"phone": turn.verified_phone})
+        args = {'phone': turn.verified_phone}
+        if hasattr(tools, 'invoke_trusted'):
+            result = await tools.invoke_trusted('crm.get_customer', args, turn.verified_customer_id,
+                                                turn.channel, turn.channel_identity)
+        else:
+            result = await tools.invoke('crm.get_customer', args)
         if "error" in result:
             raise RuntimeError("CRM identity lookup failed")
         candidates = (result.get("candidates", []) if result.get("ambiguous")

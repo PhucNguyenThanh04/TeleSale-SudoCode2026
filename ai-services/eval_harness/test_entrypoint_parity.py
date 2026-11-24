@@ -45,6 +45,38 @@ def test_shared_runner_persists_accepted_writes_in_both_modes(tmp_path):
         assert result['coverage']['turns']==2
 
 
+def test_worker_address_value_survives_scoring_trace_export(tmp_path):
+    address = '12 Lê Lợi, Hà Nội'
+    scenario = {'S': {'calls': {'call_1': {'customer_turns': ['Giao tới địa chỉ đã xác nhận.'],
+        'memory_expectation': {'address': address}}}}}
+
+    async def capture(ids):
+        return {source: [{'key': 'address', 'value': address, 'op': 'set',
+                          'evidence_quote': f'Giao tới {address}'}] for source in ids}
+
+    path = tmp_path / 'full.jsonl'
+    report = asyncio.run(run_configuration(scenarios=scenario, config='full', runtime=Runtime(),
+        run_id='test', out=path, wait_for_jobs=AsyncMock(), capture_writes=capture))
+    row = json.loads(path.read_text())
+    assert row['memory_writes'][0]['value'] == address
+    assert address not in row['memory_writes'][0]['evidence_quote']
+    assert report['safety_issues'] == []
+
+
+def test_capture_includes_committed_delivery_from_the_source_turn(monkeypatch):
+    from uuid import uuid4
+    from eval_harness import benchmark_runner
+
+    source = uuid4()
+    conn = SimpleNamespace(fetch=AsyncMock(return_value=[{'source_turn_id': source,
+        'customer_id': 'C1', 'address': '12 Lê Lợi, Hà Nội', 'accepted_writes': '[]'}]),
+        close=AsyncMock())
+    monkeypatch.setattr(benchmark_runner.asyncpg, 'connect', AsyncMock(return_value=conn))
+
+    assert asyncio.run(benchmark_runner.read_distillation_writes('postgresql://stub', [str(source)])) == {
+        str(source): [{'key': 'address', 'value': '12 Lê Lợi, Hà Nội', 'op': 'set', 'customer_id': 'C1'}]}
+
+
 def test_failure_retains_safe_redaction_evidence(tmp_path):
     import pytest
     runtime=Runtime()

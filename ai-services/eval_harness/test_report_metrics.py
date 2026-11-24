@@ -152,8 +152,34 @@ def test_zero_baseline_does_not_invent_relative_reduction(tmp_path):
         'baseline': {'repeat_question_rate': {'value': 0}},
         'comparison': {'rqr_relative_reduction_pct': None}}))
     output = render_run(tmp_path)
-    assert 'RQR giảm tương đối: Chưa đo' in output
+    assert 'RQR giảm tương đối: Không áp dụng' in output
+    assert 'BGK xét CCR' in output
     assert 'RQR giảm tương đối: 100%' not in output
+
+
+def test_zero_baseline_positive_full_is_failed_not_ccr_fallback(tmp_path):
+    from eval_harness.report_metrics import render_run
+    (tmp_path / 'run.json').write_text(json.dumps({'status': 'validated', 'score': 'btc_score.json'}))
+    (tmp_path / 'btc_score.json').write_text(json.dumps({
+        'system': {'repeat_question_rate': {'value': 10}},
+        'baseline': {'repeat_question_rate': {'value': 0}},
+        'comparison': {'rqr_relative_reduction_pct': None, 'meets_rqr_threshold_40pct': False}}))
+    output = render_run(tmp_path)
+    assert 'baseline=0, Full>0' in output and 'RQR giảm ≥40%: CHƯA ĐẠT' in output
+    assert 'BGK xét CCR' not in output
+
+
+def test_only_zero_rqr_exception_is_reported_as_jury_review_instead_of_failure(tmp_path, monkeypatch):
+    from eval_harness.report_metrics import render_run
+    from eval_harness.test_official_pipeline import BTC
+    (tmp_path / 'run.json').write_text(json.dumps({'status': 'validated', 'score': 'btc_score.json'}))
+    (tmp_path / 'btc_score.json').write_text(json.dumps({
+        'system': {'repeat_question_rate': {'value': 0}, 'context_carryover_rate': {'value': 100}},
+        'baseline': {'repeat_question_rate': {'value': 0}}}))
+    monkeypatch.setattr('eval_harness.m1_acceptance.inspect_run', lambda *a, **k: {
+        'conversation_accepted': False, 'checks': [{'name': 'repeat_question_reduction', 'status': 'not_applicable', 'evidence': {}}]})
+    output = render_run(tmp_path, btc_root=BTC)
+    assert 'Nghiệm thu hội thoại M1: CẦN BGK XÉT CCR' in output
 
 
 def test_report_distinguishes_validated_from_m1_acceptance(tmp_path):
@@ -194,7 +220,7 @@ def test_attached_asr_metrics_are_separate_and_insufficient_coverage_is_visible(
     output = render_run(tmp_path, btc_root=BTC)
     assert '| ASR team | 1 |' in output
     assert '| ASR BTC | Chưa đo |' in output
-    assert 'Bằng chứng ASR M1: CHƯA ĐỦ' in output
+    assert 'Bằng chứng pipeline ASR M1: CHƯA ĐỦ' in output
     original = (run / 'score.json').read_bytes()
     (run / 'score.json').write_bytes(original + b' ')
     changed = render_run(tmp_path, btc_root=BTC)

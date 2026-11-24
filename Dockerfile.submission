@@ -14,6 +14,7 @@ COPY backend/migrations/0007_demo_users.sql ./backend/migrations/0007_demo_users
 COPY config ./config
 COPY dataloader_offline ./dataloader_offline
 COPY eval ./eval
+COPY speech ./speech
 COPY run_eval.py run_knowledge_eval.py ./
 COPY scripts/btc_container.py scripts/prepare_knowledge_tokenizer.py ./scripts/
 RUN chmod -R a+rX /workspace

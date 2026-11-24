@@ -33,7 +33,8 @@ class CloudflareBackend:
         settings = get_settings()
         self.tokenizer = load_tokenizer(config)
         self.client = CloudflareEmbeddingClient(config, account_id=settings.cloudflare_account_id,
-            token=settings.cloudflare_api_token.get_secret_value() if settings.cloudflare_api_token else None)
+            token=settings.cloudflare_api_token.get_secret_value() if settings.cloudflare_api_token else None,
+            base_url=settings.cloudflare_api_base_url)
 
     def token_count(self, text):
         return len(self.tokenizer.encode(text).ids)

@@ -6,7 +6,7 @@ from typing import Any
 
 from app.mcp_servers.mcp_shared.commerce_rules import _search_text
 from app.mcp_servers.mcp_shared.pii import mask_pii as _base_mask_pii
-from eval_harness.trace_evidence import SENSITIVE_NUMBER
+from eval_harness.trace_evidence import SENSITIVE_NUMBER, contains_sensitive_pii
 from eval_harness.extractor import build_trace_row, extract_questions, extract_claims
 from copy import deepcopy
 from app.agent.guardrails.checks import _money_claims
@@ -22,8 +22,6 @@ def mask_pii(value: str) -> str:
 
 
 def _safe_value(value: Any, path: tuple[str, ...] = ()) -> Any:
-    if type(value) is int and path == ("memory_writes", "value") and 10 <= len(str(abs(value))) <= 14:
-        return "[SỐ ĐÃ ẨN]"
     if isinstance(value, str):
         if path in {("args", "customer_name"), ("result", "customer_name")}:
             return "[TÊN ĐÃ ẨN]"
@@ -319,9 +317,10 @@ def facts_used(agent_text: str, tool_calls: list[dict], prior_facts: dict,
     return sorted(used)
 
 
-def public_memory_writes(call: str, turn: int, memory_writes: list[dict], *, customer_name: str | None = None) -> list[dict]:
-    sensitive = {"name", "customer_name", "phone", "customer_phone", "address", "shipping_address",
-                 "bank_account", "account_number", "cccd", "national_id"}
+def public_memory_writes(call: str, turn: int, memory_writes: list[dict], *,
+                         customer_name: str | None = None, preserve_contact: bool = False) -> list[dict]:
+    contact = {'phone', 'customer_phone', 'address', 'shipping_address'}
+    named = {'name', 'customer_name'}
     fields = {"key","value","op","customer_id","evidence_quote","scope_type","scope_id"}
     names = {customer_name} if customer_name else set()
     result = []
@@ -329,13 +328,20 @@ def public_memory_writes(call: str, turn: int, memory_writes: list[dict], *, cus
         if not isinstance(item,dict):
             continue
         value = {key:_safe_value(v,("memory_writes",key)) for key,v in item.items() if key in fields}
-        if item.get("key") in sensitive:
-            if isinstance(item.get("value"),str):
-                names.add(item["value"])
-            value["value"] = "[TÊN ĐÃ ẨN]" if item["key"] in {"name","customer_name"} else "[PII ĐÃ ẨN]"
+        field = str(item.get('key', ''))
+        original = item.get('value')
+        if 'value' in item and (field in contact | named or contains_sensitive_pii(original, field=field)):
+            if isinstance(original, str):
+                names.add(original)
+            value['value'] = '[TÊN ĐÃ ẨN]' if field in named else '[PII ĐÃ ẨN]'
         value["source"] = f"{call}#turn{turn}"
         result.append(value)
-    return _mask_names(result,names)
+    result = _mask_names(result, names)
+    if preserve_contact:
+        for item, safe in zip((item for item in memory_writes if isinstance(item, dict)), result, strict=True):
+            if item.get('key') in contact and 'value' in item and not contains_sensitive_pii(item):
+                safe['value'] = deepcopy(item['value'])
+    return result
 
 
 def trace_line(run_id: str, config: str, scenario_id: str, call: str, turn: int,
@@ -365,8 +371,13 @@ def trace_line(run_id: str, config: str, scenario_id: str, call: str, turn: int,
                 "[TÊN ĐÃ ẨN]", item["evidence_quote"])}
                 if isinstance(item, dict) and isinstance(item.get("evidence_quote"), str)
                 else item for item in memory_writes]
-    public_writes = public_memory_writes(call, turn, memory_writes, customer_name=customer_name)
+    public_writes = public_memory_writes(call, turn, memory_writes, customer_name=customer_name,
+                                        preserve_contact=True)
     safe_calls = _safe_tool_calls(tool_calls)
+    for original, safe in zip(tool_calls, safe_calls, strict=True):
+        if contains_sensitive_pii(original.get('args', {})):
+            raise ValueError('sensitive_pii_in_tool_arguments')
+        safe['args'] = deepcopy(original.get('args') or {})
     customer_text = mask_pii(customer_text)
     agent_text = mask_pii(agent_text)
     row = build_trace_row(scenario_id, call, turn, customer_text, agent_text,

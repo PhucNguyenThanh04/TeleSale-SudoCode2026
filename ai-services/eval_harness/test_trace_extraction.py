@@ -87,9 +87,7 @@ def test_trace_preserves_valid_tool_names_and_exact_business_args():
     assert order_call["args"]["sku"] == "SKU-AP-Y"
     assert order_call["args"]["price_vnd"] == 5200000
     assert order_call["args"]["payment"] == "COD"
-    assert order_call["args"]["customer_phone"] == "[SỐ ĐÃ ẨN]"
-    assert order_call["args"]["customer_name"] == "[TÊN ĐÃ ẨN]"
-    assert order_call["args"]["address"] == "[PII ĐÃ ẨN]"
+    assert order_call["args"] == raw_calls[0]['args']
 
 
 def test_trace_preserves_every_tool_name_call_id_and_unrelated_fields():
@@ -106,7 +104,7 @@ def test_trace_preserves_every_tool_name_call_id_and_unrelated_fields():
         "catalog.search", "order.create"]
     assert [call["id"] for call in row["tool_calls"]] == ["call-1", "call-2"]
     assert row["tool_calls"][0]["args"]["metadata"]["customer_name"] == "business-label"
-    assert row["tool_calls"][1]["args"]["customer_name"] == "[TÊN ĐÃ ẨN]"
+    assert row["tool_calls"][1]["args"] == raw_calls[1]['args']
 
 
 def test_trace_preserves_business_order_id_with_long_numeric_suffix():
@@ -122,13 +120,13 @@ def test_trace_preserves_business_order_id_with_long_numeric_suffix():
     assert row["tool_calls"][0]["result"] == raw_calls[0]["result"]
 
 
-def test_trace_masks_pii_in_query_without_aborting_run():
+def test_scoring_trace_retains_query_that_was_actually_executed():
     raw_calls = [{"name": "catalog.search", "args": {"query": "0901234567"}}]
     row = trace_line("run", "full", "S01", "call_1", 1,
                      "Tìm sản phẩm", "Dạ", raw_calls, [], [], 10, None,
                      "clean")
     assert row["tool_calls"][0]["name"] == "catalog.search"
-    assert row["tool_calls"][0]["args"]["query"] == "[SỐ ĐÃ ẨN]"
+    assert row["tool_calls"][0]["args"] == raw_calls[0]['args']
 
 
 def test_trace_masks_contact_details_and_keeps_business_arguments():
@@ -139,9 +137,8 @@ def test_trace_masks_contact_details_and_keeps_business_arguments():
                          "sku": "SKU-A", "qty": 2, "customer_phone": "0901234567",
                          "address": "12 đường Lê Lợi"}}],
                      [{"key": "phone", "value": "0901234567"}], [], 123, None, "clean")
-    encoded = json.dumps(row, ensure_ascii=False)
-    assert "0901234567" not in encoded
-    assert "12 đường Lê Lợi" not in encoded
+    assert "0901234567" not in row['customer_text'] + row['agent_text']
+    assert "12 đường Lê Lợi" not in row['customer_text'] + row['agent_text']
     assert row["tool_calls"][0]["name"] == "order.create"
     assert row["tool_calls"][0]["args"]["sku"] == "SKU-A"
     assert row["tool_calls"][0]["args"]["qty"] == 2
@@ -155,7 +152,8 @@ def test_trace_masks_single_word_customer_name_across_text_tools_and_memory():
                      [{"key": "customer_name", "value": "Hoa",
                        "evidence_quote": "Hoa chọn SKU-A"}], [],
                      120, None, "clean", customer_name="Hoa")
-    assert "Hoa" not in json.dumps(row, ensure_ascii=False)
+    assert "Hoa" not in row['customer_text'] + row['agent_text'] + str(row['memory_writes'])
+    assert row['tool_calls'][0]['args']['customer_name'] == 'Hoa'
     assert row["tool_calls"][0]["args"]["sku"] == "SKU-A"
 
 

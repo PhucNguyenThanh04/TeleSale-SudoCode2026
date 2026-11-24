@@ -1,5 +1,7 @@
 # Đặc tả sửa bộ đánh giá harness M2
 
+Đặc tả này thuộc mục tiêu M2 trước đây. Goal đang thực hiện sau khi người dùng xóa goal cũ là sửa tương thích thay đổi BTC, theo phần đầu m2-plan.md; simulator để sau. Các tiêu chí cần model thật/người chấm dưới đây vẫn là điều kiện nghiệm thu M2 thực nghiệm, không phải bằng chứng đã đạt khi hoàn tất sửa tương thích offline.
+
 Yêu cầu: sửa các thiếu sót trong rà soát scenario_final và hỗ trợ đánh giá M2 theo đề cùng điều chỉnh BTC. Làm trong checkout hiện tại, không dùng Superpowers hoặc subagent. Không sửa gói/scorer BTC, không thay điểm lịch sử, không sửa agent theo đáp án test.
 
 ## Tiêu chí hoàn thành

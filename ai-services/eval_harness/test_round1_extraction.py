@@ -15,7 +15,6 @@ def test_narrative_nao_is_not_a_question(text):
 
 @pytest.mark.parametrize('text', [
     'Tổng giá 779.000đ.', 'Hai sản phẩm có tổng giá 779.000đ.',
-    'Miễn phí thu hộ COD ạ.', 'Miễn phí thu hộ (COD) chị nhé.',
     'Ngày giao dự kiến là 2026-10-22.',
 ])
 def test_known_non_unit_price_fields_remain_visible_without_false_projection(text):
@@ -23,6 +22,17 @@ def test_known_non_unit_price_fields_remain_visible_without_false_projection(tex
     assert result['claims'] == []
     assert result['candidates']
     assert all(c['reason'] == 'unsupported_mapping' for c in result['candidates'])
+
+
+@pytest.mark.parametrize('text, expected', [
+    ('Miễn phí thu hộ (COD) chị nhé.', [('cod_fee_vnd', 0)]),
+    ('Miễn phí vận chuyển và miễn phí thu hộ COD ạ.', [('freeship', True), ('cod_fee_vnd', 0)]),
+    ('Phí COD là 20.000đ.', [('cod_fee_vnd', 20000)]),
+    ('Giá 100.000đ với phí COD 20.000đ.', [('price_vnd', 100000), ('cod_fee_vnd', 20000)]),
+    ('Không được miễn phí thu hộ COD.', []),
+])
+def test_cod_fee_is_extracted_separately_from_shipping(text, expected):
+    assert [(c['field'], c['value']) for c in extract_detailed(text)['claims']] == expected
 
 
 @pytest.mark.parametrize('text', [

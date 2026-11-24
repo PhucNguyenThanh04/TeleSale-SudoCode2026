@@ -91,6 +91,8 @@ class ScoreRunTests(unittest.TestCase):
             self.assertEqual(report['input_sha256']['ground_truth'], sha256((dataset / 'ground_truth.json').read_bytes()).hexdigest())
             self.assertEqual(report['entity_accuracy_by_type']['money'], {'correct': 1, 'total': 1, 'value': 100.0})
             self.assertEqual(report['entity_accuracy_by_type']['phone'], {'correct': 0, 'total': 1, 'value': 0.0})
+            self.assertEqual(report['per_dialogue']['X1']['entity'], '1/2')
+            self.assertEqual(report['oracle_entity_accuracy'], 50.0)
 
     def test_official_scores_raw_wer_and_per_dialogue_details(self):
         spoken = "dạ máy này giá năm triệu hai trăm nghìn anh chốt cê ô đê nha"

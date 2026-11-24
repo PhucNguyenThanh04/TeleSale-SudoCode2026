@@ -74,6 +74,10 @@ class SessionPreparationTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("preferred_color", brief["must_not_ask"])
         self.assertEqual(brief["profile_facts"]["preferred_color"], "trắng")
         self.assertTrue(any("180" in warning for warning in brief["stale_warnings"]))
+        self.assertEqual([(name, args['on']) for name, args in self.gateway.calls
+                          if name in {'inventory.check', 'pricing.get_quote'}],
+                         [('inventory.check', self.request.on.isoformat()),
+                          ('pricing.get_quote', self.request.on.isoformat())])
 
     async def test_first_turn_reuses_reads_but_revalidates_memory_and_brief(self):
         await self.prepare()
@@ -81,13 +85,15 @@ class SessionPreparationTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(response.call_brief)
         self.assertEqual(self.memory.reads, 2)
         self.assertEqual([name for name, _ in self.gateway.calls].count("crm.get_customer"), 1)
-        self.assertEqual([name for name, _ in self.gateway.calls].count("pricing.get_quote"), 0)
+        self.assertEqual([name for name, _ in self.gateway.calls].count("pricing.get_quote"), 1)
+        self.assertEqual([call['name'] for call in self.runtime.state_for(self.request)['prepared_tool_calls']],
+                         ['crm.get_customer', 'inventory.check', 'pricing.get_quote'])
         self.assertEqual(len(self.memory.turns[str(self.request.session_id)]), 1)
         self.assertNotIn('"customer": ""', self.model.seen[0])
         second = turn("Tôi muốn hỏi tiếp", self.request.session_id)
         next_response = await self.runtime.run(second)
         self.assertIsNotNone(next_response.call_brief)
-        self.assertEqual([name for name, _ in self.gateway.calls].count('pricing.get_quote'), 0)
+        self.assertEqual([name for name, _ in self.gateway.calls].count('pricing.get_quote'), 1)
         self.assertIn("Alo", self.model.seen[-1])
 
     async def test_later_brief_uses_updated_facts_without_repricing_every_turn(self):
@@ -103,7 +109,7 @@ class SessionPreparationTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(second.call_brief)
         self.assertEqual(second.call_brief['profile_facts']['budget_vnd'], 4000000)
         self.assertEqual(second.call_brief['open_blockers'], [])
-        self.assertEqual([name for name, _ in self.gateway.calls].count('pricing.get_quote'), 0)
+        self.assertEqual([name for name, _ in self.gateway.calls].count('pricing.get_quote'), 1)
         third = await self.runtime.run(turn('Tôi nghe đây.', self.request.session_id))
         self.assertEqual(third.call_brief['profile_facts']['budget_vnd'], 4000000)
         self.assertIn('4000000', self.model.seen[-1])
@@ -168,20 +174,20 @@ class SessionPreparationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.memory_update.status, 'unavailable')
         self.assertEqual(self.memory.turns, {})
 
-    async def test_changed_date_or_expired_preparation_reloads_context_without_automatic_quotes(self):
+    async def test_changed_date_or_expired_preparation_refreshes_call_brief(self):
         await self.prepare()
         later = self.request.model_copy(update={"on": self.request.on + timedelta(days=1)})
         response = await self.runtime.run(later)
         self.assertIsNotNone(response.call_brief)
         quotes = [args for name, args in self.gateway.calls if name == "pricing.get_quote"]
-        self.assertEqual(quotes, [])
+        self.assertEqual([args['on'] for args in quotes], [self.request.on.isoformat(), later.on.isoformat()])
 
         another = turn("Alo")
         await self.prepare(another)
         with patch("app.agent.harness.runtime.time.perf_counter", return_value=10**12):
             await self.runtime.run(another)
         quotes = [args for name, args in self.gateway.calls if name == "pricing.get_quote"]
-        self.assertEqual(quotes, [])
+        self.assertEqual([args['on'] for args in quotes[2:]], [another.on.isoformat()] * 2)
         self.assertEqual(self.memory.reads, 4)
 
     async def test_identity_mismatch_cannot_consume_prepared_customer(self):

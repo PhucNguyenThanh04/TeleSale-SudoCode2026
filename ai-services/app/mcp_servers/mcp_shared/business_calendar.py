@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import datetime, time, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -54,11 +55,20 @@ def callback_arguments(args, *, naive_timezone=None):
     rules = load_calendar()
     proposed = datetime.fromisoformat(args['callback_at'])
     original = datetime.fromisoformat(args.get('requested_callback_at') or args['callback_at'])
-    effective = normalize_callback_at(original, calendar=rules, naive_timezone=naive_timezone)
+    local = _local(original, rules, naive_timezone)
+    if os.getenv('BTC_CALLBACK_MOCK') == '1':
+        effective = local
+        while (rules['dates'].get(effective.date().isoformat(), {}).get('hours') == []
+               or effective.weekday() == 6 and not 9 <= effective.hour < 18):
+            effective += timedelta(days=1)
+        if not 8 <= effective.hour < 21:
+            effective = effective.replace(hour=8, minute=0)
+    else:
+        effective = normalize_callback_at(local, calendar=rules)
     if args.get('requested_callback_at') and _local(proposed, rules, naive_timezone) != effective:
         raise ValueError('Callback does not match the normalized request')
     result = {**args, 'callback_at': effective.isoformat()}
     result.pop('requested_callback_at', None)
-    if effective != _local(original, rules, naive_timezone):
+    if effective != local:
         result['requested_callback_at'] = original.isoformat()
     return result

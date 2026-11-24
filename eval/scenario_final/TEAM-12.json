@@ -83,7 +83,19 @@
           "date": "2026-02-17",
           "channel": "hotline",
           "summary": "Mua AirPure X bản 2024 giá 4.290.000đ, phòng 20m², địa chỉ giao: 12 ngõ 38 Hoàng Cầu, Đống Đa, Hà Nội",
-          "outcome": "chot_don"
+          "outcome": "chot_don",
+          "facts": [
+            {
+              "field": "room_area_m2",
+              "value": 20,
+              "as_of": "2026-02-17"
+            },
+            {
+              "field": "address",
+              "value": "12 ngõ 38 Hoàng Cầu, Đống Đa, Hà Nội",
+              "as_of": "2026-02-17"
+            }
+          ]
         }
       ],
       "memory_expectation": {

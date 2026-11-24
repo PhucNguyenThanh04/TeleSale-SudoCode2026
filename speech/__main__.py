@@ -331,9 +331,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("export-replay", help="ASR customer clips once for both memory modes")
     p.add_argument("--prepared", required=True)
     p.add_argument("--out", required=True)
-    p.add_argument("--model", default="whisper-turbo")
-    p.add_argument("--device", default="cpu")
-    p.add_argument("--compute-type", default="int8")
+    p.add_argument("--model", default=os.getenv("ASR_MODEL", "whisper-turbo"))
+    p.add_argument("--device", default=os.getenv("ASR_DEVICE", "cpu"))
+    p.add_argument("--compute-type", default=os.getenv("ASR_COMPUTE_TYPE", "int8"))
     p.set_defaults(func=cmd_replay)
 
     p = sub.add_parser("verify-replay", help="verify persisted replay hashes, shape and ordering")
@@ -343,9 +343,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("baseline", help="run B0/B1/B2 on identical audio, using the BTC evaluator")
     p.add_argument("--datasets", nargs="+", required=True, help="dataset folders with audio/GT/manifest")
     p.add_argument("--out", required=True, help="new/empty experiment directory")
-    p.add_argument("--model", default="whisper-turbo")
-    p.add_argument("--device", default="cpu")
-    p.add_argument("--compute-type", default="int8")
+    p.add_argument("--model", default=os.getenv("ASR_MODEL", "whisper-turbo"))
+    p.add_argument("--device", default=os.getenv("ASR_DEVICE", "cpu"))
+    p.add_argument("--compute-type", default=os.getenv("ASR_COMPUTE_TYPE", "int8"))
     p.set_defaults(func=cmd_baseline)
 
     p = sub.add_parser("compare-baselines", help="verify and re-score a frozen B0/B1/B2 experiment")
@@ -398,7 +398,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("transcribe", help="audio → hypotheses.json")
     p.add_argument("--audio", required=True, help="file hoặc thư mục audio (ví dụ <dataset>/audio)")
-    p.add_argument("--model", default="whisper-turbo",
+    p.add_argument("--model", default=os.getenv("ASR_MODEL", "whisper-turbo"),
                    help="preset hoặc thư mục CTranslate2 (mặc định whisper-turbo: chính xác nhất khi thử; "
                         "phowhisper-small nhanh gấp ~2 lần trên CPU)")
     p.add_argument("--out", required=True, help="thư mục run, ví dụ speech/data/runs/btc-edge__whisper-turbo")
@@ -406,8 +406,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--segmentation", choices=("utterance", "file"), default="utterance")
     p.add_argument("--no-hotwords", action="store_true")
     p.add_argument("--beam-size", type=int, default=5)
-    p.add_argument("--device", default="auto", help="auto | cpu | cuda")
-    p.add_argument("--compute-type", default="auto", help="auto | int8 | int8_float16 | float16 | float32")
+    p.add_argument("--device", default=os.getenv("ASR_DEVICE", "auto"), help="auto | cpu | cuda")
+    p.add_argument("--compute-type", default=os.getenv("ASR_COMPUTE_TYPE", "auto"), help="auto | int8 | int8_float16 | float16 | float32")
     p.add_argument("--vad-threshold", type=float, default=0.5)
     p.add_argument("--min-silence-ms", type=int, default=500)
     p.add_argument("--reference-date", help="YYYY-MM-DD; mặc định lấy từ ground_truth.json cạnh thư mục audio")

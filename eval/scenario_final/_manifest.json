@@ -1,5 +1,5 @@
 {
-  "version": "m2-dataset-v1",
+  "version": "m2-dataset-v2-btc-clarification-20261124",
   "label_origin": "assistant_authored_pending_independent_human_review",
   "scenarios": {
     "TEAM-01.json": "e78253bb589a18a952d47123917988f05ce9155d9d0de524ac8f4cd9b9acaf95",
@@ -13,7 +13,7 @@
     "TEAM-09.json": "074ebe516794dce08ea21240b1255acc9e7d6f904bf9709c296d28e7b683371f",
     "TEAM-10.json": "db87be0069195fc380a20663618f2affd751d69770ed8c1f54d511efb36a5880",
     "TEAM-11.json": "297f179a6decaff492cd3298bd92b6952a8a01a1892dcf9153a0678bac692710",
-    "TEAM-12.json": "eb75b1f56a16316d8e58f72bb5bb08b1cacaef5e3ef16e44fcb73049069bb224",
+    "TEAM-12.json": "3aa6c910c10f1ae1da9ab2de7b1f27126c170933fc3d4001311885ffa0111fd3",
     "TEAM-13.json": "7ca632df6194973040c26fd33998b4b38dd0312b215d41552c62ae6e5c7439c2",
     "TEAM-14.json": "35e7ceedab029b1f3ec7d5059daf43975c0eb4c3c14a59b347c1af053a5eab4c",
     "TEAM-15.json": "1196c64340fb0889ce7d12b36a7140a0fc2229a39834676d9c219384c0ed5baf",
@@ -52,7 +52,7 @@
     "TEAM-48.json": "f29f5fadc09a7820ddaac7370b84359acfc90a8c920ed2faad6ac97aa6f26176"
   },
   "metadata": {
-    "_source_map.json": "f5df7ded76190c6901667c624cc8bd7c0d83c9d344bce31386e5037d49d961bc"
+    "_source_map.json": "b0b9d7c1f99e7c93be25504cd214bd23e02053de945395ca87de05f685b7bb8b"
   },
   "btc_files": {
     "policy/changelog.md": "106960c3777e8995c5dcd84ea8e62c9593c2d74e2eff335e393f436ab71d0dfa",
@@ -80,13 +80,27 @@
     "schemas/trace_log.schema.json": "312c5d1dad7ac79b51af637ca746a6de94f218d317202cf1448706b384688db3",
     "simulator/personas.json": "c86b9d7c9988a12a7be8f01870de3c8c02813ea612df21c3b97bc12c37868857",
     "eval/llm_judge_rubric.json": "33f3e6913e7668854443139727dc254016fc46451a2b594965cad8a852e9d235",
-    "eval/reference_eval.py": "cca362cf74bc070a37493af756a2963d02bfca8004c5d964e9e4ca0a67b48807",
-    "eval/mock_tools.py": "ceda57e5737e4ae628d92d3d3847030578cae33d72acf0f99afdf6a04c6a6a55"
+    "eval/reference_eval.py": "730cc9cfc4b9531cebaf5936063fbb87805d4293f0bed1ac88ddc31fbca35a86",
+    "eval/mock_tools.py": "ceda57e5737e4ae628d92d3d3847030578cae33d72acf0f99afdf6a04c6a6a55",
+    "asr/ground_truth.json": "626092f31329b2cfd80ae28cc0ed7d9e5b832aec07a9e07048c112cb08d04363"
   },
   "coverage": {
     "scenarios": 48,
     "calls": 118,
     "turns": 323,
     "hard_cases": 38
+  },
+  "supersedes": {
+    "manifest_sha256": "23476f3e0cbeafae8768c1edf183785ccf6fa19838909dfdf0d7840fa21abcbf",
+    "git_commit": "a95b71a2c963672e0000619a6ea2a37cb8601652"
+  },
+  "clarification_docx": {
+    "source": "../BTC-tra-loi-thac-mac-11-2026.docx",
+    "sha256": "d148ecec9cba5252a1355509b78fa2ae9a99d3344a051737a9fc244e0698d7e7"
+  },
+  "ground_truth_update": {
+    "previous_sha256": "b84f0bcf977a8e502e8299be202de65f54d0aaed4d85959f76b3a2a837288154",
+    "provided_source": "asr/ground_truth copy.json",
+    "current_sha256": "626092f31329b2cfd80ae28cc0ed7d9e5b832aec07a9e07048c112cb08d04363"
   }
 }

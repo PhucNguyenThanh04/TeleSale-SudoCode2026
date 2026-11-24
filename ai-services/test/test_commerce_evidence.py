@@ -31,9 +31,10 @@ def stock(sku='SKU-ASTER'):
 def test_prior_turn_quote_reused_by_real_verifier():
     import asyncio
     from app.agent.harness.agent_nodes import AgentNodes
+    from test_deep_memory import FakeToolModel
     s=state('Giá vẫn vậy đúng không?');s['session_tool_calls']=[catalog(),quote()]
     s['agent_draft']='Aster giá 900.000đ.'
-    result=asyncio.run(AgentNodes(None,None,None,6,6).verify_agent(s))
+    result=asyncio.run(AgentNodes(FakeToolModel(replies=[]),None,None,6,6).verify_agent(s))
     assert result['agent_text']==s['agent_draft']
 
 

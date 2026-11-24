@@ -304,7 +304,7 @@
       "group": "additional"
     }
   ],
-  "revision": "m2-dataset-v1",
+  "revision": "m2-dataset-v2-btc-clarification-20261124",
   "changes": "ID nguồn và hash nguồn được giữ để truy vết; scenario_final đã sửa persona, nhãn và điều kiện đánh giá theo spec. Không còn là bản sao chỉ đổi ID; các ca được dùng để sửa bộ đánh giá không có tính độc lập held-out.",
   "authored_scenarios": [
     {
@@ -331,5 +331,6 @@
       "scenario_id": "TEAM-48",
       "authorship": "assistant-authored synthetic dialogue based on BTC policy; no independent human review"
     }
-  ]
+  ],
+  "btc_update": "TEAM-12 retains original CRM history and adds dated facts from its summary; source files remain unchanged. Ground truth ASR promoted byte-for-byte from BTC ground_truth copy.json."
 }

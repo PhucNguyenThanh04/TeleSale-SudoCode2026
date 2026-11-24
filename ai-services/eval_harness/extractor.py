@@ -186,6 +186,10 @@ def _policy_version_projections(clause: str) -> list[dict]:
     return result
 
 
+_COD_FEE = r'phí\s+(?:thu hộ(?:\s*\(?COD\b\)?)?|COD\b)'
+_FIRST_EXCHANGE = re.compile(r'\blần\b.{0,60}?\bđầu(?:\s+tiên)?\b', re.I)
+
+
 def _claim_projections(agent_text: str, tool_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
     claims = []
     if not agent_text:
@@ -209,6 +213,7 @@ def _claim_projections(agent_text: str, tool_calls: list[dict[str, Any]]) -> lis
         if re.search(r"giá|\bchỉ\b|\bcòn\b", clause, re.IGNORECASE):
             priced = re.sub(r"không phải.+?\bmà(?: là)?\s*", "", clause, flags=re.I)
             priced = re.split(r"\bchứ không(?: phải)?\b", priced, flags=re.I)[0]
+            priced = re.split(_COD_FEE, priced, maxsplit=1, flags=re.I)[0]
             if re.search(r"không (?:phải|có)\s+(?:là\s+)?(?:giá|\d)", priced, re.I):
                 priced = ""
             priced = numeric_text(priced)
@@ -275,6 +280,18 @@ def _claim_projections(agent_text: str, tool_calls: list[dict[str, Any]]) -> lis
         if re.search(r"freeship|miễn phí (?:ship|vận chuyển|giao hàng)|không (?:được )?miễn phí (?:ship|vận chuyển|giao hàng)", clause, re.I):
             negative = bool(re.search(r"(?:không|chưa)\s+(?:được\s+)?(?:miễn phí|freeship)|hết hiệu lực", clause, re.I))
             claims.append({"field": prefix + "freeship", "value": not negative, "text": clause.strip()})
+        cod_fee = re.search(_COD_FEE, clause, re.I)
+        if cod_fee:
+            before = clause[:cod_fee.start()]
+            after = clause[cod_fee.end():]
+            waived = re.search(r'\bmiễn\s+$|không\s+(?:thu|tính|mất)\s+$', before, re.I)
+            negated = re.search(r'(?:không|chưa)\s+(?:được\s+)?miễn\s+$', before, re.I)
+            if waived and not negated:
+                claims.append({'field': prefix + 'cod_fee_vnd', 'value': 0, 'text': clause.strip()})
+            elif re.match(r'\s*(?:là\s+)?\d', numeric_text(after)):
+                money = _money_claims(numeric_text(after))
+                if money:
+                    claims.append({'field': prefix + 'cod_fee_vnd', 'value': money[0][0], 'text': clause.strip()})
         if re.search(r"chính sách cũ.*(?:hết hiệu lực|thay thế)", clause, re.I):
             claims.append({"field": "old_policy_superseded", "value": True, "text": clause.strip()})
 
@@ -292,7 +309,7 @@ def _candidate(kind: str, text: str, *, projection: dict | None = None,
 def _claim_clauses(text: str):
     for sentence in re.split(r"\.(?!\d)|[!;\n]|\bnhưng\b", text):
         if re.match(r"\s*(?:nếu|lần (?:đổi )?đầu|từ lần đổi)", sentence, re.I):
-            yield sentence
+            yield from re.split(r',\s*(?=từ lần (?:đổi )?(?:thứ|hai)\b)', sentence, flags=re.I)
             continue
         for clause in re.split(r",\s*(?!\d)", sentence):
             if re.search(r"\bnếu\b|lần trước|trước đây|chính sách cũ", clause, re.I):
@@ -308,6 +325,7 @@ def _claim_candidates(agent_text: str) -> list[dict]:
         if not clause:
             continue
         factual = bool(re.search(r"giá|tổng (?:tiền|đơn)|giảm|miễn phí|freeship|giao|đổi|bảo hành|còn hàng|hết hàng|có sẵn trong kho|ưu đãi|khuyến mãi|tặng|người thật|không phải bot|ngừng bán|chính sách|phiên bản|không có hàng|mã [A-Z0-9]+-", clause, re.I))
+        factual = factual or bool(re.search(_COD_FEE, clause, re.I))
         factual = factual or bool(re.search(r"20\d{2}-\d{2}", clause) and re.search(r"thay thế|hiện.*dùng|trước đây.*dùng|đơn.*(?:trước|sau)", clause, re.I))
         if not factual:
             continue
@@ -339,6 +357,17 @@ def _claim_candidates(agent_text: str) -> list[dict]:
             continue
         conditional = conditional or (re.search(r"đơn.*(?:trước|sau)", clause, re.I) if re.search(r"20\d{2}-\d{2}", clause) else None)
         if conditional:
+            first = _FIRST_EXCHANGE.search(clause)
+            if first and first.start() == conditional.start() and not re.search(
+                    r'\bnếu\b|chỉ (?:áp dụng|dành cho)|đơn\s+(?:hàng\s+)?(?:từ|trên)', clause, re.I):
+                if (re.search(r'\bđổi (?:size|cỡ|màu|hàng)|\blần đổi\b', clause, re.I)
+                        and re.search(r'miễn phí|không (?:mất|thu|tính) phí', clause, re.I)
+                        and not re.search(r'(?:không|chưa)\s+(?:được\s+)?miễn phí', clause, re.I)):
+                    historical = bool(re.search(r'lần trước|trước đây|chính sách cũ|bản cũ', clause, re.I))
+                    field = 'historical_first_exchange_fee_vnd' if historical else 'first_exchange_fee_vnd'
+                    candidates.append(_candidate('claim', clause, projection={
+                        'field': field, 'value': 0, 'text': clause}, qualifiers={'exchange_number': 1}))
+                    continue
             candidates.append(_candidate("claim", clause, disposition="excluded", reason="qualified_not_representable",
                 qualifiers={"condition": clause[conditional.start():]}))
             continue
@@ -350,10 +379,6 @@ def _claim_candidates(agent_text: str) -> list[dict]:
         if re.search(r"phí (?:giao hàng|vận chuyển|ship)\s*\d", numeric_text(clause), re.I):
             candidates.append(_candidate("claim", clause, disposition="excluded", reason="unsupported_mapping",
                 qualifiers={"category": "shipping_fee"}))
-            continue
-        if re.search(r"miễn phí thu hộ\s*\(?COD\b", clause, re.I):
-            candidates.append(_candidate("claim", clause, disposition="excluded", reason="unsupported_mapping",
-                qualifiers={"category": "cod_fee"}))
             continue
         calendar_delivery = bool(re.search(r"\bngày\s+\d{1,2}[/\-]\d{1,2}\b|\b20\d{2}-\d{2}-\d{2}\b", clause, re.I) and re.search(r"\bgiao\b", clause, re.I))
         if calendar_delivery or re.search(r"tổng (?:tiền|đơn|giá)|giao (?:vào )?ngày\s+\d{1,2}[/\-]\d{1,2}|đổi mới", clause, re.I):

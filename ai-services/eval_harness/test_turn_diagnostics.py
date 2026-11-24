@@ -34,6 +34,7 @@ def test_collector_keeps_codes_not_draft_or_result_values(tmp_path):
            'agent_draft':'Private name 0912345678',
            'verifier_events':[{'reason':'price_without_quote','agent_draft':'Private name',
                'claims':[{'value':9876543}], 'source_evidence':{'phone':'0912345678'}}],
+           'prepared_tool_calls':[{'name':'inventory.check','result':{'error':'private secret'}}],
            'tool_calls':[{'name':'policy.search','result':{'retrieval_status':'timeout','error':'private secret'}}]}
     with capture_diagnostic_events() as events:
         log_event(state,'run_agent','model_failed',error_type='Private_0912345678')
@@ -48,7 +49,8 @@ def test_collector_keeps_codes_not_draft_or_result_values(tmp_path):
     assert data['model']['error_type']=='other_error'
     assert data['grounding']['reason']=='unknown_reason'
     assert data['recovery']['status']=='failed'
-    assert data['tool_failures'][0]['retrieval_status']=='timeout'
+    assert data['tool_failures'][0] == {'name':'inventory.check','error_code':'other_error'}
+    assert data['tool_failures'][1]['retrieval_status']=='timeout'
     raw=trace.with_suffix('.events.json').read_text()+trace.with_suffix('.stages.json').read_text()
     for secret in ('Private','0912345678','9876543','private secret','agent_draft','source_evidence'):
         assert secret not in raw

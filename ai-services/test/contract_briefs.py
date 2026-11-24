@@ -128,7 +128,7 @@ class BriefContract(unittest.IsolatedAsyncioTestCase):
         for promos, expected in ((["SAVE-N"], True), ([], False), (None, None)):
             with self.subTest(promos=promos):
                 loaded = await load_context(state, Memory(), Tools(promos),
-                    lambda: datetime(2026, 10, 15, tzinfo=timezone.utc))
+                    lambda: datetime(2026, 10, 15, tzinfo=timezone.utc), refresh_brief=True)
                 brief = loaded["call_brief"]
                 valid_brief("call_brief", brief)
                 self.assertIs(brief["products_advised"][0]["promo_still_active"], expected)

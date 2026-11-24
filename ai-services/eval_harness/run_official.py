@@ -194,7 +194,7 @@ async def run_pair(*, scenarios: Path, btc_root: Path, seed: int,
 
 def main():
     parser=argparse.ArgumentParser(description='LIVE paired BTC text evaluation; model calls and runtime reset')
-    parser.add_argument('--scenarios',type=Path,default=SERVICE/'eval_harness/scenarios')
+    parser.add_argument('--scenarios',type=Path,default=PROJECT/'eval/scenario_final')
     parser.add_argument('--btc-root',type=Path,required=True)
     parser.add_argument('--expected-database',default=os.getenv('EVAL_EXPECTED_DATABASE'))
     parser.add_argument('--decision-diagnostics', action='store_true', help='Capture safe decision evidence; remote memory/worker need EVAL_DECISION_DIAGNOSTICS=1')

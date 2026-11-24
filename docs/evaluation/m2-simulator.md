@@ -1,5 +1,7 @@
 # Customer simulator M2
 
+Theo ưu tiên hiện tại, simulator để sau. Goal tương thích BTC tháng 11 đã nối bộ nạp seed mới vào runner Full/baseline cố định; runner simulator chưa nối bộ nạp đó và chưa được nghiệm thu cho seed có facts của bản mới. Các hướng dẫn dưới đây mô tả triển khai trước cập nhật, không phải bằng chứng chạy thành công trên bản BTC mới.
+
 Simulator là phép đánh giá thích ứng riêng. Bộ chấm chéo BTC tiếp tục chạy lời khách cố định; không lấy trace simulator thay cho cặp trace chính thức vì lời khách giữa Full và baseline có thể khác nhau.
 
 ## Luồng thực thi

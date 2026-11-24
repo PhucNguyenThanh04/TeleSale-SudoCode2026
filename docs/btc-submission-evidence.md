@@ -11,14 +11,14 @@
 | Báo cáo và vòng cải tiến | [Báo cáo đánh giá](btc-m1-evaluation-report.md) có bảng Full/baseline, K0/K1 lịch sử và phân tích 15 lỗi. |
 | Video và slide | Có [nội dung slide](btc-m1-slides.md) và PPTX 12 slide. Video còn thiếu trong hồ sơ diễn tập. |
 
-Corpus hiện có 121 transcript, 39 nhóm đa phiên, 10 nhóm có cuộc gọi và chat; phiên T31-S05 là dữ liệu tổng hợp bổ sung. Hai ZIP Edge TTS gốc chứa 22 WAV, khoảng 19 phút 33 giây. Bộ `team22-edge-clone` đánh dấu `team_preview=true`. Còn thiếu ít nhất 18 file audio, khoảng 40 phút 27 giây và bằng chứng hai vùng giọng. [Mô tả corpus](../dataset/M1-CORPUS.md) · [Rà soát audio](../dataset/BAO_CAO_RÀ_SOAT_DATASET_2026-11-03.md)
+Corpus hiện có 121 transcript, 39 nhóm đa phiên, 10 nhóm có cuộc gọi và chat; phiên T31-S05 là dữ liệu tổng hợp bổ sung. Hai ZIP Edge TTS gốc chứa 22 WAV, khoảng 19 phút 33 giây. Bộ `team22-edge-clone` đánh dấu `team_preview=true`. Còn thiếu ít nhất 18 file audio và khoảng 40 phút 27 giây. Theo giải đáp mới, không bắt đủ vùng giọng nhưng phải công bố hạn chế giọng của bộ hiện có. [Mô tả corpus](../dataset/M1-CORPUS.md) · [Rà soát audio](../dataset/BAO_CAO_RÀ_SOAT_DATASET_2026-11-03.md)
 
-Hồ sơ cuối còn cần dataset đủ audio và kết quả chạy gắn với bản phát hành. Video 5–8 phút có hai cuộc gọi và slide với số liệu của bản nộp cần chuẩn bị cho buổi bảo vệ; theo thông báo BTC, hai mục này không bắt buộc nộp vào ngày 20/11. Bộ audio BTC đầy đủ và bộ test ẩn đến từ BTC. Bảng hội thoại có thể xuất trước, rồi đính kèm điểm ASR khi nhận được audio.
+Hồ sơ cuối còn cần dataset đủ audio và kết quả chạy gắn với bản phát hành. Video 5–8 phút có hai cuộc gọi và slide với số liệu của bản nộp cần chuẩn bị cho buổi bảo vệ; theo thông báo BTC, hai mục này không bắt buộc nộp vào ngày 20/11. Team tự tạo audio public D01–D04 để chứng minh pipeline. BTC giữ audio private và bộ test ẩn để chạy ngày chấm bằng key của BTC; điểm xếp hạng ASR chỉ lấy trên audio private.
 
 ## Artifact diễn tập hiện có
 
 - Dataset `dist/telesale-btc-m1-dataset-20261122-rc2.zip` có 121 transcript, gồm T31-S05, hai ZIP audio Edge và báo cáo validator. SHA-256: `06dbf764bb376a8855ee7848d12aaa9a814703ee00c30429701f38bd288af698`. Đây là snapshot phát triển chưa đủ 40 audio/1 giờ và chưa chứng minh hai vùng giọng; file nằm ngoài Git nên phải cấp riêng. Bản dataset `rc1` cũ chưa có T31-S05.
-- Bộ scenario của đợt diễn tập được preflight offline xác nhận có 29 ca, 67 phiên, 170 lượt, trong đó 28 ca đa phiên và 15 ca khó; kiểm tra nhãn memory và task đều qua. Các số liệu này áp dụng cho bộ của đợt diễn tập. README BTC nhắc `eval/validate_scenarios.py`, nhưng file không có trong gói BTC cục bộ nên chưa chạy được phép kiểm này.
+- Bộ scenario của đợt diễn tập được preflight offline xác nhận có 29 ca, 67 phiên, 170 lượt, trong đó 28 ca đa phiên và 15 ca khó; kiểm tra nhãn memory và task đều qua. Các số liệu này áp dụng cho bộ của đợt diễn tập. BTC đã đính chính validate_scenarios.py là công cụ nội bộ, team không cần đợi hoặc nộp kết quả validator này.
 
 ## Mức kiểm chứng của mã nguồn
 

@@ -306,7 +306,7 @@ def test_submission_knowledge_followup_prints_commands_for_its_compose_project(t
         tmp_path, monkeypatch, 'complete', 'separate')
     output = capsys.readouterr().out
     compose = ('SUBMISSION_DATABASE=telesale_eval_m1 docker compose '
-               '--env-file .env.submission -f compose.submission.yml -p btc-eval-check')
+               '--env-file .env -f compose.submission.yml -p btc-eval-check')
     assert f'{compose} up -d --wait backend' in output
     assert 'http://127.0.0.1:8091/knowledge?run_id=' in output
     assert f'{compose} run --rm knowledge-eval --base-run ' in output

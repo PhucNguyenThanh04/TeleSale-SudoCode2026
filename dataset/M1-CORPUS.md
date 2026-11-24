@@ -21,7 +21,7 @@ Video và slide cần dùng dữ liệu minh họa đã rà. Gói này chứa th
 | 30 khách đa phiên | 39 nhóm có ít nhất hai phiên |
 | 10 khách gọi và chat | 10 nhóm |
 | 40 audio, ít nhất 1 giờ | 22 WAV, khoảng 19 phút 33 giây, thiếu ít nhất 18 file và khoảng 40 phút 27 giây |
-| ASR trên audio BTC và ít nhất 20 file team | Cần audio BTC đầy đủ và bộ team đã rà, cùng báo cáo nhận dạng và chấm điểm |
+| ASR public BTC và ít nhất 20 file team | Team tự tạo audio D01–D04 từ kịch bản/ground truth mới để chứng minh pipeline; audio private do BTC giữ và đo ngày chấm. Cần bộ team đã rà và báo cáo riêng. |
 
 Validator báo 0 lỗi và 58 cảnh báo. Các cảnh báo gồm thời lượng hoặc số lượt ngoài khoảng mẫu BTC, ngữ cảnh thiếu SKU để đối chiếu giá/tồn kho và một số trường hợp chuẩn hóa thực thể. Mốc một giờ được đối chiếu trên thời lượng WAV. Bộ scenario hội thoại dùng khi `eval` là một bộ riêng có nhãn chấm Full/baseline.
 

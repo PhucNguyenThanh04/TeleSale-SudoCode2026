@@ -125,16 +125,16 @@ class TestEvalHarness(unittest.TestCase):
 
 class TestScenarioInput(unittest.IsolatedAsyncioTestCase):
     async def test_runtime_error_text_is_not_copied_into_public_trace(self):
-        from eval_harness.benchmark_runner import run_scenario_call
+        from eval_harness.benchmark_runner import run_scenario_call, StreamingMeasurementError
 
         class Runtime(VoiceLifecycleStub):
             async def run(self, request):
                 raise RuntimeError("private customer detail")
 
-        rows = await run_scenario_call(Runtime(), "SAMPLE-01", "call_1",
-            {"customer_turns": ["Xin chào"]}, date(2026, 10, 15), "0900000000")
-        self.assertIn("RuntimeError", rows[0]["agent_text"])
-        self.assertNotIn("private customer detail", rows[0]["agent_text"])
+        with self.assertRaises(StreamingMeasurementError) as caught:
+            await run_scenario_call(Runtime(), "SAMPLE-01", "call_1",
+                {"customer_turns": ["Xin chào"]}, date(2026, 10, 15), "0900000000")
+        self.assertNotIn("private customer detail", str(caught.exception))
 
     async def test_worker_drains_at_call_end_without_blocking_next_turn(self):
         from types import SimpleNamespace

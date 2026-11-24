@@ -46,6 +46,18 @@ def checks(report):
     return {item['name']: item for item in report['checks']}
 
 
+@pytest.mark.parametrize('baseline,full,expected', [(0, 0, 'not_applicable'),
+    (0, 10, 'fail'), (None, 0, 'missing'), (0, None, 'missing'), (20, 10, 'pass'), (20, 15, 'fail')])
+def test_rqr_zero_baseline_uses_btc_exception_and_preserves_missing_measurements(baseline, full, expected):
+    from eval_harness.m1_acceptance import _rqr_check
+    reduction = (100 * (baseline - full) / baseline if baseline and full is not None else None)
+    report = _rqr_check({'repeat_question_rate': {'value': full}, 'context_carryover_rate': {'value': 85}},
+        {'repeat_question_rate': {'value': baseline}}, {'rqr_relative_reduction_pct': reduction})
+    assert report['status'] == expected
+    if expected == 'not_applicable':
+        assert report['evidence']['ccr'] == 85 and report['evidence']['jury_review_required'] is True
+
+
 @pytest.mark.parametrize('warmup,expected', [(None, 'missing'), (0, 'fail'),
                                             (2, 'fail'), (3, 'pass')])
 def test_latency_requires_three_warmup_turns_in_bound_evidence(tmp_path, warmup, expected):

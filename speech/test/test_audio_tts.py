@@ -71,6 +71,23 @@ class VoiceTests(unittest.TestCase):
         self.assertEqual((voice["voice_id"], voice["model_id"]), ("abc", "eleven_multilingual_v2"))
         self.assertEqual(voice["voice_settings"], {"stability": 0.4})
 
+    def test_elevenlabs_endpoint_comes_from_environment(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = b'audio'
+        with mock.patch.dict('os.environ', {'ELEVENLABS_API_BASE_URL': 'https://tts.example.test/'}), \
+                mock.patch('urllib.request.urlopen', return_value=response) as send:
+            self.assertEqual(tts.eleven_request('GET', '/v1/voices', 'fake-secret'), b'audio')
+        request = send.call_args.args[0]
+        self.assertEqual(request.full_url, 'https://tts.example.test/v1/voices')
+        self.assertEqual(request.get_header('Xi-api-key'), 'fake-secret')
+        self.assertNotIn('fake-secret', request.full_url)
+
+    def test_asr_model_device_and_precision_defaults_come_from_environment(self):
+        from speech.__main__ import build_parser
+        with mock.patch.dict('os.environ', {'ASR_MODEL': 'whisper-small', 'ASR_DEVICE': 'cpu', 'ASR_COMPUTE_TYPE': 'int8'}):
+            args = build_parser().parse_args(['transcribe', '--audio', 'audio', '--out', 'out'])
+        self.assertEqual((args.model, args.device, args.compute_type), ('whisper-small', 'cpu', 'int8'))
+
     def test_respell_replaces_whole_words_longest_first(self):
         mapping = self.CONFIG["edge"]["pronounce"]
         self.assertEqual(tts.respell("Shipper ship sizes Size", mapping), "síp pơ síp sizes sai")

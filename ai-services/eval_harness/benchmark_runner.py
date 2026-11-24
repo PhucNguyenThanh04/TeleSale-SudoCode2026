@@ -294,6 +294,8 @@ async def run_scenario_call(
                 final_writes = await capture_writes([sid for _, sid in ready])
                 for row, source_id in ready:
                     accepted = final_writes.get(source_id, [])
+                    safe_writes = public_memory_writes(call_name, row['turn'], accepted,
+                        customer_name=customer_name, preserve_contact=True)
                     if decision_enabled():
                         from app.mcp_servers.mcp_shared.decision_diagnostics import observe_job
                         captured = next((entry for entry in pending_decisions if entry[3] == source_id), None)
@@ -303,8 +305,8 @@ async def run_scenario_call(
                         from eval_harness.trace_evidence import inspect_redaction
                         safety_issues.extend(inspect_redaction(
                             {**row, "memory_writes": accepted},
-                            {**row, "memory_writes": public_memory_writes(call_name, row["turn"], accepted, customer_name=customer_name)}, call_spec=call_spec))
-                    row["memory_writes"] = public_memory_writes(call_name, row["turn"], accepted, customer_name=customer_name)
+                            {**row, "memory_writes": safe_writes}, call_spec=call_spec))
+                    row["memory_writes"] = safe_writes
             except Exception as exc:
                 for row, _ in ready:
                     row["memory_error"] = "capture_failed"
@@ -409,10 +411,14 @@ async def run_scenario_stream(
         for call_name, call_spec in sorted(calls.items()):
             from eval_harness.seed_history import SeedHistoryGateway, parse_seed_history
             if isinstance(getattr(runtime, "tools", None), SeedHistoryGateway):
-                identities = {c.get("channel", "hotline"): c.get("channel_identity", raw_phone)
-                              for c in calls.values()}
+                identities = {}
+                for c in calls.values():
+                    identities.setdefault(c.get('channel', 'hotline'), set()).add(c.get('channel_identity', raw_phone))
                 runtime.tools.select(sid, identities, parse_seed_history(
-                    call_spec.get("seed_history", []), call_date=scenario_call_date(calls, call_name, base_date)))
+                    call_spec.get("seed_history", []), call_date=scenario_call_date(calls, call_name, base_date)),
+                    call_date=scenario_call_date(calls, call_name, base_date))
+                channel = call_spec.get('channel', 'hotline')
+                await runtime.tools.prepare_history(channel, call_spec.get('channel_identity', raw_phone))
             call_phone = raw_phone
             rows: list[dict[str, Any]] = []
             trace[(sid, call_name)] = rows
@@ -489,6 +495,8 @@ class WarmupGateway:
             return {"found": False}
         if name == "memory.read":
             return {"history": [], "profile": {}, "episodes": [], "turn_no": 1}
+        if name == 'memory.replay':
+            return {'found': False}
         if name == "memory.write":
             return {"turn_no": 1, "memory_writes": []}
         if name in {"order.create", "order.update", "schedule.callback", "handoff.transfer"}:
@@ -528,7 +536,7 @@ async def warm_up_configuration(runtime, *, turns: int = 3) -> dict:
 async def run_configuration(*, scenarios: dict[str, dict], config: str, runtime,
                             run_id: str, out: Path, wait_for_jobs, capture_writes,
                             on_row=None, on_turn=None, btc_root: Path | None = None, safety_issues: list | None = None,
-                            delivery_mode='text') -> dict:
+                            delivery_mode='text', extraction_path: Path | None = None) -> dict:
     conversation_measurement(delivery_mode)
     from eval_harness.scenario_contract import dataset_coverage
     if config == "baseline":
@@ -553,7 +561,9 @@ async def run_configuration(*, scenarios: dict[str, dict], config: str, runtime,
     from eval_harness.turn_diagnostics import TurnDiagnostics
     diagnostics = TurnDiagnostics()
     out = Path(out)
-    if any(p.exists() for p in (out, out.with_suffix('.stages.json'), out.with_suffix('.events.json'))):
+    if extraction_path is None:
+        extraction_path = out.parent / ('full.extraction.jsonl' if config == 'full' else 'baseline.extraction.jsonl')
+    if any(p.exists() for p in (out, out.with_suffix('.stages.json'), out.with_suffix('.events.json'), extraction_path)):
         raise FileExistsError('output_exists_choose_new_path')
     out.parent.mkdir(parents=True, exist_ok=True)
     decision_refs = None
@@ -584,8 +594,7 @@ async def run_configuration(*, scenarios: dict[str, dict], config: str, runtime,
         if any(next(validator.iter_errors(row), None) for rows in trace.values() for row in rows):
             raise RuntimeError("trace_schema_invalid")
     from eval_harness.extraction_report import write_extraction_sidecar
-    sidecar_name = "full.extraction.jsonl" if config == "full" else "baseline.extraction.jsonl"
-    write_extraction_sidecar(out, out.parent / sidecar_name)
+    write_extraction_sidecar(out, extraction_path)
     return {"coverage": dataset_coverage(scenarios), "trace": trace, "safety_issues": safety_issues, "turn_diagnostics":diagnostic_refs, **({"decision_diagnostics": decision_refs} if decision_refs is not None else {})}
 
 
@@ -632,14 +641,22 @@ async def read_distillation_writes(dsn: str, source_ids: list[str]) -> dict[str,
                                           "postgresql://", 1))
     try:
         from app.mcp_servers.mcp_shared.decision_diagnostics import enabled as decision_enabled
-        columns = ',job_id,status,accepted_proposals' if decision_enabled() else ''
-        rows = await conn.fetch(f"""SELECT source_turn_id,accepted_writes{columns}
-            FROM runtime.langmem_distillation_jobs
-            WHERE source_turn_id=ANY($1::uuid[]) AND status='completed'""",
+        columns = ',j.job_id,j.status,j.accepted_proposals' if decision_enabled() else ''
+        rows = await conn.fetch(f"""SELECT j.source_turn_id,j.accepted_writes{columns},
+                t.customer_id,t.private_delivery->>'address' AS address
+            FROM runtime.langmem_distillation_jobs j
+            JOIN runtime.turns t ON t.client_msg_id=j.source_turn_id
+                AND t.session_id=j.session_id AND t.customer_id=j.customer_id
+            WHERE j.source_turn_id=ANY($1::uuid[]) AND j.status='completed'""",
             [UUID(item) for item in source_ids])
-        values = {str(row["source_turn_id"]): (json.loads(row["accepted_writes"])
-                if isinstance(row["accepted_writes"], str) else row["accepted_writes"])
-                for row in rows}
+        values = {}
+        for row in rows:
+            writes = row['accepted_writes']
+            writes = json.loads(writes) if isinstance(writes, str) else list(writes)
+            if row['customer_id'] and row['address']:
+                writes.append({'key': 'address', 'value': row['address'], 'op': 'set',
+                               'customer_id': row['customer_id']})
+            values[str(row['source_turn_id'])] = writes
         if not decision_enabled():
             return values
         jobs = {}
@@ -656,7 +673,8 @@ async def read_distillation_writes(dsn: str, source_ids: list[str]) -> dict[str,
 
 async def execute_configuration(*, settings, scenarios, config, run_id, out,
                                 btc_root, expected_database, release, runtime=None,
-                                worker_wait_seconds=180, on_turn=None, delivery_mode='text'):
+                                worker_wait_seconds=180, on_turn=None, delivery_mode='text',
+                                extraction_path: Path | None = None):
     measurement = conversation_measurement(delivery_mode)
     if any(path.exists() for path in (Path(out), Path(out).with_suffix('.report.json'),
             Path(out).with_suffix('.stages.json'), Path(out).with_suffix('.events.json'))):
@@ -665,9 +683,13 @@ async def execute_configuration(*, settings, scenarios, config, run_id, out,
     from app.knowledge.context import release_context
     from eval_harness.seed_history import SeedHistoryGateway
     from eval_harness.official_pipeline import atomic_json
+    seed_loader = None
     if runtime is None:
         runtime = build_runtime(settings)
-        runtime = build_runtime(settings, gateway=SeedHistoryGateway(runtime.tools))
+        if any(call.get('seed_history') for sc in scenarios.values() for call in sc['calls'].values()):
+            from eval_harness.seed_memory import build_seed_loader
+            seed_loader = build_seed_loader(settings, btc_root)
+        runtime = build_runtime(settings, gateway=SeedHistoryGateway(runtime.tools, materialize=seed_loader))
     runtime.memory.include_prior = config == "full"
     issues = []
     from app.agent.harness.execution_diagnostics import safe_failure_details
@@ -690,7 +712,7 @@ async def execute_configuration(*, settings, scenarios, config, run_id, out,
                 run_id=run_id, out=out, btc_root=btc_root,
                 wait_for_jobs=lambda source: wait_for_distillation(database_url(settings), source, worker_wait_seconds),
                 capture_writes=lambda ids: read_distillation_writes(database_url(settings), ids), on_turn=on_turn,
-                safety_issues=issues, delivery_mode=delivery_mode)
+                safety_issues=issues, delivery_mode=delivery_mode, extraction_path=extraction_path)
     except Exception as exc:
         from eval_harness.turn_diagnostics import verify_turn_diagnostics
         diagnostic_refs = {}
@@ -705,6 +727,9 @@ async def execute_configuration(*, settings, scenarios, config, run_id, out,
             "phase":phase,"service":getattr(exc,"service",None),"safety_issues":issues,
             **safe_failure_details(exc)})
         raise RuntimeError("configuration_failed; inspect safe runner report") from None
+    finally:
+        if seed_loader is not None:
+            await seed_loader.repo.close()
     from eval_harness.turn_diagnostics import trace_execution_health
     result["execution_health"] = trace_execution_health(Path(out))
     result["database_identity"] = identity

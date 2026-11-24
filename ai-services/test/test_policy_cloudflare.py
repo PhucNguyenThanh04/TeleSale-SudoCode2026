@@ -24,6 +24,20 @@ def test_dense_response_is_ordered_and_validated():
     asyncio.run(run())
 
 
+def test_embedding_endpoint_is_configurable_and_credentials_stay_in_headers():
+    async def run():
+        def handler(request):
+            assert request.url.host == 'embedding.example.test'
+            assert request.url.path.startswith('/client/v4/accounts/')
+            assert request.headers['Authorization'] == 'Bearer fake-secret'
+            assert 'fake-secret' not in str(request.url)
+            return httpx.Response(200, json={'success': True, 'result': {'data': [[1, 0]]}})
+        client = client_for(handler, base_url='https://embedding.example.test/client/v4/')
+        assert await client.embed(['đổi trả'], deadline=time.monotonic()+1) == [[1, 0]]
+        await client.close()
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize('body', [
     {'success':True,'result':{'data':[[1]]}},
     {'success':True,'result':{'data':[[0,0]]}},

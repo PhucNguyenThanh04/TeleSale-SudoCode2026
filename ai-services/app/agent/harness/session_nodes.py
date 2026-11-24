@@ -39,7 +39,7 @@ class SessionNodes:
 
     @trace_node("retrieve_context")
     async def retrieve_context(self, state: TurnState) -> dict[str, Any]:
-        result = await load_context(state, self.memory, self.tools, self.clock)
+        result = await load_context(state, self.memory, self.tools, self.clock, refresh_brief=True)
         log_event(state, "retrieve_context", "context_loaded",
                   history_turns=len(result.get("history", [])),
                   profile_facts=len(result.get("profile", {})),

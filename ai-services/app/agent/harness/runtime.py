@@ -207,7 +207,7 @@ class AgentHarnessRuntime:
                      "received_at_monotonic": started, "tool_calls": calls,
                      "session_tool_calls": deepcopy(self._session_tool_calls[session_id])}
             context = await load_context(state, self.memory, self.tools,
-                self._clock or (lambda: datetime.now(timezone.utc)))
+                self._clock or (lambda: datetime.now(timezone.utc)), refresh_brief=True)
             if context.get('erased_customer_id'):
                 self._forget_customer(context['erased_customer_id'])
                 identity = self._session_identities[session_id][1]

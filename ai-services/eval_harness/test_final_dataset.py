@@ -85,7 +85,9 @@ def test_safety_cases_exercise_real_inputs_and_identity_ambiguity():
     assert shared['channel'] == 'hotline'
     assert sum(c['phone'] == shared['channel_identity'] for c in crm) == 2
     history = cases['TEAM-12']['calls']['call_1']['seed_history']
-    assert history == next(c for c in crm if c['customer_id'] == 'C031')['sessions']
+    assert [{k: v for k, v in h.items() if k != 'facts'} for h in history] == next(c for c in crm if c['customer_id'] == 'C031')['sessions']
+    assert history[0]['facts'][0] == {'field': 'room_area_m2', 'value': 20, 'as_of': history[0]['date']}
+    assert history[0]['facts'][1]['value'] in history[0]['summary']
     assert cases['TEAM-47']['calls']['call_1']['ground_truth_facts']['historical_return_days'] == 14
     assert cases['TEAM-48']['calls']['call_1']['channel_identity'] not in {c['phone'] for c in crm}
 
