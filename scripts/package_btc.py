@@ -15,7 +15,7 @@ SOURCE_DIRS = {'ai-services', 'backend', 'config', 'dataloader_offline', 'datase
 SOURCE_ROOT = {'AGENTS.md', 'README.md', 'START_HERE.md', 'Dockerfile.submission', 'Dockerfile.submission.dockerignore',
                'compose.submission.yml', 'docker-compose.yml', 'pyproject.toml', 'uv.lock',
                'run_eval.py', 'seed_btc.sh', 'run_knowledge_eval.py', 'run_system.py', '.gitignore',
-               '.gitattributes', '.python-version', '.env.example', '.env.submission.example'}
+               '.gitattributes', '.python-version', '.env.example', '.env.submission.example', '.dockerignore'}
 EXCLUDED_DIRS = {'__pycache__', 'cache', 'node_modules', 'storage', 'secrets', 'secrets-submission',
                  'artifacts', 'outputs', 'results', 'results-submission', 'runs', 'graphify-out',
                  'models', 'postgres_data', 'traces'}

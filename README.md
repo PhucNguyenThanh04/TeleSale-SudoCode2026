@@ -28,6 +28,8 @@ docker compose up -d --build
 
 Lệnh bật PostgreSQL, Qdrant, Redis, bốn MCP server, AI service, backend và các worker. Bước này chỉ cần repo và `.env`, chưa cần thư mục dữ liệu BTC. Các server dùng volume nội bộ; lệnh không nạp dữ liệu và không chạy eval.
 
+Compose build một image AI và một image backend; MCP, worker, seed và eval dùng lại các image này. Sau khi đổi mã nguồn, chạy lại lệnh trên trước bước seed/eval. `Dockerfile.submission.dockerignore` lọc context cho bản nộp; `.dockerignore` ở root lọc context khi dùng Dockerfile backend cũ. Virtualenv, cache, test, báo cáo, model weights và audio được loại khỏi context của bản nộp.
+
 Lần đầu database còn trống, các container ứng dụng chờ dữ liệu; log có thể hiện `Waiting for BTC data` và health ở trạng thái `starting`. Chạy bước 3 để hoàn tất khởi tạo.
 
 ## 3. Nạp dữ liệu BTC
