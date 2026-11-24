@@ -12,10 +12,15 @@ import run_submission
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_missing_supplied_env_reports_the_handoff_step(tmp_path):
+    with pytest.raises(ValueError, match='Place the .env supplied by the team'):
+        run_submission.launch('eval', [], root=tmp_path)
+
+
 @pytest.mark.parametrize('service,arguments', [('eval', []), ('demo', []),
     ('eval-trace', ['--config', 'full', '--out', '/results/full.jsonl']),
     ('asr', ['transcribe', '--audio', '/audio-dataset/audio', '--out', '/results/asr-team'])])
-def test_copied_env_prepares_directories_and_runs_compose(tmp_path, monkeypatch, service, arguments):
+def test_supplied_env_prepares_directories_and_runs_compose(tmp_path, monkeypatch, service, arguments):
     if not shutil.which('docker'):
         pytest.skip('Docker CLI is needed to resolve Compose')
     for name in ('LLM_API_KEY', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN', 'SUBMISSION_RUN_AS'):
@@ -54,6 +59,8 @@ def test_copied_env_prepares_directories_and_runs_compose(tmp_path, monkeypatch,
     assert run_submission.launch(service, arguments, root=tmp_path) == 19
     assert (tmp_path / results / 'models').is_dir()
     assert not (tmp_path / 'secrets-submission').exists()
+    assert not (tmp_path / 'backend/.env').exists()
+    assert not (tmp_path / 'ai-services/.env').exists()
     command, options = launches[0]
     assert options['env']['SUBMISSION_RUN_AS'] == run_as
     assert options['env']['SUBMISSION_DATABASE'] == ('telesale_demo' if service == 'demo' else 'telesale_eval_m1')

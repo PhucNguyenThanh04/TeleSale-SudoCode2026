@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent
 def launch(service, arguments, *, root=ROOT):
     root = Path(root).resolve()
     if not (root / '.env').is_file():
-        raise ValueError('Copy .env.example to .env and fill in the BTC API credentials first.')
+        raise ValueError('Place the .env supplied by the team in the repository root first.')
     environment = dict(os.environ)
     demo = service == 'demo'
     environment['SUBMISSION_DATABASE'] = 'telesale_demo' if demo else 'telesale_eval_m1'

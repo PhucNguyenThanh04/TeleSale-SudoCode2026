@@ -2,44 +2,39 @@
 
 Harness telesale tiếng Việt duy trì ngữ cảnh giữa các phiên. Bản nộp M1 chạy demo qua web chat, chấm Full và baseline không có bộ nhớ liên phiên, và xử lý file ghi âm bằng ASR local.
 
-## 1. Chuẩn bị và cài đặt
+## 1. Chạy bản nộp
 
-Cần Linux x86-64, Git, Docker với Compose v2, Python 3, kết nối Internet, gói dữ liệu BTC đã giải nén và thông tin truy cập LLM tương thích API OpenAI cùng Cloudflare Workers AI. Bản nộp nằm trên `main`. Đặt `SUBMISSION_REPO_URL` trong shell theo URL repo ghi trong hồ sơ nộp.
+Máy cần Linux x86-64, Git, Python 3, Docker Compose và kết nối Internet. Nhóm bàn giao repo trên `main`, một file `.env` đã điền sẵn key/mật khẩu và gói dữ liệu BTC.
+
+**Bước 1 — Clone main:**
 
 ```bash
-git clone --branch main "$SUBMISSION_REPO_URL" TeleSale-SudoCode2026
+git clone --branch main --single-branch https://github.com/PhucNguyenThanh04/TeleSale-SudoCode2026.git
 cd TeleSale-SudoCode2026
-git rev-parse HEAD
-
-cp .env.example .env
 ```
 
-Đối chiếu SHA sau khi clone. `.env` là cấu hình chung cho bản nộp, tạo từ [file mẫu](.env.example). Mật khẩu database, tài khoản demo và token nội bộ đã có giá trị để BTC dùng ngay. Điền `LLM_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` của BTC; kiểm tra model/endpoint và `BTC_ROOT` theo môi trường chấm. Đường dẫn tương đối được tính từ gốc repo.
+**Bước 2 — Đặt file `.env` nhóm cung cấp vào gốc repo và giải nén dữ liệu BTC bên cạnh repo:**
 
-| Biến | Giá trị |
-|---|---|
-| `BTC_ROOT` | Thư mục BTC có `catalog/`, `policy/`, `schemas/` và `eval/`. |
-| `SCENARIOS_DIR` | `./eval/scenario_final` cho bộ team mặc định; `<BTC_ROOT>/test_set/public_sample` để thử mẫu; thư mục JSON bộ ẩn khi BTC chấm chéo. |
-| `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` | Key, ID model và URL API của provider dùng để chạy hội thoại. Có thể đặt `LANGMEM_MODEL` nếu dùng model riêng để ghi nhớ. |
-| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_API_BASE_URL` | Tài khoản/token Workers AI và endpoint embedding, mặc định `https://api.cloudflare.com/client/v4`. Đây là credential riêng với key LLM. |
-| `ASR_MODEL`, `ASR_DEVICE`, `ASR_COMPUTE_TYPE` | Mặc định `whisper-small`, `cpu`, `int8`; CLI cho phép ghi đè bằng flag. Model được chạy local. |
-| `ELEVENLABS_API_KEY`, `ELEVENLABS_API_BASE_URL` | Chỉ cần nếu tự sinh corpus bằng ElevenLabs; endpoint mặc định `https://api.elevenlabs.io`. Không cần TTS để chấm M1. |
-| `POSTGRES_PASSWORD`, `MCP_*_PASSWORD`, `WORKER_PASSWORD`, `REVIEWER_PASSWORD`, `BACKEND_PASSWORD` | Mật khẩu nội bộ đã điền sẵn trong file mẫu; mật khẩu DB dùng chuỗi hex theo script cấp quyền. |
-| `MCP_INTERNAL_TOKEN`, `AI_INTERNAL_TOKEN`, `DEMO_JWT_SECRET`, `DEMO_USER_1_PASSWORD`, `DEMO_USER_2_PASSWORD` | Token nội bộ và mật khẩu đăng nhập demo, đã điền sẵn. |
-| `SUBMISSION_RUN_AS` | Để trống để lệnh chạy tự lấy UID:GID của người dùng hiện tại; có thể điền UID:GID cụ thể. |
-| `RESULTS_DIR` | Mặc định `./results-submission`; lệnh chạy tự tạo thư mục kết quả và thư mục con `models`. |
+```text
+thu_muc_lam_viec/
+├── BTC-Data-Vong1-TEAMS/
+└── TeleSale-SudoCode2026/
+    ├── .env
+    ├── compose.submission.yml
+    └── run_submission.py
+```
 
-Chạy bằng `python3 run_submission.py`. Script chỉ cần Python chuẩn và Docker Compose trên host, tự chuẩn bị thư mục kết quả và quyền ghi file. Compose lấy toàn bộ thông tin kết nối nội bộ từ `.env`, cấp cho container qua biến môi trường và secret mount; BTC không cần tạo thư mục `secrets-submission/` hoặc chạy script sinh mật khẩu. Cơ chế này dùng [environment secrets của Docker Compose](https://docs.docker.com/reference/compose-file/secrets/).
+File `.env` bàn giao có sẵn key LLM, Cloudflare, model, endpoint, mật khẩu database, tài khoản demo và token nội bộ. Compose tự cấp cấu hình cho từng server; BTC không cần tạo `.env` trong `backend/` hay `ai-services/`. Với bố cục trên, `BTC_ROOT=../BTC-Data-Vong1-TEAMS` dùng được ngay. Nếu đặt dữ liệu ở nơi khác, sửa riêng `BTC_ROOT` trong `.env`. Bộ test mặc định là `eval/scenario_final`.
 
-Lần setup đầu tải tokenizer đã ghim checksum và có thể dùng quota embedding. Service `setup` nạp nguồn BTC vào PostgreSQL, tạo schema runtime và chuẩn bị chỉ mục chính sách. Compose tự chạy service này trước khi cấp quyền và khởi động MCP; setup thành công mới tiếp tục chạy demo hoặc eval. Setup dùng lại dữ liệu khi nguồn không đổi và từ chối nguồn khác trên DB đã khởi tạo. Mật khẩu trong `.env` phải khớp với database nếu tái sử dụng volume từ lần chạy trước. Nếu dùng loader thủ công với `--prepare-policy`, cần actor có quyền `knowledge_review` và file cấu hình runtime thực, chẳng hạn [config/policy-runtime.json](config/policy-runtime.json). Đường chạy Compose tự chuẩn bị cấu hình cho BTC.
+**Bước 3 — Chạy:**
 
-Ngày chấm BTC dùng API key của BTC. Điền key/model/endpoint tương ứng vào các biến trên; đường gọi LLM dùng API tương thích OpenAI. Model hội thoại mặc định `gpt-6-luna`; `LANGMEM_MODEL` để trống dùng cùng model, nếu đổi phải khai báo ID chính xác. Embedding dùng Cloudflare `@cf/baai/bge-m3`, cấu hình trong `config/policy-runtime.json`; tokenizer local được tải và kiểm checksum ở setup. ASR `whisper-small` ánh xạ tới `Systran/faster-whisper-small`; weights tự tải ở lần transcribe đầu, lưu trong `RESULTS_DIR/models`. Máy không có Internet cần chuẩn bị cache weights/tokenizer cùng phiên bản trước. TTS chỉ dùng khi soạn audio; model/voice được ghi trong cấu hình giọng và manifest của corpus.
+```bash
+python3 run_submission.py
+```
 
-Cấu hình tối thiểu dự kiến để bàn giao stack M1 CPU/int8: Linux x86-64, 4 vCPU, RAM 8 GiB và 20 GiB trống cho image/cache/dữ liệu. Không yêu cầu GPU cho cấu hình này. Đây là mức tài nguyên triển khai được khai báo, chưa phải bằng chứng latency trên model/provider thật; báo cáo phải ghi phần cứng thực tế của lần đo.
+Lệnh tự chạy toàn bộ luồng: **PostgreSQL/Qdrant → khởi tạo dữ liệu → MCP/worker → Full + baseline → xuất trace → scorer BTC → bảng kết quả**. Kết quả nằm trong `results-submission/<run-id>/`; `run.json` ghi trạng thái thực thi.
 
-Bộ team mặc định có 48 kịch bản, 118 phiên tại `SCENARIOS_DIR=./eval/scenario_final`. Khi chuyển từ bản dùng `.env.submission`, tạo `.env` theo mẫu mới và điền lại cấu hình của BTC. Xem [trạng thái bằng chứng M2](docs/evaluation/m2-readiness.md) cho phần đánh giá nâng cao đang phát triển.
-
-Gói BTC phải được đồng bộ trước khi setup/chấm. Nếu nhận bản ground truth sửa dưới tên `asr/ground_truth copy.json`, đặt bản BTC mới vào đúng `asr/ground_truth.json` trước khi dùng; file đúng có D01 sku/price list và D02 cùng khách D01. Manifest bộ team kiểm hash nguồn và sẽ dừng nếu dùng bản cũ. Khi BTC chạy bộ ẩn, thay SCENARIOS_DIR bằng bộ ẩn của BTC và giữ đúng nguồn đi kèm.
+Để thử trước một scenario, dùng `python3 run_submission.py eval --limit-scenarios 1`. Chạy giao diện bằng lệnh ở mục 2. Các tham số, model và phần cứng được mô tả tại [chi tiết cấu hình](#7-chi-tiết-cấu-hình-và-triển-khai).
 
 ## 2. Demo hai phiên
 
@@ -63,7 +58,7 @@ Chạy trên DB eval riêng vì runner reset runtime trước mỗi cấu hình.
 python3 run_submission.py
 ```
 
-Sau khi điền `.env` ở mục 1, lệnh trên build image, khởi động PostgreSQL/Qdrant, chạy setup, cấp quyền MCP, chờ các MCP sẵn sàng rồi chạy Full và baseline. Script tự chọn project `telesale-btc-eval`, database `telesale_eval_m1`; demo dùng project/database riêng. Runner xuất trace, gọi scorer BTC và in bảng. Mỗi run có `run.json`, hai trace JSONL, `btc_score.json` và `m1_conversation_acceptance.json` dưới `RESULTS_DIR`. Đọc kết quả nghiệm thu và trạng thái thực thi cùng với bảng điểm.
+Sau khi đặt `.env` ở mục 1, lệnh trên build image, khởi động PostgreSQL/Qdrant, chạy setup, cấp quyền MCP, chờ các MCP sẵn sàng rồi chạy Full và baseline. Script tự chọn project `telesale-btc-eval`, database `telesale_eval_m1`; demo dùng project/database riêng. Runner xuất trace, gọi scorer BTC và in bảng. Mỗi run có `run.json`, hai trace JSONL, `btc_score.json` và `m1_conversation_acceptance.json` dưới `RESULTS_DIR`. Đọc kết quả nghiệm thu và trạng thái thực thi cùng với bảng điểm.
 
 Để BTC chạy từng cấu hình trên bộ ẩn, đặt `SCENARIOS_DIR` trong `.env` rồi chạy; Compose dùng cùng luồng setup/MCP tự động:
 
@@ -149,10 +144,39 @@ python3 -m speech --data-dir "$BTC_ROOT" validate --dialogues \
 
 | Đầu mục | Hồ sơ |
 |---|---|
-| Mã nguồn và website | URL repo, nhánh `main`, SHA commit nộp bài và hướng dẫn chạy tại README này. Web có chat, Call Brief và timeline. |
+| Mã nguồn và website | URL repo, nhánh `main`, SHA commit nộp bài, file `.env` bàn giao kèm và hướng dẫn chạy tại README này. Web có chat, Call Brief và timeline. |
 | Dataset | [Mô tả corpus](dataset/M1-CORPUS.md). Bàn giao archive dữ liệu và checksum riêng. |
 | Kiến trúc | [Sơ đồ harness, bộ nhớ và MCP](docs/m1-architecture.md). |
 | Báo cáo | [Báo cáo đánh giá M1](docs/btc-m1-evaluation-report.md), gồm kết quả lịch sử, phân tích lỗi và giới hạn bằng chứng. Nộp kết quả Full/baseline, ASR và hai vòng cải tiến gắn với commit được chấm. |
 | Video và slide | Video 5–8 phút theo [demo hai phiên](#2-demo-hai-phiên). Slide tối đa 15 trang. [Nội dung slide](docs/btc-m1-slides.md). |
 
 [Hồ sơ diễn tập](docs/btc-submission-evidence.md) ghi nhận đã chạy Docker, đăng nhập, chat hai phiên và xuất trace với provider giả lập. Kết quả điểm chính thức cần dùng commit, dữ liệu và cấu hình thật của bản chấm. Bản dataset diễn tập RC2 có 121 transcript và 22 WAV; các mốc còn thiếu được ghi trong mô tả corpus.
+
+## 7. Chi tiết cấu hình và triển khai
+
+Đối chiếu SHA sau khi clone. `.env` bàn giao là cấu hình chung đã điền đủ cho bản Docker. [`.env.example`](.env.example) liệt kê các tham số để tham khảo hoặc tạo cấu hình khác. Khi BTC dùng key riêng, thay `LLM_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` cùng model/endpoint tương ứng trong `.env`. Đường dẫn tương đối được tính từ gốc repo.
+
+| Biến | Giá trị |
+|---|---|
+| `BTC_ROOT` | Thư mục BTC có `catalog/`, `policy/`, `schemas/` và `eval/`. |
+| `SCENARIOS_DIR` | `./eval/scenario_final` cho bộ team mặc định; `<BTC_ROOT>/test_set/public_sample` để thử mẫu; thư mục JSON bộ ẩn khi BTC chấm chéo. |
+| `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` | Key, ID model và URL API của provider dùng để chạy hội thoại. Có thể đặt `LANGMEM_MODEL` nếu dùng model riêng để ghi nhớ. |
+| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_API_BASE_URL` | Tài khoản/token Workers AI và endpoint embedding, mặc định `https://api.cloudflare.com/client/v4`. Đây là credential riêng với key LLM. |
+| `ASR_MODEL`, `ASR_DEVICE`, `ASR_COMPUTE_TYPE` | Mặc định `whisper-small`, `cpu`, `int8`; CLI cho phép ghi đè bằng flag. Model được chạy local. |
+| `ELEVENLABS_API_KEY`, `ELEVENLABS_API_BASE_URL` | Chỉ cần nếu tự sinh corpus bằng ElevenLabs; endpoint mặc định `https://api.elevenlabs.io`. Không cần TTS để chấm M1. |
+| `POSTGRES_PASSWORD`, `MCP_*_PASSWORD`, `WORKER_PASSWORD`, `REVIEWER_PASSWORD`, `BACKEND_PASSWORD` | Mật khẩu nội bộ đã điền sẵn trong file mẫu; mật khẩu DB dùng chuỗi hex theo script cấp quyền. |
+| `MCP_INTERNAL_TOKEN`, `AI_INTERNAL_TOKEN`, `DEMO_JWT_SECRET`, `DEMO_USER_1_PASSWORD`, `DEMO_USER_2_PASSWORD` | Token nội bộ và mật khẩu đăng nhập demo, đã điền sẵn. |
+| `SUBMISSION_RUN_AS` | Để trống để lệnh chạy tự lấy UID:GID của người dùng hiện tại; có thể điền UID:GID cụ thể. |
+| `RESULTS_DIR` | Mặc định `./results-submission`; lệnh chạy tự tạo thư mục kết quả và thư mục con `models`. |
+
+Chạy bằng `python3 run_submission.py`. Script chỉ cần Python chuẩn và Docker Compose trên host, tự chuẩn bị thư mục kết quả và quyền ghi file. Compose lấy toàn bộ thông tin kết nối nội bộ từ `.env`, cấp cho container qua biến môi trường và secret mount; BTC không cần tạo thư mục `secrets-submission/` hoặc chạy script sinh mật khẩu. Cơ chế này dùng [environment secrets của Docker Compose](https://docs.docker.com/reference/compose-file/secrets/).
+
+Lần setup đầu tải tokenizer đã ghim checksum và có thể dùng quota embedding. Service `setup` nạp nguồn BTC vào PostgreSQL, tạo schema runtime và chuẩn bị chỉ mục chính sách. Compose tự chạy service này trước khi cấp quyền và khởi động MCP; setup thành công mới tiếp tục chạy demo hoặc eval. Setup dùng lại dữ liệu khi nguồn không đổi và từ chối nguồn khác trên DB đã khởi tạo. Mật khẩu trong `.env` phải khớp với database nếu tái sử dụng volume từ lần chạy trước. Nếu dùng loader thủ công với `--prepare-policy`, cần actor có quyền `knowledge_review` và file cấu hình runtime thực, chẳng hạn [config/policy-runtime.json](config/policy-runtime.json). Đường chạy Compose tự chuẩn bị cấu hình cho BTC.
+
+File `.env` bàn giao dùng key/model/endpoint của nhóm để chạy thử. Ngày chấm BTC dùng API key của BTC và thay các giá trị tương ứng trong chính file này; đường gọi LLM dùng API tương thích OpenAI. Model hội thoại lấy từ `LLM_MODEL`; mẫu `.env.example` đề xuất `gpt-6-luna`. `LANGMEM_MODEL` để trống dùng cùng model, nếu đổi phải khai báo ID chính xác. Embedding dùng Cloudflare `@cf/baai/bge-m3`, cấu hình trong `config/policy-runtime.json`; tokenizer local được tải và kiểm checksum ở setup. ASR `whisper-small` ánh xạ tới `Systran/faster-whisper-small`; weights tự tải ở lần transcribe đầu, lưu trong `RESULTS_DIR/models`. Máy không có Internet cần chuẩn bị cache weights/tokenizer cùng phiên bản trước. TTS chỉ dùng khi soạn audio; model/voice được ghi trong cấu hình giọng và manifest của corpus.
+
+Cấu hình tối thiểu dự kiến để bàn giao stack M1 CPU/int8: Linux x86-64, 4 vCPU, RAM 8 GiB và 20 GiB trống cho image/cache/dữ liệu. Không yêu cầu GPU cho cấu hình này. Đây là mức tài nguyên triển khai được khai báo, chưa phải bằng chứng latency trên model/provider thật; báo cáo phải ghi phần cứng thực tế của lần đo.
+
+Bộ team mặc định có 48 kịch bản, 118 phiên tại `SCENARIOS_DIR=./eval/scenario_final`. Khi chuyển từ bản dùng `.env.submission`, dùng file `.env` bàn giao mới. Xem [trạng thái bằng chứng M2](docs/evaluation/m2-readiness.md) cho phần đánh giá nâng cao đang phát triển.
+
+Gói BTC phải được đồng bộ trước khi setup/chấm. Nếu nhận bản ground truth sửa dưới tên `asr/ground_truth copy.json`, đặt bản BTC mới vào đúng `asr/ground_truth.json` trước khi dùng; file đúng có D01 sku/price list và D02 cùng khách D01. Manifest bộ team kiểm hash nguồn và sẽ dừng nếu dùng bản cũ. Khi BTC chạy bộ ẩn, thay SCENARIOS_DIR bằng bộ ẩn của BTC và giữ đúng nguồn đi kèm.

@@ -37,7 +37,7 @@ def main():
                 {'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN'} if module.endswith('.mcp_knowledge.server') else set())
     missing = sorted(key for key in required if not environment.get(key, '').strip())
     if missing:
-        raise SystemExit('Missing settings in ai-services/.env: ' + ', '.join(missing))
+        raise SystemExit('Missing environment settings: ' + ', '.join(missing))
     if environment.get('SYSTEM_BOOT_ID'):
         from app.configs import Settings
         from app.bootstrap.database import require_ready
