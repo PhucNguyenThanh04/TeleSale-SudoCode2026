@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import os
 from pathlib import Path
+import shutil
 from types import SimpleNamespace
 
 from app.configs import get_settings
@@ -13,6 +14,11 @@ from dataloader_offline.verification import compare_source_tables
 
 
 BOOT_ID = 'btc-submission-v1'
+
+
+def copy_policy_source(source, target):
+    if target is not None and (source / 'policy').resolve() != target.resolve():
+        shutil.copytree(source / 'policy', target, dirs_exist_ok=True)
 
 
 async def prepare_policy(dsn, settings):
@@ -63,6 +69,7 @@ async def initialize(*, settings, dsn, expected_database, source, backend_dsn, a
             if state['db_hash'] != await fingerprint_btc_source(dsn):
                 raise ValueError('Stored BTC data differs from the initialized snapshot')
             if state['status'] == 'ready':
+                copy_policy_source(source, settings.knowledge_policy_source_dir)
                 return 'already_initialized'
         elif await conn.fetchval("""SELECT EXISTS (
             SELECT 1 FROM pg_namespace WHERE nspname IN
@@ -97,6 +104,7 @@ async def initialize(*, settings, dsn, expected_database, source, backend_dsn, a
         await setup_store(dsn)
         await setup_logins(SimpleNamespace(connection=conn, expected_database=expected_database),
                            settings, backend_dsn=backend_dsn)
+        copy_policy_source(source, settings.knowledge_policy_source_dir)
         await prepare_policy(dsn, settings)
         async with conn.transaction():
             await conn.execute("""UPDATE system_boot.submission SET status='ready' WHERE singleton;

@@ -20,38 +20,41 @@ COMPOSE_FILE=compose.submission.yml
 COMPOSE_PROJECT_NAME=telesale-btc
 ```
 
-Giải nén gói dữ liệu BTC cạnh repo, hoặc sửa `BTC_ROOT` trong `.env`:
-
-```text
-thu_muc_lam_viec/
-├── BTC-Data-Vong1-TEAMS/
-└── TeleSale-SudoCode2026/
-    ├── .env
-    ├── .env.example
-    ├── compose.submission.yml
-    ├── seed_btc.sh
-    └── run_eval.py
-```
-
 ## 2. Bật toàn bộ server
 
 ```bash
 docker compose up -d --build
 ```
 
-Lệnh bật PostgreSQL, Qdrant, Redis, bốn MCP server, AI service, backend và các worker. Lệnh này không nạp dữ liệu và không chạy eval.
+Lệnh bật PostgreSQL, Qdrant, Redis, bốn MCP server, AI service, backend và các worker. Bước này chỉ cần repo và `.env`, chưa cần thư mục dữ liệu BTC. Các server dùng volume nội bộ; lệnh không nạp dữ liệu và không chạy eval.
 
 Lần đầu database còn trống, các container ứng dụng chờ dữ liệu; log có thể hiện `Waiting for BTC data` và health ở trạng thái `starting`. Chạy bước 3 để hoàn tất khởi tạo.
 
 ## 3. Nạp dữ liệu BTC
 
+Đến bước này mới cần giải nén gói dữ liệu BTC cạnh repo:
+
+```text
+thu_muc_lam_viec/
+├── BTC-Data-Vong1-TEAMS/
+└── TeleSale-SudoCode2026/
+    ├── .env
+    ├── compose.submission.yml
+    ├── seed_btc.sh
+    └── run_eval.py
+```
+
+Nếu dữ liệu nằm nơi khác, sửa `BTC_ROOT` trong `.env` thành đường dẫn tuyệt đối tới thư mục dữ liệu đó.
+
 ```bash
 ./seed_btc.sh
 ```
 
-Script dùng `BTC_ROOT` trong `.env`, nạp catalog/CRM/policy vào PostgreSQL, tạo schema runtime, chuẩn bị chỉ mục policy trên Qdrant, cấp quyền từng MCP và tạo tài khoản demo. Sau đó script chờ các server sẵn sàng. Lần đầu cần tải tokenizer và gọi embedding theo cấu hình.
+Script dùng `BTC_ROOT` trong `.env`, nạp catalog/CRM/policy vào PostgreSQL, tạo schema runtime, chuẩn bị chỉ mục policy trên Qdrant, cấp quyền từng MCP và tạo tài khoản demo. Policy gốc được sao chép vào volume nội bộ `policy-source` để AI đọc khi phát hành knowledge; AI/backend không mount thư mục BTC trên host. Sau đó script chờ các server sẵn sàng. Lần đầu cần tải tokenizer và gọi embedding theo cấu hình.
 
 Dùng lại cùng nguồn thì script giữ dữ liệu hiện có; nguồn khác trên database đã khởi tạo sẽ bị từ chối. Script không tự xóa hoặc reset database.
+
+Giữ gói dữ liệu BTC tại `BTC_ROOT` cho bước eval vì runner cần schema, scorer và kiểm tra nguồn khớp với database.
 
 Sau bước này, mở `http://127.0.0.1:8000/chat`:
 
