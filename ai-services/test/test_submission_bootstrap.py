@@ -59,7 +59,10 @@ def test_submission_setup_preserves_ready_database_and_rejects_source_change(mon
     monkeypatch.setattr(submission, 'setup_store', install)
     monkeypatch.setattr(submission, 'setup_logins', AsyncMock())
     monkeypatch.setattr(submission, 'prepare_policy', policy)
-    settings = SimpleNamespace(app_env='test', knowledge_policy_source_dir=tmp_path / 'first' / 'policy')
+    source_policy = tmp_path / 'first' / 'policy'
+    source_policy.mkdir(parents=True)
+    (source_policy / 'policy.md').write_text('original policy')
+    settings = SimpleNamespace(app_env='test', knowledge_policy_source_dir=tmp_path / 'runtime-policy')
     kwargs = dict(settings=settings, dsn='test', expected_database='telesale_eval_m1',
                   source=tmp_path / 'first', backend_dsn='postgresql://backend@postgres/test')
 
@@ -76,7 +79,11 @@ def test_submission_setup_preserves_ready_database_and_rejects_source_change(mon
     conn.has_btc_source = False
 
     asyncio.run(submission.initialize(**kwargs, allow_policy_build=True))
+    staged_policy = settings.knowledge_policy_source_dir / 'policy.md'
+    assert staged_policy.read_text() == 'original policy'
+    staged_policy.unlink()
     asyncio.run(submission.initialize(**kwargs))
+    assert staged_policy.read_text() == 'original policy'
     assert conn.status == 'ready'
     importer.assert_awaited_once()
     install.assert_awaited_once()
@@ -84,6 +91,7 @@ def test_submission_setup_preserves_ready_database_and_rejects_source_change(mon
 
     with pytest.raises(ValueError, match='source differs'):
         asyncio.run(submission.initialize(**{**kwargs, 'source': tmp_path / 'changed'}))
+    assert staged_policy.read_text() == 'original policy'
     importer.assert_awaited_once()
 
 

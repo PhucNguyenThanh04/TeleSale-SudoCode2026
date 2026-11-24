@@ -118,7 +118,6 @@ x-demo-env: &demo-env
   AI_SERVICE_URL: http://ai:8001
   AI_SERVICE_TIMEOUT_SECONDS: 120
   REDIS_URL: redis://redis:6379/0
-  BTC_DATA_DIR: /btc
 
 services:
   prepare-results:
@@ -175,10 +174,11 @@ services:
     environment:
       <<: [*db, *llm, *policy]
       BTC_DATA_DIR: /btc
-      KNOWLEDGE_POLICY_SOURCE_DIR: /btc/policy
+      KNOWLEDGE_POLICY_SOURCE_DIR: /policy-source
     secrets: [postgres_password, reviewer_password, worker_password, backend_password]
     volumes:
       - *btc
+      - policy-source:/policy-source
       - tokenizer:/workspace/ai-services/app/mcp_servers/mcp_knowledge/assets
 
   mcp-db-roles:
@@ -314,11 +314,11 @@ services:
       <<: [*db, *llm, *tools, *policy]
       MCP_DB_USER: btc_reviewer
       MCP_DB_PASSWORD_FILE: /run/secrets/reviewer_password
-      KNOWLEDGE_POLICY_SOURCE_DIR: /btc/policy
+      KNOWLEDGE_POLICY_SOURCE_DIR: /policy-source
       HOST: 0.0.0.0
     secrets: [reviewer_password, ai_internal_token, mcp_internal_token]
     volumes:
-      - *btc
+      - policy-source:/policy-source:ro
       - tokenizer:/workspace/ai-services/app/mcp_servers/mcp_knowledge/assets:ro
     healthcheck:
       test: [CMD, python, -c, 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8001/openapi.json",timeout=2).close()']
@@ -356,8 +356,6 @@ services:
     secrets: [backend_password, ai_internal_token, demo_jwt_secret]
     ports:
       - "${DEMO_HOST:-127.0.0.1}:${DEMO_PORT:-8000}:8000"
-    volumes:
-      - *btc
     healthcheck:
       test: [CMD, python, -c, 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/chat",timeout=2).close()']
       interval: 2s
@@ -417,6 +415,7 @@ volumes:
   qdrant:
   redis:
   tokenizer:
+  policy-source:
 
 secrets:
   postgres_password:

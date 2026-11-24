@@ -42,6 +42,19 @@ def test_plain_compose_up_contains_all_servers_but_no_seed_or_eval(tmp_path):
         assert services[name]['healthcheck']['start_period'] == '24h0m0s'
 
 
+def test_servers_do_not_mount_or_require_the_host_btc_directory(tmp_path):
+    config = configuration(tmp_path)
+    services = config['services']
+    for service in services.values():
+        assert 'BTC_DATA_DIR' not in service.get('environment', {})
+        assert all(mount['type'] != 'bind' for mount in service.get('volumes', []))
+    policy = next(mount for mount in services['ai']['volumes']
+                  if mount['target'] == '/policy-source')
+    assert policy['type'] == 'volume' and policy['read_only']
+    assert services['ai']['environment']['KNOWLEDGE_POLICY_SOURCE_DIR'] == '/policy-source'
+    assert not (tmp_path.parent / 'BTC-Data-Vong1-TEAMS').exists()
+
+
 def test_seed_script_has_an_explicit_import_grants_and_accounts_chain(tmp_path):
     services = configuration(tmp_path, 'seed')['services']
     assert set(services) == CORE | {'setup', 'mcp-db-roles', 'seed'}
@@ -50,6 +63,12 @@ def test_seed_script_has_an_explicit_import_grants_and_accounts_chain(tmp_path):
     assert 'app.bootstrap.submission' in services['setup']['entrypoint']
     assert services['setup']['command'] == ['--allow-policy-build']
     assert services['setup']['volumes'][0]['read_only']
+    policy = next(mount for mount in services['setup']['volumes']
+                  if mount['target'] == '/policy-source')
+    assert policy['type'] == 'volume' and not policy.get('read_only')
+    assert policy['source'] == next(mount['source'] for mount in services['ai']['volumes']
+                                    if mount['target'] == '/policy-source')
+    assert services['setup']['environment']['KNOWLEDGE_POLICY_SOURCE_DIR'] == '/policy-source'
     assert 'app.seed_demo_users' in services['seed']['entrypoint']
     assert 'eval' not in services and 'eval-trace' not in services
 
