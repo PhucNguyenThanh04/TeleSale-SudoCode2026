@@ -1,16 +1,10 @@
 x-ai: &ai
   image: telesale-btc-ai:${SUBMISSION_IMAGE_TAG:-local}
-  build:
-    context: .
-    dockerfile: Dockerfile.submission
-    target: ai
+  pull_policy: never
 
 x-backend: &backend
   image: telesale-btc-backend:${SUBMISSION_IMAGE_TAG:-local}
-  build:
-    context: .
-    dockerfile: Dockerfile.submission
-    target: backend
+  pull_policy: never
 
 x-db: &db
   APP_ENV: development
@@ -300,6 +294,10 @@ services:
 
   ai:
     <<: *ai
+    build:
+      context: .
+      dockerfile: Dockerfile.submission
+      target: ai
     entrypoint: [python, /workspace/scripts/btc_container.py, ai, python, -m, app]
     depends_on:
       mcp-catalog:
@@ -344,6 +342,10 @@ services:
 
   backend:
     <<: *backend
+    build:
+      context: .
+      dockerfile: Dockerfile.submission
+      target: backend
     entrypoint: [python, /workspace/scripts/btc_container.py, backend, python, -m, uvicorn, app.voice_main:app, --host, 0.0.0.0, --port, '8000']
     depends_on:
       ai:
@@ -378,6 +380,7 @@ services:
 
   asr:
     image: telesale-btc-asr:${SUBMISSION_IMAGE_TAG:-local}
+    pull_policy: never
     build:
       context: .
       dockerfile: Dockerfile.submission

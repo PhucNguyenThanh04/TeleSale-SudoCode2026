@@ -55,6 +55,15 @@ def test_servers_do_not_mount_or_require_the_host_btc_directory(tmp_path):
     assert not (tmp_path.parent / 'BTC-Data-Vong1-TEAMS').exists()
 
 
+def test_shared_images_are_built_once_and_never_pulled_from_a_registry(tmp_path):
+    services = configuration(tmp_path)['services']
+    assert {name for name, service in services.items() if service.get('build')} == {'ai', 'backend'}
+    for name in CORE - {'postgres', 'qdrant', 'redis'}:
+        assert services[name]['pull_policy'] == 'never'
+    assert services['ai']['build']['target'] == 'ai'
+    assert services['backend']['build']['target'] == 'backend'
+
+
 def test_seed_script_has_an_explicit_import_grants_and_accounts_chain(tmp_path):
     services = configuration(tmp_path, 'seed')['services']
     assert set(services) == CORE | {'setup', 'mcp-db-roles', 'seed'}
