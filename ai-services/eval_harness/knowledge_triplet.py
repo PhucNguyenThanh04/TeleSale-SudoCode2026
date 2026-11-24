@@ -286,7 +286,8 @@ async def run_experiment(args, repo, worker_repo, settings):
                     save(status='awaiting_review', phase='awaiting_review',
                         review_url=f'http://127.0.0.1:{port}/knowledge?run_id={out.name}')
                     if project:
-                        compose = ('SUBMISSION_DATABASE=telesale_eval_m1 docker compose '
+                        compose = ('SUBMISSION_RUN_AS="$(id -u):$(id -g)" '
+                                   'SUBMISSION_DATABASE=telesale_eval_m1 BTC_CALLBACK_MOCK=1 docker compose '
                                    '--env-file .env -f compose.submission.yml -p ' + shlex.quote(project))
                         print(f'[knowledge] Start the review UI: {compose} up -d --wait backend', flush=True)
                     print('[knowledge] Review/edit/reject proposals and publish K1: '+state['review_url'], flush=True)

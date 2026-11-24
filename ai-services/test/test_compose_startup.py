@@ -1,6 +1,7 @@
 from pathlib import Path
 import importlib.util
 from unittest.mock import patch
+import pytest
 
 
 
@@ -37,20 +38,28 @@ def test_knowledge_receives_only_its_provider_settings_and_keeps_compose_overrid
 
 
 
-def test_managed_container_checks_boot_with_its_own_database_role(monkeypatch, tmp_path):
+@pytest.mark.parametrize('wait_for_seed', [False, True])
+def test_managed_container_checks_boot_with_its_own_database_role(monkeypatch, tmp_path, wait_for_seed):
     from unittest.mock import AsyncMock
     from sqlalchemy.engine import make_url
     module = startup(); captured = []
     password = tmp_path/'password'; password.write_text('abc123')
     check = AsyncMock()
+    wait = AsyncMock()
     monkeypatch.setattr('app.bootstrap.database.require_ready', check)
+    monkeypatch.setattr('scripts.btc_container.wait_for_seed', wait)
     monkeypatch.setattr(module.sys, 'argv', ['container_start.py', 'python', '-m', 'app.mcp_servers.mcp_memory.server'])
     monkeypatch.setattr(module.os, 'execvpe', lambda binary, args, env: captured.append(env))
     with patch.dict(module.os.environ, {'LLM_API_KEY': 'unused', 'LLM_MODEL': 'unused',
             'MCP_DB_HOST': 'postgres', 'MCP_DB_NAME': 'fixture', 'MCP_DB_USER': 'mcp_memory',
-            'MCP_DB_PASSWORD_FILE': str(password), 'SYSTEM_BOOT_ID': 'boot-1'}, clear=True):
+            'MCP_DB_PASSWORD_FILE': str(password), 'SYSTEM_BOOT_ID': 'boot-1',
+            'SUBMISSION_WAIT_FOR_SEED': '1' if wait_for_seed else '0'}, clear=True):
         module.main()
     check.assert_awaited_once()
     assert make_url(check.call_args.args[0]).username == 'mcp_memory'
     assert check.call_args.args[1] == 'boot-1'
     assert captured[0]['SYSTEM_BOOT_ID'] == 'boot-1'
+    if wait_for_seed:
+        wait.assert_awaited_once_with(check.call_args.args[0], 'boot-1')
+    else:
+        wait.assert_not_awaited()

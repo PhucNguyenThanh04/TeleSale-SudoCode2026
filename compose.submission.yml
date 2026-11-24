@@ -17,6 +17,7 @@ x-db: &db
   MCP_DB_HOST: postgres
   MCP_DB_NAME: ${SUBMISSION_DATABASE:-telesale_demo}
   SYSTEM_BOOT_ID: btc-submission-v1
+  SUBMISSION_WAIT_FOR_SEED: '1'
 
 x-mcp: &mcp
   <<: *db
@@ -75,13 +76,14 @@ x-results: &results
   source: ${RESULTS_DIR:-./results-submission}
   target: /results
   bind:
-    create_host_path: false
+    create_host_path: true
 
 x-eval: &eval
   <<: *ai
   profiles: [eval]
   user: ${SUBMISSION_RUN_AS:-0:0}
-  depends_on: *tools-deps
+  depends_on:
+    <<: *tools-deps
   environment:
     <<: [*db, *llm, *tools]
     HOME: /tmp
@@ -119,6 +121,20 @@ x-demo-env: &demo-env
   BTC_DATA_DIR: /btc
 
 services:
+  prepare-results:
+    image: postgres:16.15-alpine
+    profiles: [asr]
+    user: '0:0'
+    environment:
+      SUBMISSION_RUN_AS: ${SUBMISSION_RUN_AS:-0:0}
+    volumes:
+      - *results
+    entrypoint: [sh, -ec]
+    command:
+      - |
+        mkdir -p /results/models
+        chown -- "$${SUBMISSION_RUN_AS}" /results /results/models
+
   postgres:
     image: postgres:16.15-alpine
     environment:
@@ -142,13 +158,13 @@ services:
 
   redis:
     image: redis:7-alpine
-    profiles: [demo]
     command: [redis-server, --appendonly, 'yes']
     volumes:
       - redis:/data
 
   setup:
     <<: *ai
+    profiles: [seed]
     depends_on:
       postgres:
         condition: service_healthy
@@ -167,6 +183,7 @@ services:
 
   mcp-db-roles:
     image: postgres:16.15-alpine
+    profiles: [seed]
     depends_on:
       postgres:
         condition: service_healthy
@@ -185,8 +202,8 @@ services:
     <<: *ai
     command: [python, -m, app.mcp_servers.mcp_catalog.server]
     depends_on:
-      mcp-db-roles:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
     environment:
       <<: *mcp
       MCP_DB_USER: mcp_catalog
@@ -197,13 +214,14 @@ services:
       interval: 2s
       timeout: 3s
       retries: 60
+      start_period: 24h
 
   mcp-order:
     <<: *ai
     command: [python, -m, app.mcp_servers.mcp_order.server]
     depends_on:
-      mcp-db-roles:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
     environment:
       <<: *mcp
       MCP_DB_USER: mcp_order
@@ -215,13 +233,14 @@ services:
       interval: 2s
       timeout: 3s
       retries: 60
+      start_period: 24h
 
   mcp-memory:
     <<: *ai
     command: [python, -m, app.mcp_servers.mcp_memory.server]
     depends_on:
-      mcp-db-roles:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
     environment:
       <<: *mcp
       KNOWLEDGE_ENABLED: 'true'
@@ -233,13 +252,14 @@ services:
       interval: 2s
       timeout: 3s
       retries: 60
+      start_period: 24h
 
   mcp-knowledge:
     <<: *ai
     command: [python, -m, app.mcp_servers.mcp_knowledge.server]
     depends_on:
-      mcp-db-roles:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
       qdrant:
         condition: service_started
     environment:
@@ -254,13 +274,14 @@ services:
       interval: 2s
       timeout: 3s
       retries: 60
+      start_period: 24h
 
   langmem-worker:
     <<: *ai
     command: [python, -m, app.mcp_servers.mcp_memory.distiller_worker]
     depends_on:
-      mcp-db-roles:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
     environment:
       <<: [*db, *llm]
       MCP_DB_USER: mcp_memory
@@ -269,20 +290,26 @@ services:
 
   knowledge-worker:
     <<: *ai
-    profiles: [demo]
     entrypoint: [python, /workspace/scripts/btc_container.py, worker, python, -m, app.knowledge.worker]
     depends_on:
-      mcp-db-roles:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
     environment:
       <<: [*db, *llm]
     secrets: [worker_password]
 
   ai:
     <<: *ai
-    profiles: [demo]
     entrypoint: [python, /workspace/scripts/btc_container.py, ai, python, -m, app]
-    depends_on: *tools-deps
+    depends_on:
+      mcp-catalog:
+        condition: service_started
+      mcp-order:
+        condition: service_started
+      mcp-memory:
+        condition: service_started
+      mcp-knowledge:
+        condition: service_started
     environment:
       <<: [*db, *llm, *tools, *policy]
       MCP_DB_USER: btc_reviewer
@@ -298,10 +325,11 @@ services:
       interval: 2s
       timeout: 3s
       retries: 60
+      start_period: 24h
 
-  seed-demo:
+  seed:
     <<: *backend
-    profiles: [demo]
+    profiles: [seed]
     entrypoint: [python, /workspace/scripts/btc_container.py, seed, python, -m, app.seed_demo_users]
     depends_on:
       mcp-db-roles:
@@ -316,13 +344,10 @@ services:
 
   backend:
     <<: *backend
-    profiles: [demo]
     entrypoint: [python, /workspace/scripts/btc_container.py, backend, python, -m, uvicorn, app.voice_main:app, --host, 0.0.0.0, --port, '8000']
     depends_on:
       ai:
-        condition: service_healthy
-      seed-demo:
-        condition: service_completed_successfully
+        condition: service_started
       redis:
         condition: service_started
       knowledge-worker:
@@ -338,15 +363,16 @@ services:
       interval: 2s
       timeout: 3s
       retries: 60
+      start_period: 24h
 
   eval:
     <<: *eval
-    entrypoint: [python, /workspace/scripts/btc_container.py, eval, python, -m, eval_harness.run_official]
-    command: [--btc-root, /btc, --scenarios, /scenarios, --out-root, /results]
+    entrypoint: [python, /workspace/scripts/btc_container.py, eval, python, -m, eval_harness.run_official, --btc-root, /btc, --scenarios, /scenarios, --out-root, /results]
+    command: []
 
   eval-trace:
     <<: *eval
-    entrypoint: [python, /workspace/scripts/btc_container.py, eval, python, /workspace/run_eval.py]
+    entrypoint: [python, /workspace/scripts/btc_container.py, eval, python, -m, eval.run_eval, --btc-root, /btc, --isolated-db]
 
   knowledge-eval:
     <<: *eval
@@ -360,6 +386,9 @@ services:
       target: asr
     profiles: [asr]
     user: ${SUBMISSION_RUN_AS:-0:0}
+    depends_on:
+      prepare-results:
+        condition: service_completed_successfully
     environment:
       HOME: /tmp
       HF_HOME: /models/.cache
@@ -381,7 +410,7 @@ services:
         source: ${RESULTS_DIR:-./results-submission}/models
         target: /models
         bind:
-          create_host_path: false
+          create_host_path: true
 
 volumes:
   postgres:

@@ -43,6 +43,9 @@ def main():
         from app.bootstrap.database import require_ready
         from app.mcp_servers.mcp_shared.config import database_url
         settings = Settings(_env_file=None, **{k.lower(): v for k, v in environment.items()})
+        if environment.get('SUBMISSION_WAIT_FOR_SEED') == '1':
+            from scripts.btc_container import wait_for_seed
+            asyncio.run(wait_for_seed(database_url(settings), environment['SYSTEM_BOOT_ID']))
         asyncio.run(require_ready(database_url(settings), environment['SYSTEM_BOOT_ID']))
     os.execvpe(command[0], command, environment)
 
