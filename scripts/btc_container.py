@@ -22,6 +22,31 @@ def database(user, password_file):
     return f'postgresql+asyncpg://{login}:{password}@postgres:5432/{name}'
 
 
+async def wait_for_seed(dsn, boot_id):
+    import asyncpg
+
+    announced = False
+    while True:
+        connection = None
+        try:
+            connection = await asyncpg.connect(dsn.replace('postgresql+asyncpg://', 'postgresql://', 1), timeout=3)
+            if await connection.fetchval("SELECT to_regclass('system_boot.current')"):
+                state = await connection.fetchrow('SELECT boot_id,status FROM system_boot.current WHERE singleton')
+                if state and state['status'] == 'ready':
+                    if state['boot_id'] != boot_id:
+                        raise ValueError('Database belongs to a different managed startup')
+                    return
+        except (asyncpg.PostgresError, OSError, TimeoutError):
+            pass
+        finally:
+            if connection is not None:
+                await connection.close()
+        if not announced:
+            print('Waiting for BTC data; run ./seed_btc.sh to initialize the stack.', flush=True)
+            announced = True
+        await asyncio.sleep(1)
+
+
 def main():
     mode, *command = sys.argv[1:]
     if '-h' in command or '--help' in command:
@@ -60,6 +85,10 @@ def main():
         os.environ['DEMO_JWT_SECRET'] = secret('demo_jwt_secret')
         for number in (1, 2):
             os.environ[f'DEMO_USER_{number}_PASSWORD'] = secret(f'demo_user_{number}_password')
+    if os.getenv('SUBMISSION_WAIT_FOR_SEED') == '1' and mode in {'ai', 'backend', 'worker'}:
+        key = {'ai': 'KNOWLEDGE_DATABASE_URL', 'backend': 'DATABASE_URL',
+               'worker': 'KNOWLEDGE_WORKER_DATABASE_URL'}[mode]
+        asyncio.run(wait_for_seed(os.environ[key], os.environ['SYSTEM_BOOT_ID']))
     os.execvp(command[0], command)
 
 

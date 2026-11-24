@@ -15,7 +15,7 @@ def test_archive_delivers_current_source_and_excludes_tracked_secrets_and_local_
     files = {
         'README.md': 'old',
         'run_eval.py': 'tracked runner',
-        'run_submission.py': 'submission launcher',
+        'seed_btc.sh': 'seed script',
         '.env.example': 'LLM_API_KEY=',
         '.env': 'local config',
         'backend/.env': 'private',
@@ -42,7 +42,7 @@ def test_archive_delivers_current_source_and_excludes_tracked_secrets_and_local_
         manifest = json.loads(delivery.read('MANIFEST.json'))
         assert delivery.read('README.md') == b'updated'
         assert delivery.read('scripts/new.py') == b'untracked delivery code'
-        assert set(manifest['files']) == {'README.md', 'run_eval.py', 'run_submission.py', '.env.example',
+        assert set(manifest['files']) == {'README.md', 'run_eval.py', 'seed_btc.sh', '.env.example',
                                           'scripts/new.py', 'dataset/README.md'}
         assert manifest['files']['README.md'] == hashlib.sha256(b'updated').hexdigest()
     assert subprocess.run(command, capture_output=True).returncode == 1
