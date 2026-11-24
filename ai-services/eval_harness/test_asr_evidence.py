@@ -64,6 +64,24 @@ def test_btc_public_sample_does_not_prove_twelve_dialogue_coverage(tmp_path):
     assert result['coverage_sufficient'] is False
 
 
+def test_four_public_dialogues_can_prove_pipeline_without_private_audio(tmp_path):
+    from eval_harness.asr_evidence import inspect_asr
+    dataset, run = asr_score(tmp_path, count=4, prefix='D0')
+    (dataset / 'audio').mkdir()
+    for index in range(1, 5):
+        (dataset / 'audio' / f'D0{index}.wav').write_bytes(b'offline audio fixture')
+    score_run(dataset, run, load_reference_eval(BTC), ())
+    btc = tmp_path / 'btc'
+    (btc / 'asr').mkdir(parents=True)
+    (btc / 'eval').mkdir()
+    (btc / 'asr/ground_truth.json').write_bytes((dataset / 'ground_truth.json').read_bytes())
+    (btc / 'eval/reference_eval.py').write_bytes((BTC / 'eval/reference_eval.py').read_bytes())
+    report = inspect_asr(dataset, run, btc_root=btc, group='btc')
+    assert report['asr_evidence_ready'] is True
+    assert report['evaluation_scope'] == 'public_pipeline_validation'
+    assert report['ranking_evidence'] is False
+
+
 @pytest.mark.parametrize('changed', ['score.json', 'hypotheses.json', 'run.json', 'audio'])
 def test_asr_attachment_is_rechecked_against_source_artifacts(tmp_path, changed):
     from eval_harness.asr_evidence import collect_asr_evidence, verify_asr_evidence

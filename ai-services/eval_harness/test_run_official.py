@@ -1,6 +1,7 @@
 
 import asyncio
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -23,6 +24,7 @@ def test_cli_uses_only_the_submission_stream(tmp_path, monkeypatch):
          patch('eval_harness.report_metrics.render_run', return_value='offline test'):
         main()
     assert not {'delivery_mode', 'streaming', 'agent'} & run.call_args.kwargs.keys()
+    assert run.call_args.kwargs['scenarios'] == Path(__file__).resolve().parents[2] / 'eval/scenario_final'
 
 
 def test_incomplete_asr_options_fail_before_any_agent_run(tmp_path, monkeypatch):

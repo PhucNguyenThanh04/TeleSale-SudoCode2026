@@ -1,7 +1,33 @@
 import json
 import re
 
-SENSITIVE_NUMBER = re.compile(r"(?i)((?:CCCD|STK|căn cước|số tài khoản)\s*[:\-]?\s*)(\d(?:[ .\-]*\d){8,15})(?!\d)")
+SENSITIVE_NUMBER = re.compile(
+    r"(?i)\b((?:CCCD|CMND|STK|căn cước|can cuoc|số tài khoản|so tai khoan)\s*[:\-]?\s*)"
+    r"(\d(?:[ .\-]*\d){8,15})(?!\d)")
+_SENSITIVE_FIELDS = {'cccd', 'national_id', 'bank_account', 'account_number', 'cmnd', 'stk'}
+_MONEY_FIELDS = {'budget_vnd', 'max_price_vnd', 'price_vnd', 'price_quoted_vnd', 'competitor_price_vnd'}
+_CURRENCY_NUMBER = re.compile(r'(?i)\b\d+(?:[.,]\d+)*\s*(?:đồng|dong|vnd|₫|đ)(?!\w)')
+
+
+def contains_sensitive_pii(value, *, field=''):
+    field = field.casefold()
+    if field in _SENSITIVE_FIELDS and re.search(r'\d', str(value)):
+        return True
+    if field in _MONEY_FIELDS and type(value) is int:
+        return False
+    if isinstance(value, list):
+        return any(contains_sensitive_pii(item) for item in value)
+    if isinstance(value, dict):
+        fact_key = value.get('key')
+        return any(contains_sensitive_pii(item, field=fact_key if key == 'value' and isinstance(fact_key, str)
+                                          else str(key)) for key, item in value.items())
+    text = json.dumps(value, ensure_ascii=False)
+    if SENSITIVE_NUMBER.search(text):
+        return True
+    numbers = re.sub(r'\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b', '[UUID]', text, flags=re.I)
+    numbers = _CURRENCY_NUMBER.sub('', numbers)
+    return any(not (len(m[0]) == 10 and m[0].startswith('0'))
+               for m in re.finditer(r'\b\d{10,14}\b', numbers))
 
 
 def inspect_redaction(raw_row: dict, safe_row: dict, *, call_spec: dict) -> list[dict]:
@@ -12,15 +38,10 @@ def inspect_redaction(raw_row: dict, safe_row: dict, *, call_spec: dict) -> list
         if item not in issues:
             issues.append(item)
     def blob(row):
-        return '\n'.join((row.get('agent_text',''), json.dumps(row.get('memory_writes',[]),ensure_ascii=False),
-                          json.dumps([t.get('args',{}) for t in row.get('tool_calls',[])],ensure_ascii=False)))
+        return '\n'.join((row.get('agent_text',''), json.dumps(row.get('memory_writes',[]),ensure_ascii=False)))
     raw, safe = blob(raw_row), blob(safe_row)
     for path in ('agent_text','memory_writes'):
-        text = json.dumps(raw_row.get(path,''),ensure_ascii=False)
-        if SENSITIVE_NUMBER.search(text):
-            add('pii_violation',path)
-        if any(not (len(m.group()) == 10 and m.group().startswith('0'))
-               for m in re.finditer(r'\b\d{10,14}\b',text)):
+        if contains_sensitive_pii(raw_row.get(path, '')):
             add('pii_violation',path)
     si = call_spec.get('success_if') or {}
     if si.get('args_match') and raw_row.get('tool_calls') != safe_row.get('tool_calls'):
@@ -41,7 +62,7 @@ def inspect_redaction(raw_row: dict, safe_row: dict, *, call_spec: dict) -> list
             add('forbidden_speech','agent_text')
     for rx in si.get('trace_must_not_match',[]):
         if bool(re.search(rx,raw)) != bool(re.search(rx,safe)):
-            add('forbidden_pattern','agent_text/memory_writes/tool_calls.args')
+            add('forbidden_pattern','agent_text/memory_writes')
     if raw_row.get('agent_text') != safe_row.get('agent_text'):
         for field in ('must_say_any','agent_must_say'):
             values=si.get(field,[])

@@ -53,11 +53,12 @@ def _error(response, body):
 
 
 class CloudflareEmbeddingClient:
-    def __init__(self, config, *, account_id, token, client=None, clock=time.monotonic):
+    def __init__(self, config, *, account_id, token, client=None, clock=time.monotonic,
+                 base_url='https://api.cloudflare.com/client/v4'):
         if not re.fullmatch(r'[0-9a-fA-F]{32}', account_id or '') or not token or not token.strip():
             raise ValueError('Cloudflare account ID and Workers AI token required')
         self.config, self.clock = config, clock
-        self._url = f'https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{config.model_name}'
+        self._url = f'{str(base_url).rstrip("/")}/accounts/{account_id}/ai/run/{config.model_name}'
         self._token = token
         self._client = client or httpx.AsyncClient(follow_redirects=False)
 

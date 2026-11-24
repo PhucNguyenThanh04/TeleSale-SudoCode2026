@@ -29,15 +29,18 @@ x-llm: &llm
   LLM_API_KEY: ${LLM_API_KEY:-}
   LLM_MODEL: ${LLM_MODEL:-gpt-6-luna}
   LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+  LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30}
   LANGMEM_MODEL: ${LANGMEM_MODEL:-}
   LLM_MAX_TOKENS: 1024
   AGENT_MAX_TOOL_CALLS: 8
   AGENT_GUARDRAILS_ENABLED: 'true'
   KNOWLEDGE_ENABLED: 'true'
+  BTC_CALLBACK_MOCK: ${BTC_CALLBACK_MOCK:-0}
 
 x-policy: &policy
   CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID:-}
   CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+  CLOUDFLARE_API_BASE_URL: ${CLOUDFLARE_API_BASE_URL:-https://api.cloudflare.com/client/v4}
   KNOWLEDGE_POLICY_CONFIG_FILE: /workspace/config/policy-runtime.json
   QDRANT_URL: http://qdrant:6333
 
@@ -146,13 +149,13 @@ services:
 
   setup:
     <<: *ai
-    profiles: [setup]
     depends_on:
       postgres:
         condition: service_healthy
       qdrant:
         condition: service_started
     entrypoint: [python, /workspace/scripts/btc_container.py, setup, python, -m, app.bootstrap.submission]
+    command: [--allow-policy-build]
     environment:
       <<: [*db, *llm, *policy]
       BTC_DATA_DIR: /btc
@@ -167,6 +170,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      setup:
+        condition: service_completed_successfully
     environment:
       PGHOST: postgres
       PGUSER: btc_admin
@@ -203,6 +208,7 @@ services:
       <<: *mcp
       MCP_DB_USER: mcp_order
       MCP_DB_PASSWORD_FILE: /run/secrets/mcp_order_password
+      BTC_CALLBACK_MOCK: ${BTC_CALLBACK_MOCK:-0}
     secrets: [mcp_internal_token, mcp_order_password]
     healthcheck:
       test: [CMD, python, -c, 'import socket; socket.create_connection(("127.0.0.1", 8012), 2).close()']
@@ -357,6 +363,11 @@ services:
     environment:
       HOME: /tmp
       HF_HOME: /models/.cache
+      ASR_MODEL: ${ASR_MODEL:-whisper-small}
+      ASR_DEVICE: ${ASR_DEVICE:-cpu}
+      ASR_COMPUTE_TYPE: ${ASR_COMPUTE_TYPE:-int8}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      ELEVENLABS_API_BASE_URL: ${ELEVENLABS_API_BASE_URL:-https://api.elevenlabs.io}
     volumes:
       - *btc
       - type: bind
@@ -380,28 +391,28 @@ volumes:
 
 secrets:
   postgres_password:
-    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/postgres_password
+    environment: POSTGRES_PASSWORD
   mcp_catalog_password:
-    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/mcp_catalog_password
+    environment: MCP_CATALOG_PASSWORD
   mcp_order_password:
-    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/mcp_order_password
+    environment: MCP_ORDER_PASSWORD
   mcp_memory_password:
-    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/mcp_memory_password
+    environment: MCP_MEMORY_PASSWORD
   mcp_knowledge_password:
-    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/mcp_knowledge_password
+    environment: MCP_KNOWLEDGE_PASSWORD
   mcp_internal_token:
-    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/mcp_internal_token
+    environment: MCP_INTERNAL_TOKEN
   ai_internal_token:
-    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/ai_internal_token
+    environment: AI_INTERNAL_TOKEN
   worker_password:
-    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/worker_password
+    environment: WORKER_PASSWORD
   reviewer_password:
-    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/reviewer_password
+    environment: REVIEWER_PASSWORD
   backend_password:
-    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/backend_password
+    environment: BACKEND_PASSWORD
   demo_jwt_secret:
-    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/demo_jwt_secret
+    environment: DEMO_JWT_SECRET
   demo_user_1_password:
-    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/demo_user_1_password
+    environment: DEMO_USER_1_PASSWORD
   demo_user_2_password:
-    file: ${SUBMISSION_SECRETS_DIR:-./secrets-submission}/demo_user_2_password
+    environment: DEMO_USER_2_PASSWORD

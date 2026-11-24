@@ -52,7 +52,8 @@ def inspect_asr(dataset, run, *, btc_root, group):
             return result
         result['input_integrity'] = True
         btc_matches = _read(btc_root / 'asr/ground_truth.json') == gt
-        enough = btc_matches and len(expected) >= 12 if group == 'btc' else len(expected) >= 20 and not btc_matches
+        enough = btc_matches and len(expected) >= 4 if group == 'btc' else len(expected) >= 20 and not btc_matches
+        public = group == 'btc' and set(expected) == {'D01', 'D02', 'D03', 'D04'}
         official = score['official']
         entity = score.get('entity_accuracy_by_type') or {}
         entity_measured = all(type(entity.get(kind, {}).get('value')) in (int, float)
@@ -65,6 +66,8 @@ def inspect_asr(dataset, run, *, btc_root, group):
             if (dataset / 'audio' / (key + '.wav')).is_file()}
         measured = all(type(official.get(key)) in (int, float) for key in ('WER', 'CER', 'entity_accuracy'))
         result.update(coverage_sufficient=enough, btc_ground_truth_matches=btc_matches,
+            evaluation_scope='public_pipeline_validation' if public else 'local_reference_validation' if group == 'btc' else 'team_pipeline_validation',
+            ranking_evidence=False,
             dialogues=len(expected), audio_files_present=audio_count, audio_hashes_verified=audio_verified,
             normalization_verified=normalized,
             local_asr_recorded=local, score_sha256=_sha(run / 'score.json'), input_sha256=hashes,

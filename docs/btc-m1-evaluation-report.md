@@ -2,6 +2,8 @@
 
 Các bảng dưới đây ghi kết quả lịch sử trên bộ của team. Bản nộp hiện tại đã qua rehearsal offline với provider giả lập. Điểm chính thức của bản nộp cần được chạy lại với cấu hình chốt và được kiểm phần trích xuất.
 
+Gói BTC cập nhật tháng 11 và goal sửa tương thích ngày 24/11 dùng scorer/manifest mới. Các bảng lịch sử dưới đây không phải kết quả trên bộ 48 ca hoặc scorer mới. Full/baseline cùng RQR=0 được báo không áp dụng ngưỡng giảm 40%, BGK xét CCR; điểm ASR public/team chỉ chứng minh pipeline, BTC đo xếp hạng trên audio private. Xem [trạng thái sửa tương thích](evaluation/btc-data-issues.md).
+
 ## Full và baseline ngày 18/11
 
 Run `20261118T054721Z-ac17f7e7` dùng Gemma 4 31B, chat streaming, 29 scenario, 67 cuộc gọi và 170 lượt cho mỗi cấu hình. Hai cấu hình dùng chung model, tham số, seed, scenario và knowledge release. Baseline giữ working memory trong phiên, tắt truy xuất profile và episodic từ các phiên trước.

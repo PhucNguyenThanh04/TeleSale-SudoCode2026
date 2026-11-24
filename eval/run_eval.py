@@ -44,7 +44,8 @@ async def run(args, runtime=None) -> int:
     target = getattr(args,'expected_database',None) or os.getenv('EVAL_EXPECTED_DATABASE')
     if not target:
         raise ValueError('--expected-database is required')
-    if args.out.exists() or args.out.with_suffix('.report.json').exists():
+    extraction_path = args.out.with_suffix('.extraction.jsonl')
+    if any(path.exists() for path in (args.out, args.out.with_suffix('.report.json'), extraction_path)):
         raise FileExistsError('output_exists_choose_new_path')
     from eval_harness.btc_release import prepare_btc_release
     btc_root = prepare_btc_release(btc_root, args.out.with_suffix('.btc-release'))
@@ -56,7 +57,7 @@ async def run(args, runtime=None) -> int:
     try:
         result = await runner.execute_configuration(settings=settings, scenarios=scenarios,config=args.config,
             runtime=runtime,run_id=str(uuid4()),out=args.out,btc_root=btc_root,
-            expected_database=target,release=release)
+            expected_database=target,release=release,extraction_path=extraction_path)
         rows = [r for rs in result['trace'].values() for r in rs]
         report_path=args.out.with_suffix('.report.json')
         report=json.loads(report_path.read_text())

@@ -88,6 +88,16 @@ class EvalRunnerTest(unittest.TestCase):
         self.assertEqual(_facts_used("SKU-ALPHA màu xanh vẫn phù hợp", state),
                          ["preferred_color"])
 
+    def test_btc_cli_can_repeat_a_configuration_under_a_new_output_name(self):
+        root = Path(__file__).resolve().parents[2] / 'BTC-Data-Vong1-TEAMS'
+        with tempfile.TemporaryDirectory() as folder:
+            for name in ('first', 'retry'):
+                out = Path(folder) / f'{name}.jsonl'
+                turns = asyncio.run(run(SimpleNamespace(btc_root=root, config='full', out=out,
+                    scenarios=root / 'test_set' / 'public_sample', isolated_db=True), _Runtime()))
+                self.assertGreater(turns, 0)
+            self.assertEqual(len(list(Path(folder).glob('*.extraction.jsonl'))), 2)
+
     def test_price_claim_keeps_thousands_separators(self):
         claims = [{k:v for k,v in c.items() if k != "source"} for c in _claims("Giá hôm nay là 4.890.000đ. Em kiểm tra tiếp ạ.", [])]
         self.assertIn({"field": "price_vnd", "value": 4890000,

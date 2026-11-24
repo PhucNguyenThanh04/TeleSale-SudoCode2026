@@ -38,7 +38,8 @@ def oracle_entities(ground_truth: dict, catalog: tuple[Product, ...]) -> dict:
         merged, _ = extract_entities(written, catalog, on)
         for key, value in dialogue.get("entities", {}).items():
             total += 1
-            ok += str(merged.get(key)) == str(value)
+            values = value if isinstance(value, list) else [value]
+            ok += any(str(merged.get(key)) == str(v) for v in values)
     return {"oracle_entity_accuracy": round(100 * ok / total, 1) if total else None, "n_entities": total}
 
 
@@ -102,7 +103,8 @@ def score_run(dataset_dir: Path, run_dir: Path, ref_eval: ModuleType, catalog: t
                 entity_types[kind]['total'] += 1
                 entity_types[kind]['correct'] += int(any(
                     str(hyp.get('entities', {}).get(key)) == str(v) for v in values))
-        hits = sum(str(hyp.get("entities", {}).get(k)) == str(v) for k, v in gold.items())
+        hits = sum(any(str(hyp.get('entities', {}).get(k)) == str(v)
+                       for v in (value if isinstance(value, list) else [value])) for k, value in gold.items())
         per_dialogue[dialogue["id"]]["entity"] = f"{hits}/{len(gold)}"
         per_dialogue[dialogue["id"]]["wer_raw"] = raw_scores["per_dialogue"].get(dialogue["id"], {}).get("wer")
         per_dialogue[dialogue["id"]]["rtf"] = hyp.get("meta", {}).get("rtf")

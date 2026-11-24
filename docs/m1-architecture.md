@@ -3,6 +3,8 @@
 Đây là mô tả implementation trong checkout, không phải bằng chứng đạt KPI runtime.
 Xem [hướng dẫn chạy và nghiệm thu](../README.md). Báo cáo đánh giá phân biệt thời gian phát câu trả lời và thời gian hoàn tất lưu dữ liệu.
 
+Runner eval có bộ nạp seed_history nội bộ: xác minh khách qua CRM trước cuộc gọi, tạo phiên có UUID/provenance trong runtime và nhập facts theo as_of; bản không facts dùng extractor hiện hành, chỉ nhận thông tin có evidence. Seed không cấp quyền ghi tùy ý cho agent và baseline vẫn tắt memory liên phiên. Địa chỉ seed được giữ trong private delivery với ngày gốc để kiểm TTL; các thao tác thật và trạng thái xóa không bị seed ghi đè. Trace chấm giữ args đã thực thi, còn log/prompt model ngoài dùng dữ liệu đã che. Image AI kèm module scoring của speech để kiểm bằng chứng ASR đã lưu, không cần nạp model ASR trong image AI.
+
 ```mermaid
 flowchart TD
     Chat[Chat M1 /chat] --> Gateway[Gateway app.voice_main]

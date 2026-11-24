@@ -33,6 +33,11 @@ def test_demo_and_eval_compose_projects_have_separate_storage_and_entrypoints(tm
         assert [name for name, service in services.items() if service.get('ports')] == ['backend']
         assert services['postgres']['volumes'][0]['type'] == 'volume'
         assert services['setup']['volumes'][0]['read_only']
+        assert not services['setup'].get('profiles')
+        assert services['setup']['command'] == ['--allow-policy-build']
+        assert services['mcp-db-roles']['depends_on']['setup']['condition'] == 'service_completed_successfully'
+        for name in ('mcp-catalog', 'mcp-order', 'mcp-memory', 'mcp-knowledge', 'langmem-worker'):
+            assert services[name]['depends_on']['mcp-db-roles']['condition'] == 'service_completed_successfully'
         assert 'eval_harness.run_official' in services['eval']['entrypoint']
         assert '/workspace/run_eval.py' in services['eval-trace']['entrypoint']
         mounts = {m['target']: m for m in services['eval']['volumes']}

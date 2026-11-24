@@ -1,5 +1,9 @@
 # Rà soát bộ harness theo M2
 
+Đã sửa lỗi nhận lầm số tiền là PII, xuất địa chỉ trong trace chấm, warm-up, seed trên SĐT dùng chung, Call Brief và callback. Preflight xác nhận nguồn và scenario khớp manifest. Chưa có kết quả Full/baseline bằng model trên bộ TEAM mới. Corpus hiện có 22 WAV duy nhất, khoảng 19 phút 33 giây. [Trạng thái kiểm tra](btc-data-issues.md)
+
+Cập nhật ngày 24/11: đã sửa tương thích DOCX giải đáp và scorer mới, đồng bộ ground truth đúng tên, hỗ trợ seed có facts/phone/as_of, chỉnh trace/regex và RQR, phân biệt ASR public/private, cập nhật env/README và chốt manifest mới. Preflight lại qua 48 ca/118 phiên/323 lượt/38 ca khó. Kết quả kiểm chứng chi tiết và giới hạn Docker/DB/audio ở [btc-data-issues.md](btc-data-issues.md). Các con số 58+19 phía dưới thuộc lần triển khai M2 trước; không phải điểm model hoặc kết quả bản mới. Simulator tiếp tục để sau.
+
 Kết luận: bộ scenario cuối đủ số lượng và đã sửa các lỗi nhãn/kiểm tra phát hiện được bằng offline. Chưa có cơ sở tuyên bố toàn bộ harness hoặc dự án đạt M2. Tài liệu này đối chiếu C.4, C.5 và phụ lục của PDF cùng schema, scorer, mock, persona và rubric trong gói BTC cục bộ; không thay hướng dẫn chính thức của BTC.
 
 | Yêu cầu | Bằng chứng hiện tại | Kết luận |
@@ -15,7 +19,7 @@ Kết luận: bộ scenario cuối đủ số lượng và đã sửa các lỗi
 | ≥2 cơ chế cải tiến, ≥3 vòng, phân tích cải tiến gây hại | Không được chứng minh bằng tăng số scenario | Cần bằng chứng các vòng thực tế |
 | Audio/corpus, WER/CER, demo và hồ sơ nộp | Thành viên riêng phụ trách corpus/audio | Không được thay bằng 48 scenario JSON |
 
-Các sửa dữ liệu: chuẩn hóa persona; khép liên kết đơn tra cứu; sửa carry-over TEAM-15, cân nặng TEAM-29/37, patience TEAM-20; thêm lịch sử địa chỉ thật TEAM-12; sửa đầu vào và nhãn hotline chung TEAM-28; bổ sung TEAM-43–48. Bảy sample BTC SC01–SC07 không nằm trong bản gộp, bộ nguồn vẫn được giữ. Manifest ghi hash 48 ca, bảng nguồn và 27 file BTC; thay nguồn sẽ bị loader từ chối tới khi được rà và chốt lại.
+Các sửa dữ liệu: chuẩn hóa persona; khép liên kết đơn tra cứu; sửa carry-over TEAM-15, cân nặng TEAM-29/37, patience TEAM-20; thêm lịch sử địa chỉ thật và facts có ngày TEAM-12; sửa đầu vào và nhãn hotline chung TEAM-28; bổ sung TEAM-43–48. Bảy sample BTC SC01–SC07 không nằm trong bản gộp, bộ nguồn vẫn được giữ. Manifest mới ghi hash 48 ca, bảng nguồn và 28 file BTC, thêm ground truth ASR; thay nguồn sẽ bị loader từ chối tới khi được rà và chốt lại.
 
 Các lỗ hổng chấm đã có kiểm tra bổ sung: tool gọi nhưng thất bại, order.status rỗng/sai đơn, handoff brief thiếu schema, chia nhiều đơn để cộng đúng tổng, sai đơn vị hàng. Match từ khóa chưa xác minh đúng nghĩa sẽ ở trạng thái needs_review. Các bất nhất BTC được ghi tại [btc-data-issues.md](btc-data-issues.md), không sửa scorer hoặc nguồn BTC.
 

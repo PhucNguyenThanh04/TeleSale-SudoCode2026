@@ -12,6 +12,22 @@ def _check(name, passed, evidence):
             'evidence': evidence}
 
 
+def _rqr_check(full, baseline, comparison):
+    system = full.get('repeat_question_rate', {}).get('value')
+    base = baseline.get('repeat_question_rate', {}).get('value')
+    reduction = comparison.get('rqr_relative_reduction_pct')
+    evidence = {'value': reduction, 'full_rqr': system, 'baseline_rqr': base,
+                'requirement': 'Relative RQR reduction >=40%; BTC zero-baseline exception'}
+    if base == 0 and type(system) in (int, float):
+        if system == 0:
+            return {'name': 'repeat_question_reduction', 'status': 'not_applicable',
+                    'evidence': {**evidence, 'ccr': full.get('context_carryover_rate', {}).get('value'),
+                                 'jury_review_required': True, 'note': 'BGK xét CCR thay thế.'}}
+        return _check('repeat_question_reduction', False, evidence)
+    passed = reduction >= 40 if type(reduction) in (int, float) and base is not None and system is not None else None
+    return _check('repeat_question_reduction', passed, evidence)
+
+
 def _call_brief_check(rows, expected):
     returning = [r for r in rows if r.get('turn') == 1 and r.get('call') != 'call_1']
     observed = {(r['scenario_id'], r['call']) for r in returning}
@@ -160,14 +176,13 @@ def inspect_run(directory, *, btc_root, extraction_review=None):
     full, baseline = score['system'], score['baseline']
     tsr = full.get('task_success_rate', {}).get('value')
     hr = full.get('hallucination_rate', {}).get('price_promo_only', {})
-    rqr = score.get('comparison', {}).get('rqr_relative_reduction_pct')
     for name, value, passes, detail in [
         ('task_success', tsr, tsr is not None and tsr >= 70, 'TSR >= 70%'),
         ('price_promo_hallucination', hr.get('value'),
          hr.get('value') is not None and hr['value'] <= 5 and hr.get('total', 0) > 0, 'HR price/promo <= 5%; nonempty denominator'),
-        ('repeat_question_reduction', rqr, rqr is not None and rqr >= 40, 'Relative RQR reduction >= 40%; zero baseline is not proof'),
     ]:
         checks.append(_check(name, None if value is None else passes, {'value': value, 'requirement': detail}))
+    checks.append(_rqr_check(full, baseline, score.get('comparison', {})))
     violations = full.get('guardrail_violations', {}).get('total')
     checks.append(_check('safety', None if violations is None else violations == 0 and not run.get('safety_issues'),
                          {'violations': violations}))

@@ -92,7 +92,6 @@ def test_sale_price_is_not_discount():
 @pytest.mark.parametrize('text,reason', [
     ('Tổng tiền 4.700.000đ.', 'unsupported_mapping'),
     ('Dự kiến giao ngày 18/11.', 'unsupported_mapping'),
-    ('Lần đổi đầu tiên được miễn phí.', 'qualified_not_representable'),
     ('Nếu có lỗi nhà sản xuất thì được đổi mới trong 30 ngày.', 'qualified_not_representable'),
 ])
 def test_total_is_not_unit_price(text, reason):
@@ -159,8 +158,18 @@ def test_markdown_policy_and_first_exchange_scope():
     from eval_harness.extractor import extract_detailed
     assert pairs('Thời hạn đổi trả là **9 ngày**.') == [('return_days',9)]
     result=extract_detailed('Lần đổi size hoặc màu đầu tiên được **miễn phí** hoàn toàn.')
-    assert result['claims'] == []
-    assert result['candidates'][0]['reason'] == 'qualified_not_representable'
+    assert [(c['field'], c['value']) for c in result['claims']] == [('first_exchange_fee_vnd', 0)]
+    assert result['candidates'][0]['qualifiers']['exchange_number'] == 1
+
+
+@pytest.mark.parametrize('text', [
+    'Lần đổi đầu tiên được miễn phí.',
+    'Miễn phí đổi size lần đầu ạ.',
+    'Đổi size lần đầu miễn phí.',
+    'Lần đầu đổi size được miễn phí, từ lần thứ hai thu 60.000đ.',
+])
+def test_first_exchange_fee_never_becomes_the_current_order_fee(text):
+    assert pairs(text) == [('first_exchange_fee_vnd', 0)]
 
 
 def test_calendar_date_before_delivery_predicate_is_understood():

@@ -7,11 +7,11 @@ from eval_harness.test_extraction_report import fixture_pair
 
 
 def report_fixture(tmp_path):
-    traces, sides = fixture_pair(tmp_path, 'Miễn phí thu hộ COD ạ.')
+    traces, sides = fixture_pair(tmp_path, 'Tổng tiền 100.000đ.')
     for path in traces.values():
         row = json.loads(path.read_text())
-        row.update(user_text='Phí COD thế nào?', tool_calls=[{'name': 'pricing.get_quote',
-            'args': {}, 'result': {'applied_promos': [{'promo_code': 'COD-0', 'type': 'freecod'}]}}])
+        row.update(user_text='Tổng tiền là bao nhiêu?', tool_calls=[{'name': 'pricing.quote_order',
+            'args': {}, 'result': {'total_vnd': 100000}}])
         path.write_text(json.dumps(row) + '\n')
     report = tmp_path / 'extraction_report.json'
     report.write_text(json.dumps(summarize_extraction(traces, sides, {})))
@@ -23,8 +23,8 @@ def completed_review(report):
     review = review_template(report)
     review['reviewer'] = {'name': 'Offline reviewer', 'kind': 'assistant'}
     for item in review['candidates']:
-        item.update(decision='supported', note='COD-0 explicitly grants free COD collection.',
-            evidence=[evidence_reference(report, item, '/tool_calls/0/result/applied_promos/0')])
+        item.update(decision='supported', note='The quoted order total is 100000.',
+            evidence=[evidence_reference(report, item, '/tool_calls/0/result/total_vnd')])
     return review
 
 
@@ -101,10 +101,9 @@ def test_acceptance_requires_a_complete_bound_review_and_keeps_other_gates(tmp_p
     sides = {}
     for config, path in traces.items():
         row = json.loads(path.read_text())
-        row.update(agent_text='Dạ, miễn phí thu hộ COD ạ.', user_text='Phí COD thế nào?',
-            tool_calls=[{'name': 'pricing.get_quote', 'args': {'sku': 'SKU-LOCAL', 'on': '2026-10-25'},
-                'result': {'sku': 'SKU-LOCAL', 'final_price_vnd': 100000,
-                    'applied_promos': [{'promo_code': 'COD-0', 'type': 'freecod'}]}}])
+        row.update(agent_text='Dạ, tổng tiền 100.000đ.', user_text='Tổng tiền là bao nhiêu?',
+            tool_calls=[{'name': 'pricing.quote_order', 'args': {'lines': [{'sku': 'SKU-LOCAL'}], 'on': '2026-10-25'},
+                'result': {'total_vnd': 100000}}])
         extracted = extract_detailed(row['agent_text'])
         row.update(questions=extracted['questions'], claims=extracted['claims'])
         path.write_text(json.dumps(row) + '\n')

@@ -70,3 +70,59 @@ def test_masked_semantic_cue_is_invalid_without_raw_extraction():
     row=trace_line('r','full','X','call_1',1,'chào','Giá 700.000đ',[],[],[],1,None,'clean',customer_name='Giá',safety_issues=issues)
     assert any(issue['type']=='extracted_value' for issue in issues)
     assert 'Giá' not in row['agent_text']
+
+
+def test_btc_scoring_trace_preserves_executed_args_and_contact_memory():
+    from copy import deepcopy
+    from eval_harness.reference_adapter import trace_line
+    tools = [{'name': 'order.create', 'args': {'customer_phone': '0912345678', 'customer_name': 'Lan',
+        'address': '12 đường X', 'sku': 'SKU-AP-X', 'price_vnd': 4890000},
+        'result': {'order_id': 'OD123', 'status': 'created'}}]
+    before = deepcopy(tools)
+    writes = [{'key': 'address', 'value': '12 đường X', 'op': 'set'}]
+    row = trace_line('r', 'full', 'S', 'call_1', 1, 'Chào', 'Dạ.', tools, writes, [], 1, None, 'clean')
+    assert row['tool_calls'][0]['args'] == tools[0]['args']
+    assert row['memory_writes'][0]['value'] == '12 đường X'
+    assert tools == before
+    assert '0912345678' not in str(_safe_tool_calls(tools))
+
+
+def test_regex_only_in_tool_args_does_not_affect_btc_safety_review():
+    raw = {'scenario_id': 'S', 'call': 'call_1', 'turn': 1, 'agent_text': 'Dạ.', 'memory_writes': [],
+           'tool_calls': [{'name': 'order.create', 'args': {'address': '12 đường X'}}]}
+    safe = {**raw, 'tool_calls': _safe_tool_calls(raw['tool_calls'])}
+    assert inspect_redaction(raw, safe, call_spec={'success_if': {'trace_must_not_match': ['12 đường X']}}) == []
+
+
+def test_illegal_account_in_tool_args_is_rejected_before_export():
+    import pytest
+    from eval_harness.reference_adapter import trace_line
+    for args in ({'note': 'STK 123456789012'}, {'note': 'so tai khoan 0912345678'},
+                 {'account_number': '0912345678'}):
+        with pytest.raises(ValueError, match='sensitive_pii'):
+            trace_line('r', 'full', 'S', 'call_1', 1, 'Chào', 'Dạ.',
+                [{'name': 'schedule.callback', 'args': args}], [], [], 1, None, 'clean')
+
+
+def test_numeric_uuid_suffix_is_provenance_not_an_account_number():
+    from eval_harness.trace_evidence import contains_sensitive_pii
+    assert contains_sensitive_pii({'source_turn_id': 'aaaaaaaa-1111-2222-3333-934400000000'}) is False
+    assert contains_sensitive_pii({'evidence_quote': 'STK 934400000000'}) is True
+    assert contains_sensitive_pii([{'key': 'bank_account', 'value': '0912345678'}]) is True
+    assert contains_sensitive_pii([{'key': 'phone', 'value': '0912345678'}]) is False
+
+
+def test_trace_preserves_large_currency_values_without_accepting_account_numbers():
+    from eval_harness.reference_adapter import trace_line
+    from app.mcp_servers.mcp_catalog.schemas import SearchInput
+
+    args = SearchInput(max_price_vnd=1_000_000_000).model_dump(exclude_none=True)
+    issues = []
+    row = trace_line('r', 'full', 'S', 'call_1', 1, 'Chào', 'Giá 1.000.000.000 đồng.',
+        [{'name': 'catalog.search', 'args': args}],
+        [{'key': 'budget_vnd', 'value': 1_000_000_000, 'op': 'set'}], [], 1, None, 'clean',
+        safety_issues=issues)
+    assert row['tool_calls'][0]['args'] == args
+    assert row['memory_writes'][0]['value'] == 1_000_000_000
+    assert row['agent_text'] == 'Giá 1.000.000.000 đồng.'
+    assert issues == []

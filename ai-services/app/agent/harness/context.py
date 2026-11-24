@@ -2,6 +2,7 @@
 from app.mcp_servers.mcp_shared.decision_diagnostics import context_checkpoint
 
 
+import asyncio
 import time
 import logging
 import json
@@ -364,8 +365,40 @@ def _quoted_product_fields(facts: dict[str, Any]) -> dict[str, Any]:
     return fields
 
 
+async def _refresh_brief_products(state: TurnState, tools: ToolGateway, skus, address):
+    request = state['request']
+    existing = build_commerce_evidence(state)
+    gate = asyncio.Semaphore(4)
+
+    async def read(name, args):
+        if any(call['name'] == name and call['args'] == args for call in existing):
+            return None
+        async with gate:
+            try:
+                if hasattr(tools, 'invoke_trusted'):
+                    result = await tools.invoke_trusted(name, args, state['customer_id'],
+                                                         request.channel, request.channel_identity)
+                else:
+                    result = await tools.invoke(name, args)
+            except Exception:
+                result = {'error': 'tool_error'}
+        if not isinstance(result, dict):
+            result = {'error': 'invalid_tool_result'}
+        log_event(state, 'retrieve_context', 'refresh_result', tool=name, success='error' not in result)
+        return {'name': name, 'args': args, 'result': result}
+
+    queries = []
+    for sku in dict.fromkeys(skus):
+        args = {'sku': sku, 'on': request.on.isoformat()}
+        quote = {**args, 'customer_phone': state['customer_phone']}
+        if address:
+            quote['address'] = address
+        queries.extend((read('inventory.check', args), read('pricing.get_quote', quote)))
+    return [call for call in await asyncio.gather(*queries) if call is not None]
+
+
 async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway,
-                       clock: Callable[[], datetime]) -> dict[str, Any]:
+                       clock: Callable[[], datetime], *, refresh_brief: bool = False) -> dict[str, Any]:
     customer_id = state.get("customer_id")
     session_id = str(state["request"].session_id)
     async def read_memory(operation, callback):
@@ -405,6 +438,7 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
     if "error" in context:
         return {**failed("memory.read", context.get("error")), **erased}
     delivery = state.get('private_delivery') or context.get('private_delivery')
+    prior_address = (context.get('private_delivery') or {}).get('address')
     if delivery:
         try:
             age = (state['request'].on - date.fromisoformat(delivery['source_on'])).days
@@ -475,15 +509,27 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
     profile = {**safe_customer, **safe_sales}
     advised = safe_sales.get(Slot.PRODUCT_ADVISED, {}).get("value")
     scoped_products = scoped_facts["product"]
-    quotes_by_sku = {call['args']['sku']: call['result']
-        for call in build_commerce_evidence(state)
-        if call.get('name') == 'pricing.get_quote' and isinstance(call.get('args', {}).get('sku'), str)
-        and type(call['result'].get('final_price_vnd')) is int
-        and isinstance(call['result'].get('applied_promos'), list)}
+    tool_calls = list(state.get('tool_calls', []))
     brief = None
     if create_brief:
         last = last_session
         call_date = state["request"].on
+        products = dict(scoped_products)
+        if advised:
+            products.setdefault(advised, safe_sales)
+        lookup_skus = {sku: facts.get(Slot.VARIANT_SKU, {}).get('value') or sku
+                       for sku, facts in products.items()}
+        if refresh_brief and tools is not None and not context.get('turn_count', len(history)) and lookup_skus:
+            tool_calls.extend(await _refresh_brief_products(state, tools, lookup_skus.values(),
+                                                            (delivery or {}).get('address')))
+        evidence = build_commerce_evidence({**state, 'tool_calls': tool_calls})
+        quotes_by_sku = {call['args']['sku']: call['result'] for call in evidence
+            if call['name'] == 'pricing.get_quote' and isinstance(call.get('args', {}).get('sku'), str)
+            and type(call['result'].get('final_price_vnd')) is int
+            and isinstance(call['result'].get('applied_promos'), list)}
+        stock_by_sku = {call['args']['sku']: call['result'] for call in evidence
+            if call['name'] == 'inventory.check' and isinstance(call.get('args', {}).get('sku'), str)
+            and type(call['result'].get('in_stock')) is bool}
         try:
             last_on = (last["on"] if isinstance(last["on"], date)
                        else date.fromisoformat(str(last["on"])))
@@ -508,24 +554,26 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
                 except ValueError:
                     pass
         advised_products = []
-        for sku, facts in scoped_products.items():
-            if not isinstance(sku, str) or not isinstance(facts, dict):
-                continue
+        for sku, facts in products.items():
             old_promo = facts.get(Slot.PROMO_CODE, {}).get("value")
-            quote = quotes_by_sku.get(sku)
+            lookup = lookup_skus[sku]
+            quote = quotes_by_sku.get(lookup)
+            stock = stock_by_sku.get(lookup)
             product = {"sku": sku, "promo_code": old_promo,
                 "promo_still_active": (old_promo in {promo.get("promo_code")
                     for promo in quote.get("applied_promos", []) if isinstance(promo, dict)}
                     if old_promo and quote else None)}
             product.update(_quoted_product_fields(facts))
             advised_products.append(product)
-        if advised and advised not in scoped_products:
-            product = {"sku": advised, "promo_code": safe_sales.get(Slot.PROMO_CODE, {}).get("value")}
-            product.update(_quoted_product_fields(safe_sales))
-            advised_products.append(product)
+            if not stock or not quote:
+                warnings.append(f'{sku}: Chưa xác minh đủ giá, khuyến mãi và tồn kho hiện tại.')
+            if stock and stock['in_stock'] is False:
+                successor = stock.get('successor_sku')
+                replacement = f' Có mẫu thay thế {successor}.' if successor else ''
+                warnings.append(f'{sku}: Sản phẩm đã hết hàng.{replacement}')
+            if product['promo_still_active'] is False:
+                warnings.append(f'{sku}: Khuyến mãi cũ hiện không áp dụng.')
         known_slots = set(safe_customer) | set(safe_sales)
-        if any(product["sku"] not in quotes_by_sku for product in advised_products):
-            warnings.append("Chưa kiểm tra lại giá, khuyến mãi và tồn kho của các sản phẩm đã tư vấn.")
         structured_blockers = _open_episode_items(episodes, "blocker")
         resolved_any = any(
             isinstance(ep, dict) and bool(ep.get("resolved_prior_items"))
@@ -536,12 +584,15 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
                          if (Slot.BLOCKER in safe_customer and not resolved_any) else [])
         brief_orders = _build_brief_orders(
             state, context.get("owned_order_ids", []), profile, scoped_products)
+        summary = last['summary']
+        if prior_address:
+            summary = summary.replace(prior_address, '[ĐỊA CHỈ ĐÃ ẨN]')
         brief = CallBrief(
             customer_phone=state["customer_phone"], customer_name=state.get("customer_name"),
             honorific=state.get("honorific"), is_returning=True,
             n_previous_sessions=len(prior_ids),
             last_session={"session_id": last["session_id"], "date": last["on"],
-                          "channel": last["channel"], "summary": last["summary"],
+                          "channel": last["channel"], "summary": mask_pii(summary),
                           "outcome": last["outcome"]},
             products_advised=advised_products,
 
@@ -573,5 +624,5 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
             "episodes": episodes, "current_episode": current_episode,
             "call_brief": brief,
             "remembered_order_ids": context.get("owned_order_ids", []),
-            "tool_calls": list(state.get("tool_calls", [])),
+            "tool_calls": tool_calls,
         "turn_no": context.get("turn_count", len(history)) + 1}

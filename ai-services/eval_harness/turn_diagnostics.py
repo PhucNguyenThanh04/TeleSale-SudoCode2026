@@ -114,7 +114,8 @@ class TurnDiagnostics:
 
     def observe(self, request, response, state, row, events=(), *, runtime_error=None):
         identity={key:row[key] for key in IDENTITY}
-        state={**state, 'request':request}
+        state={**state, 'request':request, 'tool_calls':[
+            *state.get('prepared_tool_calls', []), *state.get('tool_calls', [])]}
         stage=stage_evidence(state,response,**identity)
         stage['agent_text_sha256']=_text_sha(row)
         self.stages.append(stage)

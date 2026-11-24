@@ -71,7 +71,7 @@ def _edge(text: str, params: dict) -> np.ndarray:
 
 def eleven_request(method: str, path: str, api_key: str, body: dict | None = None,
                    query: dict | None = None, accept: str = "application/json") -> bytes:
-    url = ELEVEN_API + path + ("?" + urllib.parse.urlencode(query) if query else "")
+    url = os.getenv("ELEVENLABS_API_BASE_URL", ELEVEN_API).rstrip("/") + path + ("?" + urllib.parse.urlencode(query) if query else "")
     data = json.dumps(body).encode("utf-8") if body is not None else None
     headers = {"xi-api-key": api_key, "Accept": accept}
     if data is not None:

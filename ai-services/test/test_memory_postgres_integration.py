@@ -80,6 +80,21 @@ class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(TimeoutError):
             await wait_for_distillation(self.dsn, pending_source, timeout_seconds=0.05)
 
+    async def test_eval_writes_include_only_the_committed_delivery_for_the_completed_job(self):
+        source = str(uuid4())
+        for customer, address in (('C901', '12 Lê Lợi, Hà Nội'), ('C902', '45 Lê Lợi, Hà Nội')):
+            result = await write(self.repo, 'commit_turn', customer, str(uuid4()), {
+                'customer_text': 'Giao về địa chỉ đã xác nhận', 'agent_text': 'Dạ',
+                'on': '2026-10-15', 'channel': 'hotline', 'client_msg_id': source,
+                'private_delivery': {'address': address, 'source_turn_id': source,
+                    'source_on': '2026-10-15', 'source_customer_text': '[ĐỊA CHỈ ĐÃ ẨN]'}})
+            self.assertEqual(result['turn_no'], 1)
+        async with self.repo.transaction() as conn:
+            await conn.execute("UPDATE runtime.langmem_distillation_jobs SET status='completed' WHERE customer_id='C901'")
+
+        self.assertEqual(await read_distillation_writes(self.dsn, [source]), {source: [
+            {'key': 'address', 'value': '12 Lê Lợi, Hà Nội', 'op': 'set', 'customer_id': 'C901'}]})
+
     async def test_unfinished_store_write_is_hidden_until_job_completes(self):
         async with AsyncPostgresStore.from_conn_string(store_dsn(self.dsn), index=None) as store:
             await store.setup()
@@ -370,6 +385,8 @@ class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
                                "/" + self.database, parts.query, parts.fragment))
         connection = await asyncpg.connect(self.dsn)
         try:
+            from dataloader_offline.postgres import DDL
+            await connection.execute(DDL)
             backend_migrations = Path(__file__).resolve().parents[2] / "backend" / "migrations"
             for migration in sorted(backend_migrations.glob("000*.sql")):
                 await connection.execute(migration.read_text())

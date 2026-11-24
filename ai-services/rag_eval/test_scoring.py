@@ -32,6 +32,18 @@ def test_retrieval_score_matches_btc_and_hides_answer_metrics(run, tmp_path):
     assert verify_run(out)['kind'] == 'scores'
 
 
+def test_btc_counts_retrieved_chunks_for_abstained_restricted_and_unanswerable(tmp_path):
+    qa = {'questions': [{'qid': 'R', 'type': 'restricted', 'relevant_chunk_ids': ['NB-01']},
+                        {'qid': 'U', 'type': 'unanswerable', 'relevant_chunk_ids': ['FAQ-03']}]}
+    result = {'R': {'retrieved_chunk_ids': ['NB-01'], 'abstained': True, 'answer': 'Thông tin nội bộ.'},
+              'U': {'retrieved_chunk_ids': ['FAQ-03'], 'abstained': True, 'answer': 'Chưa có thông tin.'}}
+    write_json(tmp_path / 'qa.json', qa)
+    write_json(tmp_path / 'results.json', result)
+    score = load_module(BTC / 'eval/reference_eval.py').rag_eval(tmp_path / 'qa.json', tmp_path / 'results.json')
+    assert score['by_type_recall@5']['restricted'] == score['by_type_recall@5']['unanswerable'] == 100
+    assert score['abstain_rate_restricted'] == score['abstain_rate_unanswerable'] == 100
+
+
 @pytest.mark.parametrize('change', ['missing', 'duplicate', 'unknown', 'input'])
 def test_resealed_bad_coverage_and_input_binding_are_rejected(run, tmp_path, change):
     manifest = verify_run(run)
