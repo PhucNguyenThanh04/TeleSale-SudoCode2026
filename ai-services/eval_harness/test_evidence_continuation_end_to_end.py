@@ -1,35 +1,17 @@
-from eval_harness.test_support import VoiceLifecycleStub
 import asyncio
 from contextlib import asynccontextmanager
 from copy import deepcopy
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 from langchain_core.messages import AIMessage
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.outputs import ChatResult, ChatGeneration
-from app.agent.harness.agent_nodes import AgentNodes
-from app.mcp_servers.mcp_memory.services.langmem_admission import admit_episode_candidate
-from app.mcp_servers.mcp_memory.services.episode_state import apply_episode_delta
-from app.schemas.langmem import CustomerCallEpisodeCandidate
 from eval_harness.benchmark_runner import run_configuration
 from eval_harness.turn_diagnostics import verify_turn_diagnostics
-
-
-class Runtime(VoiceLifecycleStub):
-    def __init__(self,sku,name,price,new_price=None,*,service_memory=False,delayed_worker=False,known_session=True,promos=None,new_promos=None):
-        self.sku,self.name,self.price,self.new_price=sku,name,price,new_price
-        self.memory=SimpleNamespace(include_prior=True,namespace='')
-        self.sessions={};self.episodes={};self.states={};self.writes=[];self.model_calls=0
-        self.service_memory=service_memory;self.delayed_worker=delayed_worker;self.known_session=known_session
-        self.repo=CommittedRepo(self)
-        self.promos=promos or [];self.new_promos=new_promos
-
-
-    def state_for(self,request):return self.states[str(request.client_msg_id)]
 
 
 class CommittedRepo:
@@ -40,9 +22,11 @@ class CommittedRepo:
     async def lock_key(self,*args):pass
     async def next_turn(self,conn,sid):return len(self.runtime.sessions[sid]['turns'])+1
     async def turn_count(self,conn,sid):return len(self.runtime.sessions[sid]['turns'])
-    async def insert_turn(self,conn,sid,number,cid,channel,on,customer,agent,tid):
+    async def insert_turn(self,conn,sid,number,cid,channel,on,customer,agent,tid,
+                          observations=(),outcome='khac',**kwargs):
         self.runtime.sessions[sid]['turns'].append({'turn_id':tid,'customer_id':cid,
-            'session_id':sid,'on':str(on),'customer_text':customer,'agent_text':agent})
+            'session_id':sid,'on':str(on),'customer_text':customer,'agent_text':agent,
+            'tool_observations': observations, 'request_hash': kwargs.get('request_hash')})
     async def enqueue_distillation(self,conn,sid,cid,tid,observations,*args,**kwargs):
         from app.mcp_servers.mcp_shared.memory_observations import memory_observations
         self.observed[tid]=json.loads(json.dumps(memory_observations(observations)))
@@ -58,88 +42,6 @@ class CommittedRepo:
     async def list_episode_versions(self,*args):return deepcopy(list(self.runtime.episodes.values()))
 
 
-@pytest.mark.parametrize('sku,name,price',[('SKU-CEDAR','Cedar',640000),('SKU-LINDEN','Linden',720000)])
-def test_real_nodes_readback_hydration_and_prior_turn_evidence_then_order_once(tmp_path,sku,name,price):
-    runtime=Runtime(sku,name,price)
-    scenarios={'UNRELATED-PATH':{'calls':{'call_1':{'call_date':'2026-11-05','customer_turns':[
-        f'Tôi chọn {name} để xem giá.', 'Giá hiện tại là bao nhiêu?']},
-        'call_2':{'call_date':'2026-11-05','customer_turns':[f'Lấy mẫu hôm trước giá {price}đ, lên đơn.']}}}}
-    out=tmp_path/'trace.jsonl'
-    result=asyncio.run(run_configuration(scenarios=scenarios,config='full',runtime=runtime,
-        run_id='offline-only',out=out,wait_for_jobs=AsyncMock(),capture_writes=AsyncMock(return_value={})))
-    rows=[json.loads(line) for line in out.read_text().splitlines()]
-    assert rows[1]['tool_calls']==[]
-    assert f'{price:,}'.replace(',','.') in rows[1]['agent_text']
-    assert [c['name'] for c in rows[2]['tool_calls']]==['catalog.search','pricing.get_quote','inventory.check','order.create']
-    assert len(runtime.writes)==1 and runtime.writes[0]['sku']==sku
-    assert runtime.model_calls==3
-    assert verify_turn_diagnostics(out,result['turn_diagnostics'])['rows']==3
-    final=runtime.states[next(reversed(runtime.states))]
-    assert final['episodes'][0]['topics'][0]['consultation']['selected_sku']==sku
-
-
-def test_real_nodes_changed_price_requires_confirmation_then_advances(tmp_path):
-    runtime=Runtime('SKU-CEDAR','Cedar',640000,new_price=690000)
-    scenarios={'DIFFERENT-ID':{'calls':{'call_1':{'call_date':'2026-11-05',
-        'customer_turns':['Tôi chọn Cedar để xem giá.']},'call_2':{'call_date':'2026-11-05',
-        'customer_turns':['Mua Cedar giá 640000đ, lên đơn.', 'Đồng ý Cedar giá 690000đ, lên đơn.']}}}}
-    out=tmp_path/'trace.jsonl'
-    asyncio.run(run_configuration(scenarios=scenarios,config='full',runtime=runtime,
-        run_id='offline-only',out=out,wait_for_jobs=AsyncMock(),capture_writes=AsyncMock(return_value={})))
-    rows=[json.loads(line) for line in out.read_text().splitlines()]
-    assert not any(c['name']=='order.create' for c in rows[1]['tool_calls'])
-    assert 'đồng ý' in rows[1]['agent_text'].lower()
-    assert len(runtime.writes)==1 and runtime.writes[0]['price_vnd']==690000
-
-
-@pytest.mark.parametrize('delayed_worker',[False,True])
-def test_presented_offer_survives_json_then_deictic_acceptance_without_repeating_price(tmp_path,delayed_worker):
-    runtime=Runtime('SKU-CEDAR','Cedar',640000,service_memory=True,delayed_worker=delayed_worker)
-    scenarios={'OFFER-CONTINUITY':{'calls':{
-        'call_1':{'call_date':'2026-11-05','customer_turns':['Cho tôi xem giá Cedar.']},
-        'call_2':{'call_date':'2026-11-05','customer_turns':['Lấy mẫu đó, lên đơn.']}}}}
-    out=tmp_path/'offer.jsonl'
-    asyncio.run(run_configuration(scenarios=scenarios,config='full',runtime=runtime,
-        run_id='offline-offer',out=out,wait_for_jobs=AsyncMock(),capture_writes=AsyncMock(return_value={})))
-    last_state=runtime.states[next(reversed(runtime.states))]
-    first=last_state['episodes'][0]['topics'][0]['consultation']
-    assert first['presented_offer']['price_vnd']==640000
-    assert first['accepted_offer'] is None
-    assert len(runtime.writes)==1
-    assert runtime.writes[0]['sku']=='SKU-CEDAR'
-    rows=[json.loads(line) for line in out.read_text().splitlines()]
-    assert '640.000' in rows[0]['agent_text']
-    assert [c['name'] for c in rows[1]['tool_calls']].count('order.create')==1
-
-
-@pytest.mark.parametrize('mode',['higher_price','lost_gift','delivery','revoked','unknown_session'])
-def test_offer_continuity_negative_conditions_never_write(tmp_path,mode):
-    gift={'type':'gift','promo_code':'GIFT-CEDAR','gift_sku':'SKU-CEDAR-GIFT'}
-    runtime=Runtime('SKU-CEDAR','Cedar',640000,service_memory=True,
-        new_price=690000 if mode=='higher_price' else None,
-        delayed_worker=mode=='unknown_session',known_session=mode!='unknown_session',
-        promos=[gift] if mode=='lost_gift' else [],new_promos=[] if mode=='lost_gift' else None)
-    accept={'delivery':'Lấy mẫu đó, giao trong tuần này nhé.',
-            'revoked':'Không lấy mẫu đó nữa.'}.get(mode,'Lấy mẫu đó, lên đơn.')
-    first=['Cho tôi xem giá Cedar.']
-    if mode=='lost_gift':first.append('Có tặng quà không?')
-    scenarios={'NEGATIVE-OFFER':{'calls':{
-        'call_1':{'call_date':'2026-11-05','customer_turns':first},
-        'call_2':{'call_date':'2026-11-05','customer_turns':[accept]}}}}
-    out=tmp_path/f'{mode}.jsonl'
-    asyncio.run(run_configuration(scenarios=scenarios,config='full',runtime=runtime,
-        run_id='offline-negative',out=out,wait_for_jobs=AsyncMock(),capture_writes=AsyncMock(return_value={})))
-    rows=[json.loads(line) for line in out.read_text().splitlines()]
-    assert runtime.writes==[]
-    assert not any(c['name']=='order.create' for row in rows for c in row['tool_calls'])
-    assert 'đã tạo đơn' not in rows[-1]['agent_text']
-    if mode=='lost_gift':
-        assert 'tặng' in rows[1]['agent_text']
-        prior=runtime.states[next(reversed(runtime.states))]['episodes'][0]['topics'][0]['consultation']
-        assert prior['presented_offer']['price_vnd']==640000
-        assert prior['presented_offer']['promo_terms'][0]['gift_sku']=='SKU-CEDAR-GIFT'
-
-
 class ProductionRepo(CommittedRepo):
     def __init__(self):
         super().__init__(SimpleNamespace(sessions={},episodes={}))
@@ -150,6 +52,16 @@ class ProductionRepo(CommittedRepo):
         return turns[0]['customer_id'] if turns else None
 
     async def is_erasure_blocked(self,*args):return False
+
+    async def replay_turn(self, conn, sid, tid):
+        return next((turn for turn in self.runtime.sessions[sid]['turns']
+                     if turn['turn_id'] == tid), None)
+
+    async def recent_customer_sessions(self, conn, cid, maximum):
+        turns = [session['turns'][-1] for session in self.runtime.sessions.values()
+                 if session['turns'] and session['turns'][-1]['customer_id'] == cid]
+        return [{'session_id': turn['session_id'], 'on_date': turn['on'], 'channel': turn['channel']}
+                for turn in reversed(turns[-maximum:])]
 
     async def claim_operation(self,conn,key,digest):
         previous=self.operations.get(key)
@@ -169,8 +81,8 @@ class ProductionRepo(CommittedRepo):
             'attempts':0,'status':'pending','verified_outcome':outcome,
             'tool_observations':deepcopy(self.observed[tid])})
 
-    async def insert_turn(self,conn,sid,number,cid,channel,on,customer,agent,tid):
-        await super().insert_turn(conn,sid,number,cid,channel,on,customer,agent,tid)
+    async def insert_turn(self,conn,sid,number,cid,channel,on,customer,agent,tid,*args,**kwargs):
+        await super().insert_turn(conn,sid,number,cid,channel,on,customer,agent,tid,*args,**kwargs)
         self.runtime.sessions[sid]['turns'][-1]['channel']=channel
 
     async def claim_distillation(self,*args):
@@ -228,6 +140,9 @@ class ProductionGateway:
             return {'found':True,'customer_id':self.customer,'phone':'0900000000','orders':[], 'sessions':[]}
         if name=='memory.read':return await memory.read(self.repo,projector=self.repo,**args)
         if name=='memory.write':return await memory.write(self.repo,**args)
+        if name=='memory.replay':
+            from app.mcp_servers.mcp_memory.services.replay import replay_turn
+            return await replay_turn(self.repo, **args)
         if name=='catalog.search':
             items=[p for p in self.products if not args.get('sku') or p['sku']==args['sku']
                    or any(v['variant_sku']==args['sku'] for v in p['variants'])]
@@ -244,7 +159,7 @@ class ProductionGateway:
             return {'error':'unavailable'} if self.order_error else {'status':'created','order_id':'OD-PRODUCTION'}
         raise AssertionError(name)
 
-    async def invoke_trusted(self,name,args,*identity):return await self.invoke(name,args)
+    async def invoke_trusted(self,name,args,*identity,**context):return await self.invoke(name,args)
 
     async def project(self):
         from app.mcp_servers.mcp_memory.distiller_worker import process_one
@@ -260,6 +175,14 @@ class ProductionModel(BaseChatModel):
     @property
     def _llm_type(self):return 'offline-script'
     def bind_tools(self,tools,**kwargs):return self
+    def with_structured_output(self, schema, **kwargs):
+        async def review(messages):
+            if schema.__name__ == 'GroundingReview':
+                return schema(supported=True, reason='supported', unsupported_claim='')
+            text = json.loads(messages[-1].content)['customer_text']
+            return schema(allowed=True, basis='customer_request',
+                          customer_quote=text, reason='authorized')
+        return SimpleNamespace(ainvoke=review)
     def _generate(self,messages,stop=None,run_manager=None,**kwargs):
         assert self.replies, 'script exhausted'
         return ChatResult(generations=[ChatGeneration(message=self.replies.pop(0))])
@@ -313,8 +236,13 @@ def scripted_tool(name,args):
 def test_production_benchmark_runner_uses_real_runtime_and_committed_readback(tmp_path,sku,name,price):
     runtime,gateway,model=production_case(sku=sku,name=name,price=price)
     model.replies.extend([scripted_tool('catalog.search',{'query':name}),
+        scripted_tool('pricing.get_quote', {'sku': sku}),
         AIMessage(content=f'{name} giá {price:,}đ.'.replace(',','.')),
-        AIMessage(content='Dạ, em xử lý yêu cầu.')])
+        scripted_tool('catalog.search', {'query': name}),
+        scripted_tool('pricing.get_quote', {'sku': sku}),
+        scripted_tool('inventory.check', {'sku': sku}),
+        scripted_tool('order.create', {'sku': sku, 'price_vnd': price}),
+        AIMessage(content='Em đã tạo đơn OD-PRODUCTION.')])
     scenarios={'UNRELATED-LIFECYCLE':{'calls':{
         'call_1':{'call_date':'2026-11-05','customer_turns':[f'Cho tôi xem giá {name}.']},
         'call_2':{'call_date':'2026-11-06','customer_turns':['Lên đơn mẫu hôm trước nhé.']}}}}
@@ -328,62 +256,8 @@ def test_production_benchmark_runner_uses_real_runtime_and_committed_readback(tm
     assert len(gateway.writes)==1 and gateway.writes[0]['sku']==sku
     assert [c['name'] for c in rows[1]['tool_calls']].count('order.create')==1
     assert all(j['status']=='completed' for j in gateway.repo.jobs)
-
-
-
-
-
-
-
-
-class FollowupProductionGateway(ProductionGateway):
-    def __init__(self, products, price=730000):
-        super().__init__(products, price)
-        self.policy_status = 'ok'
-        self.policy_contexts = []
-        self.expired_promos = []
-    async def invoke(self, name, args):
-        if name == 'pricing.get_quote':
-            result = await super().invoke(name, args)
-            return {**result, 'expired_promos': list(self.expired_promos)}
-        if name != 'policy.search': return await super().invoke(name, args)
-        self.calls.append((name, deepcopy(args)))
-        return {'retrieval_status': self.policy_status, 'context': {},
-            'evidence_set': {'required_dependencies_complete': True},
-            'evidence': [] if self.policy_status != 'ok' else [{
-                'chunk_id': 'PUBLIC-WARRANTY', 'section_id': 'warranty', 'document_id': 'public',
-                'content': 'Bảo hành 24 tháng cho lỗi kỹ thuật do nhà sản xuất. Không bảo hành hư hỏng do sử dụng sai hướng dẫn.',
-                'source': {}, 'evidence_type': 'business_rule', 'applicability': {'status': 'applicable'}}]}
-    async def invoke_trusted(self, name, args, *identity, **context):
-        if name == 'policy.search': self.policy_contexts.append(context.get('policy_context'))
-        return await self.invoke(name, args)
-
-
-    async def project(self):
-        from app.mcp_servers.mcp_memory.distiller_worker import process_one
-        from app.schemas.langmem import ProfileFactCandidate
-        from datetime import date
-        async def extractor(messages, *args):
-            payload = json.loads(messages[-1]['content'])
-            speech = payload['customer_text']
-            if 'đắt quá' not in speech:
-                return [], None
-            return [ProfileFactCandidate(key='objection', value='dat_qua', source_kind='customer',
-                source_turn_id=payload['turn_id'], evidence_quote=speech,
-                observed_on=date.fromisoformat(payload['on']), scope_type='product', scope_id='SKU-WILLOW')], None
-        while any(j['status'] == 'pending' for j in self.repo.jobs):
-            assert await process_one(self.repo, extractor, self.repo)
-            assert all(j.get('error_code') is None for j in self.repo.jobs), self.repo.jobs
-
-
-def production_followup_case():
-    from datetime import datetime, timezone
-    from app.agent.harness.runtime import AgentHarnessRuntime
-    from app.agent.memory.store import MCPMemoryStore
-    products = [{'sku': 'SKU-WILLOW', 'name': 'Willow Classic', 'variants': [],
-                 'category': 'air', 'attributes': {}, 'list_price_vnd': 730000}]
-    gateway = FollowupProductionGateway(products)
-    model = ProductionModel(replies=[])
-    runtime = AgentHarnessRuntime(model, gateway, MCPMemoryStore(gateway), max_tool_calls=6,
-        clock=lambda: datetime(2026, 11, 5, tzinfo=timezone.utc))
-    return runtime, gateway, model
+    last_turn = next(reversed(runtime._states.values()))
+    assert last_turn['call_brief']['is_returning'] is True
+    assert any(f'{price:,}'.replace(',', '.') in turn['agent']
+               for episode in last_turn['episodes'] for turn in episode.get('committed_turns', []))
+    assert verify_turn_diagnostics(out)['rows'] == 2

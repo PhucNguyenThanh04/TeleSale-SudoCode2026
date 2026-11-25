@@ -278,6 +278,7 @@ class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
         from app.mcp_servers.mcp_catalog.services.catalog import get_quote_order
         from app.mcp_servers.mcp_order.repos.postgres import OrderRepo
         from app.mcp_servers.mcp_order.services.order import invoke
+        from write_authorization_fixtures import WRITE_TEST_SECRET, scripted_write_args
         data = reference.__wrapped__()
         phone = '0900000000'
         await import_release(self.dsn, {'products': {'products': data.PRODUCTS},
@@ -293,17 +294,19 @@ class MemoryPostgresIntegration(unittest.IsolatedAsyncioTestCase):
                 quote = await get_quote_order(catalog, session, payload)
             create_args = {**payload, 'lines': [{'sku': unit['sku'], 'qty': 1,
                 'price_vnd': unit['final_price_vnd']} for unit in quote['units']]}
-            results = await asyncio.gather(*(invoke(orders, 'order.create',
-                {**create_args, 'operation_key': key}) for key in ('basket-A', 'basket-B')))
+            requests = [scripted_write_args('order.create', create_args, customer_id='C901')
+                        for _ in range(2)]
+            results = await asyncio.gather(*(invoke(orders, 'order.create', args,
+                context_secret=WRITE_TEST_SECRET) for args in requests))
             self.assertEqual(sum(result.get('status') == 'created' for result in results), 1)
             self.assertEqual(sum(result.get('error') == 'price_mismatch' for result in results), 1)
             winner = next(index for index, result in enumerate(results) if result.get('status') == 'created')
-            replay = await invoke(orders, 'order.create', {**create_args,
-                'operation_key': ('basket-A', 'basket-B')[winner]})
+            replay = await invoke(orders, 'order.create', requests[winner], context_secret=WRITE_TEST_SECRET)
             self.assertEqual(replay, results[winner])
             status = await invoke(orders, 'order.status', {
                 'source_channel': 'hotline', 'source_identity': phone, 'order_id': replay['order_id']})
-            self.assertEqual(status['orders'][0]['lines'], create_args['lines'])
+            self.assertEqual(status['orders'][0]['lines'], [
+                {'line_index': index, **line} for index, line in enumerate(create_args['lines'])])
             async with self.repo.transaction() as conn:
                 self.assertEqual(await conn.fetchval('SELECT count(*) FROM runtime.tool_orders'), 1)
                 await conn.execute('''INSERT INTO runtime.tool_orders

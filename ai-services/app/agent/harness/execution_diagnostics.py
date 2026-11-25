@@ -115,5 +115,18 @@ def pair_execution_health(values):
 
 
 def safe_failure_details(source):
-    error = source.get('execution_error') if isinstance(source, dict) else getattr(source, 'execution_error', None)
-    return {'execution_error': normalize_execution_event(error)} if isinstance(error, dict) else {}
+    from app.agent.harness.observability import DIAGNOSTIC_REASONS
+
+    def value(key):
+        return source.get(key) if isinstance(source, dict) else getattr(source, key, None)
+
+    details = {}
+    error = value('execution_error')
+    if isinstance(error, dict):
+        details['execution_error'] = normalize_execution_event(error)
+    reasons = value('verification_rejections')
+    if isinstance(reasons, list) and reasons:
+        details['verification_rejections'] = [
+            reason if isinstance(reason, str) and reason in DIAGNOSTIC_REASONS else 'unknown_reason'
+            for reason in reasons]
+    return details

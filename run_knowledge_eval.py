@@ -24,7 +24,7 @@ def main():
     try:
         result = run(args.base_run)
     except ModuleNotFoundError:
-        parser.exit(1, 'Install host dependencies: python -m pip install -r config/submission/host.txt\n')
+        parser.exit(1, 'Install host dependencies: python -m pip install -r config/requirements/host.txt\n')
     except ConfigurationError as exc:
         parser.exit(1, str(exc) + '\n')
     except OSError as exc:

@@ -225,6 +225,40 @@ def test_full_failure_never_starts_baseline_or_publishes(tmp_path):
     assert json.loads((out/'run.json').read_text())['status']=='failed'
 
 
+def test_failed_conversation_keeps_safe_verifier_reasons_in_paired_report(tmp_path, monkeypatch, capsys):
+    from eval_harness.run_official import main
+
+    scenarios = tmp_path / 'scenarios'
+    scenarios.mkdir()
+    (scenarios / 'case.json').write_text(json.dumps({
+        'scenario_id': 'X', 'calls': {'call_1': {'customer_turns': ['Chào']}},
+    }))
+    btc = Path(__file__).resolve().parents[3] / 'BTC-Data-Vong1-TEAMS'
+    out_root = tmp_path / 'runs'
+    monkeypatch.setattr('sys.argv', ['run_official', '--btc-root', str(btc),
+        '--scenarios', str(scenarios), '--out-root', str(out_root), '--expected-database', 'telesale'])
+
+    def failed_child(argv, **kwargs):
+        prefix = Path(argv[argv.index('--out') + 1])
+        report = prefix.with_name(prefix.stem + '_full.report.json')
+        report.write_text(json.dumps({'status': 'failed', 'phase': 'conversation',
+            'verification_rejections': ['price_without_quote', 'private customer detail']}))
+        return SimpleNamespace(returncode=1)
+
+    with patch('eval_harness.run_official.capture_release', new_callable=AsyncMock,
+               return_value={'release_id': 'r'}), \
+         patch('eval_harness.run_official.fingerprint_btc_source', new_callable=AsyncMock, return_value='seed'), \
+         patch('eval_harness.run_official.subprocess.run', side_effect=failed_child):
+        with pytest.raises(SystemExit) as error:
+            main()
+    assert error.value.code == 1
+    report = next(out_root.glob('*/run.json')).read_text()
+    assert json.loads(report)['verification_rejections'] == ['price_without_quote', 'unknown_reason']
+    output = capsys.readouterr().out
+    assert 'Verification rejected: price_without_quote, unknown_reason' in output
+    assert 'private customer detail' not in report + output
+
+
 @pytest.mark.parametrize('payload', ['[]', 'null', '"private-secret"', '{broken'])
 def test_malformed_child_report_keeps_safe_runner_failure(tmp_path, payload):
     from eval_harness.run_official import _run_one

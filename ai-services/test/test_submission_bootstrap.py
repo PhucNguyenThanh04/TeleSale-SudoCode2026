@@ -59,12 +59,15 @@ def test_submission_setup_preserves_ready_database_and_rejects_source_change(mon
     monkeypatch.setattr(submission, 'setup_store', install)
     monkeypatch.setattr(submission, 'setup_logins', AsyncMock())
     monkeypatch.setattr(submission, 'prepare_policy', policy)
+    provision = AsyncMock()
+    monkeypatch.setattr(submission, 'provision', provision, raising=False)
     source_policy = tmp_path / 'first' / 'policy'
     source_policy.mkdir(parents=True)
     (source_policy / 'policy.md').write_text('original policy')
     settings = SimpleNamespace(app_env='test', knowledge_policy_source_dir=tmp_path / 'runtime-policy')
     kwargs = dict(settings=settings, dsn='test', expected_database='telesale_eval_m1',
-                  source=tmp_path / 'first', backend_dsn='postgresql://backend@postgres/test')
+                  source=tmp_path / 'first', backend_dsn='postgresql://backend@postgres/test',
+                  mcp_passwords={name: 'abc123' for name in ('catalog', 'order', 'memory', 'knowledge')})
 
     with pytest.raises(ValueError, match='allow-policy-build'):
         asyncio.run(submission.initialize(**kwargs))
@@ -78,6 +81,11 @@ def test_submission_setup_preserves_ready_database_and_rejects_source_change(mon
     importer.assert_not_awaited()
     conn.has_btc_source = False
 
+    provision.side_effect = RuntimeError('roles unavailable')
+    with pytest.raises(RuntimeError, match='roles unavailable'):
+        asyncio.run(submission.initialize(**kwargs, allow_policy_build=True))
+    assert conn.status == 'starting'
+    provision.side_effect = None
     asyncio.run(submission.initialize(**kwargs, allow_policy_build=True))
     staged_policy = settings.knowledge_policy_source_dir / 'policy.md'
     assert staged_policy.read_text() == 'original policy'
@@ -86,7 +94,7 @@ def test_submission_setup_preserves_ready_database_and_rejects_source_change(mon
     assert staged_policy.read_text() == 'original policy'
     assert conn.status == 'ready'
     importer.assert_awaited_once()
-    install.assert_awaited_once()
+    assert install.await_count == 2
     policy.assert_awaited_once()
 
     with pytest.raises(ValueError, match='source differs'):
@@ -118,7 +126,8 @@ def test_submission_initializes_real_postgres_and_keeps_existing_turn(monkeypatc
         settings = Settings(_env_file=None, app_env='test', llm_model='fake', llm_api_key='test',
                             knowledge_policy_source_dir=source / 'policy')
         args = dict(settings=settings, dsn=dsn, expected_database=database.database,
-                    source=source, backend_dsn=backend_dsn)
+                    source=source, backend_dsn=backend_dsn,
+                    mcp_passwords={name: 'abc123' for name in ('catalog', 'order', 'memory', 'knowledge')})
         assert await submission.initialize(**args, allow_policy_build=True) == 'initialized'
         conn = await submission.pg_connect(dsn)
         try:

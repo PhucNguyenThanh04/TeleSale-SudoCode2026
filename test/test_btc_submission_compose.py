@@ -14,7 +14,6 @@ CORE = {'postgres', 'qdrant', 'redis', 'mcp-catalog', 'mcp-order', 'mcp-memory',
 def configuration(tmp_path, profile=None):
     if not shutil.which('docker'):
         pytest.skip('Docker Compose CLI is required')
-    shutil.copyfile(ROOT / 'compose.submission.yml', tmp_path / 'compose.submission.yml')
     shutil.copyfile(ROOT / 'docker-compose.yml', tmp_path / 'docker-compose.yml')
     text = (ROOT / '.env.example').read_text()
     text += '\nLLM_API_KEY=offline-key\nCLOUDFLARE_ACCOUNT_ID=offline-account\nCLOUDFLARE_API_TOKEN=offline-token\n'
@@ -45,16 +44,15 @@ def test_plain_compose_up_contains_all_servers_but_no_seed_or_eval(tmp_path):
         assert services[name]['healthcheck']['start_period'] == '24h0m0s'
 
 
-def test_default_compose_without_compose_file_uses_the_same_submission_stack(tmp_path, monkeypatch):
-    configuration(tmp_path)
-    env = tmp_path / '.env'
-    env.write_text('\n'.join(line for line in env.read_text().splitlines()
-                             if not line.startswith('COMPOSE_FILE=')) + '\n')
+def test_root_compose_is_self_contained(tmp_path, monkeypatch):
     monkeypatch.delenv('COMPOSE_FILE', raising=False)
-    config = json.loads(subprocess.check_output(['docker', 'compose', 'config', '--format', 'json'],
-                        cwd=tmp_path, text=True))
+    monkeypatch.delenv('COMPOSE_PROJECT_NAME', raising=False)
+    config = configuration(tmp_path)
     assert set(config['services']) == CORE
+    assert config['name'] == 'telesale-btc'
     assert config['services']['postgres']['environment']['POSTGRES_USER'] == 'btc_admin'
+    assert all(service['build']['dockerfile'] == 'Dockerfile'
+               for service in config['services'].values() if service.get('build'))
 
 
 def test_servers_do_not_mount_or_require_the_host_btc_directory(tmp_path):

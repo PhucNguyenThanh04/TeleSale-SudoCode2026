@@ -97,13 +97,17 @@ def test_cookie_writes_require_same_origin_and_knowledge_requires_login():
 
 
 def test_two_simultaneous_text_sessions_bind_server_profiles():
+    from test_text_gateway import streamed_response
+
     with gateway() as (client, _):
+        turns = []
         def upstream(request):
             data = json.loads(request.content)
             if request.url.path.endswith('/prepare'):
                 return httpx.Response(200, json={'session_id': data['session_id'], 'call_brief': None})
-            return httpx.Response(200, json={'session_id': data['session_id'],
-                'client_msg_id': data['client_msg_id'], 'agent_text': data['channel_identity']})
+            turns.append(data)
+            return streamed_response({'session_id': data['session_id'],
+                'client_msg_id': data['client_msg_id'], 'agent_text': 'Dạ.'})
         client.app.state.ai_http = httpx.AsyncClient(base_url='http://ai', transport=httpx.MockTransport(upstream))
         login(client)
         with client.websocket_connect('/api/chat/stream') as one:
@@ -115,10 +119,13 @@ def test_two_simultaneous_text_sessions_bind_server_profiles():
                 first, second = one.receive_json(), two.receive_json()
                 assert first['event'] == second['event'] == 'ready'
                 assert first['session_id'] != second['session_id']
-                for socket, phone in [(one, '0900000001'), (two, '0900000002')]:
+                for socket in (one, two):
                     socket.send_json({'event': 'text', 'client_msg_id': str(uuid4()), 'text': 'Hello'})
-                    assert socket.receive_json()['agent_text'] == phone
+                    assert socket.receive_json()['event'] == 'agent_delta'
+                    assert socket.receive_json()['agent_text'] == 'Dạ.'
                     socket.send_json({'event': 'end'})
+        assert [(turn['session_id'], turn['channel_identity']) for turn in turns] == [
+            (first['session_id'], '0900000001'), (second['session_id'], '0900000002')]
 
 
 def test_voice_uses_assigned_profile_before_preparation():

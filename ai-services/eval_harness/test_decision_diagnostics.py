@@ -243,6 +243,7 @@ def test_run_configuration_exports_readback_without_altering_official_rows(monke
     monkeypatch.setenv('EVAL_DECISION_DIAGNOSTICS', '1')
     runtime, gateway, model = production_case()
     model.replies.extend([scripted_tool('catalog.search', {'query': 'Willow Classic'}),
+                          scripted_tool('pricing.get_quote', {'sku': 'SKU-WILLOW'}),
                           AIMessage(content='Willow Classic giá 730.000đ.')])
     async def wait(*args): await gateway.project()
     async def capture(ids):

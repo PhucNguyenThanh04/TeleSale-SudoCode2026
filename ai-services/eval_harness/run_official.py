@@ -221,6 +221,8 @@ def main():
     print(f'{status}: {out / "run.json"}')
     if status=='failed':
         print(f"phase={summary.get('phase')} code={summary.get('error_code')} service={summary.get('service')}")
+        if summary.get('verification_rejections'):
+            print('Verification rejected: ' + ', '.join(summary['verification_rejections']))
     if status!='validated':
         raise SystemExit(1)
     if asr is not None:

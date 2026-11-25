@@ -228,6 +228,24 @@ class EvalRunnerTest(unittest.TestCase):
         self.assertNotIn("source_evidence", raw)
         self.assertNotIn("0912345678", raw)
 
+    def test_failed_stream_report_keeps_verification_reason_without_the_draft(self):
+        from app.agent.harness.observability import log_event
+
+        class Runtime(_Runtime):
+            async def run(self, request):
+                log_event(request, 'verify', 'grounding_checked', accepted=False, reason='price_without_quote')
+                raise RuntimeError('private model draft')
+
+        root = Path(__file__).resolve().parents[2] / 'BTC-Data-Vong1-TEAMS'
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / 'trace.jsonl'
+            with self.assertRaisesRegex(RuntimeError, 'configuration_failed'):
+                asyncio.run(run(SimpleNamespace(btc_root=root, config='full', out=output,
+                    scenarios=root / 'test_set' / 'public_sample', isolated_db=True), Runtime()))
+            raw = output.with_suffix('.report.json').read_text()
+        self.assertEqual(json.loads(raw)['verification_rejections'], ['price_without_quote'])
+        self.assertNotIn('private model draft', raw)
+
     def test_live_database_name_is_checked_before_any_turn(self):
         scenario_dir = Path(__file__).resolve().parents[2] / "BTC-Data-Vong1-TEAMS" / \
             "test_set" / "public_sample"

@@ -3,7 +3,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /workspace
 
 FROM base AS ai
-COPY config/submission/ai.txt /tmp/requirements.txt
+COPY config/requirements/ai.txt /tmp/requirements.txt
 RUN python -m pip install --no-cache-dir -r /tmp/requirements.txt
 COPY ai-services/app ./ai-services/app
 COPY ai-services/migrations ./ai-services/migrations
@@ -21,7 +21,7 @@ ENV PYTHONPATH=/workspace/ai-services:/workspace
 ENTRYPOINT ["python", "/workspace/container_start.py"]
 
 FROM base AS backend
-COPY config/submission/backend.txt /tmp/requirements.txt
+COPY config/requirements/backend.txt /tmp/requirements.txt
 RUN python -m pip install --no-cache-dir -r /tmp/requirements.txt
 COPY backend/app ./backend/app
 COPY backend/migrations/0007_demo_users.sql ./backend/migrations/0007_demo_users.sql

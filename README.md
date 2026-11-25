@@ -11,17 +11,10 @@ git clone --branch main --single-branch https://github.com/PhucNguyenThanh04/Tel
 cd TeleSale-SudoCode2026
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r config/submission/host.txt
+python -m pip install -r config/requirements/host.txt
 ```
 
-Đặt file `.env` đầy đủ vào gốc repo. Nếu tự tạo cấu hình, copy `.env.example` thành `.env` rồi điền key/model/endpoint. File mẫu liệt kê đủ biến; ngày chấm BTC thay bằng key của BTC. `.env` riêng trong từng server không cần có khi chạy theo luồng Docker này.
-
-Hai trường sau trong `.env` chọn stack nộp bài. Khi thiếu `COMPOSE_FILE`, file mặc định `docker-compose.yml` cũng dẫn vào cùng stack; cấu hình phát triển cũ được tách sang `compose.dev.yml`:
-
-```dotenv
-COMPOSE_FILE=compose.submission.yml
-COMPOSE_PROJECT_NAME=telesale-btc
-```
+Đặt file `.env` ở gốc repo. Nếu tự tạo cấu hình, copy `.env.example` thành `.env` rồi điền key, model và endpoint của BTC. Nếu dùng lại `.env` từ bản trước, xóa dòng `COMPOSE_FILE`. Compose mặc định đọc `docker-compose.yml` với tên project `telesale-btc` để tiếp tục dùng các volume hiện có của project.
 
 ## 2. Bật toàn bộ server
 
@@ -31,7 +24,7 @@ docker compose up -d --build
 
 Lệnh bật PostgreSQL, Qdrant, Redis, bốn MCP server, AI service, backend và các worker. Bước này chỉ cần repo và `.env`, chưa cần thư mục dữ liệu BTC. Các server dùng volume nội bộ; lệnh không nạp dữ liệu và không chạy eval.
 
-Compose build một image AI và một image backend; MCP và worker dùng chung image AI. Chỉ cần chạy lệnh trên một lần sau khi clone và đặt `.env`; seed/eval sau đó kết nối tới các server đang chạy. `Dockerfile.submission.dockerignore` lọc context cho bản nộp; `.dockerignore` ở root lọc context khi dùng Dockerfile backend cũ. Virtualenv, cache, test, báo cáo, model weights và audio được loại khỏi context của bản nộp.
+Compose build hai image từ `Dockerfile`. MCP và worker dùng chung image AI. Seed và eval kết nối tới các server đang chạy. `.dockerignore` loại virtualenv, cache, test, báo cáo, model weights và audio khỏi build context.
 
 Nếu máy yêu cầu quyền quản trị Docker, dùng `sudo docker compose up -d --build` ở bước này. Các lệnh Python bên dưới chạy bằng user thường trong `.venv`.
 
@@ -46,7 +39,7 @@ thu_muc_lam_viec/
 ├── BTC-Data-Vong1-TEAMS/
 └── TeleSale-SudoCode2026/
     ├── .env
-    ├── compose.submission.yml
+    ├── docker-compose.yml
     ├── seed_btc.py
     ├── runtime/
     └── run_eval.py
@@ -71,7 +64,7 @@ Sau bước này, mở `http://127.0.0.1:8000/chat`:
 - `demo1` / `demo1-btc-2026`, gắn khách `C001`.
 - `demo2` / `demo2-btc-2026`, gắn khách `C002`.
 
-Nếu sửa mật khẩu hoặc khách gắn với tài khoản trong `.env`, dùng giá trị tương ứng.
+Có thể đặt mật khẩu hoặc khách gắn với tài khoản trong `.env` trước lần seed đầu tiên. Seed lại giữ thông tin đăng nhập của tài khoản đã tạo.
 
 ## 4. Chạy eval
 
@@ -105,7 +98,7 @@ python run_eval.py --scenarios ./eval/scenario_final \
 
 BTC thay `--scenarios` bằng thư mục bộ ẩn. `--config` xuất một trace; bỏ `--config` thì script chạy cả cặp và in bảng. Khi chạy cả cặp, `--out` nếu có là thư mục kết quả; khi chạy một cấu hình, `--out` là file JSONL. Runner kiểm tra nguồn BTC khớp database đã seed và từ chối ghi đè kết quả hoặc báo cáo lần chạy trước.
 
-Nếu preflight thất bại, CLI in `phase`, `code`, `service` và đường dẫn `*.report.json`; sửa server/cấu hình được chỉ ra rồi chọn `--out` mới để chạy lại. Các lệnh eval gọi model thật và có thể phát sinh phí API.
+Khi eval thất bại, CLI in `phase`, `code`, `service` và đường dẫn `*.report.json`. Nếu bộ kiểm tra từ chối câu trả lời, report ghi các mã lý do trong `verification_rejections`. Các lệnh eval gọi model thật và có thể phát sinh phí API.
 
 Scorer BTC có thể chấm lại hai trace, với các đường dẫn theo bố cục mặc định:
 
@@ -141,7 +134,7 @@ Bộ audio do nhóm bàn giao riêng, gồm `audio/*.wav` và `ground_truth.json
 
 ```bash
 python3 -m venv .venv-asr
-.venv-asr/bin/python -m pip install -r config/submission/asr.txt
+.venv-asr/bin/python -m pip install -r config/requirements/asr.txt
 .venv-asr/bin/python -m speech transcribe \
   --audio ./dataset/audio --out ./results-submission/asr-team
 .venv-asr/bin/python -m speech eval \
@@ -156,7 +149,6 @@ ASR `whisper-small` dùng weights `Systran/faster-whisper-small`, mặc định 
 
 | Nhóm cấu hình | Cách dùng |
 |---|---|
-| `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME` | Chọn stack Docker chạy server. Seed/eval kết nối qua các cổng host của stack đó. |
 | `BTC_ROOT` | Gói BTC có `catalog/`, `policy/`, `schemas/`, `eval/`, `asr/`. |
 | `SUBMISSION_POSTGRES_PORT`, `SUBMISSION_QDRANT_PORT` | Cổng loopback để script Python seed/eval trên host kết nối vào database trong Docker. |
 | `SCENARIOS_DIR`, `RESULTS_DIR` | Bộ scenario mặc định và nơi ghi kết quả; cờ của script eval có thể ghi đè. |

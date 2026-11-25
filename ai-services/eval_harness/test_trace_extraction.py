@@ -41,6 +41,12 @@ def test_annotated_claims_exclude_customer_budget():
         assert actual == case["expected"], case["text"]
 
 
+def test_exact_price_and_zero_fees_are_exported_as_distinct_claims():
+    claims = extract_claims('Giá 2,03 triệu và phí vận chuyển là 0 đồng. Phí thu hộ là 0đ.', [])
+    assert {(claim['field'], claim['value']) for claim in claims} == {
+        ('price_vnd', 2_030_000), ('freeship', True), ('cod_fee_vnd', 0)}
+
+
 def test_boolean_fact_use_requires_matching_polarity_and_prior_source():
     prior_true = {"has_children": {"value": True, "source": "old-session:turn-1"}}
     prior_false = {"has_children": {"value": False, "source": "old-session:turn-1"}}

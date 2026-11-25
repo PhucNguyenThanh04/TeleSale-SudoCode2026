@@ -7,6 +7,10 @@ from app.mcp_servers.mcp_shared.commerce_rules import _search_text
 from app.agent.guardrails.claims import assertion_text
 
 
+_FREE_SHIPPING = re.compile(r"\b(?:freeship|mien phi (?:ship|van chuyen))\b")
+_FREE_COD = re.compile(r"\bmien phi (?:cod|thu ho)\b")
+
+
 def _fold(text: str) -> str:
     return _search_text(text)
 
@@ -66,17 +70,25 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
             continue
         codes = {code for code in re.findall(r"\b[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+\b", clause)
                  if not code.startswith(("SKU-", "OD-")) and code not in order_ids}
-        if not codes and not re.search(r"\b(?:khuyen mai|uu dai|giam|tang|bieu|freeship|mien phi (?:ship|van chuyen))\b", commercial):
+        shipping = bool(_FREE_SHIPPING.search(folded))
+        cod = bool(_FREE_COD.search(folded))
+        if not (codes or shipping or cod or re.search(r"\b(?:khuyen mai|uu dai|giam|tang|bieu)\b", commercial)):
             continue
         if any(call.get('name') == 'pricing.quote_order' for call in successful):
             from app.mcp_servers.mcp_shared.basket import basket_unit_quote
             unit = basket_unit_quote(clause, successful)
             baskets = [call for call in successful if call.get('name') == 'pricing.quote_order']
-            if (unit is None and len(baskets) == 1
-                    and re.search(r'freeship|mien phi (?:ship|van chuyen)', folded)
+            if unit is not None and cod and len(baskets) == 1:
+                unit['result']['applied_promos'].extend(
+                    promo for promo in baskets[0]['result'].get('order_promos', [])
+                    if promo.get('type') == 'freecod')
+            if (unit is None and len(baskets) == 1 and (cod or shipping)
                     and not re.search(r'\b(?:giam|tang|bieu)\b|%', commercial)):
                 basket = baskets[0]
-                unit = {'name': 'pricing.get_quote', 'args': {'on': basket.get('args', {}).get('on')},
+                sku = focus_sku
+                if sku and not any(row.get('sku') == sku for row in basket['result'].get('units', [])):
+                    return 'promotion_quote_missing'
+                unit = {'name': 'pricing.get_quote', 'args': {'on': basket.get('args', {}).get('on'), 'sku': sku},
                         'result': {'applied_promos': basket['result'].get('order_promos', []),
                                    'freeship': basket['result'].get('freeship', False)}}
             if unit is None:
@@ -127,13 +139,15 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
                 return 'promotion_code_mismatch'
             if not inactive:
                 promos = [p for p in promos if p.get('promo_code') in codes]
-        shipping = bool(re.search(r"freeship|mien phi (?:ship|van chuyen)", folded))
+        cod_supported = any(p.get("type") == "freecod" for p in promos)
         gift = bool(re.search(r"\b(?:tang|bieu)\b", commercial))
         discount = bool(re.search(r"\bgiam\b", commercial))
         if inactive and not codes and (gift and any(p.get("type") == "gift" for p in promos)
-                                      or shipping and result.get("freeship") is True):
+                                      or shipping and result.get("freeship") is True or cod and cod_supported):
             return "promotion_detail_unverified"
         if shipping and not inactive and result.get("freeship") is not True:
+            return "promotion_detail_unverified"
+        if cod and not inactive and not cod_supported:
             return "promotion_detail_unverified"
         if gift and not inactive and not _gift_supported(clause, promos, items):
             return "promotion_detail_unverified"
@@ -161,6 +175,8 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
                 benefit_sets.append([p for p in promos if p.get("discount_vnd", 0) > 0])
             if shipping:
                 benefit_sets.append([p for p in promos if p.get("type") == "freeship"])
+            if cod:
+                benefit_sets.append([p for p in promos if p.get("type") == "freecod"])
             if not benefit_sets:
                 benefit_sets = [promos]
             if any(not any(p.get("valid_until") == expiry for p in benefits) for benefits in benefit_sets):

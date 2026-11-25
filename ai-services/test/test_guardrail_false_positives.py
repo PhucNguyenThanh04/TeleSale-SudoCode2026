@@ -91,6 +91,27 @@ def test_price_formats_match_the_same_quote(amount):
     assert check_answer(answer, calls) == (answer, None)
 
 
+def test_stock_count_before_trong_kho_is_not_read_as_millions():
+    calls = [
+        {'name': 'pricing.get_quote', 'args': {'sku': 'SKU-XM-4P'},
+         'result': {'sku': 'SKU-XM-4P', 'list_price_vnd': 5_490_000,
+                    'final_price_vnd': 5_490_000, 'applied_promos': []}},
+        {'name': 'inventory.check', 'args': {'sku': 'SKU-XM-4P'},
+         'result': {'sku': 'SKU-XM-4P', 'in_stock': True, 'qty': 20}},
+    ]
+    answer = 'Giá 5.490.000đ. Hiện mẫu này còn hàng (20 trong kho) ạ.'
+    assert check_answer(answer, calls) == (answer, None)
+    assert check_answer(answer.replace('20 trong', '20 tr trong'), calls)[1] == 'price_without_quote'
+
+
+@pytest.mark.parametrize('amount', ['2,03 triệu', '2.03 triệu'])
+def test_decimal_millions_match_the_exact_quote(amount):
+    calls = [{'name': 'pricing.get_quote', 'args': {'sku': 'SKU-TEST'},
+              'result': {'sku': 'SKU-TEST', 'final_price_vnd': 2_030_000}}]
+    answer = f'Mẫu này giá {amount}.'
+    assert check_answer(answer, calls) == (answer, None)
+
+
 @pytest.mark.parametrize("source,answer,accepted", [
     ("Bảo hành 12 tháng.", "Sản phẩm bảo hành 1 năm ạ.", True),
     ("Bảo hành 1 năm.", "Sản phẩm bảo hành 12 tháng ạ.", True),

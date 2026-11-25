@@ -12,7 +12,7 @@ from app.constants import DEFAULT_MAX_TOOL_CALLS, DEFAULT_PROMPT_HISTORY_TURNS
 
 
 
-_ENV_FILE = os.getenv('AI_ENV_FILE', str(Path(__file__).resolve().parents[1] / '.env'))
+_ENV_FILE = os.getenv('AI_ENV_FILE', str(Path(__file__).resolve().parents[2] / '.env'))
 
 
 class Settings(BaseSettings):

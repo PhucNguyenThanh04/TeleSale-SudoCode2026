@@ -20,7 +20,7 @@ def configuration(root, source=None):
     values.update({key: os.environ[key] for key in values if key in os.environ})
     required = ['POSTGRES_PASSWORD', 'REVIEWER_PASSWORD', 'WORKER_PASSWORD', 'BACKEND_PASSWORD',
                 'LLM_API_KEY', 'LLM_MODEL', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN',
-                'MCP_INTERNAL_TOKEN', 'DEMO_JWT_SECRET', 'DEMO_USER_1_PASSWORD', 'DEMO_USER_2_PASSWORD',
+                'MCP_INTERNAL_TOKEN', 'AI_INTERNAL_TOKEN', 'DEMO_JWT_SECRET', 'DEMO_USER_1_PASSWORD', 'DEMO_USER_2_PASSWORD',
                 *['MCP_' + name.upper() + '_PASSWORD' for name in ('catalog', 'order', 'memory', 'knowledge')]]
     missing = [key for key in required if not values.get(key, '').strip()]
     if missing:
