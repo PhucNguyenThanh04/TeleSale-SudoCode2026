@@ -65,8 +65,13 @@ def test_delivery_date_cannot_be_borrowed_from_another_product_or_ambiguous_quot
     'Em là trợ lý bán hàng, em có thể hỗ trợ anh/chị tìm kiếm sản phẩm phù hợp với nhu cầu, '
     'cung cấp thông tin chi tiết về thông số, giá cả, chương trình ưu đãi cũng như hỗ trợ đặt hàng '
     'và tra cứu trạng thái đơn hàng ạ.',
+    'Em có thể hỗ trợ anh/chị tìm kiếm sản phẩm phù hợp với nhu cầu, cung cấp thông tin chi tiết '
+    'về thông số, giá cả, chương trình ưu đãi hiện có hoặc hỗ trợ kiểm tra trạng thái đơn hàng.',
+    'Em có thể hỗ trợ anh/chị cung cấp thông tin chi tiết về thông số, báo giá ưu đãi hiện có hoặc kiểm tra trạng thái đơn hàng.',
     'Dạ, tôi có thể tư vấn sản phẩm và kiểm tra chương trình khuyến mãi cho bạn.',
     'Bên em sẵn sàng giải đáp thắc mắc về giá, tồn kho, ưu đãi và giao hàng.',
+    'Hiện tại em chưa nhận được thông tin chi tiết về chương trình ưu đãi cho sản phẩm anh/chị quan tâm.',
+    'Hiện tại hệ thống chưa cập nhật được thông tin báo giá ưu đãi cho sản phẩm này.',
 ])
 def test_service_capabilities_are_not_current_commercial_promises(answer):
     assert check_answer(answer, []) == (answer, None)
@@ -83,6 +88,32 @@ def test_service_capabilities_are_not_current_commercial_promises(answer):
     'Em có thể tư vấn ưu đãi PROMO-FREE.',
     'Em có thể kiểm tra, mọi đơn hàng đều giảm giá.',
     'Em có thể tư vấn, khuyến mãi hết hạn.',
+    'Sản phẩm này không có ưu đãi.',
 ])
 def test_capability_language_does_not_hide_concrete_commercial_claims(answer):
     assert check_answer(answer, [])[1] is not None
+
+
+def test_single_named_product_carries_across_sentences_when_multiple_quotes_exist():
+    observations = [
+        {'name': 'catalog.get_details', 'args': {'sku': 'SKU-XM-4P'},
+         'result': {'items': [{'sku': 'SKU-XM-4P', 'name': 'Máy lọc không khí Xiaomi Smart 4 Pro', 'variants': []}]}},
+        {'name': 'catalog.get_details', 'args': {'sku': 'SKU-OTHER'},
+         'result': {'items': [{'sku': 'SKU-OTHER', 'name': 'Máy lọc không khí Sharp FP-J40E', 'variants': []}]}},
+        {'name': 'inventory.check', 'args': {'sku': 'SKU-XM-4P', 'on': '2026-10-22'},
+         'result': {'sku': 'SKU-XM-4P', 'in_stock': True, 'qty': 20}},
+        {'name': 'inventory.check', 'args': {'sku': 'SKU-OTHER', 'on': '2026-10-22'},
+         'result': {'sku': 'SKU-OTHER', 'in_stock': False, 'qty': 0}},
+        {'name': 'pricing.get_quote', 'args': {'sku': 'SKU-XM-4P', 'on': '2026-10-22'},
+         'result': {'sku': 'SKU-XM-4P', 'list_price_vnd': 5490000, 'final_price_vnd': 5490000,
+                    'applied_promos': [], 'freeship': True, 'estimated_delivery': '2026-10-26'}},
+        {'name': 'pricing.get_quote', 'args': {'sku': 'SKU-OTHER', 'on': '2026-10-22'},
+         'result': {'sku': 'SKU-OTHER', 'list_price_vnd': 3990000, 'final_price_vnd': 3990000,
+                    'applied_promos': [], 'freeship': False, 'estimated_delivery': '2026-10-27'}},
+    ]
+    single_subject = ('Máy lọc không khí Xiaomi Smart 4 Pro hiện còn hàng. '
+                      'Giá bán hôm nay là 5.490.000đ, miễn phí vận chuyển và dự kiến giao ngày 26/10/2026.')
+    assert check_answer(single_subject, observations) == (single_subject, None)
+    ambiguous = ('Máy lọc không khí Xiaomi Smart 4 Pro và Máy lọc không khí Sharp FP-J40E đều tốt. '
+                 'Giá bán hôm nay là 5.490.000đ.')
+    assert check_answer(ambiguous, observations)[1] == 'price_without_quote'

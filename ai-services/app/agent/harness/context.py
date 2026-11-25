@@ -388,13 +388,33 @@ async def _refresh_brief_products(state: TurnState, tools: ToolGateway, skus, ad
         return {'name': name, 'args': args, 'result': result}
 
     queries = []
-    for sku in dict.fromkeys(skus):
+    unique_skus = list(dict.fromkeys(skus))
+    for sku in unique_skus:
         args = {'sku': sku, 'on': request.on.isoformat()}
         quote = {**args, 'customer_phone': state['customer_phone']}
         if address:
             quote['address'] = address
-        queries.extend((read('inventory.check', args), read('pricing.get_quote', quote)))
-    return [call for call in await asyncio.gather(*queries) if call is not None]
+        queries.extend((read('catalog.get_details', {'sku': sku}),
+                        read('inventory.check', args),
+                        read('pricing.get_quote', quote)))
+    refreshed = [call for call in await asyncio.gather(*queries) if call is not None]
+    known = {item.get('sku') for call in [*existing, *refreshed]
+             if call.get('name') in {'catalog.search', 'catalog.get_details'}
+             and 'error' not in call.get('result', {})
+             for item in call['result'].get('items', [])
+             if isinstance(item, dict) and item.get('name')}
+    gift_skus = list(dict.fromkeys(
+        promo['gift_sku'] for call in refreshed
+        if call.get('name') == 'pricing.get_quote' and 'error' not in call.get('result', {})
+        for promo in call['result'].get('applied_promos', [])
+        if isinstance(promo, dict) and promo.get('type') == 'gift'
+        and isinstance(promo.get('gift_sku'), str) and promo['gift_sku']
+        and promo['gift_sku'] not in known
+        and (not promo.get('valid_until') or promo['valid_until'] >= request.on.isoformat())))
+    if gift_skus:
+        refreshed.extend(call for call in await asyncio.gather(
+            *(read('catalog.get_details', {'sku': sku}) for sku in gift_skus)) if call is not None)
+    return refreshed
 
 
 async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway,

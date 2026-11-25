@@ -180,3 +180,23 @@ async def _promotion_reaches_worker_projection():
     assert all(f['source_tool'] == 'pricing.get_quote' and f['scope_id'] == 'SKU-LOCAL-A'
                for f in stored if f['key'] in {'promo_code', 'promo_expiry'})
     extractor.assert_awaited_once()
+
+
+def test_gift_catalog_details_is_not_recorded_as_product_advised():
+    gift_promo = {'promo_code': 'XM-COMBO', 'type': 'gift', 'discount_vnd': 0, 'gift_sku': 'SKU-XM-FLT'}
+    calls = [
+        {'name': 'catalog.search', 'args': {'query': 'Xiaomi Smart 4 Pro'},
+         'result': {'items': [{'sku': 'SKU-XM-4P', 'name': 'Máy lọc không khí Xiaomi Smart 4 Pro'}]}},
+        quote([gift_promo], sku='SKU-XM-4P', shipping=True),
+        {'name': 'catalog.get_details', 'args': {'sku': 'SKU-XM-FLT'},
+         'result': {'items': [{'sku': 'SKU-XM-FLT', 'name': 'Màng lọc thay thế Xiaomi Smart 4'}]}},
+    ]
+    answer = ('Máy lọc không khí Xiaomi Smart 4 Pro có giá 900.000đ, '
+              'tặng kèm Màng lọc thay thế Xiaomi Smart 4 ạ.')
+    advised = {item['value'] for item in reported_tool_candidates(answer, calls)
+               if item['key'] == 'product_advised'}
+    assert advised == {'SKU-XM-4P'}
+    calls_with_standalone = [*calls, quote([], sku='SKU-XM-FLT')]
+    advised_standalone = {item['value'] for item in reported_tool_candidates(answer, calls_with_standalone)
+                          if item['key'] == 'product_advised'}
+    assert advised_standalone == {'SKU-XM-4P', 'SKU-XM-FLT'}
