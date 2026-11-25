@@ -1,8 +1,9 @@
 import asyncio
 import json
 from pathlib import Path
+from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from rag_eval.runner import digest
@@ -70,21 +71,37 @@ class MCPRetriever:
         return await self.call('policy.search', args)
 
 
+class RAGAnswer(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    answer: str = Field(min_length=1)
+    action: Literal['answer', 'clarify', 'refuse', 'handoff']
+
+
 class Generator:
     prompt = GENERATION_PROMPT
 
     def __init__(self, settings):
         from app.infarstructure.llm import build_llm
-        self.model = build_llm(settings)
+        self.model = build_llm(settings).with_structured_output(
+            RAGAnswer, method='function_calling', include_raw=True)
         self.identity = {'model': settings.llm_model, 'backend': 'api',
             'temperature': settings.llm_temperature, 'max_tokens': settings.llm_max_tokens,
             'seed': settings.llm_seed, 'prompt_sha256': digest(GENERATION_PROMPT),
-            'endpoint_sha256': digest(str(settings.llm_base_url))}
+            'endpoint_sha256': digest(str(settings.llm_base_url)),
+            'output_method': 'function_calling',
+            'output_schema_sha256': digest(RAGAnswer.model_json_schema())}
 
     async def generate(self, payload):
         from langchain_core.messages import HumanMessage, SystemMessage
+        from langchain_core.utils.json import parse_json_markdown
         result = await self.model.ainvoke([SystemMessage(content=GENERATION_PROMPT),
             HumanMessage(content=json.dumps(payload, ensure_ascii=False))])
-        parsed = json.loads(result.content)
-        return {'answer': parsed['answer'], 'action': parsed['action'],
-                'usage': result.usage_metadata or {}}
+        raw = result['raw']
+        if raw.response_metadata.get('finish_reason') == 'length':
+            raise ValueError('Generation token limit reached')
+        parsed = result['parsed']
+        if parsed is None:
+            if result['parsing_error'] is not None:
+                raise result['parsing_error']
+            parsed = RAGAnswer.model_validate(parse_json_markdown(raw.content, parser=json.loads))
+        return {**parsed.model_dump(), 'usage': raw.usage_metadata or {}}

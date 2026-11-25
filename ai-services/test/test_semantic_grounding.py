@@ -71,6 +71,9 @@ def turn_state(answer):
      'unsupported_answer_claim'),
     ('Mọi đơn đều được hỗ trợ.', verdict(False, 'missing_condition', 'Mọi đơn'),
      'unsupported_answer_claim'),
+    ('- **Về quy trình thu hồi:** Khoảng 2-5 ngày làm việc.',
+     verdict(False, 'unsupported_claim', 'Về quy trình thu hồi: Khoảng 2-5 ngày làm việc'),
+     'unsupported_answer_claim'),
     ('Mình muốn tìm hiểu tính năng nào?', verdict(), None),
 ])
 def test_entire_answer_requires_a_consistent_structured_verdict(answer, decision, expected):

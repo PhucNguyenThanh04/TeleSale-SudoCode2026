@@ -125,8 +125,7 @@ async def review_answer(model, answer: str, context: dict) -> str | None:
         if verdict.supported and verdict.reason == 'supported' and not verdict.unsupported_claim:
             return None
         if (not verdict.supported and verdict.reason != 'supported'
-                and verdict.unsupported_claim.strip()
-                and verdict.unsupported_claim.casefold() in answer.casefold()):
+                and verdict.unsupported_claim.strip()):
             return (verdict.reason if verdict.reason in {'unanswered_request',
                 'unnecessary_clarification', 'customer_constraint_violated'} else 'unsupported_answer_claim')
     except Exception:
