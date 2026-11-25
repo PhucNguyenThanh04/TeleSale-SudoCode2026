@@ -193,6 +193,38 @@ def reported_tool_fact(key: str, value: Any, answer: str,
 
 def reported_tool_candidates(answer: str, calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
+    gift_skus = {
+        promo["gift_sku"]
+        for call in calls
+        if isinstance(call.get("result"), dict) and "error" not in call["result"]
+        and call.get("name") in {"pricing.get_quote", "pricing.quote_order"}
+        for quote in [call["result"], *call["result"].get("units", [])]
+        if isinstance(quote, dict)
+        for promo in quote.get("applied_promos", [])
+        if isinstance(promo, dict) and promo.get("type") == "gift"
+        and isinstance(promo.get("gift_sku"), str) and promo["gift_sku"]
+    }
+    direct_skus = {
+        item.get("sku")
+        for call in calls
+        if isinstance(call.get("result"), dict) and "error" not in call["result"]
+        and call.get("name") == "catalog.search"
+        for item in call["result"].get("items", [])
+        if isinstance(item, dict) and isinstance(item.get("sku"), str)
+    } | {
+        call.get("result", {}).get("sku") or call.get("args", {}).get("sku")
+        for call in calls
+        if isinstance(call.get("result"), dict) and "error" not in call["result"]
+        and call.get("name") in {"pricing.get_quote", "inventory.check", "order.create"}
+    } | {
+        unit.get("sku")
+        for call in calls
+        if isinstance(call.get("result"), dict) and "error" not in call["result"]
+        and call.get("name") == "pricing.quote_order"
+        for unit in call["result"].get("units", [])
+        if isinstance(unit, dict) and isinstance(unit.get("sku"), str)
+    }
+    gift_only_skus = gift_skus - direct_skus
     for call in calls:
         result = call.get("result", {})
         if not isinstance(result, dict) or "error" in result:
@@ -202,7 +234,8 @@ def reported_tool_candidates(answer: str, calls: list[dict[str, Any]]) -> list[d
         sku = None
         if name in CATALOG_TOOLS:
             pairs.extend((Slot.PRODUCT_ADVISED, item.get("sku"))
-                         for item in result.get("items", []) if isinstance(item, dict))
+                         for item in result.get("items", [])
+                         if isinstance(item, dict) and item.get("sku") not in gift_only_skus)
         elif name == "pricing.get_quote":
             sku = result.get("sku") or call.get("args", {}).get("sku")
             pairs.extend([(Slot.PRODUCT_ADVISED, result.get("sku")),

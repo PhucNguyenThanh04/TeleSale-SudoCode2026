@@ -182,3 +182,34 @@ def test_real_runtime_persists_gift_evidence_and_reuses_it_next_turn(delivery):
             await runtime.close()
 
     asyncio.run(run())
+
+
+def test_repair_backfills_missing_catalog_details_for_quoted_skus():
+    request = TextTurnRequest(client_msg_id=uuid4(), session_id=uuid4(), on='2032-04-10',
+        channel='hotline', channel_identity=None, input_mode='clean', text='Giá mẫu 4 Pro thế nào em?')
+    state = {
+        'request': request, 'safe_text': request.text, 'identity_status': 'unknown',
+        'agent_draft': 'Máy lọc Xiaomi Smart 4 Pro giá 5.490.000đ ạ.',
+        'tool_calls': [],
+        'session_tool_calls': [
+            {'name': 'pricing.get_quote', 'args': {'sku': 'SKU-XM-4P', 'on': '2032-04-10'},
+             'result': {'sku': 'SKU-XM-4P', 'list_price_vnd': 5490000, 'final_price_vnd': 5490000,
+                        'applied_promos': []}},
+            {'name': 'pricing.get_quote', 'args': {'sku': 'SKU-XM-FLT', 'on': '2032-04-10'},
+             'result': {'sku': 'SKU-XM-FLT', 'list_price_vnd': 590000, 'final_price_vnd': 590000,
+                        'applied_promos': []}},
+        ],
+    }
+
+    async def invoke(name, args):
+        assert name == 'catalog.get_details'
+        names = {'SKU-XM-4P': 'Máy lọc Xiaomi Smart 4 Pro', 'SKU-XM-FLT': 'Màng lọc Xiaomi Smart 4'}
+        return {'items': [{'sku': args['sku'], 'name': names[args['sku']], 'variants': []}], 'total': 1}
+
+    gateway = SimpleNamespace(invoke=AsyncMock(side_effect=invoke))
+    repaired = 'Máy lọc Xiaomi Smart 4 Pro giá bán hôm nay là 5.490.000 đồng ạ.'
+    model = ReviewModel([verdict()], repaired)
+    result = asyncio.run(AgentNodes(model, gateway, None, 6, 6).verify_agent(state))
+    assert result['verified_answer'] == repaired
+    assert result['reply_error'] is None
+    assert {call['args']['sku'] for call in result['tool_calls']} == {'SKU-XM-4P', 'SKU-XM-FLT'}

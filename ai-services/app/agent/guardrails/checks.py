@@ -492,13 +492,20 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *, focus_
         quotes[sku] = result
     if not quotes:
         return False
-    for clause in commercial_clauses(candidate):
+    clauses = commercial_clauses(candidate)
+    answer_skus = set()
+    for _clause in clauses:
+        answer_skus.update(resolve_claim_skus(_clause, successful, focus_sku=focus_sku))
+    answer_quote_skus = answer_skus & quotes.keys()
+    for clause in clauses:
         claims = _money_claims(clause)
         if not claims:
             continue
         if set(_LEGACY_SKU_SIGNAL.findall(clause)) - known_skus(successful):
             return False
         bound = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
+        if not bound and len(answer_quote_skus) == 1:
+            bound = answer_quote_skus
         direct_parents = {sku for sku in bound & quotes.keys() if any(
             c.get('name') in CATALOG_TOOLS and any(i.get('sku') == sku for i in c['result'].get('items', []))
             for c in successful)}
@@ -671,12 +678,18 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
                       and not any(c.get('args', {}).get('sku') == call['result']['replacement_inventory']['sku']
                                   and all(c['result'].get(key) == call['result']['replacement_inventory'].get(key)
                                           for key in ('in_stock', 'qty')) for c in checks))
-        for clause in commercial_clauses(candidate):
+        stock_clauses = commercial_clauses(candidate)
+        check_skus = {c.get('args', {}).get('sku') for c in checks if c.get('args', {}).get('sku')}
+        answer_stock_skus = {sku for _c in stock_clauses
+                             for sku in resolve_claim_skus(_c, successful, focus_sku=focus_sku)} & check_skus
+        for clause in stock_clauses:
             if not (_STOCK.search(clause) or _STOCK_QTY.search(clause)):
                 continue
             claimed_skus = mentioned_skus(clause, evidenced_skus)
             unverified_legacy_skus = set(_LEGACY_SKU_SIGNAL.findall(clause)) - claimed_skus
             bound = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
+            if not bound and len(answer_stock_skus) == 1:
+                bound = answer_stock_skus
             selected = [c for c in checks if not bound or c.get('args', {}).get('sku') in bound]
             if len(bound) > 1 and not any(c.get('args', {}).get('sku') in {
                     item.get('sku') for catalog in successful if catalog.get('name') in CATALOG_TOOLS
@@ -711,11 +724,17 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         delivery_verified = len(orders) == 1 and str(orders[0].get("estimated_delivery")) in candidate
         if not orders and not re.search(r'cam kết|đảm bảo|chắc chắn', candidate, re.IGNORECASE):
             from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
-            clauses = [c for c in commercial_clauses(candidate) if _DELIVERY.search(c)]
+            all_clauses = commercial_clauses(candidate)
+            available_quotes = [c for c in successful if c['name'] == 'pricing.get_quote']
+            available_quote_skus = {c.get('args', {}).get('sku') for c in available_quotes if c.get('args', {}).get('sku')}
+            answer_delivery_skus = {sku for _c in all_clauses
+                                    for sku in resolve_claim_skus(_c, successful, focus_sku=focus_sku)} & available_quote_skus
+            clauses = [c for c in all_clauses if _DELIVERY.search(c)]
             delivery_verified = bool(clauses)
             for clause in clauses:
                 skus = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
-                available_quotes = [c for c in successful if c['name'] == 'pricing.get_quote']
+                if not skus and len(answer_delivery_skus) == 1:
+                    skus = answer_delivery_skus
                 if not skus and len(available_quotes) == 1 and available_quotes[0].get('args', {}).get('sku'):
                     skus = {available_quotes[0]['args']['sku']}
                 quotes = [c for c in available_quotes if c.get('args', {}).get('sku') in skus]

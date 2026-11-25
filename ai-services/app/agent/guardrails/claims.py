@@ -24,7 +24,7 @@ _CONCRETE_CAPABILITY_CLAIM = re.compile(
     r'\b(?:mien phi|freeship|tang|bieu|trieu|nghin|ngan|phan tram|da|het han|het hieu luc|'
     r'(?:deu|luon)\s+(?:giam|co|duoc)|'
     r'(?:mot|hai|ba|bon|nam|sau|bay|tam|chin|muoi)\s+dong|'
-    r'(?:dang|hien)\s+(?:co|giam|ap dung)|(?:khong|chua)\s+(?:co|con|duoc)|'
+    r'(?<!uu dai )(?<!khuyen mai )\b(?:dang|hien)\s+co\b|(?:dang|hien)\s+(?:giam|ap dung)|(?:khong|chua)\s+(?:co|con|duoc)|'
     r'(?:co|ap dung)\s+(?:khuyen mai|uu dai))\b')
 _ZERO_FEE = re.compile(
     r"(?P<label>\*\*|__|`)?\bphí\s+(?P<fee>cod|thu hộ|ship|vận chuyển|giao hàng)"

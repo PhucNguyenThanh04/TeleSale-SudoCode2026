@@ -152,17 +152,36 @@ class AgentNodes(SessionNodes):
             import json
             from langchain_core.messages import SystemMessage
             if self.tools is not None and not state.get('tool_failed'):
-                known = {item.get('sku') for call in calls
-                    if call.get('name') in {'catalog.search', 'catalog.get_details'}
-                    for item in call['result'].get('items', []) if item.get('name')}
-                missing = dict.fromkeys(promo['gift_sku'] for call in calls
-                    if call.get('name') in {'pricing.get_quote', 'pricing.quote_order'}
-                    for quote in [call['result'], *call['result'].get('units', [])]
-                    for promo in quote.get('applied_promos', [])
-                    if promo.get('type') == 'gift' and promo.get('gift_sku')
-                    and promo['gift_sku'] not in known
-                    and (not promo.get('valid_until')
-                         or promo['valid_until'] >= state['request'].on.isoformat()))
+                known = set()
+                for call in calls:
+                    if call.get('name') in {'catalog.search', 'catalog.get_details'}:
+                        for item in call['result'].get('items', []):
+                            if isinstance(item, dict) and item.get('name'):
+                                if item.get('sku'):
+                                    known.add(item['sku'])
+                                for variant in item.get('variants', []):
+                                    if isinstance(variant, dict) and variant.get('variant_sku'):
+                                        known.add(variant['variant_sku'])
+                missing_skus = []
+                for call in calls:
+                    if call.get('name') in {'pricing.get_quote', 'pricing.quote_order'}:
+                        for quote in [call['result'], *call['result'].get('units', [])]:
+                            if not isinstance(quote, dict):
+                                continue
+                            q_sku = quote.get('sku') or (call.get('args', {}).get('sku') if call.get('name') == 'pricing.get_quote' else None)
+                            if isinstance(q_sku, str) and q_sku and q_sku not in known:
+                                missing_skus.append(q_sku)
+                            for promo in quote.get('applied_promos', []):
+                                if (isinstance(promo, dict) and promo.get('type') == 'gift'
+                                        and promo.get('gift_sku') and promo['gift_sku'] not in known
+                                        and (not promo.get('valid_until')
+                                             or promo['valid_until'] >= state['request'].on.isoformat())):
+                                    missing_skus.append(promo['gift_sku'])
+                    elif call.get('name') == 'inventory.check':
+                        i_sku = call.get('args', {}).get('sku')
+                        if isinstance(i_sku, str) and i_sku and i_sku not in known:
+                            missing_skus.append(i_sku)
+                missing = dict.fromkeys(missing_skus)
                 business = BusinessTools(self.tools, state, self.max_tool_calls, self.clock)
                 for sku in missing:
                     if (state.get('tool_count', 0) >= self.max_tool_calls

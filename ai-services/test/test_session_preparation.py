@@ -35,9 +35,9 @@ class ReturningMemory(FakeMemory):
 
 class QuoteGateway(FakeGateway):
     async def invoke(self, name, args):
-        if name == "catalog.search":
+        if name in {"catalog.search", "catalog.get_details"}:
             self.calls.append((name, args))
-            return {"items": [{"sku": "SKU-AP-X", "name": "Máy lọc AirPure X",
+            return {"items": [{"sku": args.get("sku", "SKU-AP-X"), "name": "Máy lọc AirPure X",
                                "variants": []}], "total": 1}
         if name == "pricing.get_quote":
             self.calls.append((name, args))
@@ -87,7 +87,7 @@ class SessionPreparationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([name for name, _ in self.gateway.calls].count("crm.get_customer"), 1)
         self.assertEqual([name for name, _ in self.gateway.calls].count("pricing.get_quote"), 1)
         self.assertEqual([call['name'] for call in self.runtime.state_for(self.request)['prepared_tool_calls']],
-                         ['crm.get_customer', 'inventory.check', 'pricing.get_quote'])
+                         ['crm.get_customer', 'catalog.get_details', 'inventory.check', 'pricing.get_quote'])
         self.assertEqual(len(self.memory.turns[str(self.request.session_id)]), 1)
         self.assertNotIn('"customer": ""', self.model.seen[0])
         second = turn("Tôi muốn hỏi tiếp", self.request.session_id)
@@ -253,3 +253,57 @@ class SessionPreparationTest(unittest.IsolatedAsyncioTestCase):
         response = await asyncio.wait_for(self.runtime.run(self.request), 2)
         self.assertIsNotNone(response.call_brief)
         self.assertEqual(len(self.memory.turns[str(self.request.session_id)]), 1)
+
+    async def test_returning_multi_product_prepare_verifies_named_price_stock_and_gift_on_first_turn(self):
+        class MultiProductMemory(ReturningMemory):
+            def __init__(self):
+                super().__init__()
+                self.profile = {"preferred_color": {"value": "trắng", "source_kind": "customer"}}
+
+            async def read_context(self, session_id, customer_id):
+                result = await super().read_context(session_id, customer_id)
+                result["scoped_facts"] = {
+                    "product": {
+                        "SKU-XM-4P": {"product_advised": {"value": "SKU-XM-4P", "source_kind": "tool"}},
+                        "SKU-OTHER": {"product_advised": {"value": "SKU-OTHER", "source_kind": "tool"}},
+                    },
+                    "room": {},
+                }
+                return result
+
+        class MultiProductGateway(FakeGateway):
+            async def invoke(self, name, args):
+                if name == "catalog.get_details":
+                    self.calls.append((name, args))
+                    names = {
+                        "SKU-XM-4P": "Máy lọc không khí Xiaomi Smart 4 Pro",
+                        "SKU-OTHER": "Máy lọc không khí Sharp FP-J40E",
+                        "SKU-XM-FLT": "Màng lọc thay thế Xiaomi Smart 4",
+                    }
+                    sku = args["sku"]
+                    return {"items": [{"sku": sku, "name": names[sku], "variants": []}], "total": 1}
+                if name == "pricing.get_quote":
+                    self.calls.append((name, args))
+                    if args["sku"] == "SKU-XM-4P":
+                        return {
+                            "sku": "SKU-XM-4P", "list_price_vnd": 5490000, "final_price_vnd": 5490000,
+                            "applied_promos": [{"promo_code": "XM-COMBO", "type": "gift",
+                                                "discount_vnd": 0, "gift_sku": "SKU-XM-FLT"}],
+                            "freeship": True,
+                        }
+                    return {"sku": args["sku"], "list_price_vnd": 3990000, "final_price_vnd": 3990000,
+                            "applied_promos": [], "freeship": False}
+                return await super().invoke(name, args)
+
+        reply = ("Em đã kiểm tra lại, Máy lọc không khí Xiaomi Smart 4 Pro hiện vẫn còn hàng "
+                 "và giá bán hôm nay là 5.490.000đ. Khi mua máy, anh vẫn được tặng kèm một "
+                 "Màng lọc thay thế Xiaomi Smart 4 và được miễn phí vận chuyển anh nhé.")
+        self.memory = MultiProductMemory()
+        self.gateway = MultiProductGateway()
+        self.model = FakeToolModel(replies=[AIMessage(content=reply)])
+        self.runtime = AgentHarnessRuntime(self.model, self.gateway, self.memory)
+        await self.prepare()
+        response = await self.runtime.run(self.request)
+        self.assertEqual(response.agent_text, reply)
+        self.assertIn(("catalog.get_details", {"sku": "SKU-XM-4P"}), self.gateway.calls)
+        self.assertIn(("catalog.get_details", {"sku": "SKU-XM-FLT"}), self.gateway.calls)
