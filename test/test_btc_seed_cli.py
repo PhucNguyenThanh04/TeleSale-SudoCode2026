@@ -79,7 +79,7 @@ def test_account_seed_runs_python_directly(tmp_path, monkeypatch):
 
 
 def test_initializer_stages_tokenizer_and_provisions_roles(tmp_path, monkeypatch):
-    from app.bootstrap import submission, mcp_roles
+    from app.bootstrap import submission
     from scripts import prepare_knowledge_tokenizer
 
     environment(tmp_path, monkeypatch)
@@ -89,20 +89,18 @@ def test_initializer_stages_tokenizer_and_provisions_roles(tmp_path, monkeypatch
     for key, value in values.items():
         monkeypatch.setenv(key, value)
     initialize = AsyncMock(return_value='initialized')
-    provision = AsyncMock()
     def prepare(config, target, **options):
         assert options == {'download': True}
         target.parent.mkdir(parents=True)
         target.write_text('verified-tokenizer')
     monkeypatch.setattr(prepare_knowledge_tokenizer, 'prepare', prepare)
     monkeypatch.setattr(submission, 'initialize', initialize)
-    monkeypatch.setattr(mcp_roles, 'provision', provision)
     assert asyncio.run(seed_btc.initialize(tmp_path, tmp_path, values)) == 'initialized'
     config = json.loads(Path(values['KNOWLEDGE_POLICY_CONFIG_FILE']).read_text())
     assert config['tokenizer_path'] == str(tmp_path / 'runtime/tokenizer/bge-m3-tokenizer.json')
     assert initialize.call_args.kwargs['settings'].knowledge_policy_source_dir == tmp_path / 'runtime/policy'
     assert initialize.call_args.kwargs['allow_policy_build']
-    assert set(provision.call_args.args[1]) == {'catalog', 'order', 'memory', 'knowledge'}
+    assert set(initialize.call_args.kwargs['mcp_passwords']) == {'catalog', 'order', 'memory', 'knowledge'}
 
 
 def test_seed_help_needs_no_docker_or_configuration():

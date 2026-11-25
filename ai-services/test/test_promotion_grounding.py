@@ -20,6 +20,33 @@ def test_freecod_is_not_evidence_for_other_benefits(text):
     assert check_answer(text, calls())[1] is not None
 
 
+@pytest.mark.parametrize('text,shipping,cod', [
+    ('Phí COD là 0 đồng.', False, True),
+    ('Miễn phí COD.', False, True),
+    ('Phí vận chuyển là 0đ.', True, False),
+])
+def test_zero_fee_requires_the_corresponding_quote_benefit(text, shipping, cod):
+    observations = calls(shipping=shipping)
+    if not cod:
+        observations[-1]['result']['applied_promos'] = []
+    assert check_answer(text, observations) == (text, None)
+    assert check_answer(text, [])[1] == 'promotion_quote_missing'
+    wrong_benefit = calls(shipping=not shipping)
+    if cod:
+        wrong_benefit[-1]['result']['applied_promos'] = []
+    assert check_answer(text, wrong_benefit)[1] == 'promotion_detail_unverified'
+
+
+def test_basket_cod_fee_uses_the_order_promotion():
+    result = {'units': [{'sku': 'A', 'list_price_vnd': 730000, 'final_price_vnd': 730000},
+                        {'sku': 'B', 'list_price_vnd': 730000, 'final_price_vnd': 730000}],
+              'order_promos': [{'type': 'freecod', 'promo_code': 'LOCAL-COD'}]}
+    observations = [{'name': 'pricing.quote_order', 'args': {'on': '2026-11-02'}, 'result': result}]
+    assert check_answer('Phí thu hộ là 0đ.', observations, focus_sku='A')[1] is None
+    result['order_promos'] = []
+    assert check_answer('Phí thu hộ là 0đ.', observations, focus_sku='A')[1] == 'promotion_detail_unverified'
+
+
 @pytest.mark.parametrize("code,expiry", [("LOCAL-OFFER", "2026-11-20"), ("OTHER-GIFT", "2026-12-09")])
 def test_valid_benefit_and_deadline_are_linked(code, expiry):
     day = expiry[8:10] + "/" + expiry[5:7]

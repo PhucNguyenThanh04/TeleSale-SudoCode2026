@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 from typing import Any
+
+from app.agent.guardrails.claims import normalize_zero_fees
 
 def _money_claims(text: str) -> list[tuple[int, str, bool]]:
     text = re.sub(r"(?<!\w)(\d+)\s*(?:triệu|tr)(\d{1,3})(?!\w)",
@@ -15,7 +18,9 @@ def _money_claims(text: str) -> list[tuple[int, str, bool]]:
         if not unit and not re.fullmatch(r"\d{1,3}(?:[.,]\d{3})+|\d{6,}", number):
             continue
         if unit in {"triệu", "tr", "nghìn", "ngàn", "k"}:
-            amount = int(float(number.replace(",", ".")) * (1000000 if unit in {"triệu", "tr"} else 1000))
+            if not re.fullmatch(r"\d+(?:[.,]\d+)?", number):
+                continue
+            amount = int(Decimal(number.replace(",", ".")) * (1000000 if unit in {"triệu", "tr"} else 1000))
         else:
             amount = int(number.replace(".", "").replace(",", ""))
         context = text[previous:match.start()]
@@ -324,7 +329,8 @@ def _claim_candidates(agent_text: str) -> list[dict]:
         clause = clause.strip(" *#-")
         if not clause:
             continue
-        factual = bool(re.search(r"giá|tổng (?:tiền|đơn)|giảm|miễn phí|freeship|giao|đổi|bảo hành|còn hàng|hết hàng|có sẵn trong kho|ưu đãi|khuyến mãi|tặng|người thật|không phải bot|ngừng bán|chính sách|phiên bản|không có hàng|mã [A-Z0-9]+-", clause, re.I))
+        parsed = normalize_zero_fees(re.sub(r"\*\*|__|`", "", clause))
+        factual = bool(re.search(r"giá|tổng (?:tiền|đơn)|giảm|miễn phí|freeship|giao|đổi|bảo hành|còn hàng|hết hàng|có sẵn trong kho|ưu đãi|khuyến mãi|tặng|người thật|không phải bot|ngừng bán|chính sách|phiên bản|không có hàng|mã [A-Z0-9]+-", parsed, re.I))
         factual = factual or bool(re.search(_COD_FEE, clause, re.I))
         factual = factual or bool(re.search(r"20\d{2}-\d{2}", clause) and re.search(r"thay thế|hiện.*dùng|trước đây.*dùng|đơn.*(?:trước|sau)", clause, re.I))
         if not factual:
@@ -376,7 +382,7 @@ def _claim_candidates(agent_text: str) -> list[dict]:
             candidates.append(_candidate("claim", clause, disposition="excluded", reason="qualified_not_representable",
                 qualifiers={"size": int(variant[1])}))
             continue
-        if re.search(r"phí (?:giao hàng|vận chuyển|ship)\s*\d", numeric_text(clause), re.I):
+        if re.search(r"phí (?:giao hàng|vận chuyển|ship)\s*(?:là\s+)?\d", numeric_text(parsed), re.I):
             candidates.append(_candidate("claim", clause, disposition="excluded", reason="unsupported_mapping",
                 qualifiers={"category": "shipping_fee"}))
             continue
@@ -385,7 +391,6 @@ def _claim_candidates(agent_text: str) -> list[dict]:
             candidates.append(_candidate("claim", clause, disposition="excluded", reason="unsupported_mapping",
                 qualifiers={"category": "total" if re.search(r"tổng", clause, re.I) else "calendar_delivery" if re.search(r"giao", clause, re.I) else "replacement"}))
             continue
-        parsed = re.sub(r"\*\*|__|`", "", clause)
         projections = _claim_projections(parsed, [])
         for projection in projections:
             projection['text'] = clause

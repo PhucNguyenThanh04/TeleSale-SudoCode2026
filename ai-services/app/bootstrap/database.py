@@ -1,7 +1,9 @@
-from pathlib import Path
 import asyncio
 
 import asyncpg
+from sqlalchemy.engine import make_url
+
+from app.knowledge.config import configured_url
 
 
 class BootError(ValueError):
@@ -20,58 +22,47 @@ async def require_ready(dsn, boot_id):
         await connection.close()
 
 
-class BootDatabase:
-    def __init__(self, dsn, expected_database, boot_id, *, app_env):
-        self.dsn = dsn.replace('postgresql+asyncpg://', 'postgresql://', 1)
-        self.expected_database, self.boot_id, self.app_env = expected_database, boot_id, app_env
-        self.connection = None
-        self.ready = False
-        self.created = False
-
-    async def __aenter__(self):
-        if self.app_env == 'production' or not self.boot_id or not self.expected_database:
-            raise BootError('Fresh startup requires a non-production environment, boot ID and explicit database')
-        self.connection = await asyncpg.connect(self.dsn)
+async def pg_connect(dsn):
+    deadline = asyncio.get_running_loop().time() + 30
+    while True:
         try:
-            if await self.connection.fetchval('SELECT current_database()') != self.expected_database:
-                raise BootError('Startup database does not match expected database')
-            while not await self.connection.fetchval('SELECT pg_try_advisory_lock(714222, 1)'):
-                await asyncio.sleep(0.1)
-            if not await self.connection.fetchval("SELECT to_regclass('btc_source.customers')"):
-                raise BootError('Import BTC source first; startup never invents source customers')
-            await self.connection.execute('''CREATE SCHEMA IF NOT EXISTS system_boot;
-                CREATE TABLE IF NOT EXISTS system_boot.current (
-                    singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton),
-                    boot_id text NOT NULL, status text NOT NULL,
-                    started_at timestamptz NOT NULL DEFAULT now())''')
-            current = await self.connection.fetchrow('SELECT boot_id,status FROM system_boot.current WHERE singleton')
-            self.ready = bool(current and current['boot_id'] == self.boot_id and current['status'] == 'ready')
-            return self
-        except BaseException:
-            await self.connection.close()
-            raise
+            return await asyncpg.connect(dsn.replace('postgresql+asyncpg://', 'postgresql://', 1), timeout=2)
+        except (OSError, asyncpg.CannotConnectNowError):
+            if asyncio.get_running_loop().time() >= deadline: raise
+            await asyncio.sleep(0.2)
 
-    async def create_fresh_schema(self):
-        if self.ready:
-            return
-        async with self.connection.transaction():
-            await self.connection.execute('''INSERT INTO system_boot.current(singleton,boot_id,status)
-                VALUES(true,$1,$2) ON CONFLICT(singleton) DO UPDATE
-                SET boot_id=EXCLUDED.boot_id,status=EXCLUDED.status,started_at=now()''', self.boot_id, 'starting')
-            await self.connection.execute('''DROP SCHEMA IF EXISTS knowledge CASCADE;
-                DROP SCHEMA IF EXISTS runtime CASCADE;
-                DROP SCHEMA IF EXISTS app_runtime CASCADE;
-                DROP SCHEMA IF EXISTS ai_memory CASCADE;
-                DROP SCHEMA IF EXISTS langmem_store CASCADE;''')
-            await self.connection.execute(Path(__file__).with_name('schema.sql').read_text())
-        self.created = True
 
-    async def mark_ready(self):
-        if not self.ready and not self.created:
-            raise BootError('Cannot publish a boot before creating its schema')
-        await self.connection.execute('''INSERT INTO system_boot.current(singleton,boot_id,status)
-            VALUES(true,$1,$2) ON CONFLICT(singleton) DO UPDATE SET status=EXCLUDED.status''', self.boot_id, 'ready')
-        self.ready = True
+async def setup_store(dsn):
+    from langgraph.store.postgres.aio import AsyncPostgresStore
+    from app.mcp_servers.mcp_memory.repos.langmem_projection import store_dsn
+    async with AsyncPostgresStore.from_conn_string(store_dsn(dsn), index=None) as store:
+        await store.setup()
 
-    async def __aexit__(self, *exc):
-        await self.connection.close()
+
+def quoted(name):
+    return '"' + name.replace('"', '""') + '"'
+
+
+async def setup_logins(conn, database, *, backend_dsn):
+    for dsn, group in [(configured_url('KNOWLEDGE_DATABASE_URL'), 'knowledge_reviewer'),
+                       (configured_url('KNOWLEDGE_WORKER_DATABASE_URL'), 'knowledge_worker'),
+                       (backend_dsn, 'knowledge_backend')]:
+        if not dsn: continue
+        url = make_url(dsn)
+        if not url.username: raise BootError('Application DB login is required')
+        role = quoted(url.username)
+        if not await conn.fetchval('SELECT 1 FROM pg_roles WHERE rolname=$1', url.username):
+            if not url.password: raise BootError('A password is required to initialize an application DB login')
+            sql = await conn.fetchval('SELECT format(\'CREATE ROLE %I LOGIN PASSWORD %L\', $1::text, $2::text)', url.username, url.password)
+            await conn.execute(sql)
+        if url.username != await conn.fetchval('SELECT current_user'):
+            await conn.execute(f'GRANT {group} TO {role}')
+        await conn.execute(f'GRANT CONNECT ON DATABASE {quoted(database)} TO {role}')
+        await conn.execute(f'''GRANT USAGE ON SCHEMA system_boot TO {role};
+            GRANT SELECT ON system_boot.current TO {role};''')
+        if group == 'knowledge_backend':
+            await conn.execute(f'''GRANT USAGE ON SCHEMA runtime,btc_source,system_boot TO {role};
+                GRANT SELECT ON ALL TABLES IN SCHEMA btc_source TO {role};
+                GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA runtime TO {role};
+                GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA runtime TO {role};
+                GRANT SELECT ON system_boot.current TO {role};''')

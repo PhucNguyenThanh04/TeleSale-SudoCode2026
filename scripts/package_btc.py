@@ -12,10 +12,13 @@ from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIRS = {'ai-services', 'backend', 'config', 'dataloader_offline', 'dataset',
                'docs', 'eval', 'frontend', 'scripts', 'speech', 'test', 'runtime'}
-SOURCE_ROOT = {'AGENTS.md', 'README.md', 'START_HERE.md', 'Dockerfile.submission', 'Dockerfile.submission.dockerignore',
-               'compose.submission.yml', 'docker-compose.yml', 'compose.dev.yml', 'pyproject.toml', 'uv.lock',
-               'run_eval.py', 'seed_btc.py', 'run_knowledge_eval.py', 'run_system.py', '.gitignore',
-               '.gitattributes', '.python-version', '.env.example', '.env.submission.example', '.dockerignore'}
+SOURCE_ROOT = {'AGENTS.md', 'README.md', 'START_HERE.md', 'Dockerfile', 'docker-compose.yml',
+               'run_eval.py', 'seed_btc.py', 'run_knowledge_eval.py',
+               '.gitignore', '.gitattributes', '.python-version', '.env.example', '.dockerignore'}
+REQUIRED = {'README.md', 'Dockerfile', 'docker-compose.yml', '.dockerignore', '.env.example',
+            'run_eval.py', 'seed_btc.py', 'config/requirements/host.txt',
+            'config/requirements/ai.txt', 'config/requirements/backend.txt',
+            'config/requirements/asr.txt', 'runtime/policy/.gitkeep', 'runtime/tokenizer/.gitkeep'}
 EXCLUDED_DIRS = {'__pycache__', 'cache', 'node_modules', 'storage', 'secrets', 'secrets-submission',
                  'artifacts', 'outputs', 'results', 'results-submission', 'runs', 'graphify-out',
                  'models', 'postgres_data', 'traces'}
@@ -56,6 +59,8 @@ def verify(archive):
         expected = manifest['files']
         if len(names) != len(set(names)) or set(names) != {'MANIFEST.json', *expected}:
             raise ValueError('Archive entries differ from the manifest')
+        if missing := REQUIRED - expected.keys():
+            raise ValueError('Archive missing required files: ' + ', '.join(sorted(missing)))
         for name, sha in expected.items():
             if not source_path(name) or checksum(bundle.read(name)) != sha:
                 raise ValueError(f'Archive verification failed for {name}')
@@ -86,8 +91,6 @@ def build(root, destination, version):
                 data = file.read_bytes()
                 hashes[name] = checksum(data)
                 bundle.writestr(name, data)
-            if not {'README.md', 'run_eval.py'} <= hashes.keys():
-                raise ValueError('Expected repository README and eval entrypoint')
             manifest = {'version': version, 'files': hashes}
             bundle.writestr('MANIFEST.json', json.dumps(manifest, sort_keys=True, indent=2) + '\n')
         verify(temporary)

@@ -1,2 +1,291 @@
-include:
-  - path: ./compose.submission.yml
+name: telesale-btc
+
+x-ai: &ai
+  image: telesale-btc-ai:${SUBMISSION_IMAGE_TAG:-local}
+  pull_policy: never
+
+x-backend: &backend
+  image: telesale-btc-backend:${SUBMISSION_IMAGE_TAG:-local}
+  pull_policy: never
+
+x-db: &db
+  APP_ENV: development
+  MCP_DB_HOST: postgres
+  MCP_DB_NAME: telesale_eval_m1
+  SYSTEM_BOOT_ID: btc-submission-v1
+  SUBMISSION_WAIT_FOR_SEED: '1'
+
+x-mcp: &mcp
+  <<: *db
+  MCP_HOST: 0.0.0.0
+  MCP_INTERNAL_TOKEN_FILE: /run/secrets/mcp_internal_token
+  LLM_API_KEY: unused-for-mcp
+  LLM_MODEL: unused-for-mcp
+
+x-llm: &llm
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  LLM_MODEL: ${LLM_MODEL:-gpt-6-luna}
+  LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+  LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30}
+  LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.2}
+  LANGMEM_MODEL: ${LANGMEM_MODEL:-}
+  LLM_MAX_TOKENS: 1024
+  AGENT_MAX_TOOL_CALLS: 8
+  AGENT_GUARDRAILS_ENABLED: 'true'
+  KNOWLEDGE_ENABLED: 'true'
+  BTC_CALLBACK_MOCK: ${BTC_CALLBACK_MOCK:-0}
+
+x-policy: &policy
+  CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID:-}
+  CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+  CLOUDFLARE_API_BASE_URL: ${CLOUDFLARE_API_BASE_URL:-https://api.cloudflare.com/client/v4}
+  KNOWLEDGE_POLICY_CONFIG_FILE: /workspace/config/policy-runtime.json
+  QDRANT_URL: http://qdrant:6333
+
+x-tools: &tools
+  MCP_CATALOG_URL: http://mcp-catalog:8011/mcp
+  MCP_ORDER_URL: http://mcp-order:8012/mcp
+  MCP_MEMORY_URL: http://mcp-memory:8013/mcp
+  MCP_KNOWLEDGE_URL: http://mcp-knowledge:8014/mcp
+
+x-demo-env: &demo-env
+  <<: *db
+  AI_SERVICE_URL: http://ai:8001
+  AI_SERVICE_TIMEOUT_SECONDS: 120
+  REDIS_URL: redis://redis:6379/0
+
+services:
+  postgres:
+    image: postgres:16.15-alpine
+    environment:
+      POSTGRES_USER: btc_admin
+      POSTGRES_DB: telesale_eval_m1
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      TZ: Asia/Ho_Chi_Minh
+    secrets: [postgres_password]
+    ports:
+      - "127.0.0.1:${SUBMISSION_POSTGRES_PORT:-15432}:5432"
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  qdrant:
+    image: qdrant/qdrant:v1.19.1
+    ports:
+      - "127.0.0.1:${SUBMISSION_QDRANT_PORT:-16333}:6333"
+    volumes:
+      - qdrant:/qdrant/storage
+
+  redis:
+    image: redis:7-alpine
+    command: [redis-server, --appendonly, 'yes']
+    volumes:
+      - redis:/data
+
+  mcp-catalog:
+    <<: *ai
+    ports:
+      - "127.0.0.1:${SUBMISSION_MCP_CATALOG_PORT:-18011}:8011"
+    command: [python, -m, app.mcp_servers.mcp_catalog.server]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *mcp
+      MCP_DB_USER: mcp_catalog
+      MCP_DB_PASSWORD_FILE: /run/secrets/mcp_catalog_password
+    secrets: [mcp_internal_token, mcp_catalog_password]
+    healthcheck:
+      test: [CMD, python, -c, 'import socket; socket.create_connection(("127.0.0.1", 8011), 2).close()']
+      interval: 2s
+      timeout: 3s
+      retries: 60
+      start_period: 24h
+
+  mcp-order:
+    <<: *ai
+    ports:
+      - "127.0.0.1:${SUBMISSION_MCP_ORDER_PORT:-18012}:8012"
+    command: [python, -m, app.mcp_servers.mcp_order.server]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *mcp
+      MCP_DB_USER: mcp_order
+      MCP_DB_PASSWORD_FILE: /run/secrets/mcp_order_password
+      BTC_CALLBACK_MOCK: ${BTC_CALLBACK_MOCK:-0}
+    secrets: [mcp_internal_token, mcp_order_password]
+    healthcheck:
+      test: [CMD, python, -c, 'import socket; socket.create_connection(("127.0.0.1", 8012), 2).close()']
+      interval: 2s
+      timeout: 3s
+      retries: 60
+      start_period: 24h
+
+  mcp-memory:
+    <<: *ai
+    ports:
+      - "127.0.0.1:${SUBMISSION_MCP_MEMORY_PORT:-18013}:8013"
+    command: [python, -m, app.mcp_servers.mcp_memory.server]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *mcp
+      KNOWLEDGE_ENABLED: 'true'
+      EVAL_DECISION_DIAGNOSTICS: ${EVAL_DECISION_DIAGNOSTICS:-0}
+      MCP_DB_USER: mcp_memory
+      MCP_DB_PASSWORD_FILE: /run/secrets/mcp_memory_password
+    secrets: [mcp_internal_token, mcp_memory_password]
+    healthcheck:
+      test: [CMD, python, -c, 'import socket; socket.create_connection(("127.0.0.1", 8013), 2).close()']
+      interval: 2s
+      timeout: 3s
+      retries: 60
+      start_period: 24h
+
+  mcp-knowledge:
+    <<: *ai
+    ports:
+      - "127.0.0.1:${SUBMISSION_MCP_KNOWLEDGE_PORT:-18014}:8014"
+    command: [python, -m, app.mcp_servers.mcp_knowledge.server]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    environment:
+      <<: [*mcp, *policy]
+      MCP_DB_USER: mcp_knowledge
+      MCP_DB_PASSWORD_FILE: /run/secrets/mcp_knowledge_password
+    secrets: [mcp_internal_token, mcp_knowledge_password]
+    volumes:
+      - ./runtime/tokenizer:/workspace/ai-services/app/mcp_servers/mcp_knowledge/assets:ro
+    healthcheck:
+      test: [CMD, python, -c, 'import socket; socket.create_connection(("127.0.0.1", 8014), 2).close()']
+      interval: 2s
+      timeout: 3s
+      retries: 60
+      start_period: 24h
+
+  langmem-worker:
+    <<: *ai
+    command: [python, -m, app.mcp_servers.mcp_memory.distiller_worker]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: [*db, *llm]
+      EVAL_DECISION_DIAGNOSTICS: ${EVAL_DECISION_DIAGNOSTICS:-0}
+      MCP_DB_USER: mcp_memory
+      MCP_DB_PASSWORD_FILE: /run/secrets/mcp_memory_password
+    secrets: [mcp_memory_password]
+
+  knowledge-worker:
+    <<: *ai
+    entrypoint: [python, /workspace/scripts/btc_container.py, worker, python, -m, app.knowledge.worker]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: [*db, *llm]
+    secrets: [worker_password]
+
+  ai:
+    <<: *ai
+    ports:
+      - "127.0.0.1:${SUBMISSION_AI_PORT:-18001}:8001"
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ai
+    entrypoint: [python, /workspace/scripts/btc_container.py, ai, python, -m, app]
+    depends_on:
+      mcp-catalog:
+        condition: service_started
+      mcp-order:
+        condition: service_started
+      mcp-memory:
+        condition: service_started
+      mcp-knowledge:
+        condition: service_started
+    environment:
+      <<: [*db, *llm, *tools, *policy]
+      MCP_DB_USER: btc_reviewer
+      MCP_DB_PASSWORD_FILE: /run/secrets/reviewer_password
+      KNOWLEDGE_POLICY_SOURCE_DIR: /policy-source
+      HOST: 0.0.0.0
+    secrets: [reviewer_password, ai_internal_token, mcp_internal_token]
+    volumes:
+      - ./runtime/policy:/policy-source:ro
+      - ./runtime/tokenizer:/workspace/ai-services/app/mcp_servers/mcp_knowledge/assets:ro
+    healthcheck:
+      test: [CMD, python, -c, 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8001/openapi.json",timeout=2).close()']
+      interval: 2s
+      timeout: 3s
+      retries: 60
+      start_period: 24h
+
+  backend:
+    <<: *backend
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend
+    entrypoint: [python, /workspace/scripts/btc_container.py, backend, python, -m, uvicorn, app.voice_main:app, --host, 0.0.0.0, --port, '8000']
+    depends_on:
+      ai:
+        condition: service_started
+      redis:
+        condition: service_started
+      knowledge-worker:
+        condition: service_started
+    environment: *demo-env
+    secrets: [backend_password, ai_internal_token, demo_jwt_secret]
+    ports:
+      - "${DEMO_HOST:-127.0.0.1}:${DEMO_PORT:-8000}:8000"
+    healthcheck:
+      test: [CMD, python, -c, 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/chat",timeout=2).close()']
+      interval: 2s
+      timeout: 3s
+      retries: 60
+      start_period: 24h
+
+
+volumes:
+  postgres:
+  qdrant:
+  redis:
+
+secrets:
+  postgres_password:
+    environment: POSTGRES_PASSWORD
+  mcp_catalog_password:
+    environment: MCP_CATALOG_PASSWORD
+  mcp_order_password:
+    environment: MCP_ORDER_PASSWORD
+  mcp_memory_password:
+    environment: MCP_MEMORY_PASSWORD
+  mcp_knowledge_password:
+    environment: MCP_KNOWLEDGE_PASSWORD
+  mcp_internal_token:
+    environment: MCP_INTERNAL_TOKEN
+  ai_internal_token:
+    environment: AI_INTERNAL_TOKEN
+  worker_password:
+    environment: WORKER_PASSWORD
+  reviewer_password:
+    environment: REVIEWER_PASSWORD
+  backend_password:
+    environment: BACKEND_PASSWORD
+  demo_jwt_secret:
+    environment: DEMO_JWT_SECRET
+  demo_user_1_password:
+    environment: DEMO_USER_1_PASSWORD
+  demo_user_2_password:
+    environment: DEMO_USER_2_PASSWORD

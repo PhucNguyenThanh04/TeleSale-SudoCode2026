@@ -45,6 +45,8 @@ def run(args, *, root=ROOT):
             details = json.loads(report.read_text())
             print(f"Eval failed: phase={details.get('phase')} code={details.get('error_code')} "
                   f"service={details.get('service')}. Report: {report}", file=sys.stderr)
+            if details.get('verification_rejections'):
+                print('Verification rejected: ' + ', '.join(details['verification_rejections']), file=sys.stderr)
     return result
 
 
@@ -60,7 +62,7 @@ def main():
     try:
         result = run(args)
     except ModuleNotFoundError:
-        parser.exit(1, 'Install host dependencies: python -m pip install -r config/submission/host.txt\n')
+        parser.exit(1, 'Install host dependencies: python -m pip install -r config/requirements/host.txt\n')
     except (ValueError, FileExistsError) as exc:
         parser.exit(1, str(exc) + '\n')
     except OSError as exc:

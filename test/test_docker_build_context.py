@@ -14,17 +14,13 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.parametrize('ignore_file,included', [
-    ('Dockerfile.submission.dockerignore', [
-        'ai-services/app/main.py', 'ai-services/migrations/runtime.sql',
+def test_build_context_excludes_local_data_and_preserves_runtime_files(tmp_path):
+    included = [
+        'ai-services/app/main.py', 'ai-services/migrations/runtime.sql', 'config/requirements/ai.txt',
         'backend/app/voice_main.py', 'backend/migrations/0007_demo_users.sql',
         'frontend/index.html', 'config/policy-runtime.json', 'eval/run_eval.py',
         'speech/__main__.py', 'scripts/btc_container.py',
-    ]),
-    ('.dockerignore', ['backend/app/voice_main.py', 'backend/requirements.txt', 'frontend/index.html']),
-    ('ai-services/.dockerignore', ['app/main.py', 'scripts/container_start.py']),
-])
-def test_build_context_excludes_local_data_and_preserves_runtime_files(tmp_path, ignore_file, included):
+    ]
     if not shutil.which('docker'):
         pytest.skip('Docker CLI is required')
     excluded = ['.env', '.git/config', '.venv/lib/probe.txt',
@@ -34,7 +30,7 @@ def test_build_context_excludes_local_data_and_preserves_runtime_files(tmp_path,
                 'speech/custom.safetensors', 'speech/clip.flac',
                 'speech/serving/models/probe.onnx',
                 'ai-services/app/__pycache__/probe.pyc']
-    (tmp_path / '.dockerignore').write_text((ROOT / ignore_file).read_text())
+    (tmp_path / '.dockerignore').write_text((ROOT / '.dockerignore').read_text())
     (tmp_path / 'Dockerfile').write_text('FROM scratch\nCOPY . /\n')
     for name in [*included, *excluded]:
         path = tmp_path / name

@@ -18,12 +18,12 @@ def database_url() -> str:
     value = os.getenv("DATABASE_URL")
     if value:
         return value
-    path = ROOT / "backend" / ".env"
+    path = ROOT / ".env"
     if path.exists():
         for line in path.read_text(encoding="utf-8").splitlines():
             if line.strip().startswith("DATABASE_URL="):
                 return line.split("=", 1)[1].strip().strip('"\'')
-    raise ValueError("Set DATABASE_URL or backend/.env before importing")
+    raise ValueError("Set DATABASE_URL before running this import or run seed_btc.py")
 
 
 def main() -> None:

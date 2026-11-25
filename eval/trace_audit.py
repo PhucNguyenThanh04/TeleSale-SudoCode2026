@@ -32,12 +32,16 @@ def source_snapshot_digest(root: Path) -> str:
     root = root.resolve()
     folders = (root / "ai-services" / "app", root / "ai-services" / "migrations",
                root / "ai-services" / "config", root / "ai-services" / "eval_harness",
-               root / "eval")
+               root / "dataloader_offline", root / "eval")
     files = [p for folder in folders if folder.exists() for p in folder.rglob("*")
              if p.is_file() and "__pycache__" not in p.parts
              and "runs" not in p.parts and "results" not in p.parts
              and not p.name.startswith(".env") and p.suffix in {".py", ".sql", ".yml", ".yaml", ".json"}]
-    for name in ("run_eval.py", "ai-services/requirements.txt"):
+    for name in ("run_eval.py", "seed_btc.py", "docker-compose.yml", "Dockerfile", ".dockerignore",
+                 "config/policy-runtime.json", "config/requirements/ai.txt",
+                 "config/requirements/host.txt", "config/requirements/backend.txt",
+                 "scripts/btc_host.py", "scripts/btc_container.py",
+                 "scripts/prepare_knowledge_tokenizer.py", "ai-services/scripts/container_start.py"):
         path = root / name
         if path.is_file():
             files.append(path)

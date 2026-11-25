@@ -5,6 +5,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
@@ -14,14 +15,14 @@ from app.mcp_servers.mcp_shared.episode_evidence import evidence_supports
 from app.constants import PROFILE_SLOT_KEYS, SLOT_SPEC_BY_KEY, TOOL_ONLY_SLOT_KEYS, Slot
 from app.agent.guardrails.skus import known_skus, mentioned_skus
 from app.agent.guardrails.promotion_grounding import check_promotion_grounding
-from app.agent.guardrails.claims import assertion_text
+from app.agent.guardrails.claims import assertion_text, normalize_zero_fees
 
 
 FALLBACK = ""
 
 _STOCK = re.compile(r"(?i)\b(?:còn hàng|có hàng|sẵn hàng|hết hàng|có sẵn trong kho)\b")
 _ORDER = re.compile(r"(?i)\bđã\s+(?:lên|tạo|đặt|chốt)\s+đơn\b")
-_AMOUNT = re.compile(r"(?i)(?<!\w)(\d[\d.,]*)\s*(triệu|tr|nghìn|ngàn|k|đồng|đ|vnd|₫)")
+_AMOUNT = re.compile(r"(?i)(?<!\w)(\d[\d.,]*)\s*(triệu|tr|nghìn|ngàn|k|đồng|đ|vnd|₫)(?!\w)")
 _MILLION_SHORTHAND = re.compile(r"(?i)\b(\d{1,3})\s*tr\s*(\d{1,3})(?!\d)")
 _PRICE_NUMBER = re.compile(r"(?i)\bgiá\s+(?:là\s+)?(\d[\d.,]*)")
 _BARE_MONEY = re.compile(r"\b(?:\d{1,3}(?:[.,]\d{3})+|\d{6,})\b")
@@ -36,7 +37,7 @@ _COMPETITOR_CONTEXT = re.compile(r"(?i)\b(?:bên kia|bên khác|shop khác|đố
 _REPEATED_BUDGET = re.compile(
     r"\b(?:ngan sach|tam gia|muc gia|gioi han|toi da|duoi)\s+"
     r"(?:(?:toi da|tam|khoang|la|duoi)\s+)?"
-    r"\d[\d.,]*\s*(?:trieu|tr|nghin|ngan|k|dong|d|vnd)\b"
+    r"(?P<amount>\d[\d.,]*\s*(?:trieu|tr|nghin|ngan|k|dong|d|vnd))\b"
 )
 _PRODUCT_FEATURE = re.compile(r"(?i)\b(?:HEPA(?:\s*H\d+)?|PM\s*2[.,]5)\b")
 _BOOLEAN_FEATURE_ALIASES = {
@@ -156,9 +157,9 @@ def _money_amount(value: str) -> int | None:
         return None
     digits, unit = match.groups()
     if unit.lower() in {"triệu", "tr"} and re.fullmatch(r"\d+[.,]\d+", digits):
-        number = float(digits.replace(",", "."))
+        number = Decimal(digits.replace(",", "."))
     else:
-        number = float(digits.replace(".", "").replace(",", ""))
+        number = int(digits.replace(".", "").replace(",", ""))
     if unit.lower() in {"triệu", "tr"}:
         number *= 1_000_000
     elif unit.lower() in {"nghìn", "ngàn", "k"}:
@@ -580,7 +581,7 @@ def _catalog_budget_repetition_evidenced(candidate: str, customer_text: str,
         return False
     folded = _fold_text(candidate)
     matches = list(_REPEATED_BUDGET.finditer(folded))
-    if len(matches) != 1 or _money_claims(matches[0].group()) != money_claims:
+    if len(matches) != 1 or _folded_budget_amount(matches[0]['amount']) != budget:
         return False
     if re.search(r"\b(?:khong|chua)\s+(?:co|tim thay)\b", folded):
         return False
@@ -595,7 +596,7 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     if not candidate.strip():
         return FALLBACK, "empty_answer"
     answer = candidate
-    candidate = assertion_text(candidate)
+    candidate = normalize_zero_fees(assertion_text(candidate))
     if _customer_erasure_completion_claim(candidate):
         return FALLBACK, "customer_erasure_unverified"
     if _INTERNAL.search(candidate) or _PRICE_REFERENCE.search(candidate):

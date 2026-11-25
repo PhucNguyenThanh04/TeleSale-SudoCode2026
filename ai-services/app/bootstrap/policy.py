@@ -5,16 +5,6 @@ from app.knowledge.services.releases import activate_release
 from qdrant_client.http.exceptions import UnexpectedResponse
 
 
-async def capture_base(repo):
-    try:
-        release = await repo.resolve_release('btc-only')
-        if release['manifest']['items']:
-            return None
-        return release
-    except ValueError:
-        return None
-
-
 async def initialize_base(repo, encoder, index, *, source_dir, metadata, actor_id, cache=None):
     config = encoder.config
     chunks = sorted(parse_policy_sources(source_dir, metadata), key=lambda c: c.chunk_id)

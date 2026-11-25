@@ -88,6 +88,6 @@ Run trên bộ team dùng 29 scenario và 170 lượt mỗi cấu hình. Bản r
 
 ## Gói chạy và trạng thái nghiệm thu
 
-- BTC clone nhánh `main` của repo GitHub và đối chiếu SHA commit nộp bài. Repo có Dockerfile, Compose và hướng dẫn setup. Demo và eval có volume riêng.
+- BTC clone nhánh `main` của repo GitHub và đối chiếu SHA commit nộp bài. Demo và eval dùng cùng stack Compose đã seed. Eval reset dữ liệu hội thoại trước mỗi cấu hình, nên tạm dừng demo khi chạy eval.
 - Đã rehearsal offline trên PostgreSQL, Qdrant và bốn MCP. Paired eval và chấm chéo đã sinh trace với model giả lập.
 - Cần chạy thật từ ZIP trên Docker, chốt corpus đủ audio, điểm ASR, vòng cải tiến và video 5–8 phút.

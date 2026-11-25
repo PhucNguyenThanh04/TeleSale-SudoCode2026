@@ -17,6 +17,15 @@ _NON_ASSERTION = re.compile(
     r"|(?:dieu gi|yeu to nao) (?:phu hop nhat|tot nhat|hieu qua nhat)"
     r" voi (?:nhu cau cua )?(?:anh/chi|anh|chi)(?: a)?\?"
 )
+_ZERO_FEE = re.compile(
+    r"\bphí\s+(cod|thu hộ|ship|vận chuyển|giao hàng)\s+(?:là\s+)?0\s*(?:đồng|đ|vnd|₫)(?!\w)",
+    re.I)
+
+
+def normalize_zero_fees(text: str) -> str:
+    return _ZERO_FEE.sub(
+        lambda match: "miễn phí COD" if match[1].casefold() in {"cod", "thu hộ"}
+        else "miễn phí vận chuyển", text)
 
 
 def assertion_text(text: str) -> str:

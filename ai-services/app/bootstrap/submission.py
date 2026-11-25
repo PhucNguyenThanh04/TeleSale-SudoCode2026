@@ -1,16 +1,14 @@
-import argparse
 import asyncio
-import os
 from pathlib import Path
 import shutil
-from types import SimpleNamespace
 
-from app.configs import get_settings
-from app.mcp_servers.mcp_shared.config import database_url
-from app.system_start import fingerprint_btc_source, pg_connect, setup_logins, setup_policy, setup_store
+from app.bootstrap.database import pg_connect, setup_logins, setup_store
+from app.bootstrap.mcp_roles import provision
+from app.bootstrap.policy import initialize_base
 from dataloader_offline.postgres import import_release
 from dataloader_offline.source import read_release, source_fingerprint
 from dataloader_offline.verification import compare_source_tables
+from eval_harness.seed_fingerprint import fingerprint_btc_source
 
 
 BOOT_ID = 'btc-submission-v1'
@@ -23,8 +21,13 @@ def copy_policy_source(source, target):
 
 async def prepare_policy(dsn, settings):
     import httpx
+    from qdrant_client import AsyncQdrantClient
     from app.knowledge.config import qdrant_url
+    from app.knowledge.policy.source import default_metadata
+    from app.mcp_servers.mcp_knowledge.config import load_policy_config
     from app.mcp_servers.mcp_knowledge.repos.postgres import PolicyRepository
+    from app.mcp_servers.mcp_knowledge.repos.qdrant import HybridPolicyIndex
+    from app.mcp_servers.mcp_knowledge.services.embedding import PolicyEncoder
 
     repo = PolicyRepository(dsn)
     try:
@@ -33,24 +36,38 @@ async def prepare_policy(dsn, settings):
         if active:
             await repo.resolve_release()
             return
+        url = qdrant_url()
+        try:
+            async with asyncio.timeout(30), httpx.AsyncClient(timeout=2) as client:
+                while True:
+                    try:
+                        response = await client.get(f'{url.rstrip("/")}/readyz')
+                        if response.is_success:
+                            break
+                    except httpx.RequestError:
+                        pass
+                    await asyncio.sleep(0.5)
+        except TimeoutError:
+            raise ValueError('Qdrant did not become ready during submission setup') from None
+        config = load_policy_config(settings)
+        encoder = PolicyEncoder(config)
+        client = AsyncQdrantClient(url=url, timeout=config.dependency_timeout_seconds)
+        try:
+            async with repo.transaction() as tx:
+                for actor in ('system-bootstrap', 'local-reviewer'):
+                    await tx.put('permissions', actor, {'id': actor, 'permissions': ['knowledge_review']})
+            await initialize_base(repo, encoder, HybridPolicyIndex(client),
+                source_dir=settings.knowledge_policy_source_dir, metadata=default_metadata(),
+                actor_id='system-bootstrap')
+        finally:
+            await encoder.close()
+            await client.close()
     finally:
         await repo.close()
-    try:
-        async with asyncio.timeout(30), httpx.AsyncClient(timeout=2) as client:
-            while True:
-                try:
-                    response = await client.get(f'{qdrant_url().rstrip("/")}/readyz')
-                    if response.is_success:
-                        break
-                except httpx.RequestError:
-                    pass
-                await asyncio.sleep(0.5)
-    except TimeoutError:
-        raise ValueError('Qdrant did not become ready during submission setup') from None
-    await setup_policy(dsn, settings, None, [])
 
 
-async def initialize(*, settings, dsn, expected_database, source, backend_dsn, allow_policy_build=False):
+async def initialize(*, settings, dsn, expected_database, source, backend_dsn,
+                     mcp_passwords, allow_policy_build=False):
     if settings.app_env == 'production':
         raise ValueError('Submission setup requires a dedicated non-production database')
     source_hash = source_fingerprint(source)
@@ -70,6 +87,7 @@ async def initialize(*, settings, dsn, expected_database, source, backend_dsn, a
                 raise ValueError('Stored BTC data differs from the initialized snapshot')
             if state['status'] == 'ready':
                 copy_policy_source(source, settings.knowledge_policy_source_dir)
+                await provision(conn, mcp_passwords)
                 return 'already_initialized'
         elif await conn.fetchval("""SELECT EXISTS (
             SELECT 1 FROM pg_namespace WHERE nspname IN
@@ -102,8 +120,8 @@ async def initialize(*, settings, dsn, expected_database, source, backend_dsn, a
                 await conn.execute("""INSERT INTO system_boot.current(singleton,boot_id,status)
                     VALUES(true,$1,'starting')""", BOOT_ID)
         await setup_store(dsn)
-        await setup_logins(SimpleNamespace(connection=conn, expected_database=expected_database),
-                           settings, backend_dsn=backend_dsn)
+        await setup_logins(conn, expected_database, backend_dsn=backend_dsn)
+        await provision(conn, mcp_passwords)
         copy_policy_source(source, settings.knowledge_policy_source_dir)
         await prepare_policy(dsn, settings)
         async with conn.transaction():
@@ -126,21 +144,3 @@ async def verify_source(dsn, source):
             raise ValueError('Eval BTC source differs from the initialized database')
     finally:
         await conn.close()
-
-
-def main():
-    parser = argparse.ArgumentParser(description='Initialize a dedicated BTC submission database')
-    parser.add_argument('--allow-policy-build', action='store_true')
-    args = parser.parse_args()
-    settings = get_settings()
-    try:
-        result = asyncio.run(initialize(settings=settings, dsn=database_url(settings),
-            expected_database=os.environ['MCP_DB_NAME'], source=Path(os.environ['BTC_DATA_DIR']),
-            backend_dsn=os.environ['BTC_BACKEND_DATABASE_URL'], allow_policy_build=args.allow_policy_build))
-    except (ValueError, OSError) as exc:
-        parser.exit(1, f'Submission setup failed: {exc}\n')
-    print(f'BTC submission setup: {result}')
-
-
-if __name__ == '__main__':
-    main()

@@ -6,6 +6,8 @@ import pytest
 
 
 def test_ai_waits_for_shared_schema_before_building_runtime(monkeypatch):
+    monkeypatch.setenv('LLM_API_KEY', 'offline-key')
+    monkeypatch.setenv('LLM_MODEL', 'offline-model')
     from app import main
     monkeypatch.setenv('SYSTEM_BOOT_ID', 'boot-1')
     monkeypatch.setattr(main, 'settings', SimpleNamespace(ai_internal_token=object(), log_level='INFO'))

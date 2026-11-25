@@ -16,11 +16,9 @@ ROOT = Path(__file__).resolve().parent
 
 async def initialize(root, source, values):
     from app.bootstrap.submission import initialize as initialize_database
-    from app.bootstrap.mcp_roles import provision
     from app.configs import Settings, get_settings
     from scripts.prepare_knowledge_tokenizer import prepare
 
-    Settings.model_config['env_file'] = None
     get_settings.cache_clear()
     config_path = root / 'config/policy-runtime.json'
     tokenizer = root / 'runtime/tokenizer/bge-m3-tokenizer.json'
@@ -31,14 +29,13 @@ async def initialize(root, source, values):
     config['tokenizer_path'] = str(tokenizer)
     Path(values['KNOWLEDGE_POLICY_CONFIG_FILE']).write_text(json.dumps(config) + '\n')
     settings = Settings(_env_file=None)
-    print('Importing BTC source, runtime schema and policy index...', flush=True)
-    result = await initialize_database(settings=settings, dsn=values['DATABASE_URL'],
+    print('Importing BTC source, runtime schema, MCP roles and policy index...', flush=True)
+    return await initialize_database(settings=settings, dsn=values['DATABASE_URL'],
         expected_database=values['MCP_DB_NAME'], source=source,
-        backend_dsn=values['BTC_BACKEND_DATABASE_URL'], allow_policy_build=True)
-    print('Provisioning MCP database roles...', flush=True)
-    await provision(values['DATABASE_URL'],
-        {name: values['MCP_' + name.upper() + '_PASSWORD'] for name in ('catalog', 'order', 'memory', 'knowledge')})
-    return result
+        backend_dsn=values['BTC_BACKEND_DATABASE_URL'],
+        mcp_passwords={name: values['MCP_' + name.upper() + '_PASSWORD']
+                       for name in ('catalog', 'order', 'memory', 'knowledge')},
+        allow_policy_build=True)
 
 
 def seed_accounts(root, values):
@@ -101,7 +98,7 @@ def main():
     try:
         run(args.data_dir)
     except ModuleNotFoundError:
-        parser.exit(1, 'Install host dependencies: python -m pip install -r config/submission/host.txt\n')
+        parser.exit(1, 'Install host dependencies: python -m pip install -r config/requirements/host.txt\n')
     except SeedError as exc:
         parser.exit(1, 'Seed failed: ' + str(exc) + '\n')
     except Exception as exc:

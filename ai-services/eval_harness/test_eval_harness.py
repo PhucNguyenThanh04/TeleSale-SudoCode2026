@@ -136,6 +136,21 @@ class TestScenarioInput(unittest.IsolatedAsyncioTestCase):
                 {"customer_turns": ["Xin chào"]}, date(2026, 10, 15), "0900000000")
         self.assertNotIn("private customer detail", str(caught.exception))
 
+    async def test_stream_failure_preserves_only_safe_rejection_reasons(self):
+        from app.agent.harness.observability import log_event
+        from eval_harness.benchmark_runner import run_scenario_call, StreamingMeasurementError
+
+        class Runtime(VoiceLifecycleStub):
+            async def run(self, request):
+                log_event(request, 'verify', 'grounding_checked', accepted=False, reason='price_without_quote')
+                log_event(request, 'verify', 'grounding_checked', accepted=False, reason='private customer detail')
+                raise RuntimeError('private draft')
+
+        with self.assertRaises(StreamingMeasurementError) as caught:
+            await run_scenario_call(Runtime(), 'SAMPLE-01', 'call_1',
+                {'customer_turns': ['Xin chào']}, date(2026, 10, 15), '0900000000')
+        self.assertEqual(caught.exception.verification_rejections, ['price_without_quote', 'unknown_reason'])
+
     async def test_worker_drains_at_call_end_without_blocking_next_turn(self):
         from types import SimpleNamespace
         from eval_harness.benchmark_runner import run_scenario_stream

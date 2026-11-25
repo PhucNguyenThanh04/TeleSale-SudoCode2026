@@ -85,6 +85,22 @@ class TraceAuditTest(unittest.TestCase):
         (results / "btc_score.json").write_text('{"score": 100}', encoding="utf-8")
         self.assertEqual(before, source_snapshot_digest(self.root))
 
+    def test_runtime_configuration_and_dependency_locks_change_the_source_digest(self):
+        (self.root / "run_eval.py").write_text("entrypoint = True\n", encoding="utf-8")
+        for name in ("docker-compose.yml", "Dockerfile", "config/policy-runtime.json",
+                     "config/requirements/ai.txt", "config/requirements/host.txt",
+                     "config/requirements/backend.txt", "seed_btc.py"):
+            with self.subTest(name=name):
+                path = self.root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("first", encoding="utf-8")
+                before = source_snapshot_digest(self.root)
+                path.write_text("second", encoding="utf-8")
+                self.assertNotEqual(before, source_snapshot_digest(self.root))
+        before = source_snapshot_digest(self.root)
+        (self.root / ".env").write_text("LLM_API_KEY=fake-secret\n", encoding="utf-8")
+        self.assertEqual(before, source_snapshot_digest(self.root))
+
     def test_local_scenarios_use_explicit_btc_schema(self):
         local = self.root / "local_scenarios"
         local.mkdir()
