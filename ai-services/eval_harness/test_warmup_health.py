@@ -56,3 +56,31 @@ def test_warmup_failure_stops_before_reset_and_scored_turns(tmp_path):
     assert report['status']=='failed' and report['phase']=='warmup'
     assert report['execution_error']['status']=='unknown'
     assert not (tmp_path/'btc_score.json').exists()
+
+
+def test_warmup_preserves_verifier_rejections_and_redacted_drafts():
+    from langchain_core.messages import AIMessage
+    from app.agent.harness.runtime import AgentHarnessRuntime
+    from app.agent.harness.execution_diagnostics import safe_failure_details
+    from app.agent.memory.store import MCPMemoryStore
+    from eval_harness.benchmark_runner import WarmupGateway
+    from test_deep_memory import FakeToolModel
+
+    async def run():
+        inner = SimpleNamespace(invoke=AsyncMock(side_effect=AssertionError('external tool called')))
+        gateway = WarmupGateway(inner)
+        draft = 'Mọi đơn hàng đều được miễn phí vận chuyển.'
+        runtime = AgentHarnessRuntime(FakeToolModel(replies=[AIMessage(content=draft)] * 2),
+            gateway, MCPMemoryStore(gateway))
+        try:
+            with pytest.raises(RuntimeError) as failure:
+                await warm_up_configuration(runtime, turns=1)
+            detail = safe_failure_details(failure.value)
+            assert detail['verification_rejections'] == ['promotion_quote_missing'] * 2
+            assert [item['agent_draft'] for item in detail['verification_diagnostics']] == [draft] * 2
+            assert 'execution_error' not in detail
+            assert not inner.invoke.called
+        finally:
+            await runtime.close()
+
+    asyncio.run(run())

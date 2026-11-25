@@ -59,3 +59,30 @@ def test_delivery_date_cannot_be_borrowed_from_another_product_or_ambiguous_quot
     other['result']['estimated_delivery'] = '2026-11-06'
     observations.append(other)
     assert check_answer('Dự kiến giao ngày 06/11/2026.', observations)[1] == 'delivery_unverified'
+
+
+@pytest.mark.parametrize('answer', [
+    'Em là trợ lý bán hàng, em có thể hỗ trợ anh/chị tìm kiếm sản phẩm phù hợp với nhu cầu, '
+    'cung cấp thông tin chi tiết về thông số, giá cả, chương trình ưu đãi cũng như hỗ trợ đặt hàng '
+    'và tra cứu trạng thái đơn hàng ạ.',
+    'Dạ, tôi có thể tư vấn sản phẩm và kiểm tra chương trình khuyến mãi cho bạn.',
+    'Bên em sẵn sàng giải đáp thắc mắc về giá, tồn kho, ưu đãi và giao hàng.',
+])
+def test_service_capabilities_are_not_current_commercial_promises(answer):
+    assert check_answer(answer, []) == (answer, None)
+
+
+@pytest.mark.parametrize('answer', [
+    'Em có thể tư vấn sản phẩm, hiện có ưu đãi giảm 30%.',
+    'Em có thể kiểm tra giá, sản phẩm này được miễn phí vận chuyển.',
+    'Em có thể tra cứu ưu đãi và tặng một xe đạp cho anh.',
+    'Em có thể tư vấn, bên em có ưu đãi dành cho mọi đơn hàng.',
+    'Em có thể kiểm tra giá máy là 730.000đ.',
+    'Em có thể tư vấn ưu đãi. Hiện đang miễn phí vận chuyển.',
+    'Em đã tạo đơn, em có thể tư vấn thêm về ưu đãi.',
+    'Em có thể tư vấn ưu đãi PROMO-FREE.',
+    'Em có thể kiểm tra, mọi đơn hàng đều giảm giá.',
+    'Em có thể tư vấn, khuyến mãi hết hạn.',
+])
+def test_capability_language_does_not_hide_concrete_commercial_claims(answer):
+    assert check_answer(answer, [])[1] is not None

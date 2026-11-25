@@ -17,6 +17,15 @@ _NON_ASSERTION = re.compile(
     r"|(?:dieu gi|yeu to nao) (?:phu hop nhat|tot nhat|hieu qua nhat)"
     r" voi (?:nhu cau cua )?(?:anh/chi|anh|chi)(?: a)?\?"
 )
+_CAPABILITY = re.compile(r'\b(?:em|toi|ben em)\s+(?:co the|san sang)\b')
+_CAPABILITY_ACTION = re.compile(r'\b(?:tim kiem|kiem tra|tra cuu|tu van|cung cap thong tin|giai dap)\b')
+_CONCRETE_CAPABILITY_CLAIM = re.compile(
+    r'\d|%|\b[a-z][a-z0-9]+(?:-[a-z0-9]+)+\b|'
+    r'\b(?:mien phi|freeship|tang|bieu|trieu|nghin|ngan|phan tram|da|het han|het hieu luc|'
+    r'(?:deu|luon)\s+(?:giam|co|duoc)|'
+    r'(?:mot|hai|ba|bon|nam|sau|bay|tam|chin|muoi)\s+dong|'
+    r'(?:dang|hien)\s+(?:co|giam|ap dung)|(?:khong|chua)\s+(?:co|con|duoc)|'
+    r'(?:co|ap dung)\s+(?:khuyen mai|uu dai))\b')
 _ZERO_FEE = re.compile(
     r"(?P<label>\*\*|__|`)?\bphí\s+(?P<fee>cod|thu hộ|ship|vận chuyển|giao hàng)"
     r"(?P=label)?(?:\s*:(?P=label)?\s*|\s+(?:là\s+)?)"
@@ -42,6 +51,17 @@ def commercial_clauses(text: str) -> list[str]:
 
 
 def assertion_text(text: str) -> str:
+    sentences = re.split(r'([?!;]|\.(?!\d)|\n)', text)
+    assertions = []
+    for index in range(0, len(sentences), 2):
+        sentence = re.sub(r'[*`]|__', '', sentences[index]).strip()
+        folded = _search_text(re.sub(r'^(?:Dạ|Vâng)[,\s]+', '', sentence, flags=re.IGNORECASE))
+        capability = _CAPABILITY.search(folded)
+        if (capability and _CAPABILITY_ACTION.search(folded, capability.end())
+                and not _CONCRETE_CAPABILITY_CLAIM.search(folded)):
+            continue
+        assertions.append(sentences[index] + (sentences[index + 1] if index + 1 < len(sentences) else ''))
+    text = ''.join(assertions)
     parts = re.split(r"([?!;]|\.(?!\d)|\n|\bnhưng\b|\bvà\b)", text,
                      flags=re.IGNORECASE)
     kept = []
