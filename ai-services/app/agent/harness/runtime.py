@@ -38,7 +38,9 @@ class AgentHarnessRuntime:
                  clock: Callable[[], datetime] | None = None,
                  guardrails_enabled: bool = True,
                  tracing: LangfuseTracing | None = None,
-                 turn_timeout_seconds: float = 90) -> None:
+                 turn_timeout_seconds: float = 90,
+                 max_repair_attempts: int = 1,
+                 safe_fallback_on_rejection: bool = False) -> None:
         self.memory = memory
         self.tools = tools
         self.tracing = tracing
@@ -47,7 +49,9 @@ class AgentHarnessRuntime:
             log_event(None, "verify", "answer_check_disabled", level=logging.WARNING,
                       reason="cấu hình tắt kiểm tra bổ sung; kiểm tra bằng chứng vẫn chạy")
         self.nodes = AgentNodes(llm, tools, memory, max_tool_calls,
-                                prompt_history_turns, clock)
+                                prompt_history_turns, clock,
+                                max_repair_attempts=max_repair_attempts,
+                                safe_fallback_on_rejection=safe_fallback_on_rejection)
         self.graph = build_graph(llm, tools, memory, max_tool_calls,
                                  prompt_history_turns, clock, guardrails_enabled,
                                  nodes=self.nodes)

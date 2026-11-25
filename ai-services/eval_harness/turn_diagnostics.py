@@ -40,7 +40,7 @@ def _classify(events, checks):
     if execution:
         models = [e for e in invocations if e.get('status') == 'failed']
     grounding = [e for e in events if e['event']=='grounding_checked' and 'accepted' in e]
-    outcomes = [e['event'] for e in events if e['event'] in {'recovery_succeeded','recovery_exhausted'}]
+    outcomes = [e['event'] for e in events if e['event'] in {'recovery_succeeded', 'recovery_exhausted', 'recovery_fallback'}]
     return {
         'model': {'status':('failed' if models else 'succeeded' if invocations and all(e.get('status') == 'succeeded' for e in invocations) else 'not_attempted' if invocations and all(e.get('status') == 'not_attempted' for e in invocations) else 'unknown'),
                   **({'error_type':models[-1].get('error_type','other_error')} if models else {}),
@@ -49,7 +49,7 @@ def _classify(events, checks):
         'grounding': {'status':('accepted' if grounding[-1]['accepted'] else 'rejected') if grounding else 'unknown',
                       **({'reason':grounding[-1]['reason']} if grounding and 'reason' in grounding[-1] else {})},
         'verifier_rejected': bool(checks),
-        'recovery': {'status':('succeeded' if outcomes[-1]=='recovery_succeeded' else 'failed') if outcomes else 'unknown',
+        'recovery': {'status':('succeeded' if outcomes[-1]=='recovery_succeeded' else 'fallback' if outcomes[-1]=='recovery_fallback' else 'failed') if outcomes else 'unknown',
                      'attempts':sum(e['event']=='recovery_attempted' for e in events)},
     }
 

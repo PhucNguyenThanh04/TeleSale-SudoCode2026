@@ -49,8 +49,23 @@ from app.agent.harness.execution_diagnostics import (
 )
 
 
+SAFE_VERIFICATION_FALLBACK = (
+    "Dạ, em xin lỗi anh/chị vì hiện em chưa xác minh đủ thông tin để khẳng định chính xác. "
+    "Anh/chị vui lòng cho em biết thêm chi tiết hoặc chờ em kiểm tra lại ạ."
+)
+
+
 class AgentNodes(SessionNodes):
     guardrails_enabled = True
+    max_repair_attempts = 1
+    safe_fallback_on_rejection = False
+
+    def __init__(self, llm, tools, memory, max_tool_calls: int, prompt_history_turns: int,
+                 clock=None, *, max_repair_attempts: int = 1,
+                 safe_fallback_on_rejection: bool = False) -> None:
+        super().__init__(llm, tools, memory, max_tool_calls, prompt_history_turns, clock)
+        self.max_repair_attempts = max(1, max_repair_attempts)
+        self.safe_fallback_on_rejection = safe_fallback_on_rejection
 
     @trace_node("run_agent")
     @execution_node("preparation")
@@ -192,44 +207,82 @@ class AgentNodes(SessionNodes):
                                 for key in ('tool_calls', 'tool_count', 'tool_attempts')}
                 calls = build_commerce_evidence(model_state)
             context = prompt_context(model_state, self.prompt_history_turns)
-            messages = [SystemMessage(content=state.get('selected_system_prompt', _SYSTEM_PROMPT)),
-                        *prompt_messages(context)]
-            if draft:
-                messages.append(AIMessage(content=mask_pii(draft)))
-            price_instruction = (' Đối chiếu từng số tiền với báo giá của đúng sản phẩm hoặc giỏ hàng. '
-                'Với pricing.get_quote, báo giá bán theo final_price_vnd, viết đủ số tiền bằng chữ số '
-                'kèm đơn vị đồng, không làm tròn. Bỏ số tiền của các khoản phí, mức giảm hoặc giá trị '
-                'quà tặng chưa được xác minh.') if reason == 'price_without_quote' else ''
-            promotion_instruction = (' Đối chiếu quà tặng với gift_sku trong applied_promos '
-                'của đúng sản phẩm mua và tên đã tra từ catalog. Khi đã có catalog, dùng đúng '
-                'tên ở trường name của quà, không tự rút gọn hay đổi tên. Không suy tên quà từ mã SKU; '
-                'không đổi sang quà khác hoặc tự thêm số lượng, giá trị, hạn ưu đãi. '
-                'Miễn phí COD và miễn phí vận chuyển là hai quyền lợi riêng. '
-                'Nếu chưa tra được tên quà, nói rõ phần chưa xác minh.') if reason.startswith('promotion_') else ''
-            messages.append(HumanMessage(content=json.dumps({
-                'task': ('Viết câu trả lời cho yêu cầu hiện tại, chỉ dùng bằng chứng đã có. '
-                    'Ưu tiên thông báo đúng trạng thái thao tác đã được công cụ xác nhận. '
-                    'Không thực hiện thêm thao tác. Khi memory không khả dụng, không suy đoán '
-                    'lịch sử riêng của khách. Yêu cầu xóa toàn bộ dữ liệu cần xác minh/chuyển '
-                    'bộ phận phụ trách, chưa được coi là đã xóa. Không đọc mã lỗi nội bộ cho khách. '
-                    'Nếu thiếu dữ kiện, hỏi làm rõ hoặc nói rõ phần chưa xác minh. '
-                    'Không thay bằng báo giá/sản phẩm của chủ đề khác.' + price_instruction + promotion_instruction),
-                'validation_error': reason,
-                'runtime_status': state.get('reply_context', {}),
-            }, ensure_ascii=False)))
-            log_event(state, 'verify', 'recovery_attempted', level=logging.DEBUG, reason=reason)
-            set_execution_phase('model_invocation', 'repair')
-            repair = await self.llm.ainvoke(messages)
-            execution_result(state)
-            set_execution_phase('verification')
-            repaired = mask_pii(_answer_text(repair))
-            checked, repair_reason = await validate(repaired)
-            if repair_reason is None:
-                log_event(state, 'verify', 'recovery_succeeded', level=logging.DEBUG)
-                return {"agent_text": checked, 'verified_answer': checked,
-                        'reply_error': None, "verifier_events": rejected, **tool_updates}
-            log_event(state, 'verify', 'recovery_rejected', level=logging.DEBUG, reason=repair_reason)
-            rejected.append(rejected_draft(state, repair_reason, repaired))
+            base_messages = [SystemMessage(content=state.get('selected_system_prompt', _SYSTEM_PROMPT)),
+                             *prompt_messages(context)]
+            current_draft = draft
+            current_reason = reason
+            last_reason = reason
+            had_infra_error = False
+            for attempt in range(self.max_repair_attempts):
+                messages = list(base_messages)
+                if current_draft:
+                    messages.append(AIMessage(content=mask_pii(current_draft)))
+                price_instruction = (' Đối chiếu từng số tiền với báo giá của đúng sản phẩm hoặc giỏ hàng. '
+                    'Với pricing.get_quote, báo giá bán theo final_price_vnd, viết đủ số tiền bằng chữ số '
+                    'kèm đơn vị đồng, không làm tròn. Bỏ số tiền của các khoản phí, mức giảm hoặc giá trị '
+                    'quà tặng chưa được xác minh.') if current_reason == 'price_without_quote' else ''
+                promotion_instruction = (' Đối chiếu quà tặng với gift_sku trong applied_promos '
+                    'của đúng sản phẩm mua và tên đã tra từ catalog. Khi đã có catalog, dùng đúng '
+                    'tên ở trường name của quà, không tự rút gọn hay đổi tên. Không suy tên quà từ mã SKU; '
+                    'không đổi sang quà khác hoặc tự thêm số lượng, giá trị, hạn ưu đãi. '
+                    'Miễn phí COD và miễn phí vận chuyển là hai quyền lợi riêng. '
+                    'Nếu chưa tra được tên quà, nói rõ phần chưa xác minh.') if current_reason.startswith('promotion_') else ''
+                extra_instruction = (
+                    ' Chỉ nêu ngày giao dự kiến khớp đúng estimated_delivery trong báo giá/đơn hàng hiện tại, '
+                    'không cam kết chắc chắn.' if current_reason == 'delivery_unverified'
+                    else ' Chỉ nêu trạng thái còn/hết hàng khớp đúng inventory.check hiện tại của đúng sản phẩm.'
+                    if current_reason.startswith('stock_')
+                    else ' Không dùng từ so sánh tuyệt đối như tốt nhất, phù hợp nhất, hiệu quả nhất cho sản phẩm.'
+                    if current_reason == 'unsupported_comparison' else ''
+                )
+                final_attempt_instruction = (
+                    ' Đây là lần sửa cuối: trả lời ngắn gọn, lịch sự, chỉ giữ phần đã có bằng chứng rõ ràng '
+                    'hoặc nói rõ phần chưa xác minh và hỏi làm rõ; tuyệt đối bỏ mọi con số, giá, khuyến mãi, '
+                    'ngày giao, tồn kho hoặc so sánh chưa chắc chắn.'
+                ) if self.max_repair_attempts > 1 and attempt == self.max_repair_attempts - 1 else ''
+                messages.append(HumanMessage(content=json.dumps({
+                    'task': ('Viết câu trả lời cho yêu cầu hiện tại, chỉ dùng bằng chứng đã có. '
+                        'Ưu tiên thông báo đúng trạng thái thao tác đã được công cụ xác nhận. '
+                        'Không thực hiện thêm thao tác. Khi memory không khả dụng, không suy đoán '
+                        'lịch sử riêng của khách. Yêu cầu xóa toàn bộ dữ liệu cần xác minh/chuyển '
+                        'bộ phận phụ trách, chưa được coi là đã xóa. Không đọc mã lỗi nội bộ cho khách. '
+                        'Nếu thiếu dữ kiện, hỏi làm rõ hoặc nói rõ phần chưa xác minh. '
+                        'Không thay bằng báo giá/sản phẩm của chủ đề khác.'
+                        + price_instruction + promotion_instruction + extra_instruction + final_attempt_instruction),
+                    'validation_error': current_reason,
+                    'runtime_status': state.get('reply_context', {}),
+                }, ensure_ascii=False)))
+                log_event(state, 'verify', 'recovery_attempted', level=logging.DEBUG, reason=current_reason)
+                set_execution_phase('model_invocation', 'repair')
+                repair = await self.llm.ainvoke(messages)
+                execution_result(state)
+                set_execution_phase('verification')
+                repaired = mask_pii(_answer_text(repair))
+                checked, repair_reason = await validate(repaired)
+                if repair_reason is None:
+                    log_event(state, 'verify', 'recovery_succeeded', level=logging.DEBUG)
+                    return {"agent_text": checked, 'verified_answer': checked,
+                            'reply_error': None, "verifier_events": rejected, **tool_updates}
+                log_event(state, 'verify', 'recovery_rejected', level=logging.DEBUG, reason=repair_reason)
+                rejected.append(rejected_draft(state, repair_reason, repaired))
+                last_reason = repair_reason
+                if repair_reason in {'empty_answer', 'internal_output', 'grounding_review_unavailable'}:
+                    had_infra_error = True
+                    break
+                current_draft = repaired
+                current_reason = repair_reason
+            if (self.safe_fallback_on_rejection and not had_infra_error
+                    and last_reason not in {'empty_answer', 'internal_output', 'grounding_review_unavailable'}
+                    and state.get('reply_context', {}).get('reason') not in {'model_unavailable', 'memory_unavailable'}):
+                fb_grounding = check_grounding(SAFE_VERIFICATION_FALLBACK, calls)
+                fb_answer, fb_reason = (
+                    check_answer(SAFE_VERIFICATION_FALLBACK, calls, state["safe_text"], focus_sku=_claim_focus(model_state))
+                    if fb_grounding is None and self.guardrails_enabled else (SAFE_VERIFICATION_FALLBACK, fb_grounding)
+                )
+                if fb_reason is None and fb_answer:
+                    log_event(state, 'verify', 'recovery_fallback', level=logging.WARNING, reason=last_reason)
+                    return {"agent_text": fb_answer, 'verified_answer': fb_answer,
+                            'reply_error': None, "verifier_events": rejected, **tool_updates}
         except Exception as exc:
             execution_result(state, exc=exc)
             log_event(state, "verify", "repair_failed", level=logging.WARNING,

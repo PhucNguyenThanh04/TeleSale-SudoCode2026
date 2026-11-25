@@ -22,4 +22,6 @@ def build_runtime(settings: Settings, *, gateway=None) -> AgentHarnessRuntime:
                               prompt_history_turns=settings.agent_prompt_history_turns,
                               guardrails_enabled=settings.agent_guardrails_enabled,
                               turn_timeout_seconds=settings.agent_turn_timeout_seconds,
-                              tracing=LangfuseTracing(settings) if settings.langfuse_enabled else None)
+                              tracing=LangfuseTracing(settings) if settings.langfuse_enabled else None,
+                              max_repair_attempts=2,
+                              safe_fallback_on_rejection=True)

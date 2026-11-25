@@ -719,6 +719,8 @@ async def execute_configuration(*, settings, scenarios, config, run_id, out,
             await preflight_runtime(runtime, settings, expected_database=expected_database, release=release)
             phase = "warmup"
             warm = build_runtime(settings, gateway=WarmupGateway(runtime.tools))
+            if getattr(warm, 'nodes', None) is not None:
+                warm.nodes.safe_fallback_on_rejection = False
             warm.memory.include_prior = config == "full"
             await warm_up_configuration(warm)
             phase = "reset"
