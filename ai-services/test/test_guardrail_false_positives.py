@@ -109,3 +109,25 @@ def test_mixed_budget_and_valid_price_remain_usable():
                          "final_price_vnd": 4_900_000, "applied_promos": []}}]
     answer = "Ngân sách của chị là 5 triệu. Mẫu này giá 4,9 triệu ạ."
     assert check_answer(answer, calls, "Ngân sách của tôi 5 triệu.") == (answer, None)
+
+
+@pytest.mark.parametrize('stock_sentence,reason', [
+    ('SKU-XM-4P còn hàng.', None),
+    ('Máy lọc không khí Xiaomi Smart 4 Pro còn hàng.', None),
+    ('SKU-XM-FLT còn hàng.', 'stock_sku_mismatch'),
+    ('SKU-XM-4P còn hàng. SKU-XM-FLT còn hàng.', 'stock_sku_mismatch'),
+    ('SKU-XM-4P hết hàng.', 'stock_result_mismatch'),
+])
+def test_stock_claim_is_not_bound_to_a_gift_in_another_sentence(stock_sentence, reason):
+    calls = [
+        {'name': 'catalog.search', 'args': {}, 'result': {'items': [
+            {'sku': 'SKU-XM-4P', 'name': 'Máy lọc không khí Xiaomi Smart 4 Pro', 'variants': []}]}},
+        {'name': 'pricing.get_quote', 'args': {'sku': 'SKU-XM-4P', 'on': '2026-10-20'},
+         'result': {'sku': 'SKU-XM-4P', 'final_price_vnd': 5490000, 'applied_promos': [
+             {'promo_code': 'XM-COMBO', 'type': 'gift', 'gift_sku': 'SKU-XM-FLT'}]}},
+        {'name': 'inventory.check', 'args': {'sku': 'SKU-XM-4P', 'on': '2026-10-20'},
+         'result': {'in_stock': True, 'qty': 20}},
+    ]
+    answer = stock_sentence + ' Được tặng quà SKU-XM-FLT.'
+    assert check_grounding(answer, calls) is None
+    assert check_answer(answer, calls)[1] == reason
