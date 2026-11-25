@@ -200,3 +200,20 @@ def test_gift_catalog_details_is_not_recorded_as_product_advised():
     advised_standalone = {item['value'] for item in reported_tool_candidates(answer, calls_with_standalone)
                           if item['key'] == 'product_advised'}
     assert advised_standalone == {'SKU-XM-4P', 'SKU-XM-FLT'}
+    full_calls = [
+        calls[0],
+        quote([gift_promo, promo('FREESHIP', 'freeship', 0)], sku='SKU-XM-4P', shipping=True),
+        calls[2],
+        {'name': 'inventory.check', 'args': {'sku': 'SKU-XM-4P'},
+         'result': {'sku': 'SKU-XM-4P', 'in_stock': True, 'qty': 20}},
+    ]
+    bullet_answer = (
+        '- Sản phẩm: 01 Máy lọc không khí Xiaomi Smart 4 Pro.\n'
+        '- Giá cuối: 900.000đ.\n'
+        '- Ưu đãi: Tặng kèm 01 Màng lọc thay thế Xiaomi Smart 4 và miễn phí vận chuyển.\n'
+        '- Tình trạng: Còn hàng.'
+    )
+    extracted = {(item.get('scope_id'), item['key'], item['value'])
+                 for item in reported_tool_candidates(bullet_answer, full_calls)}
+    assert ('SKU-XM-4P', 'in_stock', True) in extracted
+    assert ('SKU-XM-4P', 'promo_code', 'FREESHIP') in extracted

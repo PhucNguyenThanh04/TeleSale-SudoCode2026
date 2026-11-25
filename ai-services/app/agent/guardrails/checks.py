@@ -14,7 +14,7 @@ from app.mcp_servers.mcp_shared.pii import mask_pii
 from app.mcp_servers.mcp_shared.episode_evidence import evidence_supports
 from app.constants import PROFILE_SLOT_KEYS, SLOT_SPEC_BY_KEY, TOOL_ONLY_SLOT_KEYS, Slot
 from app.agent.guardrails.skus import known_skus, mentioned_skus
-from app.agent.guardrails.promotion_grounding import check_promotion_grounding
+from app.agent.guardrails.promotion_grounding import _promotion_subject, check_promotion_grounding
 from app.agent.guardrails.claims import COMPOUND_VND, assertion_text, commercial_clauses, compound_vnd, normalize_zero_fees
 
 
@@ -44,9 +44,13 @@ _BOOLEAN_FEATURE_ALIASES = {
     "child_safe_lock": (r"\bkhoa (?:an toan )?tre em\b",),
 }
 _SUPERLATIVE = re.compile(r"(?i)\b(?:phù hợp nhất|tốt nhất|hiệu quả nhất)\b")
+_SERVICE_SUPERLATIVE = re.compile(
+    r"(?i)\b(?:quyền lợi|hỗ trợ|phục vụ|chăm sóc|trải nghiệm)"
+    r"(?:\s+(?:anh/chị|anh|chị|bạn|khách\s+hàng))?\s+tốt nhất\b"
+)
 _LEGACY_SKU_SIGNAL = re.compile(r"\bSKU-[A-Z0-9-]+\b")
 _PROMOTION = re.compile(r"(?i)\b(?:khuyến mãi|giảm giá|còn giảm|được giảm|mã giảm|freeship|miễn phí (?:ship|vận chuyển))\b")
-_DELIVERY = re.compile(r"(?i)\b(?:dự kiến giao|ngày giao|giao trong|giao vào|giao ngày|giao\s+\d)\b")
+_DELIVERY = re.compile(r"(?i)\b(?:dự kiến giao|giao(?:\s+hàng)?\s+dự kiến|ngày giao|giao trong|giao vào|giao ngày|giao\s+\d)\b")
 _POLICY = re.compile(r"(?i)\b(?:bảo hành|đổi trả|đổi size|hoàn tiền|chính sách)\b")
 _INTERNAL = re.compile(r"(?i)\b(?:giá nhập|giá sàn|nhà cung cấp)\b")
 _PII_KEY = re.compile(r"(?i)(?:phone|address|name|email|zalo|fb_id|cccd|bank|account|card|password|token|sdt|stk)")
@@ -495,7 +499,7 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *, focus_
     clauses = commercial_clauses(candidate)
     answer_skus = set()
     for _clause in clauses:
-        answer_skus.update(resolve_claim_skus(_clause, successful, focus_sku=focus_sku))
+        answer_skus.update(resolve_claim_skus(_promotion_subject(_clause), successful, focus_sku=None))
     answer_quote_skus = answer_skus & quotes.keys()
     for clause in clauses:
         claims = _money_claims(clause)
@@ -503,9 +507,10 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *, focus_
             continue
         if set(_LEGACY_SKU_SIGNAL.findall(clause)) - known_skus(successful):
             return False
-        bound = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
-        if not bound and len(answer_quote_skus) == 1:
-            bound = answer_quote_skus
+        bound = resolve_claim_skus(clause, successful, focus_sku=None)
+        if not bound:
+            bound = answer_quote_skus if len(answer_quote_skus) == 1 else (
+                {focus_sku} if focus_sku else set())
         direct_parents = {sku for sku in bound & quotes.keys() if any(
             c.get('name') in CATALOG_TOOLS and any(i.get('sku') == sku for i in c['result'].get('items', []))
             for c in successful)}
@@ -532,7 +537,9 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *, focus_
             qty = selected_call.get('args', {}).get('qty', 1)
             total_values = {quote[k] * qty for k in ('final_price_vnd', 'list_price_vnd')
                             if type(quote.get(k)) is int and type(qty) is int}
-            if any(kind == 'price' and amount not in total_values for amount, kind, _ in claims):
+            price_claims = [amount for amount, kind, _ in claims if kind == 'price']
+            if price_claims and (not any(amount in total_values for amount in price_claims)
+                                 or any(amount not in (prices | total_values) for amount in price_claims)):
                 return False
             prices |= total_values
         if any(amount not in (discounts if kind == 'discount' else prices)
@@ -627,7 +634,7 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         if not policy_durations_supported(candidate, source_text):
             return FALLBACK, "unsupported_policy_or_internal_claim"
     evidenced_skus = known_skus(successful)
-    if _SUPERLATIVE.search(candidate):
+    if _SUPERLATIVE.search(_SERVICE_SUPERLATIVE.sub("", candidate)):
         return FALLBACK, "unsupported_comparison"
     if _unsupported_feature(candidate, successful):
         return FALLBACK, "unsupported_product_spec"
@@ -681,15 +688,16 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         stock_clauses = commercial_clauses(candidate)
         check_skus = {c.get('args', {}).get('sku') for c in checks if c.get('args', {}).get('sku')}
         answer_stock_skus = {sku for _c in stock_clauses
-                             for sku in resolve_claim_skus(_c, successful, focus_sku=focus_sku)} & check_skus
+                             for sku in resolve_claim_skus(_promotion_subject(_c), successful, focus_sku=None)} & check_skus
         for clause in stock_clauses:
             if not (_STOCK.search(clause) or _STOCK_QTY.search(clause)):
                 continue
             claimed_skus = mentioned_skus(clause, evidenced_skus)
             unverified_legacy_skus = set(_LEGACY_SKU_SIGNAL.findall(clause)) - claimed_skus
-            bound = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
-            if not bound and len(answer_stock_skus) == 1:
-                bound = answer_stock_skus
+            bound = resolve_claim_skus(clause, successful, focus_sku=None)
+            if not bound:
+                bound = answer_stock_skus if len(answer_stock_skus) == 1 else (
+                    {focus_sku} if focus_sku else set())
             selected = [c for c in checks if not bound or c.get('args', {}).get('sku') in bound]
             if len(bound) > 1 and not any(c.get('args', {}).get('sku') in {
                     item.get('sku') for catalog in successful if catalog.get('name') in CATALOG_TOOLS
@@ -698,17 +706,22 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
             if len(selected) != 1 or unverified_legacy_skus:
                 return FALLBACK, 'stock_sku_mismatch'
             stock = selected[0]['result'].get('in_stock')
-            negative_stock = bool(re.search(r'hết hàng|(?:không|chưa)\s+(?:còn hàng|có hàng|có sẵn trong kho)', clause, re.I))
+            negative_stock = bool(re.search(r'hết hàng|(?:không|chưa)\s+(?:còn hàng|có hàng|sẵn hàng|có sẵn trong kho)', clause, re.I))
             if _STOCK.search(clause) and (type(stock) is not bool or negative_stock == stock):
                 return FALLBACK, 'stock_result_mismatch'
             if any(int(qty) != selected[0]['result'].get('qty') for qty in _STOCK_QTY.findall(clause)):
                 return FALLBACK, 'stock_quantity_mismatch'
-    asserted_order = _ORDER.search(candidate) or re.search(
-        r'(?i)đã\s+ghi nhận\s+đơn hàng|đơn hàng.{0,30}đang được xử lý', candidate)
-    if asserted_order and not any(
+    created_order = any(
         call["name"] == "order.create" and call["result"].get("status") == "created"
         for call in successful
-    ):
+    )
+    existing_order_processing = any(
+        call["name"] in {"order.status", "order.update"} for call in successful
+    )
+    if (_ORDER.search(candidate) or re.search(r'(?i)đã\s+ghi nhận\s+đơn hàng', candidate)) and not created_order:
+        return FALLBACK, "order_creation_unverified"
+    if (re.search(r'(?i)đơn hàng.{0,30}đang được xử lý', candidate)
+            and not (created_order or existing_order_processing)):
         return FALLBACK, "order_creation_unverified"
     if re.search(r'(?i)đã\s+(?:đặt|tạo|lên|xếp)\s+lịch(?: hẹn)?(?: gọi lại)?', candidate) and not any(
         call['name'] == 'schedule.callback' and call['result'].get('callback_id')
@@ -719,37 +732,52 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     if promotion_reason:
         return FALLBACK, promotion_reason
     if _DELIVERY.search(candidate):
+        def _parse_dates(text: str, expected_iso: str | None) -> list[str | None]:
+            parsed = []
+            for literal in re.findall(r'\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}(?:/\d{4})?)\b', text):
+                try:
+                    if '/' in literal:
+                        parts = [int(part) for part in literal.split('/')]
+                        year = parts[2] if len(parts) == 3 else date.fromisoformat(expected_iso).year
+                        parsed.append(date(year, parts[1], parts[0]).isoformat())
+                    else:
+                        parsed.append(date.fromisoformat(literal).isoformat())
+                except (TypeError, ValueError):
+                    parsed.append(None)
+            return parsed
+
         orders = [call["result"] for call in successful if call["name"] == "order.create"
                   and call["result"].get("status") == "created"]
-        delivery_verified = len(orders) == 1 and str(orders[0].get("estimated_delivery")) in candidate
-        if not orders and not re.search(r'cam kết|đảm bảo|chắc chắn', candidate, re.IGNORECASE):
+        if len(orders) == 1:
+            expected_order_date = orders[0].get("estimated_delivery")
+            order_dates = _parse_dates(candidate, expected_order_date)
+            delivery_verified = bool(expected_order_date and (
+                str(expected_order_date) in candidate
+                or (order_dates and all(d == expected_order_date for d in order_dates))))
+        else:
+            delivery_verified = False
+        if not orders:
             from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
             all_clauses = commercial_clauses(candidate)
             available_quotes = [c for c in successful if c['name'] == 'pricing.get_quote']
             available_quote_skus = {c.get('args', {}).get('sku') for c in available_quotes if c.get('args', {}).get('sku')}
             answer_delivery_skus = {sku for _c in all_clauses
-                                    for sku in resolve_claim_skus(_c, successful, focus_sku=focus_sku)} & available_quote_skus
+                                    for sku in resolve_claim_skus(_promotion_subject(_c), successful, focus_sku=None)} & available_quote_skus
             clauses = [c for c in all_clauses if _DELIVERY.search(c)]
             delivery_verified = bool(clauses)
             for clause in clauses:
-                skus = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
-                if not skus and len(answer_delivery_skus) == 1:
-                    skus = answer_delivery_skus
+                if re.search(r'cam kết|đảm bảo|chắc chắn', clause, re.IGNORECASE):
+                    delivery_verified = False
+                    break
+                skus = resolve_claim_skus(clause, successful, focus_sku=None)
+                if not skus:
+                    skus = answer_delivery_skus if len(answer_delivery_skus) == 1 else (
+                        {focus_sku} if focus_sku else set())
                 if not skus and len(available_quotes) == 1 and available_quotes[0].get('args', {}).get('sku'):
                     skus = {available_quotes[0]['args']['sku']}
                 quotes = [c for c in available_quotes if c.get('args', {}).get('sku') in skus]
                 expected = quotes[0]['result'].get('estimated_delivery') if len(quotes) == 1 else None
-                dates = []
-                for literal in re.findall(r'\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}(?:/\d{4})?)\b', clause):
-                    try:
-                        if '/' in literal:
-                            parts = [int(part) for part in literal.split('/')]
-                            year = parts[2] if len(parts) == 3 else date.fromisoformat(expected).year
-                            dates.append(date(year, parts[1], parts[0]).isoformat())
-                        else:
-                            dates.append(date.fromisoformat(literal).isoformat())
-                    except (TypeError, ValueError):
-                        dates.append(None)
+                dates = _parse_dates(clause, expected)
                 if (not re.search(r'\bdự kiến\b', clause, re.IGNORECASE)
                         or len(skus) != 1 or len(quotes) != 1 or len(dates) != 1
                         or dates[0] != expected

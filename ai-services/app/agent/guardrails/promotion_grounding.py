@@ -20,7 +20,7 @@ def _named(text: str, name: str) -> bool:
 
 
 def _gift_claim(clause: str):
-    return re.search(r'\b(?:tang|bieu)\b\s*(?:kem\b\s*)?'
+    return re.search(r'\b(?:tang|bieu)\b(?:\s*:\s*|\s+)(?:kem\b\s*)?'
         r'(?:(?P<count>\d+|mot|hai|ba|bon|nam)\b\s*)?(?:qua\b\s*)?(?:la\b\s*)?'
         r'(?P<description>.*?)(?=\s+\b(?:va|den|cho|theo|tri gia|co han|nay|a|nhe|roi|khi mua)\b|[,;]|$)',
         _fold(clause))
@@ -70,6 +70,8 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
     quotes = [c for c in successful if c.get("name") == "pricing.get_quote"]
     from app.agent.guardrails.skus import known_skus
     product_codes = known_skus(successful)
+    model_tokens = {token for item in items if isinstance(item.get('name'), str)
+                    for token in re.findall(r"\b[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+\b", item['name'])}
     order_ids = {str(row['order_id']) for call in successful
                  for row in [call['result'], *call['result'].get('orders', [])]
                  if isinstance(row, dict) and row.get('order_id')}
@@ -82,10 +84,10 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
         policy_sections = [section for section in policy_sections if section and section in normalize(candidate)]
     from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
     quoted_skus = {c.get('args', {}).get('sku') for c in quotes if c.get('args', {}).get('sku')}
-    clauses = re.split(r"\.(?!\d)|[;!\n]|\bnhưng\b|,\s*(?=(?:hôm nay|hiện tại)\b)", candidate)
+    clauses = re.split(r"\.(?!\d)|[;!\n]|\bnhưng\b|,\s*(?=(?:hôm nay|hiện tại|tặng|biếu)\b)", candidate, flags=re.IGNORECASE)
     answer_skus = set()
     for _clause in clauses:
-        answer_skus.update(resolve_claim_skus(_promotion_subject(_clause), successful, focus_sku=focus_sku))
+        answer_skus.update(resolve_claim_skus(_promotion_subject(_clause), successful, focus_sku=None))
     answer_quoted_skus = answer_skus & quoted_skus
     for clause in clauses:
         if normalize(clause) and any(normalize(clause) in section for section in policy_sections):
@@ -101,7 +103,7 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
                 and not (_FREE_SHIPPING.search(folded) or _FREE_COD.search(folded))):
             continue
         codes = {code for code in re.findall(r"\b[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+\b", clause)
-                 if not code.startswith(("SKU-", "OD-")) and code not in order_ids | product_codes}
+                 if not code.startswith(("SKU-", "OD-")) and code not in order_ids | product_codes | model_tokens}
         shipping = bool(_FREE_SHIPPING.search(folded))
         cod = bool(_FREE_COD.search(folded))
         if not (codes or shipping or cod or re.search(r"\b(?:khuyen mai|uu dai|giam|tang|bieu)\b", commercial)):
@@ -131,9 +133,10 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
             if reason:
                 return reason
             continue
-        mentioned = resolve_claim_skus(_promotion_subject(clause), successful, focus_sku=focus_sku)
-        if not mentioned and len(answer_quoted_skus) == 1:
-            mentioned = answer_quoted_skus
+        mentioned = resolve_claim_skus(_promotion_subject(clause), successful, focus_sku=None)
+        if not mentioned:
+            mentioned = answer_quoted_skus if len(answer_quoted_skus) == 1 else (
+                {focus_sku} if focus_sku else set())
         selected = [c for c in quotes if not mentioned or c.get('args', {}).get('sku') in mentioned]
         if len(mentioned) > 1 and len(selected) == 1:
             parent = selected[0].get('args', {}).get('sku')

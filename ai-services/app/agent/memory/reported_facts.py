@@ -102,15 +102,51 @@ def _reported_promo(promo: dict[str, Any], answer: str,
     return False
 
 
+def _gift_only_skus(calls: list[dict[str, Any]]) -> set[str]:
+    gift_skus = {
+        promo["gift_sku"]
+        for call in calls
+        if isinstance(call.get("result"), dict) and "error" not in call["result"]
+        and call.get("name") in {"pricing.get_quote", "pricing.quote_order"}
+        for quote in [call["result"], *(call["result"].get("units") or [])]
+        if isinstance(quote, dict)
+        for promo in quote.get("applied_promos") or []
+        if isinstance(promo, dict) and promo.get("type") == "gift"
+        and isinstance(promo.get("gift_sku"), str) and promo["gift_sku"]
+    }
+    direct_skus = {
+        item.get("sku")
+        for call in calls
+        if isinstance(call.get("result"), dict) and "error" not in call["result"]
+        and call.get("name") == "catalog.search"
+        for item in call["result"].get("items") or []
+        if isinstance(item, dict) and isinstance(item.get("sku"), str)
+    } | {
+        call.get("result", {}).get("sku") or call.get("args", {}).get("sku")
+        for call in calls
+        if isinstance(call.get("result"), dict) and "error" not in call["result"]
+        and call.get("name") in {"pricing.get_quote", "inventory.check", "order.create"}
+    } | {
+        unit.get("sku")
+        for call in calls
+        if isinstance(call.get("result"), dict) and "error" not in call["result"]
+        and call.get("name") == "pricing.quote_order"
+        for unit in call["result"].get("units") or []
+        if isinstance(unit, dict) and isinstance(unit.get("sku"), str)
+    }
+    return gift_skus - direct_skus
+
+
 def _product_segments(answer: str, sku: str, calls: list[dict[str, Any]]) -> list[str]:
+    gift_only = _gift_only_skus(calls)
     names: dict[str, set[str]] = {}
     for call in calls:
         item_sku = call.get("args", {}).get("sku")
-        if isinstance(item_sku, str):
+        if isinstance(item_sku, str) and item_sku not in gift_only:
             names.setdefault(item_sku, set()).add(item_sku)
         if call.get("name") in CATALOG_TOOLS:
-            for item in call.get("result", {}).get("items", []):
-                if isinstance(item, dict) and isinstance(item.get("sku"), str):
+            for item in call.get("result", {}).get("items") or []:
+                if isinstance(item, dict) and isinstance(item.get("sku"), str) and item["sku"] not in gift_only:
                     names.setdefault(item["sku"], set()).add(item["sku"])
                     if isinstance(item.get("name"), str):
                         names[item["sku"]].add(item["name"])
@@ -126,11 +162,13 @@ def _product_segments(answer: str, sku: str, calls: list[dict[str, Any]]) -> lis
 def reported_tool_fact(key: str, value: Any, answer: str,
                        calls: list[dict[str, Any]], sku: str | None = None) -> bool:
     named_skus = set()
+    gift_only = _gift_only_skus(calls)
     if sku and key in {Slot.PRICE_QUOTED_VND, Slot.IN_STOCK, Slot.PROMO_CODE, Slot.PROMO_EXPIRY}:
-        named_skus = resolve_claim_skus(answer, calls)
+        named_skus = resolve_claim_skus(answer, calls) - gift_only
         named_skus.update(item['sku'] for call in calls if call.get('name') in CATALOG_TOOLS
             and 'error' not in call.get('result', {})
-            for item in call['result'].get('items', []) if isinstance(item, dict) and item.get('sku')
+            for item in call['result'].get('items') or [] if isinstance(item, dict) and item.get('sku')
+            and item['sku'] not in gift_only
             and _product_named(answer, item['sku'], calls))
         if named_skus and sku not in named_skus:
             return False
@@ -193,38 +231,7 @@ def reported_tool_fact(key: str, value: Any, answer: str,
 
 def reported_tool_candidates(answer: str, calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
-    gift_skus = {
-        promo["gift_sku"]
-        for call in calls
-        if isinstance(call.get("result"), dict) and "error" not in call["result"]
-        and call.get("name") in {"pricing.get_quote", "pricing.quote_order"}
-        for quote in [call["result"], *call["result"].get("units", [])]
-        if isinstance(quote, dict)
-        for promo in quote.get("applied_promos", [])
-        if isinstance(promo, dict) and promo.get("type") == "gift"
-        and isinstance(promo.get("gift_sku"), str) and promo["gift_sku"]
-    }
-    direct_skus = {
-        item.get("sku")
-        for call in calls
-        if isinstance(call.get("result"), dict) and "error" not in call["result"]
-        and call.get("name") == "catalog.search"
-        for item in call["result"].get("items", [])
-        if isinstance(item, dict) and isinstance(item.get("sku"), str)
-    } | {
-        call.get("result", {}).get("sku") or call.get("args", {}).get("sku")
-        for call in calls
-        if isinstance(call.get("result"), dict) and "error" not in call["result"]
-        and call.get("name") in {"pricing.get_quote", "inventory.check", "order.create"}
-    } | {
-        unit.get("sku")
-        for call in calls
-        if isinstance(call.get("result"), dict) and "error" not in call["result"]
-        and call.get("name") == "pricing.quote_order"
-        for unit in call["result"].get("units", [])
-        if isinstance(unit, dict) and isinstance(unit.get("sku"), str)
-    }
-    gift_only_skus = gift_skus - direct_skus
+    gift_only_skus = _gift_only_skus(calls)
     for call in calls:
         result = call.get("result", {})
         if not isinstance(result, dict) or "error" in result:
