@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import shlex
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -281,32 +282,24 @@ async def run_experiment(args, repo, worker_repo, settings):
                     repo, state['proposals'], actor=args.actor, run_id=out.name, base=base)
                 if collected is None:
                     separate = state.get('workflow') == 'paired_then_published_full'
-                    project = os.getenv('BTC_SUBMISSION_PROJECT') if separate else None
-                    port = os.getenv('BTC_SUBMISSION_DEMO_PORT', '8000') if project else '8000'
+                    port = os.getenv('BTC_SUBMISSION_DEMO_PORT', '8000')
                     save(status='awaiting_review', phase='awaiting_review',
                         review_url=f'http://127.0.0.1:{port}/knowledge?run_id={out.name}')
-                    if project:
-                        compose = ('SUBMISSION_RUN_AS="$(id -u):$(id -g)" '
-                                   'SUBMISSION_DATABASE=telesale_eval_m1 BTC_CALLBACK_MOCK=1 docker compose '
-                                   '--env-file .env -f compose.submission.yml -p ' + shlex.quote(project))
-                        print(f'[knowledge] Start the review UI: {compose} up -d --wait backend', flush=True)
                     print('[knowledge] Review/edit/reject proposals and publish K1: '+state['review_url'], flush=True)
-                    if project:
-                        print(f'[knowledge] Run after publication: {compose} run --rm knowledge-eval '
-                              f'--base-run {shlex.quote(str(k0.resolve()))}', flush=True)
+                    if separate:
+                        print('[knowledge] Run after publication: ' + shlex.join([
+                            sys.executable, str(PROJECT/'run_knowledge_eval.py'),
+                            '--base-run', str(k0.resolve())]), flush=True)
                         return out
-                    resume = ([str(PROJECT/'ai-services/.venv/bin/python'), str(PROJECT/'run_knowledge_eval.py'),
-                               '--base-run', str(k0.resolve())] if separate else
-                              [str(PROJECT/'ai-services/.venv/bin/python'), '-m',
-                               'eval_harness.knowledge_triplet', '--resume', str(out.resolve())])
+                    resume = [str(PROJECT/'ai-services/.venv/bin/python'), '-m',
+                              'eval_harness.knowledge_triplet', '--resume', str(out.resolve())]
                     prefix = 'AGENT_GUARDRAILS_ENABLED=true KNOWLEDGE_ENABLED=true PYTHONPATH='+shlex.quote(str(PROJECT/'ai-services')+os.pathsep+str(PROJECT))
                     if state.get('system_boot_id'):
                         prefix += ' SYSTEM_BOOT_ID='+shlex.quote(state['system_boot_id'])
                     pin = getattr(settings, 'knowledge_release_id', None)
                     if pin is not None:
                         prefix += ' KNOWLEDGE_RELEASE_ID='+shlex.quote(pin)
-                    print(('[knowledge] Run the separate file after publication: ' if separate else
-                           '[knowledge] Resume in another terminal: ')+prefix+' '+shlex.join(resume), flush=True)
+                    print('[knowledge] Resume in another terminal: '+prefix+' '+shlex.join(resume), flush=True)
                     return out
                 review, ready = collected
                 async with repo.transaction() as tx:

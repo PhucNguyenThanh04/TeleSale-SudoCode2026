@@ -32,3 +32,4 @@ tqdm==4.70.1
 truststore==0.10.5
 typing-extensions==4.16.0
 yarl==1.25.1
+python-dotenv==1.2.4

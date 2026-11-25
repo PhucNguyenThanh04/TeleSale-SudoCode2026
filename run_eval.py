@@ -3,6 +3,9 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
+
+from scripts.btc_host import configuration, verify_seed
 
 
 ROOT = Path(__file__).resolve().parent
@@ -10,45 +13,43 @@ ROOT = Path(__file__).resolve().parent
 
 def run(args, *, root=ROOT):
     root = Path(root).resolve()
-    if not (root / '.env').is_file():
-        raise ValueError('Place the completed .env in the repository root first.')
     if args.config and args.out is None:
         raise ValueError('--out is required with --config')
     if args.config and args.limit_scenarios is not None:
         raise ValueError('--limit-scenarios is available only for paired evaluation')
-    environment = dict(os.environ)
-    environment['SUBMISSION_RUN_AS'] = f'{os.getuid()}:{os.getgid()}'
-    if args.scenarios is not None:
-        scenarios = args.scenarios.resolve()
-        if not scenarios.is_dir():
-            raise ValueError('--scenarios must be an existing directory')
-        environment['SCENARIOS_DIR'] = str(scenarios)
     output = args.out.resolve() if args.out is not None else None
-    if args.config and output.exists():
+    if args.config and any(path.exists() for path in (output, output.with_suffix('.report.json'),
+                                                      output.with_suffix('.btc-release'))):
         raise FileExistsError('Trace already exists; choose a new --out path.')
-    if output is not None:
-        environment['RESULTS_DIR'] = str(output.parent if args.config else output)
-    compose = ['docker', 'compose', '--env-file', str(root / '.env'),
-               '-f', str(root / 'compose.submission.yml')]
-    resolved = subprocess.run([*compose, '--profile', 'eval', 'config', '--format', 'json'],
-        cwd=root, env=environment, check=True, capture_output=True, text=True)
-    config = json.loads(resolved.stdout)
-    results = next(mount['source'] for mount in config['services']['eval']['volumes']
-                   if mount['target'] == '/results')
-    (Path(results) / 'models').mkdir(parents=True, exist_ok=True)
-    command = [*compose, 'run', '--rm', '--no-deps']
+    values = configuration(root)
+    scenarios = (args.scenarios.resolve() if args.scenarios is not None else
+                 (root / (values.get('SCENARIOS_DIR') or './eval/scenario_final')).resolve())
+    if not scenarios.is_dir():
+        raise ValueError('--scenarios must be an existing directory')
+    output = output or (root / (values.get('RESULTS_DIR') or './results-submission')).resolve()
+    verify_seed(root, values)
+    environment = {**os.environ, **values}
+    command = [sys.executable, '-u', '-m']
     if args.config:
-        command += ['eval-trace', '--scenarios', '/scenarios', '--config', args.config,
-                    '--out', '/results/' + output.name, '--seed', str(args.seed)]
+        command += ['eval.run_eval', '--config', args.config, '--out', str(output), '--isolated-db']
     else:
-        command += ['eval', '--seed', str(args.seed)]
+        command += ['eval_harness.run_official', '--out-root', str(output)]
         if args.limit_scenarios is not None:
             command += ['--limit-scenarios', str(args.limit_scenarios)]
-    return subprocess.run(command, cwd=root, env=environment).returncode
+    command += ['--scenarios', str(scenarios), '--btc-root', values['BTC_DATA_DIR'],
+                '--expected-database', values['EVAL_EXPECTED_DATABASE'], '--seed', str(args.seed)]
+    result = subprocess.run(command, cwd=root, env=environment).returncode
+    if result and args.config:
+        report = output.with_suffix('.report.json')
+        if report.is_file():
+            details = json.loads(report.read_text())
+            print(f"Eval failed: phase={details.get('phase')} code={details.get('error_code')} "
+                  f"service={details.get('service')}. Report: {report}", file=sys.stderr)
+    return result
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Evaluate the running, seeded Docker stack using the BTC interface')
+    parser = argparse.ArgumentParser(description='Run BTC evaluation on the host against the running, seeded servers')
     parser.add_argument('--scenarios', type=Path, help='Host directory; defaults to SCENARIOS_DIR in .env')
     parser.add_argument('--config', choices=('full', 'baseline_no_memory'),
         help='Export one trace; omit to compare Full and baseline and print metrics')
@@ -58,10 +59,12 @@ def main():
     args = parser.parse_args()
     try:
         result = run(args)
+    except ModuleNotFoundError:
+        parser.exit(1, 'Install host dependencies: python -m pip install -r config/submission/host.txt\n')
     except (ValueError, FileExistsError) as exc:
         parser.exit(1, str(exc) + '\n')
-    except (OSError, subprocess.CalledProcessError):
-        parser.exit(1, 'Docker evaluation failed. Check .env, start Docker Compose and run python seed_btc.py --data-dir <BTC directory> first.\n')
+    except OSError as exc:
+        parser.exit(1, 'Host evaluation failed (' + type(exc).__name__ + '). Check paths and file permissions.\n')
     raise SystemExit(result)
 
 

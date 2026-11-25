@@ -7,55 +7,11 @@ import socket
 import subprocess
 import sys
 import time
-from urllib.parse import quote
 from urllib.request import urlopen
 
+from scripts.btc_host import ConfigurationError as SeedError, configuration
 
 ROOT = Path(__file__).resolve().parent
-
-
-class SeedError(ValueError):
-    pass
-
-
-def configuration(root, source):
-    from dotenv import dotenv_values
-
-    path = root / '.env'
-    if not path.is_file():
-        raise SeedError('Place the completed .env in the repository root first.')
-    values = {key: value for key, value in dotenv_values(path, interpolate=False).items() if value is not None}
-    values.update({key: os.environ[key] for key in values if key in os.environ})
-    required = ['POSTGRES_PASSWORD', 'REVIEWER_PASSWORD', 'WORKER_PASSWORD', 'BACKEND_PASSWORD',
-                'LLM_API_KEY', 'LLM_MODEL', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN',
-                'DEMO_JWT_SECRET', 'DEMO_USER_1_PASSWORD', 'DEMO_USER_2_PASSWORD',
-                *['MCP_' + name.upper() + '_PASSWORD' for name in ('catalog', 'order', 'memory', 'knowledge')]]
-    missing = [key for key in required if not values.get(key, '').strip()]
-    if missing:
-        raise SeedError('Missing .env settings: ' + ', '.join(missing))
-    defaults = {'SUBMISSION_POSTGRES_PORT': '15432', 'SUBMISSION_QDRANT_PORT': '16333',
-                'SUBMISSION_AI_PORT': '18001', 'DEMO_PORT': '8000',
-                **{'SUBMISSION_MCP_' + name.upper() + '_PORT': str(18011 + offset)
-                   for offset, name in enumerate(('catalog', 'order', 'memory', 'knowledge'))}}
-    for key, default in defaults.items():
-        values[key] = values.get(key) or default
-        if not values[key].isdigit() or not 1 <= int(values[key]) <= 65535:
-            raise SeedError(key + ' must be a port between 1 and 65535')
-    database = values.get('SUBMISSION_DATABASE') or 'telesale_eval_m1'
-    if database != 'telesale_eval_m1':
-        raise SeedError('Seed requires the dedicated telesale_eval_m1 database')
-    port = int(values.get('SUBMISSION_POSTGRES_PORT', '15432'))
-    def dsn(role, key):
-        return f'postgresql+asyncpg://{role}:{quote(values[key], safe="")}@127.0.0.1:{port}/{database}'
-    values.update(DATABASE_URL=dsn('btc_admin', 'POSTGRES_PASSWORD'),
-        KNOWLEDGE_DATABASE_URL=dsn('btc_reviewer', 'REVIEWER_PASSWORD'),
-        KNOWLEDGE_WORKER_DATABASE_URL=dsn('btc_worker', 'WORKER_PASSWORD'),
-        BTC_BACKEND_DATABASE_URL=dsn('btc_backend', 'BACKEND_PASSWORD'),
-        APP_ENV='development', SYSTEM_BOOT_ID='btc-submission-v1', MCP_DB_NAME=database,
-        BTC_DATA_DIR=str(source), QDRANT_URL='http://127.0.0.1:' + values.get('SUBMISSION_QDRANT_PORT', '16333'),
-        KNOWLEDGE_POLICY_SOURCE_DIR=str(root / 'runtime/policy'),
-        KNOWLEDGE_POLICY_CONFIG_FILE=str(root / 'runtime/policy-runtime.host.json'))
-    return values
 
 
 async def initialize(root, source, values):
@@ -145,7 +101,7 @@ def main():
     try:
         run(args.data_dir)
     except ModuleNotFoundError:
-        parser.exit(1, 'Install seed dependencies: python -m pip install -r config/submission/seed.txt\n')
+        parser.exit(1, 'Install host dependencies: python -m pip install -r config/submission/host.txt\n')
     except SeedError as exc:
         parser.exit(1, 'Seed failed: ' + str(exc) + '\n')
     except Exception as exc:

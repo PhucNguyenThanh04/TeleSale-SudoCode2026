@@ -1,0 +1,4 @@
+-r ai.txt
+argon2-cffi==25.1.0
+argon2-cffi-bindings==26.2.0
+pwdlib==0.3.1

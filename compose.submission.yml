@@ -45,68 +45,6 @@ x-tools: &tools
   MCP_MEMORY_URL: http://mcp-memory:8013/mcp
   MCP_KNOWLEDGE_URL: http://mcp-knowledge:8014/mcp
 
-x-tools-deps: &tools-deps
-  mcp-catalog:
-    condition: service_healthy
-  mcp-order:
-    condition: service_healthy
-  mcp-memory:
-    condition: service_healthy
-  mcp-knowledge:
-    condition: service_healthy
-  langmem-worker:
-    condition: service_started
-
-x-btc: &btc
-  type: bind
-  source: ${BTC_ROOT:-../BTC-Data-Vong1-TEAMS}
-  target: /btc
-  read_only: true
-  bind:
-    create_host_path: false
-
-x-results: &results
-  type: bind
-  source: ${RESULTS_DIR:-./results-submission}
-  target: /results
-  bind:
-    create_host_path: true
-
-x-eval: &eval
-  <<: *ai
-  profiles: [eval]
-  user: ${SUBMISSION_RUN_AS:-0:0}
-  depends_on:
-    <<: *tools-deps
-  environment:
-    <<: [*db, *llm, *tools]
-    HOME: /tmp
-    BTC_DATA_DIR: /btc
-    BTC_SUBMISSION_PROJECT: ${COMPOSE_PROJECT_NAME}
-    BTC_SUBMISSION_DEMO_PORT: ${DEMO_PORT:-8000}
-  secrets: [postgres_password, mcp_internal_token, reviewer_password, worker_password]
-  volumes:
-    - *btc
-    - type: bind
-      source: ${SCENARIOS_DIR:-./eval/scenario_final}
-      target: /scenarios
-      read_only: true
-      bind:
-        create_host_path: false
-    - type: bind
-      source: ${BTC_ASR_DATASET_DIR:-./dataset}
-      target: /asr-btc-input
-      read_only: true
-      bind:
-        create_host_path: false
-    - type: bind
-      source: ${TEAM_ASR_DATASET_DIR:-./dataset}
-      target: /asr-team-input
-      read_only: true
-      bind:
-        create_host_path: false
-    - *results
-
 x-demo-env: &demo-env
   <<: *db
   AI_SERVICE_URL: http://ai:8001
@@ -114,20 +52,6 @@ x-demo-env: &demo-env
   REDIS_URL: redis://redis:6379/0
 
 services:
-  prepare-results:
-    image: postgres:16.15-alpine
-    profiles: [asr]
-    user: '0:0'
-    environment:
-      SUBMISSION_RUN_AS: ${SUBMISSION_RUN_AS:-0:0}
-    volumes:
-      - *results
-    entrypoint: [sh, -ec]
-    command:
-      - |
-        mkdir -p /results/models
-        chown -- "$${SUBMISSION_RUN_AS}" /results /results/models
-
   postgres:
     image: postgres:16.15-alpine
     environment:
@@ -327,53 +251,6 @@ services:
       retries: 60
       start_period: 24h
 
-  eval:
-    <<: *eval
-    entrypoint: [python, /workspace/scripts/btc_container.py, eval, python, -m, eval_harness.run_official, --btc-root, /btc, --scenarios, /scenarios, --out-root, /results]
-    command: []
-
-  eval-trace:
-    <<: *eval
-    entrypoint: [python, /workspace/scripts/btc_container.py, eval, python, -m, eval.run_eval, --btc-root, /btc, --isolated-db]
-
-  knowledge-eval:
-    <<: *eval
-    entrypoint: [python, /workspace/scripts/btc_container.py, eval, python, /workspace/run_knowledge_eval.py]
-
-  asr:
-    image: telesale-btc-asr:${SUBMISSION_IMAGE_TAG:-local}
-    pull_policy: never
-    build:
-      context: .
-      dockerfile: Dockerfile.submission
-      target: asr
-    profiles: [asr]
-    user: ${SUBMISSION_RUN_AS:-0:0}
-    depends_on:
-      prepare-results:
-        condition: service_completed_successfully
-    environment:
-      HOME: /tmp
-      HF_HOME: /models/.cache
-      ASR_MODEL: ${ASR_MODEL:-whisper-small}
-      ASR_DEVICE: ${ASR_DEVICE:-cpu}
-      ASR_COMPUTE_TYPE: ${ASR_COMPUTE_TYPE:-int8}
-      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
-      ELEVENLABS_API_BASE_URL: ${ELEVENLABS_API_BASE_URL:-https://api.elevenlabs.io}
-    volumes:
-      - *btc
-      - type: bind
-        source: ${AUDIO_DATASET_DIR:-./dataset}
-        target: /audio-dataset
-        read_only: true
-        bind:
-          create_host_path: false
-      - *results
-      - type: bind
-        source: ${RESULTS_DIR:-./results-submission}/models
-        target: /models
-        bind:
-          create_host_path: true
 
 volumes:
   postgres:

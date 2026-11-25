@@ -4,7 +4,7 @@
 
 Trace và parser seed nhận số tiền hợp lệ theo trường nghiệp vụ, vẫn chặn CCCD/STK. Trace chấm dùng cùng cách xuất địa chỉ hợp lệ cho lượt trực tiếp và kết quả worker. Warm-up mô phỏng `memory.replay`. Seed trên SĐT dùng chung chờ danh tính được xác minh. Call Brief làm mới giá, khuyến mãi và tồn kho theo ngày cuộc gọi trước khi trả kết quả và che địa chỉ trong tóm tắt. Runner chấm áp dụng lịch callback của mock BTC. Demo áp dụng giờ tổng đài trong tài liệu chính sách.
 
-Extractor ghi `cod_fee_vnd` và `first_exchange_fee_vnd` khi lời thoại khẳng định rõ. Scorer BTC chỉ tính các claim có trường tương ứng trong nhãn của ca. `eval-trace` dùng tên output riêng cho sidecar trích xuất để có thể chạy lại cùng cấu hình với tên trace mới.
+Extractor ghi `cod_fee_vnd` và `first_exchange_fee_vnd` khi lời thoại khẳng định rõ. Scorer BTC chỉ tính các claim có trường tương ứng trong nhãn của ca. `run_eval.py` dùng tên output riêng cho sidecar trích xuất để có thể chạy lại cùng cấu hình với tên trace mới.
 
 Nguồn và scenario hiện vẫn khớp manifest; preflight lại qua 48/118/323/38. Không tìm thấy trace TEAM-* hoặc artifact judge/người chấm của bộ mới trong các thư mục kết quả hiện có. Corpus trong repo có 22 WAV duy nhất, 1173.13 giây (~19 phút 33 giây); WAV trong hai ZIP trùng hash với các file đã giải nén nên không cộng đôi. ZIP mã nguồn RC11 chưa có eval/scenario_final hoặc eval_harness/seed_memory.py. Các sửa đổi tương thích còn ở working tree, gồm file chưa tracked; cần chốt bản Git hoặc đóng gói mới trước khi bàn giao.
 

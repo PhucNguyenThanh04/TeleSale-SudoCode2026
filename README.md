@@ -4,14 +4,14 @@ Harness telesale tiếng Việt có bộ nhớ đa phiên. Luồng bàn giao g�
 
 ## 1. Clone và đặt cấu hình
 
-Máy cần Linux x86-64, Git, Python 3.12 trở lên và Docker Compose 2.20 trở lên. Tài khoản chạy phải truy cập được Docker (`docker ps` thành công). Các thư viện AI/backend được cài trong image; bước seed chạy bằng Python ngoài host và cần môi trường bên dưới.
+Máy cần Linux x86-64, Git, Python 3.12 trở lên và Docker Compose 2.20 trở lên. Docker chạy các server; seed và eval chạy bằng Python trên host, không gọi Docker và không cần `sudo`. Bộ thư viện host dùng cùng lock AI với image để đồng bộ phiên bản harness.
 
 ```bash
 git clone --branch main --single-branch https://github.com/PhucNguyenThanh04/TeleSale-SudoCode2026.git
 cd TeleSale-SudoCode2026
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r config/submission/seed.txt
+python -m pip install -r config/submission/host.txt
 ```
 
 Đặt file `.env` đầy đủ vào gốc repo. Nếu tự tạo cấu hình, copy `.env.example` thành `.env` rồi điền key/model/endpoint. File mẫu liệt kê đủ biến; ngày chấm BTC thay bằng key của BTC. `.env` riêng trong từng server không cần có khi chạy theo luồng Docker này.
@@ -31,7 +31,9 @@ docker compose up -d --build
 
 Lệnh bật PostgreSQL, Qdrant, Redis, bốn MCP server, AI service, backend và các worker. Bước này chỉ cần repo và `.env`, chưa cần thư mục dữ liệu BTC. Các server dùng volume nội bộ; lệnh không nạp dữ liệu và không chạy eval.
 
-Compose build một image AI và một image backend; MCP, worker và eval dùng lại các image này. Sau khi đổi mã nguồn, chạy lại lệnh trên trước bước seed/eval. `Dockerfile.submission.dockerignore` lọc context cho bản nộp; `.dockerignore` ở root lọc context khi dùng Dockerfile backend cũ. Virtualenv, cache, test, báo cáo, model weights và audio được loại khỏi context của bản nộp.
+Compose build một image AI và một image backend; MCP và worker dùng chung image AI. Chỉ cần chạy lệnh trên một lần sau khi clone và đặt `.env`; seed/eval sau đó kết nối tới các server đang chạy. `Dockerfile.submission.dockerignore` lọc context cho bản nộp; `.dockerignore` ở root lọc context khi dùng Dockerfile backend cũ. Virtualenv, cache, test, báo cáo, model weights và audio được loại khỏi context của bản nộp.
+
+Nếu máy yêu cầu quyền quản trị Docker, dùng `sudo docker compose up -d --build` ở bước này. Các lệnh Python bên dưới chạy bằng user thường trong `.venv`.
 
 Lần đầu database còn trống, các container ứng dụng chờ dữ liệu; log có thể hiện `Waiting for BTC data` và health ở trạng thái `starting`. Chạy bước 3 để hoàn tất khởi tạo.
 
@@ -74,7 +76,7 @@ Nếu sửa mật khẩu hoặc khách gắn với tài khoản trong `.env`, d�
 ## 4. Chạy eval
 
 ```bash
-python3 run_eval.py
+python run_eval.py
 ```
 
 Script chạy Full và baseline không bộ nhớ liên phiên trên stack đã bật, gọi scorer BTC và in bảng chỉ số. Script không tự bật server hoặc nạp dữ liệu. Hai cấu hình dùng cùng model, tham số, seed, nguồn, knowledge release và bộ test; baseline giữ ngữ cảnh trong phiên, tắt bộ nhớ liên phiên.
@@ -84,24 +86,26 @@ Kết quả nằm trong `RESULTS_DIR/<run-id>/`, mặc định `results-submissi
 Thử một scenario trước khi chạy toàn bộ:
 
 ```bash
-python3 run_eval.py --limit-scenarios 1
+python run_eval.py --limit-scenarios 1
 ```
 
-Script tạo thư mục đầu ra trên host và truyền UID:GID hiện tại vào job Docker để host đọc được kết quả. Khi eval chạy, dừng thao tác chat/review trên UI vì runner reset runtime trước mỗi cấu hình. Database này dành riêng cho bản nộp, không dùng cho dữ liệu vận hành thật.
+Runner chạy ngay trong `.venv` trên host, đọc `.env` root và kết nối PostgreSQL/MCP qua các cổng loopback. Script không tạo container, không build lại image và không cần quyền Docker. Kết quả do user hiện tại tạo. Khi eval chạy, dừng thao tác chat/review trên UI vì runner reset runtime trước mỗi cấu hình. Database này dành riêng cho bản nộp, không dùng cho dữ liệu vận hành thật.
 
 ### Chấm chéo theo giao diện BTC
 
 `run_eval.py` nhận đường dẫn trên máy host, không yêu cầu BTC tự đổi sang đường dẫn trong container:
 
 ```bash
-python3 run_eval.py --scenarios ./eval/scenario_final \
+python run_eval.py --scenarios ./eval/scenario_final \
   --config full --out ./results-submission/full.jsonl
 
-python3 run_eval.py --scenarios ./eval/scenario_final \
+python run_eval.py --scenarios ./eval/scenario_final \
   --config baseline_no_memory --out ./results-submission/baseline.jsonl
 ```
 
-BTC thay `--scenarios` bằng thư mục bộ ẩn. `--config` xuất một trace; bỏ `--config` thì script chạy cả cặp và in bảng. Khi chạy cả cặp, `--out` nếu có là thư mục kết quả; khi chạy một cấu hình, `--out` là file JSONL. Runner từ chối ghi đè trace đã có.
+BTC thay `--scenarios` bằng thư mục bộ ẩn. `--config` xuất một trace; bỏ `--config` thì script chạy cả cặp và in bảng. Khi chạy cả cặp, `--out` nếu có là thư mục kết quả; khi chạy một cấu hình, `--out` là file JSONL. Runner kiểm tra nguồn BTC khớp database đã seed và từ chối ghi đè kết quả hoặc báo cáo lần chạy trước.
+
+Nếu preflight thất bại, CLI in `phase`, `code`, `service` và đường dẫn `*.report.json`; sửa server/cấu hình được chỉ ra rồi chọn `--out` mới để chạy lại. Các lệnh eval gọi model thật và có thể phát sinh phí API.
 
 Scorer BTC có thể chấm lại hai trace, với các đường dẫn theo bố cục mặc định:
 
@@ -126,34 +130,35 @@ python3 ../BTC-Data-Vong1-TEAMS/eval/reference_eval.py \
 Sau run K0, mở link `/knowledge?run_id=...` mà runner in ra. Reviewer đối chiếu nguồn và regression, duyệt/phát hành K1 rồi chạy:
 
 ```bash
-SUBMISSION_RUN_AS="$(id -u):$(id -g)" docker compose run --rm --no-deps knowledge-eval \
-  --base-run "/results/<run-k0>"
+python run_knowledge_eval.py --base-run "./results-submission/<run-k0>"
 ```
 
 Bảng so sánh ở thư mục có hậu tố `.knowledge`. Giữ cùng code/model/seed/test để đối chiếu hai vòng; lưu bằng chứng người duyệt, báo cả cải thiện và suy giảm cùng chi phí/cuộc.
 
 ## 6. ASR local
 
-Bộ audio do nhóm bàn giao riêng, gồm `audio/*.wav` và `ground_truth.json`. Đặt `AUDIO_DATASET_DIR` trong `.env`, rồi chạy:
+Bộ audio do nhóm bàn giao riêng, gồm `audio/*.wav` và `ground_truth.json`. ASR cũng chạy trên host, đọc `.env` root. Cài lock ASR trong virtualenv riêng để giữ nguyên phiên bản thư viện của harness:
 
 ```bash
-SUBMISSION_RUN_AS="$(id -u):$(id -g)" docker compose run --rm --build asr \
-  transcribe --audio /audio-dataset/audio --out /results/asr-team
-SUBMISSION_RUN_AS="$(id -u):$(id -g)" docker compose run --rm asr \
-  eval --dataset /audio-dataset --runs /results/asr-team
+python3 -m venv .venv-asr
+.venv-asr/bin/python -m pip install -r config/submission/asr.txt
+.venv-asr/bin/python -m speech transcribe \
+  --audio ./dataset/audio --out ./results-submission/asr-team
+.venv-asr/bin/python -m speech eval \
+  --dataset ./dataset --runs ./results-submission/asr-team
 ```
 
-Đổi sang bộ public BTC và dùng output `/results/asr-btc` để báo riêng WER/CER/Entity Accuracy. BTC không phát audio public D01–D04; nhóm tự thu/TTS theo kịch bản và ground truth mới. Bộ private dùng xếp hạng do BTC giữ. Corpus M1 cần ≥40 cuộc audio, tổng ≥60 phút; báo cáo ASR team cần ≥20 file. Ghi rõ hạn chế giọng, không dùng ghi âm khách thật.
+Đổi sang bộ public BTC và dùng output `./results-submission/asr-btc` để báo riêng WER/CER/Entity Accuracy. BTC không phát audio public D01–D04; nhóm tự thu/TTS theo kịch bản và ground truth mới. Bộ private dùng xếp hạng do BTC giữ. Corpus M1 cần ≥40 cuộc audio, tổng ≥60 phút; báo cáo ASR team cần ≥20 file. Ghi rõ hạn chế giọng, không dùng ghi âm khách thật.
 
-ASR `whisper-small` dùng weights `Systran/faster-whisper-small`, mặc định CPU/int8. Weights tải lần transcribe đầu vào `RESULTS_DIR/models`; máy offline cần chuẩn bị cache cùng phiên bản. Transcript ASR đi qua cùng harness; bộ có `customer_turns_asr` dùng cùng input cho Full và baseline.
+ASR `whisper-small` dùng weights `Systran/faster-whisper-small`, mặc định CPU/int8. Weights tải lần transcribe đầu vào cache model trên host; máy offline cần chuẩn bị cache cùng phiên bản. Transcript ASR đi qua cùng harness; bộ có `customer_turns_asr` dùng cùng input cho Full và baseline.
 
 ## 7. Cấu hình và hồ sơ
 
 | Nhóm cấu hình | Cách dùng |
 |---|---|
-| `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME` | Chọn một stack cho cả server, seed và eval. |
+| `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME` | Chọn stack Docker chạy server. Seed/eval kết nối qua các cổng host của stack đó. |
 | `BTC_ROOT` | Gói BTC có `catalog/`, `policy/`, `schemas/`, `eval/`, `asr/`. |
-| `SUBMISSION_POSTGRES_PORT`, `SUBMISSION_QDRANT_PORT` | Cổng loopback để script Python seed trên host kết nối vào database trong Docker. |
+| `SUBMISSION_POSTGRES_PORT`, `SUBMISSION_QDRANT_PORT` | Cổng loopback để script Python seed/eval trên host kết nối vào database trong Docker. |
 | `SCENARIOS_DIR`, `RESULTS_DIR` | Bộ scenario mặc định và nơi ghi kết quả; cờ của script eval có thể ghi đè. |
 | `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, `LANGMEM_MODEL` | API tương thích OpenAI; khai báo model chính xác. LangMem để trống dùng cùng model hội thoại. |
 | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_API_BASE_URL` | Embedding Cloudflare `@cf/baai/bge-m3`; cấu hình policy ở `config/policy-runtime.json`. Tokenizer được tải và kiểm checksum ở bước seed. |
@@ -164,4 +169,4 @@ Tài nguyên CPU dự kiến: Linux x86-64, 4 vCPU, RAM 8 GiB, 20 GiB trống, k
 
 Bộ team mặc định có 48 scenario, 118 phiên. Bảy mẫu BTC chỉ dùng thử tích hợp. Xem [scenario](eval/scenario_final/README.md), [trạng thái M2](docs/evaluation/m2-readiness.md), [corpus](dataset/M1-CORPUS.md), [kiến trúc](docs/m1-architecture.md), [báo cáo](docs/btc-m1-evaluation-report.md), [slide](docs/btc-m1-slides.md) và [bằng chứng diễn tập](docs/btc-submission-evidence.md). Kết quả lịch sử không thay cho đánh giá trên commit nộp bài; video và slide chuẩn bị theo thông báo BTC.
 
-Ghi SHA bản nộp bằng `git rev-parse HEAD`. Ngừng stack bằng `docker compose down`; lệnh này giữ volume dữ liệu. Dùng cùng `COMPOSE_PROJECT_NAME` cho toàn bộ ba bước.
+Ghi SHA bản nộp bằng `git rev-parse HEAD`. Ngừng stack bằng `docker compose down`; lệnh này giữ volume dữ liệu. Giữ nguyên các cổng và mật khẩu trong `.env` sau khi bật stack để seed/eval kết nối đúng server.
