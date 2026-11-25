@@ -180,3 +180,12 @@ def test_formatting_cannot_hide_an_unsupported_promotion_deadline_or_percentage(
     answer = 'Mẫu này được giảm **10**% ạ.'
     assert check_answer(answer, observations) == (answer, None)
     assert check_answer('Mẫu này được giảm **30**% ạ.', observations)[1] is not None
+
+
+@pytest.mark.parametrize('gift_name', ['Túi vải du lịch', 'Bộ cọ vệ sinh', 'Cáp'])
+@pytest.mark.parametrize('suffix', ['nữa ạ', 'đi kèm trong hộp', 'dành cho mình', 'hoàn toàn miễn phí'])
+def test_gift_is_a_catalog_entity_inside_a_natural_description(gift_name, suffix):
+    observations = calls(gift=True)
+    observations[0]['result']['items'][1]['name'] = gift_name
+    answer = f'Khi mua máy anh sẽ được tặng kèm một {gift_name} {suffix}.'
+    assert check_answer(answer, observations) == (answer, None)

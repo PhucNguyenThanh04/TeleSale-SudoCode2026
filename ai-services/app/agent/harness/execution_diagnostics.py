@@ -129,4 +129,14 @@ def safe_failure_details(source):
         details['verification_rejections'] = [
             reason if isinstance(reason, str) and reason in DIAGNOSTIC_REASONS else 'unknown_reason'
             for reason in reasons]
+    drafts = value('verification_diagnostics')
+    if isinstance(drafts, list):
+        from app.mcp_servers.mcp_shared.observability import redact_text
+        diagnostics = [{'reason': item['reason'] if isinstance(item.get('reason'), str)
+                        and item['reason'] in DIAGNOSTIC_REASONS else 'unknown_reason',
+                        'agent_draft': redact_text(item['agent_draft'])[:4000]}
+                       for item in drafts[:2] if isinstance(item, dict)
+                       and isinstance(item.get('agent_draft'), str)]
+        if diagnostics:
+            details['verification_diagnostics'] = diagnostics
     return details

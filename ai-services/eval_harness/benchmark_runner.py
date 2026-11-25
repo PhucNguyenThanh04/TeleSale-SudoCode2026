@@ -65,10 +65,11 @@ def conversation_measurement(delivery_mode='text'):
 
 
 class StreamingMeasurementError(RuntimeError):
-    def __init__(self, message, *, rejection_reasons=(), execution_error=None):
+    def __init__(self, message, *, rejection_reasons=(), execution_error=None, verification_diagnostics=()):
         super().__init__(message)
         self.verification_rejections = list(rejection_reasons)
         self.execution_error = execution_error
+        self.verification_diagnostics = list(verification_diagnostics)
 
 
 async def measured_stream(runtime, request, started):
@@ -218,8 +219,15 @@ async def run_scenario_call(
                            and event.get('accepted') is False and 'reason' in event]
                 execution_error = next((event for event in reversed(runtime_events)
                     if event.get('event') == 'phase_result' and event.get('status') == 'failed'), None)
+                from app.agent.guardrails.diagnostics import rejected_draft
+                state_for = getattr(runtime, 'state_for', None)
+                failed_state = state_for(turn_req) if callable(state_for) else None
+                drafts = [rejected_draft(failed_state, event.get('reason', 'unknown_reason'), event['agent_draft'])
+                    for event in failed_state.get('verifier_events', [])
+                    if isinstance(event, dict) and isinstance(event.get('agent_draft'), str)] if isinstance(failed_state, dict) else []
                 raise StreamingMeasurementError('stream_measurement_failed',
-                    rejection_reasons=reasons, execution_error=execution_error) from None
+                    rejection_reasons=reasons, execution_error=execution_error,
+                    verification_diagnostics=drafts) from None
             if latency_ms is None:
                 latency_ms = (time.perf_counter() - t_start) * 1000.0
             runtime_error = type(exc).__name__

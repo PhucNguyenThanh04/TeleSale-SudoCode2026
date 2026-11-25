@@ -52,6 +52,9 @@ def test_team_01_first_turn_saves_only_verified_quote(tmp_path, drafts, accepted
         with pytest.raises(StreamingMeasurementError) as failure:
             asyncio.run(run())
         assert failure.value.verification_rejections == ['price_without_quote'] * 2
+        from app.agent.harness.execution_diagnostics import safe_failure_details
+        detail = safe_failure_details(failure.value)
+        assert [event['agent_draft'] for event in detail['verification_diagnostics']] == drafts
         assert out.read_text() == ''
 
 
