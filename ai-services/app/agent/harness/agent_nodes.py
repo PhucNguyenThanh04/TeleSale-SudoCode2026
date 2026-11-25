@@ -155,23 +155,23 @@ class AgentNodes(SessionNodes):
                 known = set()
                 for call in calls:
                     if call.get('name') in {'catalog.search', 'catalog.get_details'}:
-                        for item in call['result'].get('items', []):
+                        for item in call['result'].get('items') or []:
                             if isinstance(item, dict) and item.get('name'):
                                 if item.get('sku'):
                                     known.add(item['sku'])
-                                for variant in item.get('variants', []):
+                                for variant in item.get('variants') or []:
                                     if isinstance(variant, dict) and variant.get('variant_sku'):
                                         known.add(variant['variant_sku'])
                 missing_skus = []
                 for call in calls:
                     if call.get('name') in {'pricing.get_quote', 'pricing.quote_order'}:
-                        for quote in [call['result'], *call['result'].get('units', [])]:
+                        for quote in [call['result'], *(call['result'].get('units') or [])]:
                             if not isinstance(quote, dict):
                                 continue
                             q_sku = quote.get('sku') or (call.get('args', {}).get('sku') if call.get('name') == 'pricing.get_quote' else None)
                             if isinstance(q_sku, str) and q_sku and q_sku not in known:
                                 missing_skus.append(q_sku)
-                            for promo in quote.get('applied_promos', []):
+                            for promo in quote.get('applied_promos') or []:
                                 if (isinstance(promo, dict) and promo.get('type') == 'gift'
                                         and promo.get('gift_sku') and promo['gift_sku'] not in known
                                         and (not promo.get('valid_until')

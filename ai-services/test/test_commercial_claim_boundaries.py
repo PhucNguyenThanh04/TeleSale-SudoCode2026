@@ -89,6 +89,9 @@ def test_service_capabilities_are_not_current_commercial_promises(answer):
     'Em có thể kiểm tra, mọi đơn hàng đều giảm giá.',
     'Em có thể tư vấn, khuyến mãi hết hạn.',
     'Sản phẩm này không có ưu đãi.',
+    'Em có thể tư vấn thêm cho anh, mẫu này còn hàng và bảo hành trọn đời ạ.',
+    'Em có thể tư vấn thêm cho anh, mẫu này lọc HEPA tốt nhất ạ.',
+    'Em có thể kiểm tra giúp anh, ưu đãi đang có rất hấp dẫn ạ.',
 ])
 def test_capability_language_does_not_hide_concrete_commercial_claims(answer):
     assert check_answer(answer, [])[1] is not None
@@ -117,3 +120,76 @@ def test_single_named_product_carries_across_sentences_when_multiple_quotes_exis
     ambiguous = ('Máy lọc không khí Xiaomi Smart 4 Pro và Máy lọc không khí Sharp FP-J40E đều tốt. '
                  'Giá bán hôm nay là 5.490.000đ.')
     assert check_answer(ambiguous, observations)[1] == 'price_without_quote'
+
+
+def test_gift_bullet_does_not_pollute_order_confirmation_price_subject_and_service_superlative():
+    observations = [
+        {'name': 'catalog.get_details', 'args': {'sku': 'SKU-XM-4P'},
+         'result': {'items': [{'sku': 'SKU-XM-4P', 'name': 'Máy lọc không khí Xiaomi Smart 4 Pro', 'variants': []}]}},
+        {'name': 'catalog.get_details', 'args': {'sku': 'SKU-XM-FLT'},
+         'result': {'items': [{'sku': 'SKU-XM-FLT', 'name': 'Màng lọc thay thế Xiaomi Smart 4', 'variants': []}]}},
+        {'name': 'pricing.get_quote', 'args': {'sku': 'SKU-XM-4P', 'on': '2026-10-22'},
+         'result': {'sku': 'SKU-XM-4P', 'list_price_vnd': 5490000, 'final_price_vnd': 5490000,
+                    'applied_promos': [{'promo_code': 'XM-COMBO', 'type': 'gift', 'discount_vnd': 0, 'gift_sku': 'SKU-XM-FLT'}],
+                    'freeship': True, 'estimated_delivery': '2026-10-26'}},
+        {'name': 'pricing.get_quote', 'args': {'sku': 'SKU-XM-FLT', 'on': '2026-10-22'},
+         'result': {'sku': 'SKU-XM-FLT', 'list_price_vnd': 590000, 'final_price_vnd': 590000,
+                    'applied_promos': [], 'freeship': False}},
+    ]
+    confirmation = (
+        'Để đảm bảo chính xác, em xin xác nhận lại thông tin đơn hàng của anh như sau:\n\n'
+        '- **Sản phẩm:** 01 Máy lọc không khí Xiaomi Smart 4 Pro.\n'
+        '- **Giá cuối:** 5.490.000đ.\n'
+        '- **Ưu đãi:** Tặng kèm 01 Màng lọc thay thế Xiaomi Smart 4 và miễn phí vận chuyển.\n'
+        '- **Phương thức thanh toán:** COD (Thanh toán khi nhận hàng).'
+    )
+    assert check_answer(confirmation, observations) == (confirmation, None)
+    polite = 'Để đảm bảo quyền lợi tốt nhất cho anh, em sẽ kiểm tra lại thông tin ngay ạ.'
+    assert check_answer(polite, []) == (polite, None)
+    assert check_answer('Em sẽ hỗ trợ anh tốt nhất ạ.', []) == ('Em sẽ hỗ trợ anh tốt nhất ạ.', None)
+    assert check_answer('Mẫu này tốt nhất ạ.', [])[1] == 'unsupported_comparison'
+
+
+def test_reviewer_edge_cases_delivery_gift_qty_focus_and_mixed_promos():
+    obs = [
+        {'name': 'catalog.get_details', 'args': {'sku': 'SKU-XM-4P'},
+         'result': {'items': [{'sku': 'SKU-XM-4P', 'name': 'Máy lọc không khí Xiaomi Smart 4 Pro', 'variants': []}]}},
+        {'name': 'catalog.get_details', 'args': {'sku': 'SKU-XM-FLT'},
+         'result': {'items': [{'sku': 'SKU-XM-FLT', 'name': 'Màng lọc thay thế Xiaomi Smart 4', 'variants': []}]}},
+        {'name': 'catalog.get_details', 'args': {'sku': 'SKU-SH-J40'},
+         'result': {'items': [{'sku': 'SKU-SH-J40', 'name': 'Máy lọc không khí Sharp FP-J40E', 'variants': []}]}},
+        {'name': 'inventory.check', 'args': {'sku': 'SKU-SH-J40', 'on': '2026-10-22'},
+         'result': {'sku': 'SKU-SH-J40', 'in_stock': True, 'qty': 5}},
+        {'name': 'inventory.check', 'args': {'sku': 'SKU-XM-4P', 'on': '2026-10-22'},
+         'result': {'sku': 'SKU-XM-4P', 'in_stock': False, 'qty': 0}},
+        {'name': 'pricing.get_quote', 'args': {'sku': 'SKU-XM-4P', 'on': '2026-10-22', 'qty': 2},
+         'result': {'sku': 'SKU-XM-4P', 'list_price_vnd': 5490000, 'final_price_vnd': 5490000,
+                    'applied_promos': [{'promo_code': 'XM-COMBO', 'type': 'gift', 'discount_vnd': 0, 'gift_sku': 'SKU-XM-FLT'}],
+                    'freeship': True, 'estimated_delivery': '2026-10-26'}},
+        {'name': 'pricing.get_quote', 'args': {'sku': 'SKU-SH-J40', 'on': '2026-10-22'},
+         'result': {'sku': 'SKU-SH-J40', 'list_price_vnd': 4200000, 'final_price_vnd': 4200000,
+                    'applied_promos': [], 'freeship': False, 'estimated_delivery': '2026-10-27'}},
+    ]
+    assert check_answer('Thời gian giao hàng dự kiến: 28/10/2026.', obs)[1] == 'delivery_unverified'
+    pb09_ok = (
+        'Để đảm bảo chính xác, em xin xác nhận lại thông tin đơn hàng:\n'
+        '- **Sản phẩm:** 01 Máy lọc không khí Xiaomi Smart 4 Pro.\n'
+        '- **Giá cuối:** 5.490.000đ.\n'
+        '- **Thời gian giao hàng dự kiến:** 26/10/2026.'
+    )
+    assert check_answer(pb09_ok, obs) == (pb09_ok, None)
+    order_obs = [*obs, {'name': 'order.create', 'args': {'sku': 'SKU-XM-4P'},
+                        'result': {'status': 'created', 'order_id': 'OD-123', 'estimated_delivery': '2026-10-26'}}]
+    created_reply = 'Em đã tạo đơn hàng OD-123, dự kiến giao ngày 26/10/2026 ạ.'
+    assert check_answer(created_reply, order_obs) == (created_reply, None)
+    assert check_answer('- **Sản phẩm:** Máy lọc không khí Xiaomi Smart 4 Pro.\n- **Quà tặng:** 02 Màng lọc thay thế Xiaomi Smart 4.', obs)[1] == 'promotion_detail_unverified'
+    alt_reply = 'Em gợi ý sang Máy lọc không khí Sharp FP-J40E:\n- Giá cuối: 4.200.000đ.\n- Tình trạng: Còn hàng.'
+    assert check_answer(alt_reply, obs, focus_sku='SKU-XM-4P') == (alt_reply, None)
+    mixed_promo = 'Máy lọc không khí Xiaomi Smart 4 Pro không có giảm giá trực tiếp, tặng kèm 01 Màng lọc thay thế Xiaomi Smart 4 và miễn phí vận chuyển.'
+    assert check_answer(mixed_promo, obs) == (mixed_promo, None)
+    status_obs = [{'name': 'order.status', 'args': {'order_id': 'OD-123'}, 'result': {'orders': [{'order_id': 'OD-123', 'status': 'created'}]}}]
+    assert check_answer('Đơn hàng OD-123 của anh đang được xử lý ạ.', status_obs) == ('Đơn hàng OD-123 của anh đang được xử lý ạ.', None)
+    unit_and_total = 'Máy lọc không khí Xiaomi Smart 4 Pro giá 5.490.000đ/chiếc, tổng 2 chiếc là 10.980.000đ.'
+    assert check_answer(unit_and_total, obs) == (unit_and_total, None)
+    oos_reply = 'Máy lọc không khí Xiaomi Smart 4 Pro hiện không sẵn hàng ạ.'
+    assert check_answer(oos_reply, obs) == (oos_reply, None)

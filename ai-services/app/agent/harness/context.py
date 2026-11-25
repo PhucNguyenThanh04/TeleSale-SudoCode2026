@@ -398,15 +398,20 @@ async def _refresh_brief_products(state: TurnState, tools: ToolGateway, skus, ad
                         read('inventory.check', args),
                         read('pricing.get_quote', quote)))
     refreshed = [call for call in await asyncio.gather(*queries) if call is not None]
-    known = {item.get('sku') for call in [*existing, *refreshed]
-             if call.get('name') in {'catalog.search', 'catalog.get_details'}
-             and 'error' not in call.get('result', {})
-             for item in call['result'].get('items', [])
-             if isinstance(item, dict) and item.get('name')}
+    known = set()
+    for call in [*existing, *refreshed]:
+        if call.get('name') in {'catalog.search', 'catalog.get_details'} and 'error' not in call.get('result', {}):
+            for item in call['result'].get('items') or []:
+                if isinstance(item, dict) and item.get('name'):
+                    if item.get('sku'):
+                        known.add(item['sku'])
+                    for variant in item.get('variants') or []:
+                        if isinstance(variant, dict) and variant.get('variant_sku'):
+                            known.add(variant['variant_sku'])
     gift_skus = list(dict.fromkeys(
-        promo['gift_sku'] for call in refreshed
+        promo['gift_sku'] for call in [*existing, *refreshed]
         if call.get('name') == 'pricing.get_quote' and 'error' not in call.get('result', {})
-        for promo in call['result'].get('applied_promos', [])
+        for promo in call['result'].get('applied_promos') or []
         if isinstance(promo, dict) and promo.get('type') == 'gift'
         and isinstance(promo.get('gift_sku'), str) and promo['gift_sku']
         and promo['gift_sku'] not in known

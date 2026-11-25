@@ -22,9 +22,14 @@ _CAPABILITY_ACTION = re.compile(r'\b(?:tim kiem|kiem tra|tra cuu|tu van|cung cap
 _CONCRETE_CAPABILITY_CLAIM = re.compile(
     r'\d|%|\b[a-z][a-z0-9]+(?:-[a-z0-9]+)+\b|'
     r'\b(?:mien phi|freeship|tang|bieu|trieu|nghin|ngan|phan tram|da|het han|het hieu luc|'
+    r'(?:con|co|san|het)\s+hang|co san trong kho|'
+    r'hepa|pm\s*2[.,]5|khoa\s+(?:an toan\s+)?tre em|'
+    r'tot nhat|phu hop nhat|hieu qua nhat|'
+    r'bao hanh\s+tron doi|gia nhap|gia san|nha cung cap|'
     r'(?:deu|luon)\s+(?:giam|co|duoc)|'
     r'(?:mot|hai|ba|bon|nam|sau|bay|tam|chin|muoi)\s+dong|'
-    r'(?<!uu dai )(?<!khuyen mai )\b(?:dang|hien)\s+co\b|(?:dang|hien)\s+(?:giam|ap dung)|(?:khong|chua)\s+(?:co|con|duoc)|'
+    r'(?<!uu dai )(?<!khuyen mai )\bhien\s+co\b|dang\s+co|(?:dang|hien)\s+(?:giam|ap dung)|'
+    r'(?:khong|chua)\s+(?:co|con|duoc)|'
     r'(?:co|ap dung)\s+(?:khuyen mai|uu dai))\b')
 _ZERO_FEE = re.compile(
     r"(?P<label>\*\*|__|`)?\bphí\s+(?P<fee>cod|thu hộ|ship|vận chuyển|giao hàng)"
