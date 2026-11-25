@@ -233,7 +233,9 @@ class AgentNodes(SessionNodes):
                     else ' Chỉ nêu trạng thái còn/hết hàng khớp đúng inventory.check hiện tại của đúng sản phẩm.'
                     if current_reason.startswith('stock_')
                     else ' Không dùng từ so sánh tuyệt đối như tốt nhất, phù hợp nhất, hiệu quả nhất cho sản phẩm.'
-                    if current_reason == 'unsupported_comparison' else ''
+                    if current_reason == 'unsupported_comparison'
+                    else ' Bỏ toàn bộ chi tiết quy trình, số ngày, điều kiện hoặc khẳng định không có trong tool_observations hiện tại; chỉ giữ phần có nguồn hoặc hỏi thông tin còn thiếu.'
+                    if current_reason == 'unsupported_answer_claim' else ''
                 )
                 final_attempt_instruction = (
                     ' Đây là lần sửa cuối: trả lời ngắn gọn, lịch sự, chỉ giữ phần đã có bằng chứng rõ ràng '
@@ -241,7 +243,8 @@ class AgentNodes(SessionNodes):
                     'ngày giao, tồn kho hoặc so sánh chưa chắc chắn.'
                 ) if self.max_repair_attempts > 1 and attempt == self.max_repair_attempts - 1 else ''
                 messages.append(HumanMessage(content=json.dumps({
-                    'task': ('Viết câu trả lời cho yêu cầu hiện tại, chỉ dùng bằng chứng đã có. '
+                    'task': ('Viết lại câu trả lời mới cho yêu cầu hiện tại, chỉ dùng bằng chứng đã có; '
+                        'không lặp lại nguyên văn bản nháp vừa bị từ chối. '
                         'Ưu tiên thông báo đúng trạng thái thao tác đã được công cụ xác nhận. '
                         'Không thực hiện thêm thao tác. Khi memory không khả dụng, không suy đoán '
                         'lịch sử riêng của khách. Yêu cầu xóa toàn bộ dữ liệu cần xác minh/chuyển '

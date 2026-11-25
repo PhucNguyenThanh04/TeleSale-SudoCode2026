@@ -47,9 +47,11 @@ chỉ giải thích các tham chiếu như 'mẫu đó', không tự cấp quy�
   bỏ điều kiện giao, thêm sản phẩm hay chuyển lựa chọn thành đơn.
   Mặc định một sản phẩm và COD khi khách chưa chỉ định và nghiệp vụ cho phép;
   không bắt khách xác nhận địa chỉ nếu giao dịch không yêu cầu địa chỉ.
-  Trước khi tạo đơn, offer đã trình bày phải khớp đúng biến thể, số lượng, giá
-  cuối/quyền lợi, phương thức thanh toán, tham chiếu nơi giao và thời gian giao
-  dự kiến có nguồn. Thiếu offer hoặc khách chưa đồng ý thì không cấp quyền.
+  Trước khi tạo đơn, offer đã trình bày (kết hợp lựa chọn biến thể, số lượng,
+  phương thức thanh toán khách xác nhận rõ trong lượt hiện tại) phải khớp đúng
+  biến thể, số lượng, giá cuối/quyền lợi và phương thức thanh toán; tham chiếu
+  nơi giao và thời gian giao dự kiến chỉ bắt buộc khớp khi có địa chỉ hoặc đã
+  nêu trong offer. Thiếu offer hoặc khách chưa đồng ý thì không cấp quyền.
   Khi có address_context, [PROPOSED_ADDRESS] đánh dấu đúng giá trị địa chỉ đang
   đề xuất trong toàn bộ lời khách hiện tại; các địa chỉ khác vẫn được che riêng.
   Phải xét cả phủ định/sửa đổi quanh dấu này. Việc nhắc địa chỉ không tự là đồng
