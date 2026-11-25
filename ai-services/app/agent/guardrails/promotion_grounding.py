@@ -12,7 +12,7 @@ _FREE_COD = re.compile(r"\bmien phi (?:cod|thu ho)\b")
 
 
 def _fold(text: str) -> str:
-    return _search_text(text)
+    return _search_text(re.sub(r'[*`]|__', '', text))
 
 
 def _named(text: str, name: str) -> bool:
@@ -52,13 +52,18 @@ def _gift_supported(clause: str, promos: list[dict], items: list[dict]) -> bool:
     description = claim['description'].strip()
     if not description:
         return bool(re.search(r"\btang (?:qua|kem qua)|\bqua tang\b", folded))
+    descriptions = [description]
+    without_address = re.sub(r'\s+(?:anh|chi|em)(?:\s+(?:a|nhe))?$', '', description)
+    descriptions.append(re.sub(r'\s+mien phi$', '', without_address))
+    descriptions += [re.sub(r'^(?:cai|chiec|bo)\s+', '', value) for value in descriptions]
     names = [str(item.get("name", "")) for item in items
              if any(item.get("sku") == p.get("gift_sku") for p in gifts)]
-    return any(len(description.split()) >= 2 and description in _fold(name) for name in names)
+    return any(value == _fold(name) or len(value.split()) >= 2 and value in _fold(name)
+               for value in descriptions for name in names)
 
 
 def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], *, focus_sku: str | None = None) -> str | None:
-    candidate = assertion_text(candidate)
+    candidate = re.sub(r'[*`]|__', '', assertion_text(candidate))
     successful = [c for c in tool_calls if isinstance(c.get("result"), dict) and "error" not in c["result"]]
     items = [item for c in successful if c.get("name") in CATALOG_TOOLS
              for item in c["result"].get("items", []) if isinstance(item, dict)]

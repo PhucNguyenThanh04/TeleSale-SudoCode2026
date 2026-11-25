@@ -36,10 +36,11 @@ def repair_case(*, basket=False):
 
 
 @pytest.mark.parametrize('basket', [False, True])
-def test_repair_resolves_active_gift_references_for_any_sku_and_quote_type(basket):
+@pytest.mark.parametrize('repaired', ['Được tặng Túi vải du lịch ạ.',
+    'Được tặng **1 chiếc Túi vải du lịch** miễn phí anh nhé.'])
+def test_repair_resolves_active_gift_references_for_any_sku_and_quote_type(basket, repaired):
     state, gateway, gift = repair_case(basket=basket)
     before = deepcopy(state['session_tool_calls'])
-    repaired = 'Được tặng Túi vải du lịch ạ.'
     model = ReviewModel([verdict()], repaired)
     result = asyncio.run(AgentNodes(model, gateway, None, 6, 6).verify_agent(state))
     assert result['verified_answer'] == repaired
