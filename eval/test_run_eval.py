@@ -12,6 +12,7 @@ from unittest.mock import patch, AsyncMock
 from eval.catalog_search_benchmark import catalog_search_metrics
 from eval.run_eval import _claims, _facts_used, _require_eval_database, _trace_args, run
 from app.agent.guardrails.diagnostics import rejected_draft
+from app.configs import Settings
 from app.schemas.agent import TextTurnResponse, MemoryUpdate
 
 
@@ -64,7 +65,10 @@ class EvalRunnerTest(unittest.TestCase):
                 self.assertFalse(hasattr(execute.call_args.args[0], 'delivery_mode'))
 
     def setUp(self):
+        settings = Settings(_env_file=None, app_env='test', llm_api_key='offline', llm_model='offline',
+                            database_url='postgresql://offline@127.0.0.1/telesale_eval')
         for target, kwargs in (
+            ("eval.run_eval.get_settings", dict(return_value=settings)),
             ("eval.run_eval.capture_release", dict(new_callable=AsyncMock,return_value={"release_id":"btc-only","manifest_hash":"btc-only"})),
             ("eval_harness.benchmark_runner.warm_up_configuration",dict(new_callable=AsyncMock)),
             ("eval_harness.benchmark_runner.build_runtime",dict(return_value=_Runtime())),
@@ -228,11 +232,14 @@ class EvalRunnerTest(unittest.TestCase):
         self.assertNotIn("source_evidence", raw)
         self.assertNotIn("0912345678", raw)
 
-    def test_failed_stream_report_keeps_verification_reason_without_the_draft(self):
+    def test_failed_stream_report_keeps_safe_model_error_and_verification_reason(self):
         from app.agent.harness.observability import log_event
 
         class Runtime(_Runtime):
             async def run(self, request):
+                log_event(request, 'execution', 'phase_result', phase='model_invocation',
+                          status='failed', invocation='repair', error_type='BadRequestError',
+                          error_code='unsupported_parameter', error_param='private provider detail')
                 log_event(request, 'verify', 'grounding_checked', accepted=False, reason='price_without_quote')
                 raise RuntimeError('private model draft')
 
@@ -243,8 +250,14 @@ class EvalRunnerTest(unittest.TestCase):
                 asyncio.run(run(SimpleNamespace(btc_root=root, config='full', out=output,
                     scenarios=root / 'test_set' / 'public_sample', isolated_db=True), Runtime()))
             raw = output.with_suffix('.report.json').read_text()
-        self.assertEqual(json.loads(raw)['verification_rejections'], ['price_without_quote'])
+        details = json.loads(raw)
+        self.assertEqual(details['verification_rejections'], ['price_without_quote'])
+        self.assertEqual(details['execution_error'], {
+            'version': 1, 'phase': 'model_invocation', 'status': 'failed', 'invocation': 'repair',
+            'error_type': 'BadRequestError', 'error_code': 'unsupported_parameter', 'error_param': 'unknown',
+        })
         self.assertNotIn('private model draft', raw)
+        self.assertNotIn('private provider detail', raw)
 
     def test_live_database_name_is_checked_before_any_turn(self):
         scenario_dir = Path(__file__).resolve().parents[2] / "BTC-Data-Vong1-TEAMS" / \

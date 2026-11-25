@@ -191,6 +191,23 @@ def test_verifier_repairs_semantically_unsupported_speech_once(enabled):
     assert [payload['answer'] for payload in model.payloads] == [draft, repaired]
 
 
+def test_price_repair_requests_exact_amount_from_quote():
+    from app.agent.harness.agent_nodes import AgentNodes
+    draft = 'Bộ điều khiển Lumen giá 5,5 triệu đồng.'
+    repaired = 'Bộ điều khiển Lumen giá 5.490.000đ.'
+    state = turn_state(draft)
+    state['tool_calls'].append({'name': 'pricing.get_quote',
+        'args': {'sku': 'DEVICE-81', 'on': state['request'].on.isoformat()},
+        'result': {'sku': 'DEVICE-81', 'list_price_vnd': 5_490_000, 'final_price_vnd': 5_490_000}})
+    model = ReviewModel([verdict()], repaired)
+    result = asyncio.run(AgentNodes(model, None, None, 8, 6).verify_agent(state))
+    repair_prompt = json.loads(model.ainvoke.await_args.args[0][-1].content)
+    assert repair_prompt['validation_error'] == 'price_without_quote'
+    assert 'final_price_vnd' in repair_prompt['task']
+    assert result['verified_answer'] == repaired
+    assert [payload['answer'] for payload in model.payloads] == [repaired]
+
+
 @pytest.mark.parametrize('second_review', [
     verdict(False, 'unsupported_claim', 'Bluetooth'), RuntimeError('Review failed'),
 ])

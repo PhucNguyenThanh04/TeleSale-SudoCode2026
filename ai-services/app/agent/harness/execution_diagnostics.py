@@ -24,7 +24,7 @@ def normalize_execution_event(metadata: dict) -> dict:
     status = metadata.get('status')
     result = {'version': 1, 'phase': phase if isinstance(phase, str) and phase in PHASES else 'preparation',
               'status': status if isinstance(status, str) and status in {'succeeded', 'failed', 'unknown', 'not_attempted'} else 'unknown'}
-    if isinstance(metadata.get('invocation'), str) and metadata['invocation'] in {'initial', 'refresh'}:
+    if isinstance(metadata.get('invocation'), str) and metadata['invocation'] in {'initial', 'refresh', 'repair'}:
         result['invocation'] = metadata['invocation']
     if status == 'failed':
         kind = metadata.get('error_type')

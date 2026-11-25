@@ -22,8 +22,13 @@ def test_freecod_is_not_evidence_for_other_benefits(text):
 
 @pytest.mark.parametrize('text,shipping,cod', [
     ('Phí COD là 0 đồng.', False, True),
+    ('Phí COD: 0đ.', False, True),
+    ('**Phí COD:** 0đ.', False, True),
+    ('**Phí COD**: 0đ.', False, True),
     ('Miễn phí COD.', False, True),
     ('Phí vận chuyển là 0đ.', True, False),
+    ('Phí vận chuyển: **0đ**.', True, False),
+    ('Phí vận chuyển: 0 VNĐ.', True, False),
 ])
 def test_zero_fee_requires_the_corresponding_quote_benefit(text, shipping, cod):
     observations = calls(shipping=shipping)

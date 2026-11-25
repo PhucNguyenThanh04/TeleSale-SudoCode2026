@@ -15,7 +15,7 @@ from app.mcp_servers.mcp_shared.episode_evidence import evidence_supports
 from app.constants import PROFILE_SLOT_KEYS, SLOT_SPEC_BY_KEY, TOOL_ONLY_SLOT_KEYS, Slot
 from app.agent.guardrails.skus import known_skus, mentioned_skus
 from app.agent.guardrails.promotion_grounding import check_promotion_grounding
-from app.agent.guardrails.claims import assertion_text, normalize_zero_fees
+from app.agent.guardrails.claims import COMPOUND_VND, assertion_text, compound_vnd, normalize_zero_fees
 
 
 FALLBACK = ""
@@ -148,11 +148,15 @@ def safe_tool_result(result: dict[str, Any]) -> dict[str, Any]:
 
 
 def _money_amount(value: str) -> int | None:
-    shorthand = _MILLION_SHORTHAND.fullmatch(value.strip())
+    value = value.strip()
+    compound = COMPOUND_VND.fullmatch(value)
+    if compound:
+        return compound_vnd(compound)
+    shorthand = _MILLION_SHORTHAND.fullmatch(value)
     if shorthand:
         millions, fraction = shorthand.groups()
         return int(millions) * 1_000_000 + int(fraction) * 10 ** (6 - len(fraction))
-    match = _AMOUNT.fullmatch(value.strip())
+    match = _AMOUNT.fullmatch(value)
     if not match:
         return None
     digits, unit = match.groups()
@@ -270,16 +274,13 @@ def customer_budget_amounts(customer_text: str) -> set[int]:
 
 def _money_claims(text: str) -> list[tuple[int, str, bool]]:
     mentions: list[tuple[int, int, int]] = []
-    for match in _MILLION_SHORTHAND.finditer(text):
-        amount = _money_amount(match.group())
-        if amount is not None:
-            mentions.append((match.start(), match.end(), amount))
-    for match in _AMOUNT.finditer(text):
-        if any(start < match.end() and match.start() < end for start, end, _ in mentions):
-            continue
-        amount = _money_amount(match.group())
-        if amount is not None:
-            mentions.append((match.start(), match.end(), amount))
+    for pattern in (COMPOUND_VND, _MILLION_SHORTHAND, _AMOUNT):
+        for match in pattern.finditer(text):
+            if any(start < match.end() and match.start() < end for start, end, _ in mentions):
+                continue
+            amount = _money_amount(match.group())
+            if amount is not None:
+                mentions.append((match.start(), match.end(), amount))
     for match in _PRICE_NUMBER.finditer(text):
         if any(start < match.end(1) and match.start(1) < end for start, end, _ in mentions):
             continue

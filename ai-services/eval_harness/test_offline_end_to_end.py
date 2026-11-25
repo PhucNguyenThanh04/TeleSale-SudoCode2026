@@ -89,12 +89,15 @@ def test_cli_pair_matches_hand_calculated_btc_metrics(tmp_path,monkeypatch):
 
 def test_readme_cli_help_offline_check_and_retired_dry_run(tmp_path):
     import subprocess
-    for command in ([sys.executable,str(ROOT/'run_eval.py'),'--help'],
-                    [sys.executable,'-m','eval_harness.run_official','--help'],
-                    [sys.executable,'-m','eval_harness.benchmark_runner','--help']):
-        result=subprocess.run(command,cwd=ROOT,capture_output=True,text=True)
-        assert result.returncode==0,result.stderr
-        assert '--btc-root' in result.stdout and '--expected-database' in result.stdout
+    for entrypoint, flags in (
+        ([str(ROOT / 'run_eval.py')], ('--scenarios', '--config', '--out', '--limit-scenarios')),
+        (['-m', 'eval_harness.run_official'], ('--btc-root', '--expected-database')),
+        (['-m', 'eval_harness.benchmark_runner'], ('--btc-root', '--expected-database')),
+    ):
+        result = subprocess.run([sys.executable, *entrypoint, '--help'], cwd=ROOT,
+                                capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+        assert all(flag in result.stdout for flag in flags)
     checked=subprocess.run([sys.executable,'-m','eval_harness.preflight','--offline-check',
         '--scenarios',str(CASES),'--btc-root',str(BTC)],capture_output=True,text=True)
     assert checked.returncode==0,checked.stderr

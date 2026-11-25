@@ -96,6 +96,17 @@ def test_matching_quote_price_still_passes(spoken):
     assert check_answer(answer, _quote(2_000_000)) == (answer, None)
 
 
+@pytest.mark.parametrize('written,amount', [
+    ('5 triệu 490 nghìn đồng', 5_490_000),
+    ('5 triệu 49 ngàn', 5_049_000),
+])
+def test_millions_and_thousands_are_checked_as_one_price(written, amount):
+    answer = f'Mẫu này giá {written} ạ.'
+    assert _money_claims(answer) == [(amount, 'price', False)]
+    assert check_answer(answer, _quote(amount)) == (answer, None)
+    assert check_answer(answer, _quote(amount + 1_000))[1] == 'price_without_quote'
+
+
 def test_other_price_checks_stay_active():
     assert check_answer("Mẫu này giá 2 tr ạ.", [])[1] == "price_without_quote"
     assert check_answer("Mẫu này giá 2 tr ạ.", _quote(2_990_000))[1] == "price_without_quote"

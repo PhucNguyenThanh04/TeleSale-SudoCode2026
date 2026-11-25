@@ -84,6 +84,7 @@ class AgentNodes(SessionNodes):
             result = await invoke_agent(agent, {"messages": prompt_messages(context)},
                 config={"recursion_limit": max(12, self.max_tool_calls * 4 + 4)}, state=state)
             execution_result(state)
+            set_execution_phase("postprocess")
             messages = result.get("messages", [])
             last_customer = max((i for i, message in enumerate(messages)
                                  if isinstance(message, HumanMessage)), default=-1)
@@ -98,7 +99,7 @@ class AgentNodes(SessionNodes):
             execution_result(state, exc=exc)
             log_event(state, "run_agent", "model_failed", level=logging.WARNING,
                       error_type=type(exc).__name__)
-        set_execution_phase("postprocess")
+            set_execution_phase("postprocess")
         return {"agent_draft": mask_pii(draft), "reply_context": reply_context,
                 'selected_system_prompt': state.get('selected_system_prompt', _SYSTEM_PROMPT),
                 "tool_calls": state["tool_calls"],
@@ -154,6 +155,10 @@ class AgentNodes(SessionNodes):
                         *prompt_messages(context)]
             if draft:
                 messages.append(AIMessage(content=mask_pii(draft)))
+            price_instruction = (' Đối chiếu từng số tiền với báo giá của đúng sản phẩm hoặc giỏ hàng. '
+                'Với pricing.get_quote, báo giá bán theo final_price_vnd, viết đủ số tiền bằng chữ số '
+                'kèm đơn vị đồng, không làm tròn. Bỏ số tiền của các khoản phí, mức giảm hoặc giá trị '
+                'quà tặng chưa được xác minh.') if reason == 'price_without_quote' else ''
             messages.append(HumanMessage(content=json.dumps({
                 'task': ('Viết câu trả lời cho yêu cầu hiện tại, chỉ dùng bằng chứng đã có. '
                     'Ưu tiên thông báo đúng trạng thái thao tác đã được công cụ xác nhận. '
@@ -161,20 +166,28 @@ class AgentNodes(SessionNodes):
                     'lịch sử riêng của khách. Yêu cầu xóa toàn bộ dữ liệu cần xác minh/chuyển '
                     'bộ phận phụ trách, chưa được coi là đã xóa. Không đọc mã lỗi nội bộ cho khách. '
                     'Nếu thiếu dữ kiện, hỏi làm rõ hoặc nói rõ phần chưa xác minh. '
-                    'Không thay bằng báo giá/sản phẩm của chủ đề khác.'),
+                    'Không thay bằng báo giá/sản phẩm của chủ đề khác.' + price_instruction),
                 'validation_error': reason,
                 'runtime_status': state.get('reply_context', {}),
             }, ensure_ascii=False)))
+            log_event(state, 'verify', 'recovery_attempted', level=logging.DEBUG, reason=reason)
+            set_execution_phase('model_invocation', 'repair')
             repair = await self.llm.ainvoke(messages)
+            execution_result(state)
+            set_execution_phase('verification')
             repaired = mask_pii(_answer_text(repair))
             checked, repair_reason = await validate(repaired)
             if repair_reason is None:
+                log_event(state, 'verify', 'recovery_succeeded', level=logging.DEBUG)
                 return {"agent_text": checked, 'verified_answer': checked,
                         'reply_error': None, "verifier_events": rejected}
+            log_event(state, 'verify', 'recovery_rejected', level=logging.DEBUG, reason=repair_reason)
             rejected.append(rejected_draft(state, repair_reason, repaired))
         except Exception as exc:
+            execution_result(state, exc=exc)
             log_event(state, "verify", "repair_failed", level=logging.WARNING,
                       error_type=type(exc).__name__)
+        log_event(state, 'verify', 'recovery_exhausted', level=logging.DEBUG)
         return {"agent_text": '', 'verified_answer': '', 'reply_error': 'agent_reply_unavailable',
                 "verifier_events": rejected}
 
