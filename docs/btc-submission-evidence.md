@@ -2,7 +2,7 @@
 
 | Hạng mục | File hoặc cách tái lập |
 |---|---|
-| Mã nguồn, môi trường, setup dữ liệu | Repo chứa `compose.submission.yml`, `Dockerfile.submission`, lock Python cho mỗi image và [README](../README.md). |
+| Mã nguồn, môi trường, setup dữ liệu | Repo chứa `compose.submission.yml`, `Dockerfile.submission`, script host `seed_btc.py`, lock Python cho image/seed và [README](../README.md). |
 | Kiến trúc và tool | [Kiến trúc M1](m1-architecture.md) và [hợp đồng harness](../ai-services/docs/text-harness-contract.md). |
 | Corpus và bộ test hội thoại | Dataset ZIP có transcript, audio gốc, manifest và báo cáo validator. [Mô tả corpus](../dataset/M1-CORPUS.md) và [bộ scenario team](../eval/scenario_final/). BTC truyền bộ ẩn khi chấm. |
 | Eval tự động và chấm chéo | `eval` chạy cả cặp và in bảng. `eval-trace` chạy `run_eval.py` cho một cấu hình. Output chuẩn nằm trong `RESULTS_DIR`. |
@@ -28,4 +28,11 @@ Hồ sơ cuối còn cần dataset đủ audio và kết quả chạy gắn vớ
 - Sau khi có quyền Docker, build ba image AI, backend và ASR từ ZIP giải nén. Hai project Compose riêng khởi động được với model và embedding giả lập cục bộ. Eval đi qua scorer BTC, còn image ASR tải được thư viện và chọn được CPU `int8`. Dữ liệu chấm cuối cần kết quả hội thoại trên corpus đủ quy mô và điểm ASR của hai bộ dữ liệu.
 - Gateway Docker qua kiểm thử đăng nhập, hai phiên WebSocket có streaming, lưu lượt và timeline. Sau khi chạy job với UID/GID của người vận hành, host đọc trực tiếp `run.json`, `btc_score.json`, hai trace của lệnh eval và trace chấm chéo. Image ASR ghi được vào cả thư mục kết quả và cache model bằng UID/GID đó.
 
-Bản ZIP mã nguồn được dùng để diễn tập từ thư mục sạch. Bản nộp qua GitHub và cấu hình đi kèm theo [README](../README.md#6-hồ-sơ-nộp).
+Kiểm tra luồng seed Python trên host ngày 24/11/2026:
+
+- Cài lock `config/submission/seed.txt` trong virtualenv Python 3.13 mới; import được toàn bộ module bootstrap/account và `pip check` không báo xung đột.
+- Chạy bằng user thường với PostgreSQL 16.15 tạm, xác thực SCRAM. Nhập được 40 sản phẩm, 96 biến thể, 50 khách và 99 policy chunks; bốn role MCP đăng nhập được và hai tài khoản demo được tạo.
+- Dựng policy bằng Qdrant local và embedding giả lập cục bộ cho 93 chunks; kiểm tra dùng tokenizer thật có checksum. Không gọi API model/embedding bên ngoài.
+- Chạy seed lần hai giữ nguyên tài khoản và lượt runtime đã thêm, không encode lại policy; kiểm tra fingerprint nguồn khớp database. Các cổng health trong phép kiểm tra này là HTTP/TCP giả lập, chưa phải container AI/MCP/backend thật.
+
+Các diễn tập Docker/ZIP ở trên thuộc quy trình trước. Chúng không thay cho kiểm tra Docker thực tế của luồng host seed mới. Bản nộp qua GitHub và cấu hình đi kèm theo [README](../README.md).

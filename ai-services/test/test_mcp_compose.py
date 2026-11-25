@@ -3,7 +3,7 @@ import yaml
 
 
 def compose_services():
-    path = Path(__file__).resolve().parents[2] / 'docker-compose.yml'
+    path = Path(__file__).resolve().parents[2] / 'compose.dev.yml'
     return yaml.safe_load(path.read_text())['services']
 
 
@@ -72,5 +72,5 @@ def test_decision_diagnostics_flag_reaches_memory_and_worker_once():
     for name in ('mcp-memory', 'langmem-worker'):
         assert 'EVAL_DECISION_DIAGNOSTICS' not in services[name]['environment']
         assert any(m['target'] == '/config/service.env' and m['read_only'] for m in services[name]['volumes'])
-    raw = (Path(__file__).resolve().parents[2] / 'docker-compose.yml').read_text()
+    raw = (Path(__file__).resolve().parents[2] / 'compose.dev.yml').read_text()
     assert raw.count('      EVAL_DECISION_DIAGNOSTICS:') == 0

@@ -61,7 +61,7 @@ def main():
     except (ValueError, FileExistsError) as exc:
         parser.exit(1, str(exc) + '\n')
     except (OSError, subprocess.CalledProcessError):
-        parser.exit(1, 'Docker evaluation failed. Check .env, start Docker Compose and run ./seed_btc.sh first.\n')
+        parser.exit(1, 'Docker evaluation failed. Check .env, start Docker Compose and run python seed_btc.py --data-dir <BTC directory> first.\n')
     raise SystemExit(result)
 
 
