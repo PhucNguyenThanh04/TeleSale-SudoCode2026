@@ -65,9 +65,10 @@ def conversation_measurement(delivery_mode='text'):
 
 
 class StreamingMeasurementError(RuntimeError):
-    def __init__(self, message, *, rejection_reasons=()):
+    def __init__(self, message, *, rejection_reasons=(), execution_error=None):
         super().__init__(message)
         self.verification_rejections = list(rejection_reasons)
+        self.execution_error = execution_error
 
 
 async def measured_stream(runtime, request, started):
@@ -215,7 +216,10 @@ async def run_scenario_call(
                 reasons = [event['reason'] for event in runtime_events
                            if event.get('event') == 'grounding_checked'
                            and event.get('accepted') is False and 'reason' in event]
-                raise StreamingMeasurementError('stream_measurement_failed', rejection_reasons=reasons) from None
+                execution_error = next((event for event in reversed(runtime_events)
+                    if event.get('event') == 'phase_result' and event.get('status') == 'failed'), None)
+                raise StreamingMeasurementError('stream_measurement_failed',
+                    rejection_reasons=reasons, execution_error=execution_error) from None
             if latency_ms is None:
                 latency_ms = (time.perf_counter() - t_start) * 1000.0
             runtime_error = type(exc).__name__

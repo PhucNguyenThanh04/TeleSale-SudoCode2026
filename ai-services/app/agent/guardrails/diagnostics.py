@@ -3,11 +3,12 @@ import re
 from typing import Any
 
 from app.agent.guardrails import checks
+from app.agent.guardrails.claims import COMPOUND_VND
 
 
 def _amount_spans(draft: str) -> list[tuple[int, int, int]]:
     spans: list[tuple[int, int, int]] = []
-    for pattern in (checks._MILLION_SHORTHAND, checks._AMOUNT,
+    for pattern in (COMPOUND_VND, checks._MILLION_SHORTHAND, checks._AMOUNT,
                     checks._PRICE_NUMBER, checks._BARE_MONEY):
         for match in pattern.finditer(draft):
             start, end = match.span(1) if pattern is checks._PRICE_NUMBER else match.span()

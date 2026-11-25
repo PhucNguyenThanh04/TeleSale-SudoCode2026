@@ -4,17 +4,22 @@ from unittest.mock import AsyncMock
 import pytest
 from app.agent.harness.observability import log_event
 from eval_harness.benchmark_runner import warm_up_configuration
+from eval_harness.test_support import VoiceLifecycleStub
 
 
-@pytest.mark.parametrize('mode', ['failed', 'missing', 'healthy'])
+@pytest.mark.parametrize('mode', ['failed', 'repair_failed', 'missing', 'healthy'])
 def test_warmup_checks_evidence_not_response_text(mode):
     async def run(request):
         if mode != 'missing':
             log_event({}, 'execution', 'phase_result', phase='model_invocation', invocation='initial',
                 status='failed' if mode == 'failed' else 'succeeded', error_type='BadRequestError')
             log_event({}, 'execution', 'phase_result', phase='postprocess', status='succeeded')
-        return SimpleNamespace(agent_text='Dạ, hiện em chưa kiểm tra được thông tin này.')
-    runtime = SimpleNamespace(run=AsyncMock(side_effect=run))
+        if mode == 'repair_failed':
+            log_event({}, 'execution', 'phase_result', phase='model_invocation', invocation='repair',
+                      status='failed', error_type='BadRequestError')
+        return SimpleNamespace(agent_text='Dạ, hiện em chưa kiểm tra được thông tin này.', call_brief=None)
+    runtime = VoiceLifecycleStub()
+    runtime.run = AsyncMock(side_effect=run)
     if mode == 'healthy':
         assert asyncio.run(warm_up_configuration(runtime))['turns'] == 3
     else:
@@ -22,8 +27,9 @@ def test_warmup_checks_evidence_not_response_text(mode):
             asyncio.run(warm_up_configuration(runtime))
         assert raised.value.error_code == 'warmup_execution_unhealthy'
         assert runtime.run.await_count == 1
-        if mode == 'failed':
+        if mode in {'failed', 'repair_failed'}:
             assert raised.value.execution_error['error_type'] == 'BadRequestError'
+            assert raised.value.execution_error['invocation'] == ('repair' if mode == 'repair_failed' else 'initial')
 
 
 def test_warmup_failure_stops_before_reset_and_scored_turns(tmp_path):
@@ -32,7 +38,10 @@ def test_warmup_failure_stops_before_reset_and_scored_turns(tmp_path):
     from app.configs import Settings
     from eval_harness.benchmark_runner import execute_configuration
     settings = Settings(_env_file=None,llm_api_key='offline-key',llm_model='offline-model')
-    runtime = SimpleNamespace(memory=SimpleNamespace(include_prior=True), tools=object(), run=AsyncMock())
+    runtime = VoiceLifecycleStub()
+    runtime.memory = SimpleNamespace(include_prior=True)
+    runtime.tools = object()
+    runtime.run = AsyncMock(return_value=SimpleNamespace(agent_text='Dạ, em nghe ạ.', call_brief=None))
     with patch('eval_harness.benchmark_runner.preflight_runtime', new_callable=AsyncMock), \
          patch('eval_harness.benchmark_runner.build_runtime', return_value=runtime), \
          patch('eval_harness.benchmark_runner.prepare_runtime_for_eval', new_callable=AsyncMock) as reset, \

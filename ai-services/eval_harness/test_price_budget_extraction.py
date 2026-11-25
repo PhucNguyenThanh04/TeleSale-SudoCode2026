@@ -14,8 +14,9 @@ def test_budget_in_price_sentence_is_not_another_selling_price(budget):
     ('Giá máy là năm triệu rưỡi.', 5500000),
     ('Giá máy là hai triệu rưỡi.', 2500000),
     ('Giá máy là bảy nghìn rưỡi.', 7500),
+    ('Giá máy là 5 triệu 490 nghìn đồng.', 5490000),
 ])
-def test_spoken_half_unit_keeps_real_selling_price(text, expected):
+def test_price_with_multiple_units_keeps_real_selling_price(text, expected):
     assert [c['value'] for c in extract_claims(text, []) if c['field'] == 'price_vnd'] == [expected]
 
 

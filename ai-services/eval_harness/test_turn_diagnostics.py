@@ -1,9 +1,12 @@
 import asyncio
 import json
 import logging
+from datetime import date
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
+
 import pytest
+from langchain_core.messages import AIMessage
 from app.agent.harness.observability import log_event, capture_diagnostic_events
 from eval_harness.turn_diagnostics import TurnDiagnostics, verify_turn_diagnostics
 
@@ -84,31 +87,42 @@ def test_diagnostic_integrity_rejects_damage(tmp_path,damage):
     with pytest.raises(ValueError): verify_turn_diagnostics(trace,refs)
 
 
+def rejected_price_state():
+    return {'safe_text': 'Giá bao nhiêu?', 'agent_draft': 'Giá 70.000đ.', 'tool_calls': [],
+            'identity_status': 'unknown', 'request': SimpleNamespace(on=date(2026, 10, 15), input_mode='clean')}
+
+
 def test_verifier_recovery_observations_do_not_change_result():
     from app.agent.harness.agent_nodes import AgentNodes
     from app.agent.guardrails.checks import FALLBACK
-    nodes=AgentNodes(None,None,None,3,3)
-    state={'safe_text':'chào','agent_draft':'Giá 70.000đ.','tool_calls':[]}
-    plain=asyncio.run(nodes.verify_agent(state.copy()))
+    llm = SimpleNamespace(ainvoke=AsyncMock(side_effect=TimeoutError('private repair failure')))
+    nodes = AgentNodes(llm, None, None, 3, 3)
+    plain = asyncio.run(nodes.verify_agent(rejected_price_state()))
     with capture_diagnostic_events() as events:
-        observed=asyncio.run(nodes.verify_agent(state.copy()))
-    assert observed==plain
-    assert any(e['event']=='recovery_exhausted' for e in events)
-    assert observed['agent_text']==FALLBACK
+        observed = asyncio.run(nodes.verify_agent(rejected_price_state()))
+    assert observed == plain
+    assert [e['event'] for e in events if e['event'].startswith('recovery_')] == [
+        'recovery_attempted', 'recovery_exhausted']
+    assert any(e.get('phase') == 'model_invocation' and e.get('invocation') == 'repair'
+               and e.get('status') == 'failed' and e.get('error_type') == 'TimeoutError' for e in events)
+    assert observed['agent_text'] == FALLBACK
+    assert 'private repair failure' not in json.dumps(events)
 
 
 def test_actual_model_exception_is_observed_without_exception_message():
     from app.agent.harness.agent_nodes import AgentNodes
     from app.agent.guardrails.checks import FALLBACK
-    from unittest.mock import AsyncMock
-    agent=SimpleNamespace(ainvoke=AsyncMock(side_effect=TimeoutError('private 0912345678')))
+    async def stream(*args, **kwargs):
+        yield 'values', {}
+        raise TimeoutError('private 0912345678')
+
+    agent = SimpleNamespace(astream=stream)
     node=AgentNodes(None,None,None,3,3)
     with patch('app.agent.harness.agent_nodes.build_agent',return_value=agent), \
          patch('app.agent.harness.agent_nodes.text_prompt',return_value='offline'), \
          patch('app.agent.harness.agent_nodes.prompt_context',return_value={}), \
          patch('app.agent.harness.agent_nodes.prompt_messages',return_value=[]):
         with capture_diagnostic_events() as events:
-            from datetime import date
             result=asyncio.run(node.run_agent({'safe_text':'xin chào','tool_calls':[],
                 'request':SimpleNamespace(on=date(2026,10,15))}))
     assert result['agent_draft']==FALLBACK
@@ -117,15 +131,18 @@ def test_actual_model_exception_is_observed_without_exception_message():
     assert 'private' not in json.dumps(events)
 
 
-def test_successful_and_rejected_recoveries_have_explicit_outcomes():
+@pytest.mark.parametrize('reply,outcomes', [
+    ('Dạ, em cần kiểm tra lại giá ạ.', ['recovery_succeeded']),
+    ('Giá 90.000đ.', ['recovery_rejected', 'recovery_exhausted']),
+])
+def test_successful_and_rejected_recoveries_have_explicit_outcomes(reply, outcomes):
     from app.agent.harness.agent_nodes import AgentNodes
-    from unittest.mock import Mock
-    state={'safe_text':'chào','agent_draft':'Giá 70.000đ.','tool_calls':[]}
-    for reply,expected in [('Dạ chào anh','recovery_succeeded'),('Giá 90.000đ.','recovery_rejected')]:
-        with patch('app.agent.harness.agent_nodes.safe_transaction_reply',Mock(return_value=reply)):
-            with capture_diagnostic_events() as events:
-                asyncio.run(AgentNodes(None,None,None,3,3).verify_agent(state.copy()))
-        assert any(e['event']==expected for e in events)
+    llm = SimpleNamespace(ainvoke=AsyncMock(return_value=AIMessage(content=reply)))
+    with patch('app.agent.harness.agent_nodes.review_answer', new_callable=AsyncMock, return_value=None):
+        with capture_diagnostic_events() as events:
+            asyncio.run(AgentNodes(llm, None, None, 3, 3).verify_agent(rejected_price_state()))
+    assert [e['event'] for e in events if e['event'].startswith('recovery_')] == [
+        'recovery_attempted', *outcomes]
 
 
 def test_untrusted_event_metadata_is_dropped_without_crashing_turn():

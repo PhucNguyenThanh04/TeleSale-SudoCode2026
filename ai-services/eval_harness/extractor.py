@@ -5,9 +5,10 @@ import re
 from decimal import Decimal
 from typing import Any
 
-from app.agent.guardrails.claims import normalize_zero_fees
+from app.agent.guardrails.claims import COMPOUND_VND, compound_vnd, normalize_zero_fees
 
 def _money_claims(text: str) -> list[tuple[int, str, bool]]:
+    text = COMPOUND_VND.sub(lambda match: f'{compound_vnd(match)}đ', text)
     text = re.sub(r"(?<!\w)(\d+)\s*(?:triệu|tr)(\d{1,3})(?!\w)",
                   lambda m: str(int(m[1]) * 1000000 + int(m[2]) * 10 ** (6 - len(m[2]))) + "đ", text, flags=re.I)
     result = []

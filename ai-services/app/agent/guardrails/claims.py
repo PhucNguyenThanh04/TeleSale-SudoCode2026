@@ -18,13 +18,22 @@ _NON_ASSERTION = re.compile(
     r" voi (?:nhu cau cua )?(?:anh/chi|anh|chi)(?: a)?\?"
 )
 _ZERO_FEE = re.compile(
-    r"\bphí\s+(cod|thu hộ|ship|vận chuyển|giao hàng)\s+(?:là\s+)?0\s*(?:đồng|đ|vnd|₫)(?!\w)",
+    r"(?P<label>\*\*|__|`)?\bphí\s+(?P<fee>cod|thu hộ|ship|vận chuyển|giao hàng)"
+    r"(?P=label)?(?:\s*:(?P=label)?\s*|\s+(?:là\s+)?)"
+    r"(?P<marker>\*\*|__|`|)0\s*(?:đồng|đ|vn[đd]|₫)(?!\w)(?P=marker)",
     re.I)
+COMPOUND_VND = re.compile(
+    r"(?<![\w.,])(\d+)\s+triệu\s+(\d{1,3})\s*(?:nghìn|ngàn)"
+    r"(?:\s+(?:đồng|đ|vnd|₫))?(?!\w)", re.I)
+
+
+def compound_vnd(match: re.Match) -> int:
+    return int(match[1]) * 1_000_000 + int(match[2]) * 1_000
 
 
 def normalize_zero_fees(text: str) -> str:
     return _ZERO_FEE.sub(
-        lambda match: "miễn phí COD" if match[1].casefold() in {"cod", "thu hộ"}
+        lambda match: "miễn phí COD" if match['fee'].casefold() in {"cod", "thu hộ"}
         else "miễn phí vận chuyển", text)
 
 
