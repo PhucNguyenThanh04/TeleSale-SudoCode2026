@@ -618,8 +618,6 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         if not policy_durations_supported(candidate, source_text):
             return FALLBACK, "unsupported_policy_or_internal_claim"
     evidenced_skus = known_skus(successful)
-    claimed_skus = mentioned_skus(candidate, evidenced_skus)
-    unverified_legacy_skus = set(_LEGACY_SKU_SIGNAL.findall(candidate)) - claimed_skus
     if _SUPERLATIVE.search(candidate):
         return FALLBACK, "unsupported_comparison"
     if _unsupported_feature(candidate, successful):
@@ -674,6 +672,8 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         for clause in re.split(r'[;!?\n]|\.(?!\d)', candidate):
             if not (_STOCK.search(clause) or _STOCK_QTY.search(clause)):
                 continue
+            claimed_skus = mentioned_skus(clause, evidenced_skus)
+            unverified_legacy_skus = set(_LEGACY_SKU_SIGNAL.findall(clause)) - claimed_skus
             bound = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
             selected = [c for c in checks if not bound or c.get('args', {}).get('sku') in bound]
             if len(bound) > 1 and not any(c.get('args', {}).get('sku') in {
