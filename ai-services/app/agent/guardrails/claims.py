@@ -37,6 +37,10 @@ def normalize_zero_fees(text: str) -> str:
         else "miễn phí vận chuyển", text)
 
 
+def commercial_clauses(text: str) -> list[str]:
+    return re.split(r'[;!?\n]|\.(?!\d)|(?=\b(?:tặng|biếu)\b)', text, flags=re.IGNORECASE)
+
+
 def assertion_text(text: str) -> str:
     parts = re.split(r"([?!;]|\.(?!\d)|\n|\bnhưng\b|\bvà\b)", text,
                      flags=re.IGNORECASE)

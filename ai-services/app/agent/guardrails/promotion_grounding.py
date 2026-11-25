@@ -57,8 +57,8 @@ def _gift_supported(clause: str, promos: list[dict], items: list[dict]) -> bool:
     descriptions.append(re.sub(r'\s+mien phi$', '', without_address))
     descriptions += [re.sub(r'^(?:cai|chiec|bo)\s+', '', value) for value in descriptions]
     names = [str(item.get("name", "")) for item in items
-             if any(item.get("sku") == p.get("gift_sku") for p in gifts)]
-    return any(value == _fold(name) or len(value.split()) >= 2 and value in _fold(name)
+             if item.get('name') and any(item.get("sku") == p.get("gift_sku") for p in gifts)]
+    return any(_named(value, name) or len(value.split()) >= 2 and _named(name, value)
                for value in descriptions for name in names)
 
 

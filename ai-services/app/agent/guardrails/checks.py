@@ -15,14 +15,14 @@ from app.mcp_servers.mcp_shared.episode_evidence import evidence_supports
 from app.constants import PROFILE_SLOT_KEYS, SLOT_SPEC_BY_KEY, TOOL_ONLY_SLOT_KEYS, Slot
 from app.agent.guardrails.skus import known_skus, mentioned_skus
 from app.agent.guardrails.promotion_grounding import check_promotion_grounding
-from app.agent.guardrails.claims import COMPOUND_VND, assertion_text, compound_vnd, normalize_zero_fees
+from app.agent.guardrails.claims import COMPOUND_VND, assertion_text, commercial_clauses, compound_vnd, normalize_zero_fees
 
 
 FALLBACK = ""
 
 _STOCK = re.compile(r"(?i)\b(?:còn hàng|có hàng|sẵn hàng|hết hàng|có sẵn trong kho)\b")
 _ORDER = re.compile(r"(?i)\bđã\s+(?:lên|tạo|đặt|chốt)\s+đơn\b")
-_AMOUNT = re.compile(r"(?i)(?<!\w)(\d[\d.,]*)\s*(triệu|tr|nghìn|ngàn|k|đồng|đ|vnd|₫)(?!\w)")
+_AMOUNT = re.compile(r"(?i)(?<!\w)(\d[\d.,]*)\s*(triệu|tr|nghìn|ngàn|k|đồng(?!\s+(?:thời|ý)\b)|đ|vnd|₫)(?!\w)")
 _MILLION_SHORTHAND = re.compile(r"(?i)\b(\d{1,3})\s*tr\s*(\d{1,3})(?!\d)")
 _PRICE_NUMBER = re.compile(r"(?i)\bgiá\s+(?:là\s+)?(\d[\d.,]*)")
 _BARE_MONEY = re.compile(r"\b(?:\d{1,3}(?:[.,]\d{3})+|\d{6,})\b")
@@ -466,7 +466,7 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *, focus_
     if baskets:
         basket_skus = {unit['sku'] for call in baskets for unit in call['result'].get('units', [])}
         remaining = []
-        for clause in re.split(r'[;!?\n]|\.(?!\d)', candidate):
+        for clause in commercial_clauses(candidate):
             if not _money_claims(clause):
                 continue
             bound = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
@@ -492,7 +492,7 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *, focus_
         quotes[sku] = result
     if not quotes:
         return False
-    for clause in re.split(r"[;!?\n]|\.(?!\d)", candidate):
+    for clause in commercial_clauses(candidate):
         claims = _money_claims(clause)
         if not claims:
             continue
@@ -671,7 +671,7 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
                       and not any(c.get('args', {}).get('sku') == call['result']['replacement_inventory']['sku']
                                   and all(c['result'].get(key) == call['result']['replacement_inventory'].get(key)
                                           for key in ('in_stock', 'qty')) for c in checks))
-        for clause in re.split(r'[;!?\n]|\.(?!\d)', candidate):
+        for clause in commercial_clauses(candidate):
             if not (_STOCK.search(clause) or _STOCK_QTY.search(clause)):
                 continue
             claimed_skus = mentioned_skus(clause, evidenced_skus)
@@ -711,16 +711,29 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         delivery_verified = len(orders) == 1 and str(orders[0].get("estimated_delivery")) in candidate
         if not orders and not re.search(r'cam kết|đảm bảo|chắc chắn', candidate, re.IGNORECASE):
             from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
-            clauses = [c for c in re.split(r'[;!?\n]|\.(?!\d)', candidate) if _DELIVERY.search(c)]
+            clauses = [c for c in commercial_clauses(candidate) if _DELIVERY.search(c)]
             delivery_verified = bool(clauses)
             for clause in clauses:
                 skus = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
-                quotes = [c for c in successful if c['name'] == 'pricing.get_quote'
-                          and c.get('args', {}).get('sku') in skus]
-                dates = re.findall(r'\b\d{4}-\d{2}-\d{2}\b', clause)
+                available_quotes = [c for c in successful if c['name'] == 'pricing.get_quote']
+                if not skus and len(available_quotes) == 1 and available_quotes[0].get('args', {}).get('sku'):
+                    skus = {available_quotes[0]['args']['sku']}
+                quotes = [c for c in available_quotes if c.get('args', {}).get('sku') in skus]
+                expected = quotes[0]['result'].get('estimated_delivery') if len(quotes) == 1 else None
+                dates = []
+                for literal in re.findall(r'\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}(?:/\d{4})?)\b', clause):
+                    try:
+                        if '/' in literal:
+                            parts = [int(part) for part in literal.split('/')]
+                            year = parts[2] if len(parts) == 3 else date.fromisoformat(expected).year
+                            dates.append(date(year, parts[1], parts[0]).isoformat())
+                        else:
+                            dates.append(date.fromisoformat(literal).isoformat())
+                    except (TypeError, ValueError):
+                        dates.append(None)
                 if (not re.search(r'\bdự kiến\b', clause, re.IGNORECASE)
                         or len(skus) != 1 or len(quotes) != 1 or len(dates) != 1
-                        or dates[0] != quotes[0]['result'].get('estimated_delivery')
+                        or dates[0] != expected
                         or re.search(r'\d+\s*(?:ngày|giờ)', clause)):
                     delivery_verified = False
         if not delivery_verified:

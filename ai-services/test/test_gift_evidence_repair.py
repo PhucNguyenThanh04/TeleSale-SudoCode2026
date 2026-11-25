@@ -103,6 +103,37 @@ def test_price_repair_also_fills_missing_gift_evidence():
     assert result['tool_count'] == 1
 
 
+@pytest.mark.parametrize('draft', [
+    'Giá máy là 860.000đ, được miễn phí vận chuyển và dự kiến giao đến anh vào ngày 14/04/2032. '
+    'Khi mua máy anh sẽ được tặng kèm một Túi vải du lịch nữa ạ.',
+    'Giá máy là 860.000đ và được tặng Túi vải du lịch, đồng thời miễn phí vận chuyển.',
+])
+def test_natural_quote_and_gift_reach_semantic_review_without_unnecessary_repair(draft):
+    state, gateway, gift = repair_case()
+    state['session_tool_calls'][-1]['result'].update(freeship=True, estimated_delivery='2032-04-14')
+    state['tool_calls'] = [{'name': 'catalog.get_details', 'args': {'sku': gift['sku']},
+        'result': {'items': [gift]}}]
+    state['agent_draft'] = draft
+    model = ReviewModel([verdict()])
+    result = asyncio.run(AgentNodes(model, gateway, None, 6, 6).verify_agent(state))
+    assert result['verified_answer'] == draft
+    assert model.payloads[0]['answer'] == draft
+    assert model.ainvoke.await_count == gateway.invoke.await_count == 0
+
+
+def test_catalog_gift_anchor_does_not_bypass_review_of_additional_claims():
+    state, gateway, gift = repair_case()
+    state['tool_calls'] = [{'name': 'catalog.get_details', 'args': {'sku': gift['sku']},
+        'result': {'items': [gift]}}]
+    state['agent_draft'] = 'Được tặng Túi vải du lịch cùng một xe đạp.'
+    repaired = 'Được tặng Túi vải du lịch ạ.'
+    model = ReviewModel([verdict(False, 'unsupported_claim', 'một xe đạp'), verdict()], repaired)
+    result = asyncio.run(AgentNodes(model, gateway, None, 6, 6).verify_agent(state))
+    assert result['verified_answer'] == repaired
+    assert [payload['answer'] for payload in model.payloads] == [state['agent_draft'], repaired]
+    assert result['verifier_events'][0]['reason'] == 'unsupported_answer_claim'
+
+
 @pytest.mark.parametrize('delivery', ['run', 'stream'])
 def test_real_runtime_persists_gift_evidence_and_reuses_it_next_turn(delivery):
     from app.agent.harness.runtime import AgentHarnessRuntime

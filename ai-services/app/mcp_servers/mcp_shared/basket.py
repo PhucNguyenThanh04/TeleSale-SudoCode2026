@@ -30,6 +30,7 @@ def basket_unit_quote(clause, calls, *, focus_sku=None):
 
 def basket_money_evidenced(text, calls):
     from app.agent.guardrails.checks import _money_claims
+    from app.agent.guardrails.claims import commercial_clauses
     from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
     quotes = [call for call in calls if call.get('name') == 'pricing.quote_order' and successful(call)]
     if len(quotes) != 1:
@@ -40,7 +41,7 @@ def basket_money_evidenced(text, calls):
         return False
     skus = {unit['sku'] for unit in units}
     found = False
-    for clause in re.split(r'[;!?\n]|\.(?!\d)', text):
+    for clause in commercial_clauses(text):
         claims = _money_claims(clause)
         if not claims:
             continue

@@ -9,6 +9,19 @@ import pytest
 from app.agent.harness.observability import capture_diagnostic_events
 
 
+def test_failure_report_redacts_rejected_speech_and_drops_unrelated_state():
+    from app.agent.harness.execution_diagnostics import safe_failure_details
+    details = safe_failure_details({'verification_diagnostics': [
+        {'reason': 'promotion_detail_unverified',
+         'agent_draft': 'Chị Hoa, gọi 0912345678. Được tặng **Túi du lịch**.',
+         'source_evidence': {'customer_phone': '0912345678'}},
+        {'reason': 'private failure', 'agent_draft': None},
+    ]})
+    assert details['verification_diagnostics'] == [{'reason': 'promotion_detail_unverified',
+        'agent_draft': 'Chị [TÊN ĐÃ ẨN], gọi [SỐ ĐÃ ẨN]. Được tặng **Túi du lịch**.'}]
+    assert 'source_evidence' not in json.dumps(details)
+
+
 def test_schema_failure_retains_safe_code_through_turn_diagnostics():
     from pydantic import BaseModel, ValidationError
     from app.agent.harness.execution_diagnostics import safe_execution_error
