@@ -34,6 +34,26 @@ def resolve_claim_skus(text: str, calls: list[dict], *, focus_sku: str | None = 
     parents = {sku for start,end,sku in matches
                if not any(a<=start and b>=end and b-a>end-start for a,b,_ in matches)}
     if not parents:
+        variant_hits = set()
+        for item in items.values():
+            variants = item.get('variants') or []
+            if not variants:
+                continue
+            options = {}
+            for key in ('size', 'color'):
+                values = variant_option_values(text, variants, key)
+                if values:
+                    options[key] = values
+            if not options:
+                continue
+            matched = [v['variant_sku'] for v in variants if isinstance(v, dict)
+                       and v.get('variant_sku')
+                       and all(_search_text(str(v.get(key, ''))) in values
+                               for key, values in options.items())]
+            if matched and (len(items) == 1 or len(matched) == 1):
+                variant_hits.update(matched)
+        if variant_hits:
+            return variant_hits
         return {focus_sku} if focus_sku else set()
     result = set()
     for parent in parents:

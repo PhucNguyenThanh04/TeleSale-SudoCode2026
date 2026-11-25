@@ -205,3 +205,26 @@ def test_reviewer_edge_cases_delivery_gift_qty_focus_and_mixed_promos():
         'được tặng kèm sẽ được giao cùng máy ạ.'
     )
     assert check_answer(wrong_passive_gift, obs)[1] == 'promotion_detail_unverified'
+
+
+def test_variant_only_clause_resolves_without_repeating_parent_name():
+    obs = [
+        {'name': 'catalog.search', 'args': {'query': 'giày trekking HikePro'},
+         'result': {'items': [{'sku': 'SKU-SN-TRK', 'name': 'Giày trekking HikePro', 'variants': [
+             {'variant_sku': 'SKU-SN-TRK-41-TRANG', 'size': '41', 'color': 'Trắng'},
+             {'variant_sku': 'SKU-SN-TRK-41-XAM', 'size': '41', 'color': 'Xám'},
+             {'variant_sku': 'SKU-SN-TRK-42-XAM', 'size': '42', 'color': 'Xám'},
+         ]}]}},
+        {'name': 'inventory.check', 'args': {'sku': 'SKU-SN-TRK-41-TRANG', 'on': '2026-10-19'},
+         'result': {'sku': 'SKU-SN-TRK-41-TRANG', 'in_stock': False, 'qty': 0}},
+        {'name': 'inventory.check', 'args': {'sku': 'SKU-SN-TRK-41-XAM', 'on': '2026-10-19'},
+         'result': {'sku': 'SKU-SN-TRK-41-XAM', 'in_stock': True, 'qty': 8}},
+        {'name': 'pricing.get_quote', 'args': {'sku': 'SKU-SN-TRK-41-TRANG', 'on': '2026-10-19'},
+         'result': {'sku': 'SKU-SN-TRK-41-TRANG', 'list_price_vnd': 1990000, 'final_price_vnd': 1990000, 'applied_promos': []}},
+        {'name': 'pricing.get_quote', 'args': {'sku': 'SKU-SN-TRK-41-XAM', 'on': '2026-10-19'},
+         'result': {'sku': 'SKU-SN-TRK-41-XAM', 'list_price_vnd': 1990000, 'final_price_vnd': 1990000, 'applied_promos': []}},
+    ]
+    reply = 'Bản size 41 màu xám hiện còn hàng và giá bán là 1.990.000đ ạ.'
+    assert check_answer(reply, obs) == (reply, None)
+    wrong_stock = 'Bản size 41 màu trắng hiện còn hàng ạ.'
+    assert check_answer(wrong_stock, obs)[1] == 'stock_result_mismatch'

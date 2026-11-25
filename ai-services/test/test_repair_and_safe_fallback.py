@@ -74,7 +74,7 @@ def test_safe_fallback_returned_when_both_repairs_rejected_by_guardrails():
     assert len(result["verifier_events"]) == 3
 
 
-@pytest.mark.parametrize("bad_repair", [None, "", '{"tool_calls":[]}'])
+@pytest.mark.parametrize("bad_repair", [None, '{"tool_calls":[]}'])
 def test_infra_or_empty_or_internal_repair_never_uses_safe_fallback(bad_repair):
     model = ReviewModel([])
     if bad_repair is None:
@@ -86,6 +86,16 @@ def test_infra_or_empty_or_internal_repair_never_uses_safe_fallback(bad_repair):
     assert result["agent_text"] == ""
     assert result["reply_error"] == "agent_reply_unavailable"
     assert model.ainvoke.await_count == 1
+
+
+def test_empty_first_repair_retries_second_attempt_and_falls_back_if_still_empty():
+    model = ReviewModel([])
+    model.ainvoke = AsyncMock(side_effect=[AIMessage(content=""), AIMessage(content="")])
+    nodes = AgentNodes(model, None, None, 6, 6, max_repair_attempts=2, safe_fallback_on_rejection=True)
+    result = asyncio.run(nodes.verify_agent(make_state("Mẫu này giá 5.000.000đ ạ.")))
+    assert result["reply_error"] is None
+    assert result["agent_text"] == SAFE_VERIFICATION_FALLBACK
+    assert model.ainvoke.await_count == 2
 
 
 def test_runtime_run_and_stream_survive_double_guardrail_rejection_with_safe_fallback():
