@@ -208,6 +208,32 @@ def test_price_repair_requests_exact_amount_from_quote():
     assert [payload['answer'] for payload in model.payloads] == [repaired]
 
 
+def test_promotion_repair_reads_the_quoted_gift_name():
+    from app.agent.harness.agent_nodes import AgentNodes
+    from app.schemas.agent import TextTurnRequest
+
+    state = turn_state('Có tặng một lõi lọc và miễn phí vận chuyển ạ.')
+    state['safe_text'] = 'Mẫu này tặng quà gì và phí ship thế nào?'
+    state['request'] = TextTurnRequest(client_msg_id=uuid4(), session_id=uuid4(),
+        on=state['request'].on, channel='hotline', channel_identity=None, input_mode='clean', text=state['safe_text'])
+    state['session_tool_calls'] = [{'name': 'pricing.get_quote',
+        'args': {'sku': 'DEVICE-81', 'on': state['request'].on.isoformat()},
+        'result': {'sku': 'DEVICE-81', 'freeship': True, 'applied_promos': [
+            {'promo_code': 'GIFT-81', 'type': 'gift', 'gift_sku': 'SKU-FILTER'}]}}]
+    gateway = SimpleNamespace(invoke=AsyncMock(return_value={'items': [
+        {'sku': 'SKU-FILTER', 'name': 'Màng lọc thay thế'}], 'total': 1}))
+    repaired = 'Được tặng Màng lọc thay thế ạ. Báo giá áp dụng miễn phí vận chuyển.'
+    model = ReviewModel([verdict()], repaired)
+    result = asyncio.run(AgentNodes(model, gateway, None, 8, 6).verify_agent(state))
+    gateway.invoke.assert_awaited_once_with('catalog.get_details', {'sku': 'SKU-FILTER'})
+    assert result['tool_calls'][-1]['name'] == 'catalog.get_details'
+    assert result['tool_count'] == 1
+    assert result['verified_answer'] == repaired
+    request = model.ainvoke.await_args.args[0]
+    assert 'Màng lọc thay thế' in request[1].content
+    assert 'gift_sku' in json.loads(request[-1].content)['task']
+
+
 @pytest.mark.parametrize('second_review', [
     verdict(False, 'unsupported_claim', 'Bluetooth'), RuntimeError('Review failed'),
 ])

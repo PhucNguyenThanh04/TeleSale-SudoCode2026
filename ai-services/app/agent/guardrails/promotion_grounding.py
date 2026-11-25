@@ -19,25 +19,39 @@ def _named(text: str, name: str) -> bool:
     return bool(re.search(r"(?<![\w-])" + re.escape(_fold(name)) + r"(?![\w-])", _fold(text)))
 
 
+def _gift_claim(clause: str):
+    return re.search(r'\b(?:tang|bieu)\b\s*(?:kem\b\s*)?'
+        r'(?:(?P<count>\d+|mot|hai|ba|bon|nam)\b\s*)?(?:qua\b\s*)?(?:la\b\s*)?'
+        r'(?P<description>.*?)(?=\s+\b(?:va|den|cho|theo|tri gia|co han|nay|a|nhe|roi|khi mua)\b|[,;]|$)',
+        _fold(clause))
+
+
+def _promotion_subject(clause: str) -> str:
+    folded = _fold(clause)
+    claim = _gift_claim(clause)
+    if claim:
+        start, end = claim.span('description')
+        return folded[:start] + folded[end:]
+    return folded
+
+
 def _gift_supported(clause: str, promos: list[dict], items: list[dict]) -> bool:
     gifts = [p for p in promos if p.get("type") == "gift" and p.get("gift_sku")]
     if not gifts:
         return False
     folded = _fold(clause)
-    count = re.search(r"(?:tang|bieu)\s+(?:kem\s+)?(\d+|mot|hai|ba|bon|nam)\b", folded)
+    claim = _gift_claim(clause)
+    if not claim:
+        return False
+    count = claim['count']
     if count:
-        number = int(count[1]) if count[1].isdigit() else {"mot": 1, "hai": 2, "ba": 3, "bon": 4, "nam": 5}[count[1]]
+        number = int(count) if count.isdigit() else {"mot": 1, "hai": 2, "ba": 3, "bon": 4, "nam": 5}[count]
         gifts = [p for p in gifts if p.get("gift_qty", 1) == number]
     if not gifts:
         return False
-    if re.search(r"\btang (?:qua|kem qua)|\bqua tang\b", folded):
-        return True
-    match = re.search(r"(?:tang|bieu)\s+(?:kem\s+)?(?:(?:\d+|mot|hai|ba|bon|nam)\s+)?(.+)", folded)
-    if not match:
-        return False
-    description = re.split(r"\b(?:va|den|cho|theo|tri gia|co han|nay|a|nhe|roi)\b|[,;]", match[1])[0].strip()
+    description = claim['description'].strip()
     if not description:
-        return False
+        return bool(re.search(r"\btang (?:qua|kem qua)|\bqua tang\b", folded))
     names = [str(item.get("name", "")) for item in items
              if any(item.get("sku") == p.get("gift_sku") for p in gifts)]
     return any(len(description.split()) >= 2 and description in _fold(name) for name in names)
@@ -49,6 +63,8 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
     items = [item for c in successful if c.get("name") in CATALOG_TOOLS
              for item in c["result"].get("items", []) if isinstance(item, dict)]
     quotes = [c for c in successful if c.get("name") == "pricing.get_quote"]
+    from app.agent.guardrails.skus import known_skus
+    product_codes = known_skus(successful)
     order_ids = {str(row['order_id']) for call in successful
                  for row in [call['result'], *call['result'].get('orders', [])]
                  if isinstance(row, dict) and row.get('order_id')}
@@ -69,14 +85,14 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
         if "?" in clause or re.search(r"\b(?:lan truoc|truoc day)\b", folded) and not re.search(r"\b(?:hien|hom nay|dang)\b", folded):
             continue
         codes = {code for code in re.findall(r"\b[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+\b", clause)
-                 if not code.startswith(("SKU-", "OD-")) and code not in order_ids}
+                 if not code.startswith(("SKU-", "OD-")) and code not in order_ids | product_codes}
         shipping = bool(_FREE_SHIPPING.search(folded))
         cod = bool(_FREE_COD.search(folded))
         if not (codes or shipping or cod or re.search(r"\b(?:khuyen mai|uu dai|giam|tang|bieu)\b", commercial)):
             continue
         if any(call.get('name') == 'pricing.quote_order' for call in successful):
             from app.mcp_servers.mcp_shared.basket import basket_unit_quote
-            unit = basket_unit_quote(clause, successful)
+            unit = basket_unit_quote(_promotion_subject(clause), successful, focus_sku=focus_sku)
             baskets = [call for call in successful if call.get('name') == 'pricing.quote_order']
             if unit is not None and cod and len(baskets) == 1:
                 unit['result']['applied_promos'].extend(
@@ -100,7 +116,7 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
                 return reason
             continue
         from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
-        mentioned = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
+        mentioned = resolve_claim_skus(_promotion_subject(clause), successful, focus_sku=focus_sku)
         selected = [c for c in quotes if not mentioned or c.get('args', {}).get('sku') in mentioned]
         if len(mentioned) > 1 and len(selected) == 1:
             parent = selected[0].get('args', {}).get('sku')

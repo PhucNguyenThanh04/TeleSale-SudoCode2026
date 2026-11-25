@@ -129,6 +129,23 @@ def test_single_quote_cannot_describe_another_catalog_product():
     assert facts('Local Beta giảm 10%.', [catalog, quote()]) == set()
 
 
+@pytest.mark.parametrize('key,value,claim', [
+    ('promo_code', 'LOCAL-SAVE', 'giảm 10%'),
+    ('promo_expiry', '2026-11-20', 'giảm 10%'),
+    ('price_quoted_vnd', 900000, 'giá 900.000đ'),
+    ('in_stock', True, 'còn hàng'),
+])
+def test_reported_commercial_facts_do_not_move_between_short_product_names(key, value, claim):
+    from app.agent.memory.reported_facts import reported_tool_fact
+    observations = [{'name': 'catalog.search', 'result': {'items': [
+        {'sku': 'DEVICE-A', 'name': 'Thiết bị Studio Amber'},
+        {'sku': 'DEVICE-B', 'name': 'Thiết bị Studio Indigo'}]}}, quote(sku='DEVICE-A'),
+        {'name': 'inventory.check', 'args': {'sku': 'DEVICE-A'},
+         'result': {'sku': 'DEVICE-A', 'in_stock': True}}]
+    assert not reported_tool_fact(key, value, f'Studio Indigo {claim}.', observations, 'DEVICE-A')
+    assert reported_tool_fact(key, value, f'Studio Amber {claim}.', observations, 'DEVICE-A')
+
+
 def test_promotion_reaches_worker_projection_without_model_extraction():
     asyncio.run(_promotion_reaches_worker_projection())
 
