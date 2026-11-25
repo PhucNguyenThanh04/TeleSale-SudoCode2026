@@ -20,14 +20,36 @@ def _named(text: str, name: str) -> bool:
 
 
 def _gift_claim(clause: str):
-    return re.search(r'\b(?:tang|bieu)\b(?:\s*:\s*|\s+)(?:kem\b\s*)?'
+    return re.search(r'\b(?:tang|bieu)\b(?:\s*:)?\s*(?:kem\b\s*)?'
         r'(?:(?P<count>\d+|mot|hai|ba|bon|nam)\b\s*)?(?:qua\b\s*)?(?:la\b\s*)?'
         r'(?P<description>.*?)(?=\s+\b(?:va|den|cho|theo|tri gia|co han|nay|a|nhe|roi|khi mua)\b|[,;]|$)',
         _fold(clause))
 
 
+_PASSIVE_GIFT = re.compile(r'\bduoc\s+(?:tang|bieu)\s+kem\b')
+
+
+def _passive_gift_match(clause: str):
+    folded = _fold(clause)
+    match = _PASSIVE_GIFT.search(folded)
+    if not match:
+        return None
+    before = folded[:match.start()]
+    after = folded[match.end():].strip()
+    if after and not re.match(r'^(?:theo|se|duoc|voi|trong|cung|cho|khi|a|nhe|roi|va)\b', after):
+        return None
+    return match, before
+
+
 def _promotion_subject(clause: str) -> str:
     folded = _fold(clause)
+    passive = _passive_gift_match(clause)
+    if passive:
+        match, before = passive
+        parts = re.split(r'(?:,\s*(?:thi\s+)?|\bthi\b\s+)', before)
+        if len(parts) > 1:
+            return ' '.join(parts[:-1]) + folded[match.end():]
+        return folded[match.end():]
     claim = _gift_claim(clause)
     if claim:
         start, end = claim.span('description')
@@ -40,6 +62,18 @@ def _gift_supported(clause: str, promos: list[dict], items: list[dict]) -> bool:
     if not gifts:
         return False
     folded = _fold(clause)
+    names = [str(item.get("name", "")) for item in items
+             if item.get('name') and any(item.get("sku") == p.get("gift_sku") for p in gifts)]
+    passive = _passive_gift_match(clause)
+    if passive:
+        _, before = passive
+        subject = re.split(r'(?:,\s*(?:thi\s+)?|\bthi\b\s+)', before)[-1].strip()
+        subject = re.sub(r'^(?:da|vang)[,\s]+', '', subject).strip()
+        subject = re.sub(r'^(?:cai|chiec|bo|phan|mon)\s+', '', subject).strip()
+        if not subject or re.fullmatch(r'qua(?:\s+tang)?', subject):
+            return True
+        return any(_named(subject, name) or len(subject.split()) >= 2 and _named(name, subject)
+                   for name in names)
     claim = _gift_claim(clause)
     if not claim:
         return False
@@ -50,14 +84,14 @@ def _gift_supported(clause: str, promos: list[dict], items: list[dict]) -> bool:
     if not gifts:
         return False
     description = claim['description'].strip()
+    if re.fullmatch(r'(?:a|nhe|nha|nhi)', description):
+        description = ''
     if not description:
         return bool(re.search(r"\btang (?:qua|kem qua)|\bqua tang\b", folded))
     descriptions = [description]
     without_address = re.sub(r'\s+(?:anh|chi|em)(?:\s+(?:a|nhe))?$', '', description)
     descriptions.append(re.sub(r'\s+mien phi$', '', without_address))
     descriptions += [re.sub(r'^(?:cai|chiec|bo)\s+', '', value) for value in descriptions]
-    names = [str(item.get("name", "")) for item in items
-             if item.get('name') and any(item.get("sku") == p.get("gift_sku") for p in gifts)]
     return any(_named(value, name) or len(value.split()) >= 2 and _named(name, value)
                for value in descriptions for name in names)
 

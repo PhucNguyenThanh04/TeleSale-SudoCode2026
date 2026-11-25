@@ -193,3 +193,15 @@ def test_reviewer_edge_cases_delivery_gift_qty_focus_and_mixed_promos():
     assert check_answer(unit_and_total, obs) == (unit_and_total, None)
     oos_reply = 'Máy lọc không khí Xiaomi Smart 4 Pro hiện không sẵn hàng ạ.'
     assert check_answer(oos_reply, obs) == (oos_reply, None)
+    passive_gift = (
+        'Dạ, nếu anh chốt đơn máy lọc không khí Xiaomi Smart 4 Pro, thì màng lọc thay thế '
+        'được tặng kèm sẽ được đóng gói chung trong cùng một kiện hàng với máy để giao đến anh luôn ạ.\n\n'
+        'Vì hiện tại hệ thống vẫn chưa ghi nhận đơn hàng của anh, nên nếu anh đồng ý, '
+        'em xin phép lên đơn cho mình ngay bây giờ để anh sớm nhận được máy và quà tặng nhé!'
+    )
+    assert check_answer(passive_gift, obs) == (passive_gift, None)
+    wrong_passive_gift = (
+        'Dạ, nếu anh chốt đơn máy lọc không khí Xiaomi Smart 4 Pro, thì xe đạp '
+        'được tặng kèm sẽ được giao cùng máy ạ.'
+    )
+    assert check_answer(wrong_passive_gift, obs)[1] == 'promotion_detail_unverified'
