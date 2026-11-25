@@ -108,7 +108,16 @@ def _review_context(context):
                 continue
             call = {**call, 'result': {**output, 'evidence': evidence}}
         observations.append(call)
-    return {**result, 'tool_observations': observations}
+    compact = {
+        key: result[key]
+        for key in ('on', 'identity_status', 'customer_text', 'customer_facts',
+                    'customer_statements', 'delivery_context', 'memory_available')
+        if key in result
+    }
+    if isinstance(result.get('session_history'), list):
+        compact['session_history'] = result['session_history'][-4:]
+    compact['tool_observations'] = observations
+    return compact
 
 
 async def review_answer(model, answer: str, context: dict) -> str | None:

@@ -47,11 +47,15 @@ chỉ giải thích các tham chiếu như 'mẫu đó', không tự cấp quy�
   bỏ điều kiện giao, thêm sản phẩm hay chuyển lựa chọn thành đơn.
   Mặc định một sản phẩm và COD khi khách chưa chỉ định và nghiệp vụ cho phép;
   không bắt khách xác nhận địa chỉ nếu giao dịch không yêu cầu địa chỉ.
-  Trước khi tạo đơn, offer đã trình bày (kết hợp lựa chọn biến thể, số lượng,
-  phương thức thanh toán khách xác nhận rõ trong lượt hiện tại) phải khớp đúng
-  biến thể, số lượng, giá cuối/quyền lợi và phương thức thanh toán; tham chiếu
-  nơi giao và thời gian giao dự kiến chỉ bắt buộc khớp khi có địa chỉ hoặc đã
-  nêu trong offer. Thiếu offer hoặc khách chưa đồng ý thì không cấp quyền.
+  Khi khách xác nhận rõ việc mua/chốt/lên đơn/lấy hàng trong customer_text hiện
+  tại (ví dụ 'Ok em lên đơn...', 'anh xác nhận lấy...', 'đặt cho chị...') cho đúng
+  sản phẩm/biến thể đã có báo giá hiện tại trong tool_observations hoặc phiên,
+  với số lượng và phương thức thanh toán khớp lời khách (hoặc mặc định qty=1,
+  COD khi tổng ≤ 10 triệu), phải cấp quyền allowed=true ngay — không từ chối chỉ
+  vì lượt trước chưa đọc lại tóm tắt PB-09 hay chưa nêu địa chỉ/ngày giao.
+  Tham chiếu nơi giao và thời gian giao dự kiến chỉ bắt buộc khớp khi giao dịch
+  có địa chỉ hoặc đã nêu trong offer. Thiếu báo giá/offer hoặc khách chưa đồng ý
+  thì không cấp quyền.
   Khi có address_context, [PROPOSED_ADDRESS] đánh dấu đúng giá trị địa chỉ đang
   đề xuất trong toàn bộ lời khách hiện tại; các địa chỉ khác vẫn được che riêng.
   Phải xét cả phủ định/sửa đổi quanh dấu này. Việc nhắc địa chỉ không tự là đồng

@@ -235,7 +235,9 @@ class AgentNodes(SessionNodes):
                     else ' Không dùng từ so sánh tuyệt đối như tốt nhất, phù hợp nhất, hiệu quả nhất cho sản phẩm.'
                     if current_reason == 'unsupported_comparison'
                     else ' Bỏ toàn bộ chi tiết quy trình, số ngày, điều kiện hoặc khẳng định không có trong tool_observations hiện tại; chỉ giữ phần có nguồn hoặc hỏi thông tin còn thiếu.'
-                    if current_reason == 'unsupported_answer_claim' else ''
+                    if current_reason == 'unsupported_answer_claim'
+                    else ' Bắt buộc trả lời bằng văn bản tiếng Việt rõ ràng, không gọi công cụ và không để trống.'
+                    if current_reason == 'empty_answer' else ''
                 )
                 final_attempt_instruction = (
                     ' Đây là lần sửa cuối: trả lời ngắn gọn, lịch sự, chỉ giữ phần đã có bằng chứng rõ ràng '
@@ -269,13 +271,18 @@ class AgentNodes(SessionNodes):
                 log_event(state, 'verify', 'recovery_rejected', level=logging.DEBUG, reason=repair_reason)
                 rejected.append(rejected_draft(state, repair_reason, repaired))
                 last_reason = repair_reason
-                if repair_reason in {'empty_answer', 'internal_output', 'grounding_review_unavailable'}:
+                if repair_reason in {'internal_output', 'grounding_review_unavailable'}:
                     had_infra_error = True
                     break
-                current_draft = repaired
+                if repair_reason == 'empty_answer' and not draft:
+                    had_infra_error = True
+                    break
+                if repaired:
+                    current_draft = repaired
                 current_reason = repair_reason
             if (self.safe_fallback_on_rejection and not had_infra_error
-                    and last_reason not in {'empty_answer', 'internal_output', 'grounding_review_unavailable'}
+                    and bool(draft)
+                    and last_reason not in {'internal_output', 'grounding_review_unavailable'}
                     and state.get('reply_context', {}).get('reason') not in {'model_unavailable', 'memory_unavailable'}):
                 fb_grounding = check_grounding(SAFE_VERIFICATION_FALLBACK, calls)
                 fb_answer, fb_reason = (
