@@ -208,6 +208,19 @@ def test_price_repair_requests_exact_amount_from_quote():
     assert [payload['answer'] for payload in model.payloads] == [repaired]
 
 
+def test_service_capabilities_do_not_bypass_full_answer_semantic_review():
+    from app.agent.harness.agent_nodes import AgentNodes
+    draft = 'Em có thể tư vấn sản phẩm và giải đáp ưu đãi. Em là bác sĩ.'
+    repaired = 'Em có thể tư vấn và giải đáp thông tin sản phẩm.'
+    state = turn_state(draft)
+    state['tool_calls'] = []
+    state['safe_text'] = 'Bạn có thể hỗ trợ gì?'
+    model = ReviewModel([verdict(False, 'unsupported_claim', 'Em là bác sĩ'), verdict()], repaired)
+    result = asyncio.run(AgentNodes(model, None, None, 8, 6).verify_agent(state))
+    assert result['verified_answer'] == repaired
+    assert [payload['answer'] for payload in model.payloads] == [draft, repaired]
+
+
 def test_promotion_repair_reads_the_quoted_gift_name():
     from app.agent.harness.agent_nodes import AgentNodes
     from app.schemas.agent import TextTurnRequest

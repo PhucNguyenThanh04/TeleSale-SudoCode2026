@@ -72,6 +72,21 @@ class StreamingMeasurementError(RuntimeError):
         self.verification_diagnostics = list(verification_diagnostics)
 
 
+def stream_failure(runtime, request, events):
+    from app.agent.guardrails.diagnostics import rejected_draft
+    reasons = [event['reason'] for event in events if event.get('event') == 'grounding_checked'
+               and event.get('accepted') is False and 'reason' in event]
+    execution_error = next((event for event in reversed(events)
+        if event.get('event') == 'phase_result' and event.get('status') == 'failed'), None)
+    state_for = getattr(runtime, 'state_for', None)
+    failed_state = state_for(request) if callable(state_for) else None
+    drafts = [rejected_draft(failed_state, event.get('reason', 'unknown_reason'), event['agent_draft'])
+        for event in failed_state.get('verifier_events', []) if isinstance(event, dict)
+        and isinstance(event.get('agent_draft'), str)] if isinstance(failed_state, dict) else []
+    return StreamingMeasurementError('stream_measurement_failed', rejection_reasons=reasons,
+        execution_error=execution_error, verification_diagnostics=drafts)
+
+
 async def measured_stream(runtime, request, started):
     first, last, answer, sequence = None, None, '', 1
     async with aclosing(runtime.stream(request)) as stream:
@@ -214,20 +229,7 @@ async def run_scenario_call(
 
         except Exception as exc:
             if delivery_mode == 'text':
-                reasons = [event['reason'] for event in runtime_events
-                           if event.get('event') == 'grounding_checked'
-                           and event.get('accepted') is False and 'reason' in event]
-                execution_error = next((event for event in reversed(runtime_events)
-                    if event.get('event') == 'phase_result' and event.get('status') == 'failed'), None)
-                from app.agent.guardrails.diagnostics import rejected_draft
-                state_for = getattr(runtime, 'state_for', None)
-                failed_state = state_for(turn_req) if callable(state_for) else None
-                drafts = [rejected_draft(failed_state, event.get('reason', 'unknown_reason'), event['agent_draft'])
-                    for event in failed_state.get('verifier_events', [])
-                    if isinstance(event, dict) and isinstance(event.get('agent_draft'), str)] if isinstance(failed_state, dict) else []
-                raise StreamingMeasurementError('stream_measurement_failed',
-                    rejection_reasons=reasons, execution_error=execution_error,
-                    verification_diagnostics=drafts) from None
+                raise stream_failure(runtime, turn_req, runtime_events) from None
             if latency_ms is None:
                 latency_ms = (time.perf_counter() - t_start) * 1000.0
             runtime_error = type(exc).__name__
@@ -535,10 +537,10 @@ async def warm_up_configuration(runtime, *, turns: int = 3) -> dict:
                     channel="hotline", channel_identity=None, input_mode="clean", on=date(2026, 10, 15), text="Xin chào, bạn có thể hỗ trợ gì?")
                 await measured_stream(runtime, request, time.perf_counter())
             except Exception as exc:
-                error = safe_execution_error(exc, phase='preparation')
-                failure = RuntimeError('warmup_execution_unhealthy')
+                failure = stream_failure(runtime, request, events)
                 failure.error_code = 'warmup_execution_unhealthy'
-                failure.execution_error = next((e for e in events if e.get('status') == 'failed'), error)
+                if failure.execution_error is None and not failure.verification_rejections:
+                    failure.execution_error = safe_execution_error(exc, phase='preparation')
                 raise failure from None
         invoked = any(e.get('phase') == 'model_invocation' and e.get('status') == 'succeeded' for e in events)
         if not invoked or execution_health([{'runtime_events': events}]) != 'healthy':
