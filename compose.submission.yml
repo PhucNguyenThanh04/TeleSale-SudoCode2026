@@ -9,7 +9,7 @@ x-backend: &backend
 x-db: &db
   APP_ENV: development
   MCP_DB_HOST: postgres
-  MCP_DB_NAME: ${SUBMISSION_DATABASE:-telesale_demo}
+  MCP_DB_NAME: ${SUBMISSION_DATABASE:-telesale_eval_m1}
   SYSTEM_BOOT_ID: btc-submission-v1
   SUBMISSION_WAIT_FOR_SEED: '1'
 
@@ -132,10 +132,12 @@ services:
     image: postgres:16.15-alpine
     environment:
       POSTGRES_USER: btc_admin
-      POSTGRES_DB: ${SUBMISSION_DATABASE:-telesale_demo}
+      POSTGRES_DB: ${SUBMISSION_DATABASE:-telesale_eval_m1}
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       TZ: Asia/Ho_Chi_Minh
     secrets: [postgres_password]
+    ports:
+      - "127.0.0.1:${SUBMISSION_POSTGRES_PORT:-15432}:5432"
     volumes:
       - postgres:/var/lib/postgresql/data
     healthcheck:
@@ -146,6 +148,8 @@ services:
 
   qdrant:
     image: qdrant/qdrant:v1.19.1
+    ports:
+      - "127.0.0.1:${SUBMISSION_QDRANT_PORT:-16333}:6333"
     volumes:
       - qdrant:/qdrant/storage
 
@@ -155,45 +159,10 @@ services:
     volumes:
       - redis:/data
 
-  setup:
-    <<: *ai
-    profiles: [seed]
-    depends_on:
-      postgres:
-        condition: service_healthy
-      qdrant:
-        condition: service_started
-    entrypoint: [python, /workspace/scripts/btc_container.py, setup, python, -m, app.bootstrap.submission]
-    command: [--allow-policy-build]
-    environment:
-      <<: [*db, *llm, *policy]
-      BTC_DATA_DIR: /btc
-      KNOWLEDGE_POLICY_SOURCE_DIR: /policy-source
-    secrets: [postgres_password, reviewer_password, worker_password, backend_password]
-    volumes:
-      - *btc
-      - policy-source:/policy-source
-      - tokenizer:/workspace/ai-services/app/mcp_servers/mcp_knowledge/assets
-
-  mcp-db-roles:
-    image: postgres:16.15-alpine
-    profiles: [seed]
-    depends_on:
-      postgres:
-        condition: service_healthy
-      setup:
-        condition: service_completed_successfully
-    environment:
-      PGHOST: postgres
-      PGUSER: btc_admin
-      PGDATABASE: ${SUBMISSION_DATABASE:-telesale_demo}
-    secrets: [postgres_password, mcp_catalog_password, mcp_order_password, mcp_memory_password, mcp_knowledge_password]
-    volumes:
-      - ./ai-services/scripts/provision_mcp_roles.sh:/provision_mcp_roles.sh:ro
-    entrypoint: [sh, /provision_mcp_roles.sh]
-
   mcp-catalog:
     <<: *ai
+    ports:
+      - "127.0.0.1:${SUBMISSION_MCP_CATALOG_PORT:-18011}:8011"
     command: [python, -m, app.mcp_servers.mcp_catalog.server]
     depends_on:
       postgres:
@@ -212,6 +181,8 @@ services:
 
   mcp-order:
     <<: *ai
+    ports:
+      - "127.0.0.1:${SUBMISSION_MCP_ORDER_PORT:-18012}:8012"
     command: [python, -m, app.mcp_servers.mcp_order.server]
     depends_on:
       postgres:
@@ -231,6 +202,8 @@ services:
 
   mcp-memory:
     <<: *ai
+    ports:
+      - "127.0.0.1:${SUBMISSION_MCP_MEMORY_PORT:-18013}:8013"
     command: [python, -m, app.mcp_servers.mcp_memory.server]
     depends_on:
       postgres:
@@ -250,6 +223,8 @@ services:
 
   mcp-knowledge:
     <<: *ai
+    ports:
+      - "127.0.0.1:${SUBMISSION_MCP_KNOWLEDGE_PORT:-18014}:8014"
     command: [python, -m, app.mcp_servers.mcp_knowledge.server]
     depends_on:
       postgres:
@@ -262,7 +237,7 @@ services:
       MCP_DB_PASSWORD_FILE: /run/secrets/mcp_knowledge_password
     secrets: [mcp_internal_token, mcp_knowledge_password]
     volumes:
-      - tokenizer:/workspace/ai-services/app/mcp_servers/mcp_knowledge/assets:ro
+      - ./runtime/tokenizer:/workspace/ai-services/app/mcp_servers/mcp_knowledge/assets:ro
     healthcheck:
       test: [CMD, python, -c, 'import socket; socket.create_connection(("127.0.0.1", 8014), 2).close()']
       interval: 2s
@@ -294,6 +269,8 @@ services:
 
   ai:
     <<: *ai
+    ports:
+      - "127.0.0.1:${SUBMISSION_AI_PORT:-18001}:8001"
     build:
       context: .
       dockerfile: Dockerfile.submission
@@ -316,29 +293,14 @@ services:
       HOST: 0.0.0.0
     secrets: [reviewer_password, ai_internal_token, mcp_internal_token]
     volumes:
-      - policy-source:/policy-source:ro
-      - tokenizer:/workspace/ai-services/app/mcp_servers/mcp_knowledge/assets:ro
+      - ./runtime/policy:/policy-source:ro
+      - ./runtime/tokenizer:/workspace/ai-services/app/mcp_servers/mcp_knowledge/assets:ro
     healthcheck:
       test: [CMD, python, -c, 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8001/openapi.json",timeout=2).close()']
       interval: 2s
       timeout: 3s
       retries: 60
       start_period: 24h
-
-  seed:
-    <<: *backend
-    profiles: [seed]
-    entrypoint: [python, /workspace/scripts/btc_container.py, seed, python, -m, app.seed_demo_users]
-    depends_on:
-      mcp-db-roles:
-        condition: service_completed_successfully
-    environment:
-      <<: *demo-env
-      DEMO_USER_1_USERNAME: demo1
-      DEMO_USER_2_USERNAME: demo2
-      DEMO_USER_1_CUSTOMER_ID: ${DEMO_USER_1_CUSTOMER_ID:-C001}
-      DEMO_USER_2_CUSTOMER_ID: ${DEMO_USER_2_CUSTOMER_ID:-C002}
-    secrets: [postgres_password, demo_jwt_secret, demo_user_1_password, demo_user_2_password]
 
   backend:
     <<: *backend
@@ -417,8 +379,6 @@ volumes:
   postgres:
   qdrant:
   redis:
-  tokenizer:
-  policy-source:
 
 secrets:
   postgres_password:

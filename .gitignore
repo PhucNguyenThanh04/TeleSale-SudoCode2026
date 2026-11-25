@@ -9,6 +9,13 @@
 !.env.submission.example
 /secrets-submission/
 /results-submission/
+/runtime/*
+!/runtime/policy/
+!/runtime/tokenizer/
+/runtime/policy/*
+!/runtime/policy/.gitkeep
+/runtime/tokenizer/*
+!/runtime/tokenizer/.gitkeep
 *.pem
 *.key
 *.p12

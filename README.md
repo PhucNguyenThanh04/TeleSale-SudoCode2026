@@ -4,16 +4,19 @@ Harness telesale tiếng Việt có bộ nhớ đa phiên. Luồng bàn giao g�
 
 ## 1. Clone và đặt cấu hình
 
-Máy cần Linux x86-64, Git, Bash, Python 3 và Docker Compose. Tài khoản chạy phải truy cập được Docker (`docker ps` thành công). Các thư viện AI/backend được cài trong image; script eval trên host chỉ dùng thư viện chuẩn Python.
+Máy cần Linux x86-64, Git, Python 3.12 trở lên và Docker Compose 2.20 trở lên. Tài khoản chạy phải truy cập được Docker (`docker ps` thành công). Các thư viện AI/backend được cài trong image; bước seed chạy bằng Python ngoài host và cần môi trường bên dưới.
 
 ```bash
 git clone --branch main --single-branch https://github.com/PhucNguyenThanh04/TeleSale-SudoCode2026.git
 cd TeleSale-SudoCode2026
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r config/submission/seed.txt
 ```
 
 Đặt file `.env` đầy đủ vào gốc repo. Nếu tự tạo cấu hình, copy `.env.example` thành `.env` rồi điền key/model/endpoint. File mẫu liệt kê đủ biến; ngày chấm BTC thay bằng key của BTC. `.env` riêng trong từng server không cần có khi chạy theo luồng Docker này.
 
-Giữ hai trường sau trong `.env` để lệnh `docker compose` chọn đúng stack:
+Hai trường sau trong `.env` chọn stack nộp bài. Khi thiếu `COMPOSE_FILE`, file mặc định `docker-compose.yml` cũng dẫn vào cùng stack; cấu hình phát triển cũ được tách sang `compose.dev.yml`:
 
 ```dotenv
 COMPOSE_FILE=compose.submission.yml
@@ -28,13 +31,13 @@ docker compose up -d --build
 
 Lệnh bật PostgreSQL, Qdrant, Redis, bốn MCP server, AI service, backend và các worker. Bước này chỉ cần repo và `.env`, chưa cần thư mục dữ liệu BTC. Các server dùng volume nội bộ; lệnh không nạp dữ liệu và không chạy eval.
 
-Compose build một image AI và một image backend; MCP, worker, seed và eval dùng lại các image này. Sau khi đổi mã nguồn, chạy lại lệnh trên trước bước seed/eval. `Dockerfile.submission.dockerignore` lọc context cho bản nộp; `.dockerignore` ở root lọc context khi dùng Dockerfile backend cũ. Virtualenv, cache, test, báo cáo, model weights và audio được loại khỏi context của bản nộp.
+Compose build một image AI và một image backend; MCP, worker và eval dùng lại các image này. Sau khi đổi mã nguồn, chạy lại lệnh trên trước bước seed/eval. `Dockerfile.submission.dockerignore` lọc context cho bản nộp; `.dockerignore` ở root lọc context khi dùng Dockerfile backend cũ. Virtualenv, cache, test, báo cáo, model weights và audio được loại khỏi context của bản nộp.
 
 Lần đầu database còn trống, các container ứng dụng chờ dữ liệu; log có thể hiện `Waiting for BTC data` và health ở trạng thái `starting`. Chạy bước 3 để hoàn tất khởi tạo.
 
 ## 3. Nạp dữ liệu BTC
 
-Đến bước này mới cần giải nén gói dữ liệu BTC cạnh repo:
+Giải nén gói BTC vào thư mục bất kỳ, rồi truyền đường dẫn trực tiếp cho script Python:
 
 ```text
 thu_muc_lam_viec/
@@ -42,17 +45,20 @@ thu_muc_lam_viec/
 └── TeleSale-SudoCode2026/
     ├── .env
     ├── compose.submission.yml
-    ├── seed_btc.sh
+    ├── seed_btc.py
+    ├── runtime/
     └── run_eval.py
 ```
 
-Nếu dữ liệu nằm nơi khác, sửa `BTC_ROOT` trong `.env` thành đường dẫn tuyệt đối tới thư mục dữ liệu đó.
-
 ```bash
-./seed_btc.sh
+python seed_btc.py --data-dir ../BTC-Data-Vong1-TEAMS
 ```
 
-Script dùng `BTC_ROOT` trong `.env`, nạp catalog/CRM/policy vào PostgreSQL, tạo schema runtime, chuẩn bị chỉ mục policy trên Qdrant, cấp quyền từng MCP và tạo tài khoản demo. Policy gốc được sao chép vào volume nội bộ `policy-source` để AI đọc khi phát hành knowledge; AI/backend không mount thư mục BTC trên host. Sau đó script chờ các server sẵn sàng. Lần đầu cần tải tokenizer và gọi embedding theo cấu hình.
+`--data-dir` nhận cả đường dẫn tương đối và tuyệt đối. Script kết nối thẳng tới PostgreSQL/Qdrant trên loopback, không gọi Docker và không cần `sudo`. Cấu hình kết nối và API được đọc từ `.env` ở root.
+
+Script nạp catalog/CRM/policy vào PostgreSQL, tạo schema runtime, dựng chỉ mục policy trên Qdrant, cấp quyền bốn MCP và tạo tài khoản demo. Policy/tokenizer được ghi vào `runtime/` của repo; các container đọc thư mục này ở chế độ chỉ đọc. Hai thư mục rỗng đã có trong repo nên `up` không cần dữ liệu BTC tồn tại trước. Lần đầu seed tải tokenizer có kiểm checksum và gọi embedding theo cấu hình.
+
+Sau khi nạp thành công, script lưu đường dẫn nguồn vào `BTC_ROOT` trong `.env` cho bước eval và chờ AI, bốn MCP cùng backend sẵn sàng. PostgreSQL mở ở `127.0.0.1:15432`, Qdrant ở `127.0.0.1:16333`; có thể đổi bằng `SUBMISSION_POSTGRES_PORT` và `SUBMISSION_QDRANT_PORT` rồi khởi tạo lại container bằng Compose. Các cổng kiểm tra AI/MCP cũng chỉ mở trên loopback và có thể đổi bằng các biến `SUBMISSION_*_PORT` trong file mẫu.
 
 Dùng lại cùng nguồn thì script giữ dữ liệu hiện có; nguồn khác trên database đã khởi tạo sẽ bị từ chối. Script không tự xóa hoặc reset database.
 
@@ -147,6 +153,7 @@ ASR `whisper-small` dùng weights `Systran/faster-whisper-small`, mặc định 
 |---|---|
 | `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME` | Chọn một stack cho cả server, seed và eval. |
 | `BTC_ROOT` | Gói BTC có `catalog/`, `policy/`, `schemas/`, `eval/`, `asr/`. |
+| `SUBMISSION_POSTGRES_PORT`, `SUBMISSION_QDRANT_PORT` | Cổng loopback để script Python seed trên host kết nối vào database trong Docker. |
 | `SCENARIOS_DIR`, `RESULTS_DIR` | Bộ scenario mặc định và nơi ghi kết quả; cờ của script eval có thể ghi đè. |
 | `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, `LANGMEM_MODEL` | API tương thích OpenAI; khai báo model chính xác. LangMem để trống dùng cùng model hội thoại. |
 | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_API_BASE_URL` | Embedding Cloudflare `@cf/baai/bge-m3`; cấu hình policy ở `config/policy-runtime.json`. Tokenizer được tải và kiểm checksum ở bước seed. |

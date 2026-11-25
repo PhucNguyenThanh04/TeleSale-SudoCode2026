@@ -72,6 +72,7 @@ def test_optional_sudo_is_limited_to_docker_and_preserves_boot_id(monkeypatch):
     mod.compose('up', '-d', 'postgres')
     assert calls[0][:3] == ['sudo', '--preserve-env=SYSTEM_BOOT_ID', 'docker']
     assert calls[0][-3:] == ['up', '-d', 'postgres']
+    assert calls[0][4:6] == ['-f', mod.ROOT/'compose.dev.yml']
 
 
 def test_stale_resume_does_not_take_ownership_or_stop_current_services(monkeypatch):

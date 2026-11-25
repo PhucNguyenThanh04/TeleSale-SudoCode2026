@@ -42,7 +42,7 @@ async def wait_for_seed(dsn, boot_id):
             if connection is not None:
                 await connection.close()
         if not announced:
-            print('Waiting for BTC data; run ./seed_btc.sh to initialize the stack.', flush=True)
+            print('Waiting for BTC data; run python seed_btc.py --data-dir <BTC directory> on the host.', flush=True)
             announced = True
         await asyncio.sleep(1)
 

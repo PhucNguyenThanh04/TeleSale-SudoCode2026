@@ -11,10 +11,10 @@ from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIRS = {'ai-services', 'backend', 'config', 'dataloader_offline', 'dataset',
-               'docs', 'eval', 'frontend', 'scripts', 'speech', 'test'}
+               'docs', 'eval', 'frontend', 'scripts', 'speech', 'test', 'runtime'}
 SOURCE_ROOT = {'AGENTS.md', 'README.md', 'START_HERE.md', 'Dockerfile.submission', 'Dockerfile.submission.dockerignore',
-               'compose.submission.yml', 'docker-compose.yml', 'pyproject.toml', 'uv.lock',
-               'run_eval.py', 'seed_btc.sh', 'run_knowledge_eval.py', 'run_system.py', '.gitignore',
+               'compose.submission.yml', 'docker-compose.yml', 'compose.dev.yml', 'pyproject.toml', 'uv.lock',
+               'run_eval.py', 'seed_btc.py', 'run_knowledge_eval.py', 'run_system.py', '.gitignore',
                '.gitattributes', '.python-version', '.env.example', '.env.submission.example', '.dockerignore'}
 EXCLUDED_DIRS = {'__pycache__', 'cache', 'node_modules', 'storage', 'secrets', 'secrets-submission',
                  'artifacts', 'outputs', 'results', 'results-submission', 'runs', 'graphify-out',
@@ -31,6 +31,8 @@ def source_path(name):
         return name in SOURCE_ROOT
     if path.parts[0] not in SOURCE_DIRS:
         return False
+    if path.parts[0] == 'runtime':
+        return name in {'runtime/policy/.gitkeep', 'runtime/tokenizer/.gitkeep'}
     if path.parts[0] == 'dataset':
         return path.parent.as_posix() == 'dataset' and path.suffix == '.md'
     if path.name.startswith('.env') and path.name != '.env.example':

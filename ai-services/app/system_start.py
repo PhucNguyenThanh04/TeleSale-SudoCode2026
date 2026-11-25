@@ -44,7 +44,7 @@ def run(command, *, env=None, cwd=ROOT):
 
 def compose(*args):
     prefix = ['sudo', '--preserve-env=SYSTEM_BOOT_ID', 'docker'] if os.getenv('SYSTEM_SUDO_DOCKER') == '1' else ['docker']
-    run([*prefix, 'compose', '--env-file', ROOT/'.env', '--env-file', ROOT/'ai-services/.env', *args])
+    run([*prefix, 'compose', '-f', ROOT/'compose.dev.yml', '--env-file', ROOT/'.env', '--env-file', ROOT/'ai-services/.env', *args])
 
 
 def backend_values():
