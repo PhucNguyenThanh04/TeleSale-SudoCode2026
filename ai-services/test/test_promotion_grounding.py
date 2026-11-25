@@ -149,3 +149,34 @@ def test_product_codes_are_not_mistaken_for_promotion_codes():
     answer = 'DEVICE-81 được tặng Màng lọc thay thế ạ.'
     assert check_answer(answer, observations) == (answer, None)
     assert check_answer('DEVICE-81 có ưu đãi INVENTED-PROMO.', observations)[1] == 'promotion_code_mismatch'
+
+
+@pytest.mark.parametrize('gift_name', ['Túi vải du lịch', 'Bộ cọ vệ sinh', 'Cáp'])
+@pytest.mark.parametrize('wording', [
+    'Được tặng **{gift}** ạ.', 'Được tặng __1 {gift}__ ạ.',
+    'Được tặng 1 chiếc {gift} ạ.', 'Được tặng một bộ {gift} ạ.',
+    'Được tặng {gift} anh nhé.', 'Được tặng {gift} chị ạ.',
+    'Được tặng {gift} miễn phí.', 'Được tặng `{gift}` miễn phí anh nhé.',
+])
+def test_supported_gift_survives_formatting_units_and_polite_endings(gift_name, wording):
+    observations = calls(gift=True)
+    observations[0]['result']['items'][1]['name'] = gift_name
+    answer = wording.format(gift=gift_name)
+    assert check_answer(answer, observations, focus_sku='SKU-LOCAL-A') == (answer, None)
+
+
+@pytest.mark.parametrize('answer', [
+    'Được tặng **ba màng lọc** ạ.', 'Được tặng một chiếc **xe đạp** miễn phí anh nhé.',
+])
+def test_gift_formatting_does_not_hide_wrong_quantity_or_wrong_item(answer):
+    assert check_answer(answer, calls(gift=True))[1] is not None
+
+
+def test_formatting_cannot_hide_an_unsupported_promotion_deadline_or_percentage():
+    assert check_answer('Được tặng **Màng lọc thay thế** đến ngày **30/12**.', calls(gift=True))[1] is not None
+    observations = calls()
+    observations[-1]['result'].update(list_price_vnd=1000000, final_price_vnd=900000,
+        applied_promos=[{'promo_code': 'LOCAL-TEN', 'type': 'percent', 'discount_vnd': 100000}])
+    answer = 'Mẫu này được giảm **10**% ạ.'
+    assert check_answer(answer, observations) == (answer, None)
+    assert check_answer('Mẫu này được giảm **30**% ạ.', observations)[1] is not None
