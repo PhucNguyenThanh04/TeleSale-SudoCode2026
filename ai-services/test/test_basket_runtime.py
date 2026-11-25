@@ -1,10 +1,13 @@
 import asyncio
+import json
 from datetime import date
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 from langchain_core.messages import AIMessage
 from app.agent.harness.runtime import AgentHarnessRuntime
+from app.agent.harness.authorization import WriteAuthorization
 from app.agent.mcp.gateway import MCPGateway
 from app.mcp_servers.mcp_catalog.tools.handlers import create_server as catalog_server
 from app.mcp_servers.mcp_order.tools.handlers import create_server as order_server
@@ -14,6 +17,23 @@ from app.schemas.agent import PrepareSessionRequest, TextTurnRequest, VoicePlayb
 from test_deep_memory import FakeToolModel
 from test_operational_memory import Repo as ReadRepo, Projection
 from test_november_pricing import OrderRepo, reference
+
+
+class BasketModel(FakeToolModel):
+    authorization_decisions: list[bool] = []
+    authorization_payloads: list[dict] = []
+
+    def with_structured_output(self, schema, **kwargs):
+        if schema is WriteAuthorization:
+            async def review(messages):
+                payload = json.loads(messages[-1].content)
+                self.authorization_payloads.append(payload)
+                allowed = self.authorization_decisions.pop(0)
+                return {'allowed': allowed, 'basis': 'customer_request' if allowed else 'none',
+                    'reason': 'authorized' if allowed else 'wrong_terms',
+                    'customer_quote': payload['customer_text']}
+            return SimpleNamespace(ainvoke=review)
+        return super().with_structured_output(schema, **kwargs)
 
 
 class MemoryRepo(ReadRepo):
@@ -76,6 +96,8 @@ def test_returning_customer_buys_delivered_basket_while_all_workers_pending(refe
     class CommerceRepo(OrderRepo):
         reprice = False
         async def rows(self, session, table):
+            if table == 'policy_chunks':
+                return []
             if table == 'promotions' and self.reprice:
                 return []
             return [customer] if table == 'customers' else await super().rows(session, table)
@@ -92,12 +114,26 @@ def test_returning_customer_buys_delivered_basket_while_all_workers_pending(refe
     quote_calls = [AIMessage(content='', tool_calls=[
         {'id': str(uuid4()), 'name': 'catalog_search', 'args': {'sku': 'SKU-AP-PRO'}},
         {'id': str(uuid4()), 'name': 'pricing_quote_order', 'args': {'lines': [{'sku': 'SKU-AP-PRO', 'qty': 2}]}}])]
-    model = FakeToolModel(replies=[*quote_calls,
+    quoted = reference.pricing_quote_order([{'sku': 'SKU-AP-PRO', 'qty': 2}])
+    order_lines = [{'sku': unit['sku'], 'qty': 1, 'price_vnd': unit['final_price_vnd']}
+                   for unit in quoted['units']]
+    if price_changed:
+        order_lines = [{'sku': 'SKU-AP-PRO', 'qty': 1, 'price_vnd': new_price // 2} for _ in range(2)]
+    create = AIMessage(content='', tool_calls=[{'id': str(uuid4()), 'name': 'order_create',
+        'args': {'lines': order_lines, 'payment': 'bank'}}])
+    stock = AIMessage(content='', tool_calls=[{'id': str(uuid4()), 'name': 'inventory_check',
+        'args': {'sku': 'SKU-AP-PRO'}}])
+    should_create = include_prior and heard and not price_changed
+    model = BasketModel(authorization_decisions=[should_create, True], replies=[*quote_calls,
         AIMessage(content=f'2 máy AirPure Pro có tổng giá {price:,}đ.'.replace(',', '.')),
-        *quote_calls, AIMessage(content=(f'2 máy AirPure Pro có tổng giá {new_price:,}đ.'.replace(',', '.')
-                                        if price_changed else 'Dạ, em kiểm tra đơn giúp anh.')),
-        AIMessage(content='Dạ, em kiểm tra đơn giúp anh.')])
-    runtime = AgentHarnessRuntime(model, MCPGateway(catalog_server(commerce), order_server(commerce), None),
+        *quote_calls, stock, create,
+        AIMessage(content=(f'2 máy AirPure Pro có tổng giá {new_price:,}đ.'.replace(',', '.')
+            if price_changed else 'Em đã tạo đơn 2 máy AirPure Pro.' if should_create
+            else 'Em cần xác nhận báo giá trước khi tạo đơn.')),
+        create, AIMessage(content='Em đã tạo đơn 2 máy AirPure Pro.')])
+    secret = 'offline-basket-runtime'
+    runtime = AgentHarnessRuntime(model, MCPGateway(catalog_server(commerce, context_secret=secret),
+        order_server(commerce, context_secret=secret), None, context_secret=secret),
                                   Memory(memory_repo), max_tool_calls=8)
     runtime.memory.include_prior = include_prior
     async def run():
@@ -117,6 +153,11 @@ def test_returning_customer_buys_delivered_basket_while_all_workers_pending(refe
             responses.append(response)
             commerce.reprice = price_changed
         assert len(commerce.orders) == int(include_prior and heard and not price_changed), [(r.agent_text) for r in responses]
+        review = model.authorization_payloads[0]
+        history = json.dumps({key: review[key] for key in
+            ('session_history', 'previous_episodes', 'customer_statements')}, ensure_ascii=False)
+        prior_offer = f'2 máy AirPure Pro có tổng giá {price:,}đ.'.replace(',', '.')
+        assert (prior_offer in history) is (include_prior and heard)
         if price_changed:
             quotes = [call for call in runtime.state_for(request).get('tool_calls', [])
                       if call.get('name') == 'pricing.quote_order']
@@ -151,6 +192,8 @@ def test_changed_basket_requires_new_delivered_offer_then_can_complete(reference
     customer = {'customer_id': 'C1', 'phone': '0900000000', 'name': 'Khách', 'orders': [], 'sessions': []}
     class CommerceRepo(OrderRepo):
         async def rows(self, session, table):
+            if table == 'policy_chunks':
+                return []
             return [customer] if table == 'customers' else await super().rows(session, table)
         async def identity_matches(self, *args):
             return [{'customer_id': 'C1', 'phone': customer['phone']}]
@@ -169,12 +212,21 @@ def test_changed_basket_requires_new_delivered_offer_then_can_complete(reference
         return AIMessage(content='', tool_calls=[
             *[{'id': str(uuid4()), 'name': 'catalog_search', 'args': {'sku': sku}}
               for sku in dict.fromkeys(line['sku'] for line in lines)],
+            *[{'id': str(uuid4()), 'name': 'inventory_check', 'args': {'sku': sku}}
+              for sku in dict.fromkeys(line['sku'] for line in lines)],
             {'id': str(uuid4()), 'name': 'pricing_quote_order', 'args': {'lines': lines}}])
-    model = FakeToolModel(replies=[quote_message(old_lines), AIMessage(content=quoted_reply(old_lines)),
+    order_lines = [{'sku': unit['sku'], 'qty': 1, 'price_vnd': unit['final_price_vnd']}
+                   for unit in new_quote['units']]
+    model = BasketModel(authorization_decisions=[True], replies=[
+        quote_message(old_lines), AIMessage(content=quoted_reply(old_lines)),
         quote_message(changed_lines), AIMessage(content=quoted_reply(changed_lines)),
-        AIMessage(content='Dạ, em kiểm tra đơn giúp mình.')])
+        AIMessage(content='', tool_calls=[{'id': str(uuid4()), 'name': 'order_create',
+            'args': {'lines': order_lines, 'payment': 'bank'}}]),
+        AIMessage(content='Em đã tạo đơn theo báo giá mới.')])
     memory_repo = MemoryRepo()
-    runtime = AgentHarnessRuntime(model, MCPGateway(catalog_server(commerce), order_server(commerce), None),
+    secret = 'offline-basket-runtime'
+    runtime = AgentHarnessRuntime(model, MCPGateway(catalog_server(commerce, context_secret=secret),
+        order_server(commerce, context_secret=secret), None, context_secret=secret),
                                   Memory(memory_repo), max_tool_calls=12)
     async def run():
         sid = uuid4()

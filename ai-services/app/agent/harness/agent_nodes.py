@@ -147,9 +147,31 @@ class AgentNodes(SessionNodes):
         if reason is None:
             return {"agent_text": answer, 'verified_answer': answer, 'reply_error': None}
         rejected = [rejected_draft(state, reason, draft)] if draft else []
+        tool_updates = {}
         try:
             import json
             from langchain_core.messages import SystemMessage
+            if self.tools is not None and not state.get('tool_failed'):
+                known = {item.get('sku') for call in calls
+                    if call.get('name') in {'catalog.search', 'catalog.get_details'}
+                    for item in call['result'].get('items', []) if item.get('name')}
+                missing = dict.fromkeys(promo['gift_sku'] for call in calls
+                    if call.get('name') in {'pricing.get_quote', 'pricing.quote_order'}
+                    for quote in [call['result'], *call['result'].get('units', [])]
+                    for promo in quote.get('applied_promos', [])
+                    if promo.get('type') == 'gift' and promo.get('gift_sku')
+                    and promo['gift_sku'] not in known
+                    and (not promo.get('valid_until')
+                         or promo['valid_until'] >= state['request'].on.isoformat()))
+                business = BusinessTools(self.tools, state, self.max_tool_calls, self.clock)
+                for sku in missing:
+                    if (state.get('tool_count', 0) >= self.max_tool_calls
+                            or state.get('tool_attempts', 0) >= self.max_tool_calls * 2):
+                        break
+                    await business.invoke('catalog.get_details', {'sku': sku})
+                tool_updates = {key: state.get(key, [] if key == 'tool_calls' else 0)
+                                for key in ('tool_calls', 'tool_count', 'tool_attempts')}
+                calls = build_commerce_evidence(model_state)
             context = prompt_context(model_state, self.prompt_history_turns)
             messages = [SystemMessage(content=state.get('selected_system_prompt', _SYSTEM_PROMPT)),
                         *prompt_messages(context)]
@@ -159,6 +181,11 @@ class AgentNodes(SessionNodes):
                 'Với pricing.get_quote, báo giá bán theo final_price_vnd, viết đủ số tiền bằng chữ số '
                 'kèm đơn vị đồng, không làm tròn. Bỏ số tiền của các khoản phí, mức giảm hoặc giá trị '
                 'quà tặng chưa được xác minh.') if reason == 'price_without_quote' else ''
+            promotion_instruction = (' Đối chiếu quà tặng với gift_sku trong applied_promos '
+                'của đúng sản phẩm mua và tên đã tra từ catalog. Không suy tên quà từ mã SKU; '
+                'không đổi sang quà khác hoặc tự thêm số lượng, giá trị, hạn ưu đãi. '
+                'Miễn phí COD và miễn phí vận chuyển là hai quyền lợi riêng. '
+                'Nếu chưa tra được tên quà, nói rõ phần chưa xác minh.') if reason.startswith('promotion_') else ''
             messages.append(HumanMessage(content=json.dumps({
                 'task': ('Viết câu trả lời cho yêu cầu hiện tại, chỉ dùng bằng chứng đã có. '
                     'Ưu tiên thông báo đúng trạng thái thao tác đã được công cụ xác nhận. '
@@ -166,7 +193,7 @@ class AgentNodes(SessionNodes):
                     'lịch sử riêng của khách. Yêu cầu xóa toàn bộ dữ liệu cần xác minh/chuyển '
                     'bộ phận phụ trách, chưa được coi là đã xóa. Không đọc mã lỗi nội bộ cho khách. '
                     'Nếu thiếu dữ kiện, hỏi làm rõ hoặc nói rõ phần chưa xác minh. '
-                    'Không thay bằng báo giá/sản phẩm của chủ đề khác.' + price_instruction),
+                    'Không thay bằng báo giá/sản phẩm của chủ đề khác.' + price_instruction + promotion_instruction),
                 'validation_error': reason,
                 'runtime_status': state.get('reply_context', {}),
             }, ensure_ascii=False)))
@@ -180,7 +207,7 @@ class AgentNodes(SessionNodes):
             if repair_reason is None:
                 log_event(state, 'verify', 'recovery_succeeded', level=logging.DEBUG)
                 return {"agent_text": checked, 'verified_answer': checked,
-                        'reply_error': None, "verifier_events": rejected}
+                        'reply_error': None, "verifier_events": rejected, **tool_updates}
             log_event(state, 'verify', 'recovery_rejected', level=logging.DEBUG, reason=repair_reason)
             rejected.append(rejected_draft(state, repair_reason, repaired))
         except Exception as exc:
@@ -189,7 +216,7 @@ class AgentNodes(SessionNodes):
                       error_type=type(exc).__name__)
         log_event(state, 'verify', 'recovery_exhausted', level=logging.DEBUG)
         return {"agent_text": '', 'verified_answer': '', 'reply_error': 'agent_reply_unavailable',
-                "verifier_events": rejected}
+                "verifier_events": rejected, **tool_updates}
 
     @trace_node("persist")
     async def persist_agent(self, state: TurnState) -> dict[str, Any]:

@@ -5,14 +5,14 @@ from app.mcp_servers.mcp_shared.commerce_evidence import successful
 from app.mcp_servers.mcp_shared.commerce_rules import _search_text
 
 
-def basket_unit_quote(clause, calls):
+def basket_unit_quote(clause, calls, *, focus_sku=None):
     from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
     quotes = [call for call in calls if call.get('name') == 'pricing.quote_order' and successful(call)]
     if len(quotes) != 1:
         return None
     call = quotes[0]
     units = call['result'].get('units', [])
-    mentioned = resolve_claim_skus(clause, calls)
+    mentioned = resolve_claim_skus(clause, calls, focus_sku=focus_sku)
     units = [unit for unit in units if not mentioned or unit['sku'] in mentioned]
     match = re.search(r'\bmay\s+(?:thu\s+)?(\d+|mot|hai|ba|bon|nam)\b', _search_text(clause))
     if match:

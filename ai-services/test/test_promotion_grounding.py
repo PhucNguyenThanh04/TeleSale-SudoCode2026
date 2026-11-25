@@ -99,3 +99,53 @@ def test_multi_product_offer_is_bound_to_named_sku():
     assert check_answer('SKU-LOCAL-A được tặng màng lọc.', observations)[1] is None
     assert check_answer('SKU-LOCAL-B được tặng màng lọc.', observations)[1] is not None
     assert check_answer('Được tặng màng lọc.', observations)[1] is not None
+
+
+def test_named_gift_is_verified_against_the_purchased_product():
+    observations = calls(gift=True)
+    answer = 'Được tặng Màng lọc thay thế ạ.'
+    assert check_answer(answer, observations, focus_sku='SKU-LOCAL-A') == (answer, None)
+    assert check_answer(answer, observations, focus_sku='SKU-LOCAL-B')[1] is not None
+    assert check_answer('Màng lọc thay thế được tặng quà.', observations)[1] is not None
+
+
+@pytest.mark.parametrize('gift_name', ['Túi vải du lịch', 'Bộ cọ vệ sinh', 'Pin dự phòng nhỏ'])
+def test_named_gift_does_not_choose_the_product_quote(gift_name):
+    observations = calls(gift=True)
+    observations[0]['result']['items'][1]['name'] = gift_name
+    observations.append(calls(sku='SKU-LOCAL-B')[-1])
+    answer = f'Máy Alpha được tặng {gift_name} ạ.'
+    assert check_answer(answer, observations) == (answer, None)
+    answer = f'Được tặng {gift_name} ạ.'
+    assert check_answer(answer, observations, focus_sku='SKU-LOCAL-A') == (answer, None)
+    assert check_answer(answer, observations)[1] is not None
+    assert check_answer(answer, observations, focus_sku='SKU-LOCAL-B')[1] is not None
+
+
+@pytest.mark.parametrize('answer', [
+    'Có quà tặng là xe đạp ạ.', 'Được tặng quà là xe đạp ạ.',
+    'Có quà tặng kèm là xe đạp ạ.',
+])
+def test_generic_gift_wording_does_not_hide_an_unverified_description(answer):
+    assert check_answer(answer, calls(gift=True))[1] == 'promotion_detail_unverified'
+
+
+def test_basket_named_gift_is_bound_to_the_purchased_unit():
+    observations = calls(gift=True)
+    unit = observations.pop()['result']
+    observations.append({'name': 'pricing.quote_order', 'args': {'on': '2026-11-02'},
+        'result': {'units': [unit, {'sku': 'SKU-LOCAL-B', 'list_price_vnd': 730000,
+            'final_price_vnd': 730000, 'applied_promos': []}], 'order_promos': []}})
+    answer = 'Máy Alpha được tặng Màng lọc thay thế ạ.'
+    assert check_answer(answer, observations) == (answer, None)
+    answer = 'Được tặng Màng lọc thay thế ạ.'
+    assert check_answer(answer, observations, focus_sku='SKU-LOCAL-A') == (answer, None)
+    assert check_answer(answer, observations, focus_sku='SKU-LOCAL-B')[1] is not None
+    assert check_answer(answer, observations)[1] is not None
+
+
+def test_product_codes_are_not_mistaken_for_promotion_codes():
+    observations = calls(gift=True, sku='DEVICE-81')
+    answer = 'DEVICE-81 được tặng Màng lọc thay thế ạ.'
+    assert check_answer(answer, observations) == (answer, None)
+    assert check_answer('DEVICE-81 có ưu đãi INVENTED-PROMO.', observations)[1] == 'promotion_code_mismatch'

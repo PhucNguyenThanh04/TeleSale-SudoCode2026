@@ -115,7 +115,9 @@ _TOOL_DESCRIPTION = {
     "pricing.quote_order": (
         "Báo giá giỏ hàng theo từng đơn vị, kể cả nhiều đơn vị cùng SKU. "
         "Lấy giá từ units; nếu cùng SKU có nhiều đơn giá thì order.create dùng mỗi đơn vị một dòng qty=1. "
-        "Nói rõ giỏ hàng, số lượng và tổng giá cho khách, rồi chờ khách đồng ý trước khi tạo đơn."
+        "Nói rõ giỏ hàng, số lượng và tổng giá cho khách, rồi chờ khách đồng ý trước khi tạo đơn. "
+        "Quà trong applied_promos gắn với từng unit; tra catalog.get_details theo gift_sku "
+        "nếu chưa có tên quà trong catalog, không suy tên hay giá trị quà từ mã."
     ),
     "catalog.search": (
         "Tìm sản phẩm theo tên, loại hoặc SKU. Giữ nguyên tên model/hãng khách nêu trong query; "
@@ -137,7 +139,9 @@ _TOOL_DESCRIPTION = {
         "sku phải là mã lấy nguyên từ catalog; nếu chỉ có tên sản phẩm, gọi catalog.search trước "
         "để lấy đúng sku từ kết quả. "
         "Gọi cho SKU sẽ tư vấn khi khách có ngân sách hoặc cần so giá; "
-        "catalog.search chỉ cho giá niêm yết, không đủ để báo giá cuối."
+        "catalog.search chỉ cho giá niêm yết, không đủ để báo giá cuối. "
+        "Quà trong applied_promos được xác định bằng gift_sku; nếu chưa có tên quà trong catalog, "
+        "gọi catalog.get_details theo mã đó trước khi nói tên quà. Không suy tên hay giá trị quà từ mã."
     ),
     "order.create": (
         'Khi tách đơn theo yêu cầu khách, basket_skus giữ các SKU còn lại của giỏ đã đồng ý '

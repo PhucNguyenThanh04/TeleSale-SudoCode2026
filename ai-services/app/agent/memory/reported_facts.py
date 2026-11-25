@@ -125,6 +125,15 @@ def _product_segments(answer: str, sku: str, calls: list[dict[str, Any]]) -> lis
 
 def reported_tool_fact(key: str, value: Any, answer: str,
                        calls: list[dict[str, Any]], sku: str | None = None) -> bool:
+    named_skus = set()
+    if sku and key in {Slot.PRICE_QUOTED_VND, Slot.IN_STOCK, Slot.PROMO_CODE, Slot.PROMO_EXPIRY}:
+        named_skus = resolve_claim_skus(answer, calls)
+        named_skus.update(item['sku'] for call in calls if call.get('name') in CATALOG_TOOLS
+            and 'error' not in call.get('result', {})
+            for item in call['result'].get('items', []) if isinstance(item, dict) and item.get('sku')
+            and _product_named(answer, item['sku'], calls))
+        if named_skus and sku not in named_skus:
+            return False
     if key == Slot.PRODUCT_ADVISED:
         return isinstance(value, str) and _product_named(answer, value, calls)
     if key == Slot.PRICE_QUOTED_VND:
@@ -135,7 +144,7 @@ def reported_tool_fact(key: str, value: Any, answer: str,
         if sku is not None:
             all_skus = {call.get("args", {}).get("sku") for call in calls
                         if call.get("name") == "pricing.get_quote"}
-            if all_skus == {sku}:
+            if all_skus == {sku} and len(named_skus) <= 1:
                 return bool(quotes) and _reported_money(answer, value)
             return bool(quotes) and any(_reported_money(segment, value)
                 for segment in _product_segments(answer, sku, calls))
@@ -145,9 +154,6 @@ def reported_tool_fact(key: str, value: Any, answer: str,
         quotes = [call for call in calls if call.get("name") == "pricing.get_quote"
                   and "error" not in call.get("result", {})]
         quoted_skus = {call.get("args", {}).get("sku") for call in quotes}
-        named_skus = resolve_claim_skus(answer, calls)
-        if sku and named_skus and sku not in named_skus:
-            return False
         text = (" ".join(_product_segments(answer, sku, calls))
                 if sku and (len(quoted_skus) > 1 or len(named_skus) > 1) else answer)
         field = "promo_code" if key == Slot.PROMO_CODE else "valid_until"
@@ -169,7 +175,7 @@ def reported_tool_fact(key: str, value: Any, answer: str,
         stock_skus = {call.get("args", {}).get("sku") for call in calls
                       if call.get("name") == "inventory.check"}
         text = (" ".join(_product_segments(answer, sku, calls))
-                if sku and len(stock_skus) > 1 else answer)
+                if sku and (len(stock_skus) > 1 or len(named_skus) > 1) else answer)
         if value is True:
             return bool(re.search(r"(?i)còn hàng|có hàng|sẵn hàng", text))
         if value is False:
