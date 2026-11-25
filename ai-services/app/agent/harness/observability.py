@@ -91,7 +91,8 @@ DIAGNOSTIC_ERRORS = frozenset({"TimeoutError", "RuntimeError", "ValueError", "Ty
     "RateLimitError", "HTTPStatusError", "ConnectError", "ReadTimeout", "GraphRecursionError", "other_error"}) | ERROR_TYPES
 _DIAGNOSTIC_PAIRS = frozenset({("run_agent", "model_failed"), ("verify", "grounding_checked"),
     ("verify", "answer_checked"), ("verify", "recovery_attempted"), ("verify", "recovery_unavailable"),
-    ("verify", "recovery_rejected"), ("verify", "recovery_succeeded"), ("verify", "recovery_exhausted")})
+    ("verify", "recovery_rejected"), ("verify", "recovery_succeeded"), ("verify", "recovery_exhausted"),
+    ("verify", "recovery_fallback")})
 
 
 def safe_diagnostic_event(step, event, metadata):

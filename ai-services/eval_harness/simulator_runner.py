@@ -123,6 +123,8 @@ async def run_experiment(args):
                     database_identity = identity
                     summary['database_identity'] = identity
                     warm = build_runtime(current_settings, gateway=WarmupGateway(runtime.tools))
+                    if getattr(warm, 'nodes', None) is not None:
+                        warm.nodes.safe_fallback_on_rejection = False
                     warm.memory.include_prior = config == 'full'
                     await warm_up_configuration(warm)
                     await prepare_runtime_for_eval(runtime, current_settings,
