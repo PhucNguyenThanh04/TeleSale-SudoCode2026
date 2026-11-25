@@ -430,6 +430,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> None:
+    from dotenv import load_dotenv
+
+    root = PACKAGE_DIR.parent
+    load_dotenv(root / '.env', override=False, interpolate=False)
+    if os.getenv('BTC_ROOT') and not os.getenv('BTC_DATA_DIR'):
+        os.environ['BTC_DATA_DIR'] = str((root / os.environ['BTC_ROOT']).resolve())
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")

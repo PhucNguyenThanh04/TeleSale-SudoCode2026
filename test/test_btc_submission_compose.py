@@ -17,7 +17,7 @@ def configuration(tmp_path, profile=None):
     shutil.copyfile(ROOT / 'compose.submission.yml', tmp_path / 'compose.submission.yml')
     shutil.copyfile(ROOT / 'docker-compose.yml', tmp_path / 'docker-compose.yml')
     text = (ROOT / '.env.example').read_text()
-    text += '\nSUBMISSION_RUN_AS=1123:1345\nLLM_API_KEY=offline-key\nCLOUDFLARE_ACCOUNT_ID=offline-account\nCLOUDFLARE_API_TOKEN=offline-token\n'
+    text += '\nLLM_API_KEY=offline-key\nCLOUDFLARE_ACCOUNT_ID=offline-account\nCLOUDFLARE_API_TOKEN=offline-token\n'
     (tmp_path / '.env').write_text(text)
     command = ['docker', 'compose']
     if profile:
@@ -90,44 +90,10 @@ def test_host_seed_connects_to_loopback_ports_without_a_compose_job(tmp_path):
     assert not (ROOT / 'seed_btc.sh').exists()
 
 
-def test_eval_jobs_use_initialized_servers_without_importing_again(tmp_path):
-    services = configuration(tmp_path, 'eval')['services']
-    assert set(services) == CORE | {'eval', 'eval-trace', 'knowledge-eval'}
-    assert 'eval_harness.run_official' in services['eval']['entrypoint']
-    assert services['eval']['entrypoint'][-6:] == ['--btc-root', '/btc', '--scenarios', '/scenarios', '--out-root', '/results']
-    assert 'eval.run_eval' in services['eval-trace']['entrypoint']
-    assert services['eval-trace']['entrypoint'][-3:] == ['--btc-root', '/btc', '--isolated-db']
-    for name in ('eval', 'eval-trace', 'knowledge-eval'):
-        assert services[name]['user'] == '1123:1345'
-        assert not {'setup', 'mcp-db-roles', 'seed', 'prepare-results'} & services[name]['depends_on'].keys()
-        assert services[name]['environment']['BTC_SUBMISSION_PROJECT'] == 'telesale-btc'
-    mounts = {mount['target']: mount for mount in services['eval']['volumes']}
-    assert mounts['/btc']['read_only'] and mounts['/scenarios']['read_only']
-    assert not mounts['/results'].get('read_only')
-
-
-def test_asr_profile_does_not_trigger_data_import(tmp_path):
-    services = configuration(tmp_path, 'asr')['services']
-    assert set(services) == CORE | {'asr', 'prepare-results'}
-    assert services['asr']['depends_on']['prepare-results']['condition'] == 'service_completed_successfully'
-    assert services['asr']['environment']['ASR_DEVICE'] == 'cpu'
-    assert services['prepare-results']['user'] == '0:0'
-
-
-@pytest.mark.parametrize('selected', ['full', 'baseline_no_memory'])
-def test_container_runner_keeps_the_btc_flags(tmp_path, monkeypatch, selected):
-    from unittest.mock import AsyncMock, patch
-    from eval.run_eval import main
-    entrypoint = configuration(tmp_path, 'eval')['services']['eval-trace']['entrypoint']
-    script = entrypoint.index('eval.run_eval')
-    arguments = ['run_eval.py', *entrypoint[script + 1:], '--scenarios', '/scenarios',
-                 '--config', selected, '--out', '/results/trace.jsonl']
-    monkeypatch.setattr('sys.argv', arguments)
-    with patch('eval.run_eval.run', new_callable=AsyncMock, return_value=0) as run:
-        main()
-    args = run.call_args.args[0]
-    assert args.config == selected
-    assert args.scenarios == Path('/scenarios')
-    assert args.out == Path('/results/trace.jsonl')
-    assert args.btc_root == Path('/btc')
-    assert args.isolated_db
+def test_all_compose_profiles_contain_servers_only(tmp_path):
+    services = configuration(tmp_path, '*')['services']
+    assert set(services) == CORE
+    assert all(not service.get('profiles') for service in services.values())
+    for service in services.values():
+        assert all(mount['target'] not in {'/btc', '/scenarios', '/results', '/audio-dataset'}
+                   for mount in service.get('volumes', []))
