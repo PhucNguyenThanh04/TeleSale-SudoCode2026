@@ -3,6 +3,7 @@ from app.mcp_servers.mcp_shared.decision_diagnostics import emit as diagnostic_e
 
 
 import logging
+import json
 import time
 import re
 import asyncio
@@ -13,6 +14,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from app.agent.harness.context import prompt_context, prompt_messages
 from app.agent.implementations import build_agent
 from app.agent.implementations.business_agent import BusinessTools
+from app.agent.implementations.business_agent import _write_receipt_valid
 from app.agent.prompts import SALES_PROMPT, text_prompt
 from app.agent.implementations.business_agent import _SYSTEM_PROMPT
 from app.agent.memory.episode_candidates import outcome_from_tool_calls
@@ -23,7 +25,7 @@ from app.agent.guardrails.diagnostics import rejected_draft
 from app.agent.guardrails.semantic_grounding import review_answer
 from app.agent.harness.session_nodes import SessionNodes
 from app.agent.harness.observability import log_event, trace_node
-from app.mcp_servers.mcp_shared.commerce_evidence import build_commerce_evidence
+from app.mcp_servers.mcp_shared.commerce_evidence import CATALOG_TOOLS, build_commerce_evidence, successful
 from app.agent.harness.state import TurnState
 from app.agent.harness.policy import transaction_selection_mismatch
 from app.agent.harness.streaming import active_stream, active_turn_progress, invoke_agent, internal_output
@@ -42,6 +44,34 @@ def _claim_focus(state):
     from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
     named = resolve_claim_skus(state.get('safe_text', ''), build_commerce_evidence(state))
     return next(iter(named)) if len(named) == 1 else None
+
+
+def _requested_write_missing(state):
+    from app.mcp_servers.mcp_shared.commerce_rules import _search_text
+    if state.get('identity_status') != 'known' or state.get('tool_failed'):
+        return False
+    text = _search_text(state.get('safe_text', ''))
+    if re.search(r'\b(?:neu|gia su)\b', text):
+        return False
+    for clause in re.findall(r'[^.!?;,\n]+[.!?;,\n]?', text):
+        if clause.rstrip().endswith('?') or re.search(r'\b(?:duoc khong|co duoc|the nao|bao nhieu)\b', clause):
+            continue
+        action = re.search(r'\b(?:(?P<create>len don|tao don|chot don|dat hang|dat\s+(?:giup|cho)'
+                           r'|lay\s+(?:cai|mau|san pham|chiec|bo|doi))'
+                           r'|(?P<update>(?:lam thu tuc|gui yeu cau|tao phieu)\s+(?:doi|tra)'
+                           r'|doi\s+(?:sang|cho|giup)))\b', clause)
+        if action is None or re.search(
+                r'\b(?:chua|khong|dung|khoan|chi hoi|hoi ve|chinh sach|noi|bao|ke)\b',
+                clause[:action.start()]):
+            continue
+        name = 'order.create' if action['create'] else 'order.update'
+        if not any(
+                call.get('name') == name and successful(call)
+                and (name != 'order.update' or call.get('args', {}).get('order_id'))
+                and _write_receipt_valid(name, call.get('args', {}), call['result'])
+                for call in state.get('tool_calls', [])):
+            return True
+    return False
 
 
 from app.agent.harness.execution_diagnostics import (
@@ -68,13 +98,9 @@ def _contextual_safe_fallback(state: TurnState, calls: list[dict[str, Any]], rea
     ]
     unique_items = {item["sku"]: item for item in catalog_items}
     target = None
-    if len(unique_items) == 1:
-        target = next(iter(unique_items.values()))
-    elif unique_items:
+    if unique_items:
         from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
-        named = resolve_claim_skus(
-            f"{state.get('safe_text', '')} {state.get('agent_draft', '')}", calls
-        )
+        named = resolve_claim_skus(state.get('safe_text', ''), calls)
         matched = [unique_items[s] for s in named if s in unique_items]
         if len(matched) == 1:
             target = matched[0]
@@ -209,6 +235,7 @@ class AgentNodes(SessionNodes):
                 'scoped_facts': {'product': {}, 'room': {}}, 'episodes': [],
                 'current_episode': None, 'call_brief': None, 'session_tool_calls': []}
         calls = build_commerce_evidence(model_state)
+        semantic_reviews = {}
 
         async def validate(answer):
             answer = mask_pii(answer.strip())
@@ -225,25 +252,41 @@ class AgentNodes(SessionNodes):
             if reason is None and self.guardrails_enabled:
                 answer, reason = check_answer(answer, calls, state["safe_text"], focus_sku=_claim_focus(model_state))
             if reason is None and self.semantic_review_enabled:
-                reason = await review_answer(self.llm, answer,
-                    prompt_context(model_state, self.prompt_history_turns))
+                context = prompt_context(model_state, self.prompt_history_turns)
+                review_key = (answer, json.dumps(context, sort_keys=True, ensure_ascii=False, default=str))
+                if review_key in semantic_reviews:
+                    reason = semantic_reviews[review_key]
+                else:
+                    reason = await review_answer(self.llm, answer, context)
+                    if reason != 'grounding_review_unavailable':
+                        semantic_reviews[review_key] = reason
             log_event(state, 'verify', 'grounding_checked', accepted=reason is None, reason=reason)
             return answer, reason
 
         answer, reason = await validate(draft)
+        if reason is None and callable(continuation) and _requested_write_missing(state):
+            reason = 'unanswered_request'
         if reason is None:
             return {'agent_continuation': None, "agent_text": answer, 'verified_answer': answer, 'reply_error': None}
         rejected = [rejected_draft(state, reason, draft)] if draft else []
         tool_updates = {}
         try:
-            import json
             from langchain_core.messages import SystemMessage
             if (callable(continuation) and not state.get('tool_failed')
-                    and reason in {'unanswered_request', 'unnecessary_clarification',
-                                   'customer_constraint_violated', 'order_creation_unverified'}
+                    and (reason in {'unanswered_request', 'unnecessary_clarification',
+                                    'customer_constraint_violated', 'order_creation_unverified',
+                                    'order_update_unverified'}
+                         or reason in {'price_without_quote', 'promotion_quote_missing',
+                                       'promotion_unverified', 'promotion_code_mismatch',
+                                       'promotion_detail_unverified', 'stock_sku_mismatch',
+                                       'stock_result_mismatch', 'stock_quantity_mismatch',
+                                       'delivery_unverified'}
+                         and (_requested_write_missing(state) or any(
+                             call.get('name') in CATALOG_TOOLS and call['result'].get('items')
+                             for call in calls)))
                     and state.get('tool_count', 0) < self.max_tool_calls
                     and state.get('tool_attempts', 0) < self.max_tool_calls * 2):
-                log_event(state, 'verify', 'completion_attempt', reason=reason)
+                log_event(state, 'verify', 'recovery_attempted', reason=reason)
                 set_execution_phase('model_invocation', 'completion')
                 draft = await continuation(state, draft, reason)
                 calls = build_commerce_evidence(model_state)
@@ -252,8 +295,10 @@ class AgentNodes(SessionNodes):
                     'needs_handoff', 'handoff_ticket_id') if key in state}
                 answer, reason = await validate(draft)
                 if reason is None:
+                    log_event(state, 'verify', 'recovery_succeeded')
                     return {'agent_continuation': None, 'agent_text': answer, 'verified_answer': answer, 'reply_error': None,
                             'verifier_events': rejected, **tool_updates}
+                log_event(state, 'verify', 'recovery_rejected', reason=reason)
                 rejected.append(rejected_draft(state, reason, draft))
             if self.tools is not None and not state.get('tool_failed'):
                 known = set()

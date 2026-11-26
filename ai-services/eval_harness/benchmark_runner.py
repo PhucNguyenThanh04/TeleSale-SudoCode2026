@@ -114,6 +114,14 @@ async def measured_stream(runtime, request, started):
     raise StreamingMeasurementError('stream_missing_done')
 
 
+def _verified_call_identity(call_spec):
+    identity = {key: call_spec.get(key) for key in ('verified_customer_id', 'verified_phone')}
+    if (any(value is not None for value in identity.values())
+            and not all(isinstance(value, str) and value.strip() for value in identity.values())):
+        raise ValueError('verified_identity_invalid')
+    return identity
+
+
 async def run_scenario_call(
     runtime: Any,
     scenario_id: str,
@@ -139,7 +147,8 @@ async def run_scenario_call(
     days_later = call_spec.get("days_later", 0)
     call_date = call_date or base_date + timedelta(days=days_later)
     channel = call_spec.get("channel", channel)
-    channel_identity = call_spec.get("channel_identity", customer_phone)
+    channel_identity = call_spec.get("channel_identity", customer_phone if channel == 'hotline' else None)
+    verified_identity = _verified_call_identity(call_spec)
 
     customer_turns = call_spec["customer_turns_asr"] if "customer_turns_asr" in call_spec else call_spec.get("customer_turns", [])
     input_mode = call_spec.get("input_mode", "asr_transcript" if "customer_turns_asr" in call_spec else "clean")
@@ -153,7 +162,8 @@ async def run_scenario_call(
     if customer_turns:
         prepare_started = time.perf_counter()
         prepared = await runtime.prepare_session(PrepareSessionRequest(
-            session_id=session_id, channel=channel, channel_identity=channel_identity, on=call_date))
+            session_id=session_id, channel=channel, channel_identity=channel_identity, on=call_date,
+            **verified_identity))
         prepare_ms = round((time.perf_counter() - prepare_started) * 1000)
 
     for turn_idx in range(1, (12 if customer_simulator is not None else len(customer_turns)) + 1):
@@ -170,6 +180,7 @@ async def run_scenario_call(
             text=user_text,
             input_mode=input_mode,
             delivery_mode=delivery_mode,
+            **verified_identity,
         )
 
         print(f"[eval] {config} {call_name} turn {turn_idx}: model", flush=True)
@@ -202,7 +213,7 @@ async def run_scenario_call(
                         commit_update = await runtime.record_playback(VoicePlaybackRequest(
                             session_id=session_id, client_msg_id=turn_req.client_msg_id,
                             channel=channel, channel_identity=channel_identity, on=call_date,
-                            played_chars=len(resp.agent_text), interrupted=False))
+                            played_chars=len(resp.agent_text), interrupted=False, **verified_identity))
                     except Exception as exc:
                         playback_error = type(exc).__name__
                 memory_finalize_ms = (time.perf_counter() - memory_started) * 1000.0
@@ -416,6 +427,9 @@ async def run_scenario_stream(
     trace: dict[tuple[str, str], list[dict[str, Any]]] | None = None,
     safety_issues: list | None = None, on_turn=None, diagnostics=None, delivery_mode='text',
 ) -> dict[tuple[str, str], list[dict[str, Any]]]:
+    for scenario in scenarios.values():
+        for call in scenario.get('calls', {}).values():
+            _verified_call_identity(call)
     trace = trace if trace is not None else {}
     base_date = date(2026, 10, 15)
 
@@ -432,12 +446,18 @@ async def run_scenario_stream(
             if isinstance(getattr(runtime, "tools", None), SeedHistoryGateway):
                 identities = {}
                 for c in calls.values():
-                    identities.setdefault(c.get('channel', 'hotline'), set()).add(c.get('channel_identity', raw_phone))
+                    channel = c.get('channel', 'hotline')
+                    identities.setdefault(channel, set()).add(c.get('channel_identity', raw_phone if channel == 'hotline' else None))
+                    if c.get('verified_customer_id') and c.get('verified_phone'):
+                        identities.setdefault('hotline', set()).add(c['verified_phone'])
                 runtime.tools.select(sid, identities, parse_seed_history(
                     call_spec.get("seed_history", []), call_date=scenario_call_date(calls, call_name, base_date)),
                     call_date=scenario_call_date(calls, call_name, base_date))
                 channel = call_spec.get('channel', 'hotline')
-                await runtime.tools.prepare_history(channel, call_spec.get('channel_identity', raw_phone))
+                await runtime.tools.prepare_history(channel,
+                    call_spec.get('channel_identity', raw_phone if channel == 'hotline' else None),
+                    verified_customer_id=call_spec.get('verified_customer_id'),
+                    verified_phone=call_spec.get('verified_phone'))
             call_phone = raw_phone
             rows: list[dict[str, Any]] = []
             trace[(sid, call_name)] = rows

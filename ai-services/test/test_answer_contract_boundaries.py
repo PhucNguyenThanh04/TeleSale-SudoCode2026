@@ -60,6 +60,44 @@ def test_reading_an_existing_created_order_is_not_a_claim_of_new_creation():
     assert check_answer(answer, calls, 'Đơn của tôi đang ở trạng thái nào?') == (answer, None)
 
 
+@pytest.mark.parametrize('answer', [
+    'Em đã tiếp nhận yêu cầu đổi sang size 44 cho đơn hàng của mình.',
+    'Em đã tạo phiếu đổi hàng cho mình.',
+    'Yêu cầu trả hàng đã được gửi tới bộ phận xử lý.',
+])
+def test_preview_cannot_support_claim_that_order_change_was_submitted(answer):
+    calls = [{'name': 'order.preview_update', 'args': {'order_id': 'ORDER-81'},
+              'result': {'order_id': 'ORDER-81', 'status': 'preview', 'estimate': True}}]
+    assert check_grounding(answer, calls) == 'order_update_unverified'
+    assert check_answer(answer, calls)[1] == 'order_update_unverified'
+
+
+@pytest.mark.parametrize('answer', [
+    'Em chưa tiếp nhận yêu cầu đổi hàng cho mình.',
+    'Mình có muốn em tạo phiếu đổi hàng không?',
+    'Em đang xem trước phương án đổi hàng, chưa gửi yêu cầu.',
+])
+def test_order_change_question_and_pending_preview_are_not_claims_of_submission(answer):
+    assert check_grounding(answer, []) is None
+    assert check_answer(answer, [])[1] is None
+
+
+def test_real_pending_update_receipt_supports_acknowledgement_without_approval():
+    calls = [{'name': 'order.update', 'args': {'order_id': 'ORDER-81'},
+              'result': {'order_id': 'ORDER-81', 'status': 'review_pending', 'estimate': True}}]
+    answer = 'Em đã tiếp nhận yêu cầu đổi hàng của mình, hồ sơ đang chờ duyệt.'
+    assert check_grounding(answer, calls) is None
+    assert check_answer(answer, calls)[1] is None
+
+
+def test_update_receipt_for_a_different_order_cannot_confirm_the_requested_change():
+    calls = [{'name': 'order.update', 'args': {'order_id': 'ORDER-81'},
+              'result': {'order_id': 'ORDER-92', 'status': 'review_pending'}}]
+    answer = 'Em đã tiếp nhận yêu cầu đổi hàng của mình, hồ sơ đang chờ duyệt.'
+    assert check_grounding(answer, calls) == 'order_update_unverified'
+    assert check_answer(answer, calls)[1] == 'order_update_unverified'
+
+
 @pytest.mark.parametrize('ordinary,exception', [(9, 18), (12, 27)])
 def test_blanket_policy_cannot_take_a_duration_from_a_conditional_exception(ordinary, exception):
     calls = [{'name': 'policy.search', 'result': {'retrieval_status': 'ok', 'evidence': [{

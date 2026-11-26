@@ -90,8 +90,12 @@ class SeedHistoryGateway:
                 raise ValueError('seed_history_conflict')
             self.history[sid] = deepcopy(item)
 
-    async def prepare_history(self, channel, identity):
+    async def prepare_history(self, channel, identity, *, verified_customer_id=None, verified_phone=None):
         if self.materialize is not None and self.history:
+            if verified_customer_id and verified_phone:
+                await self.invoke_trusted('crm.get_customer', {'phone': verified_phone},
+                                          verified_customer_id, channel, identity)
+                return
             key = {'hotline': 'phone', 'zalo_oa': 'zalo_id', 'chat_fanpage': 'fb_id'}[channel]
             await self.invoke('crm.get_customer', {key: identity})
 

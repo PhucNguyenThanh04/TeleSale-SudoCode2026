@@ -1,0 +1,36 @@
+{
+  "source_trace_sha256": "594db62d59693328924b05fc5cbd221dd8204fd10ae24c290a3ae308308565e5",
+  "rows": 39,
+  "model_calls": 0,
+  "saved_trace_mutated": false,
+  "gift_fallback_rejected": true,
+  "gift_advised_fact_rejected": true,
+  "preview_acknowledgement_rejection": "order_update_unverified",
+  "write_recovery_checks": {
+    "7": {
+      "missing_write_recovery": true,
+      "expected": true
+    },
+    "19": {
+      "missing_write_recovery": true,
+      "expected": true
+    },
+    "30": {
+      "missing_write_recovery": true,
+      "expected": true
+    },
+    "36": {
+      "missing_write_recovery": false,
+      "expected": false
+    },
+    "13": {
+      "missing_write_recovery": false,
+      "expected": false
+    },
+    "16": {
+      "missing_write_recovery": false,
+      "expected": false
+    }
+  },
+  "scope": "Frozen-answer checker replay only; no newly generated answer, live TSR or latency claim."
+}

@@ -79,6 +79,52 @@ def test_incomplete_or_failed_order_receipt_cannot_create_selection_memory(recei
         'result': receipt}, None, source()['turn_id']) == []
 
 
+@pytest.mark.parametrize('gift_is_separately_searched', [False, True])
+def test_gift_refresh_does_not_promote_it_to_advised_product(gift_is_separately_searched):
+    from app.agent.memory.reported_facts import reported_tool_candidates
+    main = {'sku': 'CONTROL-81', 'name': 'Bộ điều khiển Lumen', 'variants': []}
+    gift = {'sku': 'GIFT-92', 'name': 'Túi đựng Boreal', 'variants': []}
+    calls = [
+        {'name': 'catalog.search', 'args': {}, 'result': {'items': [main]}},
+        {'name': 'pricing.get_quote', 'args': {'sku': main['sku']}, 'result': {
+            'sku': main['sku'], 'final_price_vnd': 740000, 'applied_promos': [
+                {'type': 'gift', 'gift_sku': gift['sku']}]}},
+        {'name': 'catalog.get_details', 'args': {'sku': gift['sku']}, 'result': {'items': [gift]}},
+        {'name': 'pricing.get_quote', 'args': {'sku': gift['sku']}, 'result': {
+            'sku': gift['sku'], 'final_price_vnd': 74000}},
+        {'name': 'inventory.check', 'args': {'sku': gift['sku']}, 'result': {
+            'sku': gift['sku'], 'in_stock': True, 'qty': 9}},
+    ]
+    if gift_is_separately_searched:
+        calls.append({'name': 'catalog.search', 'args': {'sku': gift['sku']},
+                      'result': {'items': [gift]}})
+    answer = 'Bộ điều khiển Lumen được tặng kèm Túi đựng Boreal.'
+    advised = {f['value'] for f in reported_tool_candidates(answer, calls)
+               if f['key'] == 'product_advised'}
+    assert (gift['sku'] in advised) is gift_is_separately_searched
+    assert main['sku'] in advised
+
+
+@pytest.mark.parametrize('receipt', [
+    {'status': 'rejected', 'sku': 'GIFT-92'},
+    {'status': 'created', 'sku': 'GIFT-92'},
+    {'status': 'created', 'sku': 'GIFT-92', 'order_id': ' '},
+    {'status': 'created', 'sku': 'GIFT-92', 'order_id': 'ORDER-81', 'ok': False},
+    {'status': 'created', 'sku': 'GIFT-92', 'order_id': 'ORDER-81', 'success': False},
+])
+def test_failed_gift_purchase_cannot_establish_an_independent_product_role(receipt):
+    from app.agent.memory.reported_facts import reported_tool_candidates
+    calls = [
+        {'name': 'pricing.get_quote', 'args': {'sku': 'CONTROL-81'}, 'result': {
+            'sku': 'CONTROL-81', 'applied_promos': [{'type': 'gift', 'gift_sku': 'GIFT-92'}]}},
+        {'name': 'catalog.get_details', 'args': {'sku': 'GIFT-92'}, 'result': {
+            'items': [{'sku': 'GIFT-92', 'name': 'Túi đựng Boreal', 'variants': []}]}},
+        {'name': 'order.create', 'args': {'sku': 'GIFT-92'}, 'result': receipt},
+    ]
+    facts = reported_tool_candidates('Túi đựng Boreal là quà kèm theo.', calls)
+    assert not any(f['key'] == 'product_advised' and f['value'] == 'GIFT-92' for f in facts)
+
+
 @pytest.mark.parametrize('ttl,expected', [(20, False), (90, True)])
 def test_configured_memory_freshness_reaches_prompt_and_scoped_facts(ttl, expected):
     from app.schemas.agent import TextTurnRequest
