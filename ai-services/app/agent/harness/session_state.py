@@ -4,7 +4,7 @@ from datetime import date
 
 
 _CONTEXT_FIELDS = ('history', 'customer_statements', 'profile', 'scoped_facts', 'episodes', 'current_episode',
-                   'call_brief', 'remembered_order_ids', 'context_source_complete')
+                   'call_brief', 'remembered_order_ids', 'context_source_complete', 'memory_fact_ttl_days')
 
 
 @dataclass

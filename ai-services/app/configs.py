@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     agent_max_tool_calls: int = Field(default=DEFAULT_MAX_TOOL_CALLS, ge=3, le=20)
     agent_prompt_history_turns: int = Field(default=DEFAULT_PROMPT_HISTORY_TURNS, ge=1, le=12)
     agent_guardrails_enabled: bool = True
+    agent_authorizer_enabled: bool = True
+    agent_verify_enabled: bool = True
+    agent_progressive_streaming: bool = False
+    agent_semantic_review_enabled: bool = True
     agent_turn_timeout_seconds: float = Field(default=90, gt=0)
     langmem_model: str | None = None
     langmem_max_tokens: int = Field(default=1024, ge=256, le=8192)
@@ -56,6 +60,7 @@ class Settings(BaseSettings):
     knowledge_admin_database_url: SecretStr | None = None
     knowledge_release_id: str | None = None
     memory_max_episodes: int = Field(default=5, ge=0, le=20)
+    memory_fact_ttl_days: int = Field(default=240, ge=1, le=3650)
     ai_internal_token: SecretStr | None = None
     mcp_internal_token: SecretStr | None = None
     mcp_internal_token_file: Path | None = None

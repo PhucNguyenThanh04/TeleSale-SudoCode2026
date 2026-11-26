@@ -142,6 +142,11 @@ class LangMemProjection:
                                     "customer_id": customer_id,
                                     "scope_type": scope_type, "scope_id": scope_id})
                     continue
+                if (same_value is None and previous and not previous.get("deleted")
+                        and _revision(previous) < revision
+                        and previous.get("value") == fact["value"]
+                        and previous.get("valid_until") == fact.get("valid_until")):
+                    continue
                 write_op = (same_value.get("write_op", "set")
                     if isinstance(same_value, dict) else
                     "supersede" if previous and not previous.get("deleted") else "set")
@@ -152,11 +157,17 @@ class LangMemProjection:
                     "evidence_quote": fact.get("evidence_quote"),
                     "source_turn_id": source_turn_id, "session_id": session_id,
                     "source": f"langmem:{session_id}:{source_turn_id}", "on": on,
-                    "revision": revision, "write_op": write_op}
+                    "revision": revision, "write_op": write_op, "status": "active"}
                 if fact.get("valid_until"):
                     raw_record["valid_until"] = fact["valid_until"]
                 value = _safe(raw_record)
                 await store.aput(namespace, key, value, index=False)
+                if write_op == "supersede" and previous and _revision(previous) != revision:
+                    prev_key = json.dumps([scope_type, scope_id, fact["key"], _revision(previous)],
+                                          ensure_ascii=False, separators=(",", ":"))
+                    superseded_prev = {**previous, "status": "superseded",
+                                       "superseded_by_revision": revision}
+                    await store.aput(namespace, prev_key, superseded_prev, index=False)
                 entry = {"key": fact["key"], "value": fact["value"],
                          'source_kind': fact['source_kind'],
                          "op": write_op, "customer_id": customer_id,

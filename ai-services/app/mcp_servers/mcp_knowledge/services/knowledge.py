@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from collections import deque
 from app.knowledge.schemas import digest
 from app.mcp_servers.mcp_knowledge.services.embedding import PolicyOverloaded, PolicyInputError
 from app.knowledge.policy.rules import apply_policy_rules
@@ -102,23 +103,41 @@ class PolicySearchService:
                     if chunk.source_hash!=hit.source_hash or chunk.content_hash!=hit.content_hash:
                         raise ValueError('Index/source hash mismatch')
                 phase='selection'
+                seeds=0
                 for hit in hits:
-                    if len(selected)>=request.top_k:
+                    if seeds>=request.top_k or len(selected)>=self.config.hard_limit:
                         break
                     key=hit.chunk_id
                     if key not in applicable or key in selected:
                         continue
-                    selected[key]=applicable[key]
-                    for related in allowed[key].required_links:
-                        if related in applicable and related not in selected and len(selected)<self.config.hard_limit:
-                            selected[related]=applicable[related].model_copy(update={'retrieved_via':'linked'})
+                    seeds+=1
+                    pending=deque([(key,False)])
+                    while pending and len(selected)<self.config.hard_limit:
+                        related,linked=pending.popleft()
+                        if related not in applicable or related in selected:
+                            continue
+                        selected[related]=(applicable[related].model_copy(update={'retrieved_via':'linked'})
+                                           if linked else applicable[related])
+                        pending.extend((dependency,True) for dependency in allowed[related].required_links)
                 missing_all=set()
                 for key,evidence in selected.items():
-                    missing=sorted(set(allowed[key].required_links)-selected.keys())
+                    pending=[key]
+                    visited=set()
+                    missing=set()
+                    while pending:
+                        related=pending.pop()
+                        if related in visited:
+                            continue
+                        visited.add(related)
+                        for dependency in allowed[related].required_links:
+                            if dependency in selected:
+                                pending.append(dependency)
+                            else:
+                                missing.add(dependency)
                     if missing:
                         if evidence.applicability.status != 'conflict':
                             evidence.applicability.status='conditional'
-                        evidence.applicability.missing_required_section_ids=missing
+                        evidence.applicability.missing_required_section_ids=sorted(missing)
                         missing_all.update(missing)
                 await call('postgres',lambda:self.repo.snapshot(release),deadline=deadline)
                 result=PolicySearchResult(retrieval_status='ok' if selected else 'no_evidence',

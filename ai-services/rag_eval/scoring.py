@@ -49,6 +49,18 @@ def literal_checks(answer, rules):
             'forbidden_patterns': forbidden, 'semantic_correctness_evaluated': False}
 
 
+def observed_abstention(answer):
+    text = unicodedata.normalize('NFC', answer).strip().casefold()
+    clauses = [part.strip() for part in re.split(r'[.!?;\n]+', text) if part.strip()]
+    if len(clauses) != 1 or re.search(r'\b(?:nhưng|tuy nhiên|ngoài ra)\b', text):
+        return False
+    return bool(re.fullmatch(
+        r'(?:(?:dạ|xin lỗi|hiện tại|hiện nay|rất tiếc)[,\s]+)*'
+        r'(?:em|tôi|shop|chúng tôi|bên em)\s+'
+        r'(?:(?:chưa|không)\s+có\s+thông tin|không\s+(?:thể|được phép)\s+cung cấp)\b[^.!?;\n]*',
+        clauses[0]))
+
+
 def metric(values, eligible):
     values = [float(v) for v in values if v is not None]
     if any(not math.isfinite(v) or not 0 <= v <= 1 for v in values):
@@ -118,6 +130,9 @@ def score_run(run, out, *, judgments=None, judge_identity=None, human_labels=Non
         exported[qid] = {'retrieved_chunk_ids': ids, 'abstained': action in {'refuse', 'handoff'},
                          'answer': row.get('answer') or ''}
         detail = {'qid': qid, 'type': labels['type'], 'execution_status': row['status'],
+            'generator_action': row.get('action'),
+            'observed_explicit_refusal': (observed_abstention(row['answer'])
+                if row['status'] == 'ok' and row.get('answer') else None),
             'retrieval_status': result.get('retrieval_status', 'failed'), 'retrieved_chunk_ids': ids,
             'expected_chunk_ids': sorted(relevant),
             'hit@3': bool(relevant & set(normalized[:3])) if relevant else None,
@@ -149,6 +164,7 @@ def score_run(run, out, *, judgments=None, judge_identity=None, human_labels=Non
                     btc[key] = None
             abstention_source = 'incomplete_judge_unmeasured' if judgments else 'incomplete_generation_unmeasured'
     n = len(cases)
+    observed = [d for d in details if d['observed_explicit_refusal'] is not None]
     type_for = {c['qid']: c['labels']['type'] for c in cases}
     def business_metric(field, types=None):
         selected = [qid for qid in by_id if types is None or type_for[qid] in types]
@@ -160,6 +176,11 @@ def score_run(run, out, *, judgments=None, judge_identity=None, human_labels=Non
             'execution_failed': sum(r['status'] != 'ok' for r in rows),
             'judge_business_failed_or_skipped': n - sum(bool(j.get('business')) for j in judgments.values()) if judgments else None},
         'btc': btc, 'btc_abstention_source': abstention_source,
+        'observed_abstention': {'source': 'conservative_literal_diagnostic',
+            'measured': len(observed), 'eligible': n,
+            'explicit_refusals': sum(d['observed_explicit_refusal'] for d in observed),
+            'action_disagreements': sum(d['observed_explicit_refusal']
+                and d['generator_action'] not in {'refuse', 'handoff'} for d in observed)},
         'retrieval': {'recall_denominator': sum(bool(c['labels']['relevant_chunk_ids']) for c in cases),
             'mrr@5': metric([d['mrr@5'] for d in details], sum(bool(c['labels']['relevant_chunk_ids']) for c in cases)),
             'latency': latency(rows, 'retrieval_ms')},
@@ -178,6 +199,7 @@ def score_run(run, out, *, judgments=None, judge_identity=None, human_labels=Non
         'cases': details,
         'limitations': ['BTC recall is query-level any-hit, not fraction of gold chunks.',
             'Abstention derived from action; generator action is self-reported until judged.',
+            'Observed explicit refusal is a conservative whole-answer literal diagnostic, not semantic correctness or exhaustive abstention.',
             'Literal checks are diagnostics; no human calibration is implied.',
             'Component date/tool fixtures do not measure agent verification or tool routing.',
             'Run collection can complete with failed cases; inspect coverage.']}

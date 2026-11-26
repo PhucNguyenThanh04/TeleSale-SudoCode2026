@@ -50,18 +50,34 @@ def verified_order_details(call: dict, variant: dict | None,
     args = call.get("args", {})
     if (call.get("name") != "order.create" or not isinstance(result, dict)
             or result.get("status") != "created" or not isinstance(args, dict)
-            or not isinstance(variant, dict)
-            or variant.get("variant_sku") != args.get("sku")):
+            or 'error' in result or result.get('ok') is False or result.get('success') is False
+            or not isinstance(result.get('order_id'), str) or not result['order_id'].strip()):
         return []
-    parent = variant.get("parent_sku")
-    if not isinstance(parent, str) or not parent:
-        return []
-    size = variant.get("size")
-    if isinstance(size, str) and size.isdecimal():
-        size = int(size)
-    values = {"product_advised": parent, "variant_sku": args.get("sku"), "size": size,
-              "color": variant.get("color"), "payment": args.get("payment")}
     facts = []
+    order_id = result.get("order_id")
+    if isinstance(order_id, str) and order_id and mask_pii(order_id) == order_id:
+        order_fact = {"key": "order_id", "value": order_id, "op": "set",
+                      "source_kind": "tool", "source_tool": "order.create",
+                      "source_turn_id": source_turn_id,
+                      "scope_type": "global", "scope_id": "",
+                      "evidence_quote": f"order.create:order_id:{order_id}"}
+        if _valid_fact(order_fact):
+            facts.append(order_fact)
+    sku = args.get("sku")
+    if isinstance(variant, dict) and variant.get("variant_sku") == sku:
+        parent = variant.get("parent_sku")
+        if not isinstance(parent, str) or not parent:
+            return facts
+        size = variant.get("size")
+        if isinstance(size, str) and size.isdecimal():
+            size = int(size)
+        values = {"product_advised": parent, "variant_sku": sku, "size": size,
+                  "color": variant.get("color"), "payment": args.get("payment")}
+    elif isinstance(sku, str) and sku:
+        parent = sku
+        values = {"product_advised": parent, "payment": args.get("payment")}
+    else:
+        return facts
     for key, value in values.items():
         if type(value) not in {str, int} or (isinstance(value, str)
                                              and mask_pii(value) != value):
@@ -71,40 +87,6 @@ def verified_order_details(call: dict, variant: dict | None,
                 "source_turn_id": source_turn_id,
                 "scope_type": "product", "scope_id": parent,
                 "evidence_quote": f"order.create:{key}:{value}"}
-        if _valid_fact(fact):
-            facts.append(fact)
-    return facts
-
-
-def verified_variant_details(call: dict, variant: dict | None,
-                             source_turn_id: str) -> list[dict]:
-    result = call.get("result", {})
-    args = call.get("args", {})
-    sku = (result.get("sku") if isinstance(result, dict) else None) or (
-        args.get("sku") if isinstance(args, dict) else None)
-    if (call.get("name") not in {"inventory.check", "pricing.get_quote"}
-            or not isinstance(result, dict) or "error" in result
-            or not isinstance(variant, dict)
-            or variant.get("variant_sku") != sku):
-        return []
-    parent = variant.get("parent_sku")
-    if not isinstance(parent, str) or not parent:
-        return []
-    size = variant.get("size")
-    if isinstance(size, str) and size.isdecimal():
-        size = int(size)
-    values = {"product_advised": parent, "variant_sku": sku,
-              "size": size, "color": variant.get("color")}
-    facts = []
-    for key, value in values.items():
-        if type(value) not in {str, int} or (isinstance(value, str)
-                                             and mask_pii(value) != value):
-            continue
-        fact = {"key": key, "value": value, "op": "set",
-                "source_kind": "tool", "source_tool": call["name"],
-                "source_turn_id": source_turn_id,
-                "scope_type": "product", "scope_id": parent,
-                "evidence_quote": f"{call['name']}:{key}:{value}"}
         if _valid_fact(fact):
             facts.append(fact)
     return facts
@@ -126,8 +108,19 @@ def deterministic_episode_tools(calls: list[dict], on: str) -> tuple[list[dict],
             order_id = result.get("order_id")
             sku = args.get("sku")
             if isinstance(order_id, str) and order_id:
-                actions.append({"action": "order.create", "order_id": order_id,
-                                "sku": sku if isinstance(sku, str) else ""})
+                action_row = {
+                    "action": "order.create",
+                    "order_id": order_id,
+                    "status": "created",
+                    "sku": sku if isinstance(sku, str) else "",
+                }
+                if type(result.get("total_vnd")) is int:
+                    action_row["total_vnd"] = result["total_vnd"]
+                if isinstance(args.get("payment"), str) and args["payment"]:
+                    action_row["payment"] = args["payment"]
+                if isinstance(result.get("estimated_delivery"), str) and result["estimated_delivery"]:
+                    action_row["estimated_delivery"] = result["estimated_delivery"]
+                actions.append(action_row)
         elif (name == "schedule.callback" and isinstance(result.get('callback_id'), str)
               and result['callback_id'] and result.get("status") in {None, "scheduled", "ok", "created"}):
             actions.append({"action": "schedule.callback",

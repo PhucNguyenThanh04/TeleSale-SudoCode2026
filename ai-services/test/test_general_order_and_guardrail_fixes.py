@@ -370,7 +370,7 @@ def test_bounded_context_keeps_complete_for_large_tool_observations():
     assert bounded["context_completeness"]["complete"] is True
 
 
-def test_progressive_stream_emits_verified_sentence_early_and_holds_unverified():
+def test_progressive_stream_waits_for_verified_complete_answer():
     from langchain_core.messages import AIMessageChunk
     from app.agent.harness.streaming import GuardedStream
 
@@ -384,12 +384,12 @@ def test_progressive_stream_emits_verified_sentence_early_and_holds_unverified()
         stream = GuardedStream(sink, progressive=True)
         st = _base_state("Sản phẩm Mẫu A giá bao nhiêu và còn hàng không?")
         await stream.feed(AIMessageChunk(content="Sản phẩm Mẫu A có giá 1.800.000đ. ", id="m1"), st)
-        assert emitted == ["Sản phẩm Mẫu A có giá 1.800.000đ. "]
+        assert emitted == []
         await stream.feed(AIMessageChunk(content="Hiện sản phẩm vẫn còn hàng.", id="m1"), st)
         st["verified_answer"] = "Sản phẩm Mẫu A có giá 1.800.000đ. Hiện sản phẩm vẫn còn hàng."
         final = await stream.finish(st["verified_answer"], st)
         assert final == st["verified_answer"]
-        assert emitted == ["Sản phẩm Mẫu A có giá 1.800.000đ. ", "Hiện sản phẩm vẫn còn hàng."]
+        assert emitted == [st["verified_answer"]]
 
         held_emitted = []
 
@@ -590,12 +590,12 @@ def test_progressive_stream_finish_publishes_repaired_answer_after_greeting_pref
         stream = GuardedStream(sink, progressive=True)
         st = _base_state("Giá sản phẩm Mẫu A hôm nay thế nào?")
         await stream.feed(AIMessageChunk(content="Dạ em chào anh. ", id="m1"), st)
-        assert emitted == ["Dạ em chào anh. "]
+        assert emitted == []
         await stream.feed(AIMessageChunk(content="Giá là 9.999.000đ. ", id="m1"), st)
         st["verified_answer"] = "Sản phẩm Mẫu A hiện có giá 1.800.000đ."
         final = await stream.finish(st["verified_answer"], st)
         assert "1.800.000đ" in final
-        assert len(emitted) == 2
+        assert emitted == [st["verified_answer"]]
 
     asyncio.run(run())
 
@@ -641,7 +641,7 @@ def test_expired_customer_mentioned_discount_is_allowed_while_fabricated_rejecte
     assert err_fabricated == "price_without_quote"
 
 
-def test_zalo_phone_channel_identity_falls_back_to_phone_crm_lookup():
+def test_numeric_zalo_identity_does_not_authenticate_as_a_phone():
     from app.agent.harness.session_identity import initialize_identity
 
     async def run():
@@ -660,10 +660,10 @@ def test_zalo_phone_channel_identity_falls_back_to_phone_crm_lookup():
             on=date(2026, 10, 20),
         )
         identity, calls = await initialize_identity(req, tools)
-        assert identity["identity_status"] == "known"
-        assert identity["customer_id"] == "C030"
-        assert len(calls) == 2
-        assert calls[1]["args"] == {"phone": "0991280845"}
+        assert identity["identity_status"] == "unknown"
+        assert identity["customer_id"] is None
+        assert [call["args"] for call in calls] == [{"zalo_id": "0991280845"}]
+        tools.invoke.assert_awaited_once()
 
     asyncio.run(run())
 
@@ -728,7 +728,7 @@ def test_order_update_reports_actionable_precondition_error():
     assert "address" in res["next_action"]
 
 
-def test_self_declared_phone_linking_and_third_party_rejection():
+def test_self_declared_phone_parsing_does_not_authenticate_an_unlinked_channel():
     from app.agent.harness.session_identity import extract_self_declared_phone, initialize_identity
 
     assert extract_self_declared_phone("sdt minh 0994893949 de minh goi hotline sau nhe") == "0994893949"
@@ -754,8 +754,9 @@ def test_self_declared_phone_linking_and_third_party_rejection():
             on=date(2026, 10, 20),
         )
         identity, calls = await initialize_identity(req, tools)
-        assert identity["identity_status"] == "known"
-        assert identity["customer_id"] == "C017"
-        assert calls[-1]["args"] == {"phone": "0994893949"}
+        assert identity["identity_status"] == "unknown"
+        assert identity["customer_id"] is None
+        assert [call["args"] for call in calls] == [{"fb_id": "fb.khach.123"}]
+        tools.invoke.assert_awaited_once()
 
     asyncio.run(run())

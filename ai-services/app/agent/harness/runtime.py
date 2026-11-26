@@ -18,7 +18,7 @@ from app.agent.memory.store import MemoryStore
 from app.agent.harness.observability import log_event
 from app.agent.harness.context import load_context
 from app.agent.harness.session_identity import (
-    extract_self_declared_phone, identity_fingerprint, initialize_identity,
+    identity_fingerprint, initialize_identity,
     _empty_identity, turn_fingerprint,
 )
 from app.agent.harness.state import TurnState
@@ -45,7 +45,9 @@ class AgentHarnessRuntime:
                  max_repair_attempts: int = 1,
                  safe_fallback_on_rejection: bool = False,
                  semantic_review_enabled: bool = True,
-                 progressive_streaming: bool = False) -> None:
+                 progressive_streaming: bool = False,
+                 authorizer_enabled: bool = True,
+                 verify_enabled: bool = True) -> None:
         self.memory = memory
         self.tools = tools
         self.tracing = tracing
@@ -58,7 +60,9 @@ class AgentHarnessRuntime:
                                 prompt_history_turns, clock,
                                 max_repair_attempts=max_repair_attempts,
                                 safe_fallback_on_rejection=safe_fallback_on_rejection,
-                                semantic_review_enabled=semantic_review_enabled)
+                                semantic_review_enabled=semantic_review_enabled,
+                                authorizer_enabled=authorizer_enabled,
+                                verify_enabled=verify_enabled)
         self.graph = build_graph(llm, tools, memory, max_tool_calls,
                                  prompt_history_turns, clock, guardrails_enabled,
                                  nodes=self.nodes)
@@ -191,10 +195,9 @@ class AgentHarnessRuntime:
         bound = self._session_identities.get(session_id)
         if bound is not None and bound[0] != fingerprint:
             raise ValueError("Session channel identity mismatch")
-        if bound is None or (not bound[1].get('erased_customer_id') and bound[1]["identity_status"] != "known"
-                             and (turn.verified_customer_id
-                                  or (bound[1]["identity_status"] == "unknown"
-                                      and extract_self_declared_phone(turn.text) is not None))):
+        if bound is None or (not bound[1].get('erased_customer_id')
+                             and bound[1]["identity_status"] != "known"
+                             and turn.verified_customer_id):
             identity, calls = await initialize_identity(turn, self.tools)
             self._session_identities[session_id] = (fingerprint, identity)
         else:

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from typing import Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -103,12 +104,81 @@ def build_write_context(state, name, args):
             'tool_failed', 'private_delivery', 'context_source_complete')}))
 
 
+def deterministic_fast_authorize(name: str, args: dict, state: dict) -> bool | None:
+    from app.agent.harness.policy import order_evidence_error
+    from app.mcp_servers.mcp_shared.commerce_evidence import CATALOG_TOOLS, build_commerce_evidence
+    from app.mcp_servers.mcp_shared.commerce_rules import _search_text
+
+    if (name != 'order.create' or not isinstance(args, dict)
+            or args.get('lines') is not None or args.get('address')
+            or args.get('basket_skus') or args.get('promo_code')):
+        return None
+    sku, price, qty = args.get('sku'), args.get('price_vnd'), args.get('qty', 1)
+    payment = args.get('payment') or 'COD'
+    if (not isinstance(sku, str) or type(price) is not int or price <= 0
+            or type(qty) is not int or qty <= 0
+            or payment not in {'COD', 'bank', 'momo', 'zalopay'}
+            or payment == 'COD' and price * qty > 10_000_000):
+        return None
+    text = state.get('safe_text') or ''
+    if not text.strip() or '?' in text:
+        return None
+    if order_evidence_error(state, {**args, 'qty': qty}) is not None:
+        return None
+    calls = build_commerce_evidence(state)
+    items = {item['sku']: item for call in calls if call['name'] in CATALOG_TOOLS
+             for item in call['result'].get('items', [])
+             if isinstance(item, dict) and isinstance(item.get('sku'), str)}
+    if sku not in items or items[sku].get('variants'):
+        return None
+    aliases = {}
+    for code, item in items.items():
+        words = _search_text(item.get('name') or '').split()
+        labels = {code, ' '.join(words)} | {
+            ' '.join(words[-count:]) for count in range(2, min(len(words), 5) + 1)}
+        for label in labels:
+            if label:
+                aliases.setdefault(_search_text(label), set()).add(code)
+    labels = [re.escape(label) for label, codes in aliases.items() if codes == {sku}]
+    product = '(?:' + '|'.join(sorted(labels, key=len, reverse=True)) + ')'
+    folded = _search_text(text)
+    folded = re.sub(r'(?<!\d)[,.!]|[,.!](?!\d)', ' ', folded)
+    folded = ' '.join(folded.split())
+    request = re.fullmatch(
+        r'(?:(?:ok|da|vang|dong y) )?(?:(?:anh|chi|toi|minh) )?'
+        r'(?:xac nhan )?(?:em )?(?:len don|tao don|chot don|dat hang|dat|mua|lay) '
+        r'(?:(?:giup|cho) (?:anh|chi|toi|minh) )?'
+        r'(?:(?P<qty>\d+|mot|hai|ba|bon|nam|sau|bay|tam|chin|muoi) '
+        r'(?:chiec|cai|bo|doi|tam|san pham) )?'
+        + product +
+        r'(?: gia (?P<price>\d[\d.,]*(?: (?:dong|vnd)|d)?))?'
+        r'(?: (?:thanh toan )?(?P<payment>cod|tien mat|bank|chuyen khoan|momo|zalopay))?'
+        r'(?: (?:a|nhe|nha))?', folded)
+    if request is None:
+        return None
+    numbers = dict(zip(('mot', 'hai', 'ba', 'bon', 'nam', 'sau', 'bay', 'tam', 'chin', 'muoi'), range(1, 11)))
+    stated_qty = request['qty'] or '1'
+    stated_qty = int(stated_qty) if stated_qty.isdecimal() else numbers[stated_qty]
+    stated_payment = {'tien mat': 'COD', 'cod': 'COD', 'chuyen khoan': 'bank'}.get(
+        request['payment'], request['payment'] or 'COD')
+    if stated_qty != qty or stated_payment != payment:
+        return None
+    if request['price']:
+        stated_price = int(re.sub(r'[^\d]', '', request['price']))
+        if stated_price != price:
+            return None
+    return True
+
+
 async def authorize_write(model, state, name, args, history_turns):
     if name not in WRITE_TOOLS:
         return False
     context = prompt_context(state, history_turns)
     if not context['context_completeness']['complete']:
         return False
+    fast = deterministic_fast_authorize(name, args, state)
+    if fast is not None:
+        return fast
     payload = {**context, 'proposed_write': {'tool': name, 'args': safe_tool_result(args)}}
     address = args.get('address')
     if isinstance(address, str) and address:

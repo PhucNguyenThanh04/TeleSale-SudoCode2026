@@ -252,22 +252,131 @@ class BusinessTools:
 
     async def invoke(self, name: str, proposed: dict[str, Any]) -> dict[str, Any]:
         from app.mcp_servers.mcp_shared.decision_diagnostics import origin, _ORIGIN
-        async with self.lock:
-            with origin('model' if _ORIGIN.get() == 'unknown' else _ORIGIN.get()):
+        with origin('model' if _ORIGIN.get() == 'unknown' else _ORIGIN.get()):
+            if name in WRITE_TOOLS:
+                async with self.lock:
+                    if self.state.get('tool_attempts', 0) >= self.max_tool_calls * 2:
+                        return {'error': 'tool_limit'}
+                    self.state['tool_attempts'] = self.state.get('tool_attempts', 0) + 1
+                    return await self._invoke_locked(name, proposed)
+            async with self.lock:
                 if self.state.get('tool_attempts', 0) >= self.max_tool_calls * 2:
                     return {'error': 'tool_limit'}
                 self.state['tool_attempts'] = self.state.get('tool_attempts', 0) + 1
                 count = len(self.state.get('tool_calls', []))
                 key = (name, write_digest(proposed), count,
                        len(self.state.get('session_tool_calls', [])), self.state.get('safe_text'))
-                if name not in WRITE_TOOLS and key in self._blocked_reads:
+                if key in self._blocked_reads:
                     return {'error': 'repeated_tool_call', 'previous_error': self._blocked_reads[key],
                             'next_action': 'Use the missing evidence already reported or ask for clarification; do not repeat unchanged arguments.'}
-                result = await self._invoke_locked(name, proposed)
-                if (name not in WRITE_TOOLS and result.get('error')
-                        and len(self.state.get('tool_calls', [])) == count):
-                    self._blocked_reads[key] = result['error']
-                return result
+                status, payload = self._prepare_read_locked(name, proposed)
+                if status == 'done':
+                    if payload.get('error') and len(self.state.get('tool_calls', [])) == count:
+                        self._blocked_reads[key] = payload['error']
+                    return payload
+            result = await self._execute_gateway_read(name, payload)
+            async with self.lock:
+                return self._finalize_read_locked(name, payload, result)
+
+    def _prepare_read_locked(self, name: str, proposed: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+        from app.agent.harness.streaming import active_stream
+        stream = active_stream.get()
+        if stream is not None and stream.published:
+            return 'done', {'error': 'answer_already_started'}
+        raw = dict(proposed)
+        if name not in ALLOWED_TOOLS:
+            return 'done', {'error': 'unknown_tool'}
+        if self.state.get('tool_failed') and name != 'handoff.transfer':
+            return 'done', {'error': 'context_unavailable'}
+        try:
+            raw = _TOOL_SCHEMAS[name].model_validate(raw).model_dump(exclude_none=True)
+        except ValueError:
+            return 'done', {'error': 'invalid_tool_arguments'}
+        if name == 'catalog.search' and 'max_list_price_vnd' in raw:
+            raw['max_price_vnd'] = raw.pop('max_list_price_vnd')
+        args = {key: value for key, value in raw.items() if value is not None}
+        self.state["decision"] = Decision(action="tool", tool_name=name, tool_args=args)
+        prepared = prepare_tool_call(self.state, self.clock)
+        if prepared is None:
+            log_event(self.state, "call_tool", "blocked", reason="precondition_or_arguments")
+            if name in {"inventory.check", "pricing.get_quote"}:
+                selection = resolve_product_selection(self.state, raw)
+                if selection.status != "resolved":
+                    return 'done', {"error": selection.status, "missing_fields": list(selection.missing_fields),
+                                    "next_tool": "catalog.search" if selection.status == "catalog_required" else None}
+            return 'done', {"error": "precondition_or_arguments"}
+        _, args = prepared
+        diagnostic_emit('tool_prepared', state=self.state, tool=name, args=args, status='allowed', context_present=bool(args.get('address')))
+        if name in {"catalog.search", 'catalog.get_details', "inventory.check", "pricing.get_quote", "pricing.quote_order", "order.status"}:
+            for cached in reversed(self.state.get("tool_calls", [])):
+                if cached.get("name") in {"order.create", "order.update"}:
+                    break
+                if cached.get("name") == name and cached.get("args") == args:
+                    if (isinstance(cached.get("result"), dict) and "error" not in cached['result']
+                            and cached['result'].get('ok') is not False
+                            and cached['result'].get('success') is not False):
+                        return 'done', safe_tool_result(cached['result'], tool_name=name)
+                    break
+        if self.state.get("tool_count", 0) >= self.max_tool_calls:
+            return 'done', {"error": "tool_limit"}
+        self.state["tool_count"] = self.state.get("tool_count", 0) + 1
+        log_tool_input("call_tool", name, args)
+        request = self.state["request"]
+        operation_key = f"{request.session_id}:{request.client_msg_id}:{name}"
+        policy_kwargs = {}
+        if name == 'policy.search':
+            from app.mcp_servers.mcp_knowledge.schemas import TrustedPolicyContext
+            product, product_source = verified_policy_product(self.state, args, raw.get('order_id'))
+            policy_kwargs['policy_context'] = TrustedPolicyContext(
+                request_id=str(request.client_msg_id), principal='harness', on=request.on,
+                release_id=self.state.get('knowledge_release_id'),
+                verified_order_date=args.get('order_date'),
+                date_source='order.status' if args.get('order_date') else None,
+                verified_product_sku=product, product_source=product_source)
+        return 'call', {
+            'raw': raw,
+            'args': args,
+            'customer_id': self.state.get("customer_id"),
+            'channel': request.channel,
+            'channel_identity': request.channel_identity,
+            'operation_key': operation_key,
+            'policy_kwargs': policy_kwargs,
+        }
+
+    async def _execute_gateway_read(self, name: str, payload: dict[str, Any]) -> dict[str, Any]:
+        started = time.perf_counter()
+        try:
+            if hasattr(self.gateway, "invoke_trusted"):
+                result = await self.gateway.invoke_trusted(
+                    name, payload['args'], payload['customer_id'], payload['channel'],
+                    payload['channel_identity'], payload['operation_key'], **payload['policy_kwargs'])
+            else:
+                result = await self.gateway.invoke(name, payload['args'])
+        except Exception as exc:
+            log_event(self.state, "call_tool", "tool_failed", level=logging.WARNING,
+                      tool=name, error_type=type(exc).__name__)
+            result = {"error": "tool_error"}
+        finally:
+            log_event(self.state, 'call_tool', 'tool_timing', tool=name,
+                      duration_ms=round((time.perf_counter() - started) * 1000))
+        return result
+
+    def _finalize_read_locked(self, name: str, payload: dict[str, Any], result: Any) -> dict[str, Any]:
+        args = payload['args']
+        raw = payload['raw']
+        if not isinstance(result, dict):
+            result = {"error": "invalid_tool_result"}
+        result = filter_owned_orders(name, args, result, self.state)
+        log_tool_output(self.state, "call_tool", name, result)
+        self.state.setdefault("tool_calls", []).append(
+            {"name": name, "args": args, "result": result})
+        if name == "policy.search":
+            context = result.get('context')
+            release_id = context.get('knowledge_release_id') if isinstance(context, dict) else None
+            if isinstance(release_id, str) and release_id:
+                self.state['knowledge_release_id'] = release_id
+            self.state.setdefault("policy_order_bindings", {})[len(self.state["tool_calls"]) - 1] = raw.get("order_id")
+        return safe_tool_result(result, tool_name=name)
 
     @tool_boundary
     async def _invoke_locked(self, name: str, proposed: dict[str, Any]) -> dict[str, Any]:
@@ -333,7 +442,7 @@ class BusinessTools:
                 return {'error': 'invalid_tool_arguments'}
             result_key = write_digest(write_context.model_dump(mode='json', exclude={'review_context_hash'}))
             if result_key in self._write_results:
-                return safe_tool_result(self._write_results[result_key])
+                return safe_tool_result(self._write_results[result_key], tool_name=name)
             if self.state.get('tool_count', 0) >= self.max_tool_calls:
                 return {'error': 'tool_limit'}
             if self.authorize_write is None:
@@ -426,7 +535,7 @@ class BusinessTools:
             self.state["handoff_ticket_id"] = result["ticket_id"]
         if name == "order.create" and result.get("status") == "created" and result.get("order_id"):
             self.state.setdefault("owned_order_ids", []).append(result["order_id"])
-        return safe_tool_result(result)
+        return safe_tool_result(result, tool_name=name)
 
     def langchain_tools(self) -> list[StructuredTool]:
         validate_model_tool_names(_TOOL_FIELDS)

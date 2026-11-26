@@ -111,11 +111,12 @@ def _review_context(context):
     compact = {
         key: result[key]
         for key in ('on', 'identity_status', 'customer_text', 'customer_facts',
-                    'customer_statements', 'delivery_context', 'memory_available')
+                    'customer_statements', 'delivery_context', 'memory_available',
+                    'current_episode', 'previous_episodes', 'context_completeness')
         if key in result
     }
     if isinstance(result.get('session_history'), list):
-        compact['session_history'] = result['session_history'][-4:]
+        compact['session_history'] = result['session_history']
     compact['tool_observations'] = observations
     return compact
 

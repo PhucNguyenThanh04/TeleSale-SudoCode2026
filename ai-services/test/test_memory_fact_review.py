@@ -462,7 +462,8 @@ def test_tool_only_job_does_not_require_or_call_a_semantic_reviewer():
         with transport:
             await process_one(repo, extractor, projection, fact_reviewer=reviewer)
             own = select_facts(await projection.list_fact_versions(turn['customer_id']), completed)
-            assert [(item['key'], item['value']) for item in own] == [('order_id', 'ORDER-NEW')]
+            assert {item['key']: item['value'] for item in own} == {
+                'order_id': 'ORDER-NEW', 'product_advised': 'ITEM-NEW'}
         assert job['status'] == 'completed'
         reviewer.assert_not_awaited()
     asyncio.run(run())

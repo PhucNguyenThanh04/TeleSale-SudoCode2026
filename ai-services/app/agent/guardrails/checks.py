@@ -21,7 +21,10 @@ from app.agent.guardrails.claims import COMPOUND_VND, assertion_text, commercial
 FALLBACK = ""
 
 _STOCK = re.compile(r"(?i)\b(?:còn hàng|có hàng|sẵn hàng|hết hàng|có sẵn trong kho)\b")
-_ORDER = re.compile(r"(?i)\bđã\s+(?:lên|tạo|đặt|chốt)\s+đơn\b")
+_ORDER = re.compile(
+    r"(?i)\b(?:đã|vừa)\s+(?:được\s+)?(?:lên|tạo|đặt|chốt)\s+(?:thành công\s+)?đơn\b"
+    r"|\bđơn(?: hàng)?\b[^.!?;\n]{0,80}\b(?:đã|vừa)\s+(?:được\s+)?(?:lên|tạo|đặt|chốt)\b"
+    r"|\b(?:lên|tạo|đặt|chốt)\s+đơn(?: hàng)?\b[^.!?;\n]{0,50}\b(?:đã hoàn tất|thành công|xong|rồi)\b")
 _AMOUNT = re.compile(r"(?i)(?<!\w)(\d[\d.,]*)\s*(triệu|tr|nghìn|ngàn|k|đồng(?!\s+(?:thời|ý)\b)|đ|vnd|₫)(?!\w)")
 _MILLION_SHORTHAND = re.compile(r"(?i)\b(\d{1,3})\s*tr\s*(\d{1,3})(?!\d)")
 _PRICE_NUMBER = re.compile(r"(?i)\bgiá\s+(?:là\s+)?(\d[\d.,]*)")
@@ -133,18 +136,56 @@ def _room_area_evidenced(value: Any, customer_text: str) -> bool:
 
 
 
-def safe_tool_result(result: dict[str, Any]) -> dict[str, Any]:
-    def clean(value: Any, field='') -> Any:
+_TOOL_RESULT_ALLOWLIST: dict[str, frozenset[str]] = {
+    "crm.get_customer": frozenset({"found", "ambiguous", "customer_id", "name", "honorific", "identities", "orders", "sessions", "error"}),
+    "catalog.search": frozenset({"items", "total", "error", "ok", "success"}),
+    "catalog.get_details": frozenset({"requested_sku", "items", "technical_evidence", "specifications", "error", "ok", "success"}),
+    "inventory.check": frozenset({"sku", "in_stock", "qty", "successor_sku", "discontinued", "error", "ok", "success"}),
+    "pricing.get_quote": frozenset({
+        "sku", "list_price_vnd", "final_price_vnd", "applied_promos", "expired_promos",
+        "ineligible_promos", "not_applied_exclusive", "freeship", "shipping_fee_vnd",
+        "estimated_delivery", "cod_eligible", "error", "ok", "success",
+    }),
+    "pricing.quote_order": frozenset({
+        "units", "total_vnd", "order_promos", "applied_promos", "expired_promos",
+        "ineligible_promos", "not_applied_exclusive", "freeship", "shipping_fee_vnd",
+        "estimated_delivery", "cod_eligible", "error", "ok", "success",
+    }),
+    "order.create": frozenset({
+        "order_id", "status", "total_vnd", "needs_confirmation_call",
+        "estimated_delivery", "lines", "sku", "qty", "payment", "error", "ok", "success",
+    }),
+    "order.status": frozenset({"orders", "error", "ok", "success"}),
+    "order.update": frozenset({
+        "order_id", "status", "action", "estimate", "estimated_total_payment_vnd",
+        "estimated_total_refund_vnd", "fee_vnd", "price_diff_vnd", "error", "ok", "success",
+    }),
+    "order.preview_update": frozenset({
+        "order_id", "status", "action", "estimate", "estimated_total_payment_vnd",
+        "estimated_total_refund_vnd", "fee_vnd", "price_diff_vnd",
+        "requires_policy_check", "replacement_inventory", "error", "ok", "success",
+    }),
+    "schedule.callback": frozenset({"callback_id", "status", "callback_at", "moved_from", "error", "ok", "success"}),
+    "handoff.transfer": frozenset({"ticket_id", "status", "error", "ok", "success"}),
+    "policy.search": frozenset({"retrieval_status", "context", "evidence", "chunks", "error", "ok", "success"}),
+}
+
+
+def safe_tool_result(result: dict[str, Any], tool_name: str | None = None) -> dict[str, Any]:
+    allowed = _TOOL_RESULT_ALLOWLIST.get(tool_name) if isinstance(tool_name, str) else None
+
+    def clean(value: Any, field='', depth: int = 0) -> Any:
         if isinstance(value, str):
             if field in {'source_hash', 'content_hash'} and re.fullmatch(r'[a-f0-9]{64}', value):
                 return value
             return mask_pii(value)
         if isinstance(value, list):
-            return [clean(item) for item in value]
+            return [clean(item, field, depth + 1) for item in value]
         if isinstance(value, dict):
             return {
-                key: clean(item, key) for key, item in value.items()
+                key: clean(item, key, depth + 1) for key, item in value.items()
                 if not key.startswith("_") and key not in {"phone", "customer_phone", "address", "candidates"}
+                and (depth > 0 or allowed is None or key in allowed)
             }
         return value
 
@@ -451,8 +492,33 @@ def _catalog_warranty_evidenced(candidate: str, successful: list[dict[str, Any]]
     return True
 
 
+def _order_creation_unverified(candidate: str, tool_calls: list[dict[str, Any]]) -> bool:
+    claims_completion = False
+    for clause in re.findall(r'[^.!?;\n]+[.!?;\n]?', candidate):
+        if clause.rstrip().endswith('?'):
+            continue
+        match = _ORDER.search(clause) or re.search(r'(?i)đã\s+ghi nhận\s+đơn hàng', clause)
+        if match is None:
+            continue
+        if _ORDER_STATUS.fullmatch(match.group().strip()):
+            continue
+        prefix = _fold_text(clause[:match.start()])
+        if re.search(r'\b(?:chua|khong)\s+(?:the\s+)?xac nhan\b', prefix):
+            continue
+        claims_completion = True
+    return claims_completion and not any(
+        call.get('name') == 'order.create' and isinstance(call.get('result'), dict)
+        and not ('error' in call['result'] or call['result'].get('ok') is False
+                 or call['result'].get('success') is False)
+        and call['result'].get('status') == 'created'
+        and isinstance(call['result'].get('order_id'), str) and call['result']['order_id'].strip()
+        for call in tool_calls)
+
+
 def check_grounding(candidate: str, tool_calls: list[dict[str, Any]]) -> str | None:
     candidate = assertion_text(candidate)
+    if _order_creation_unverified(candidate, tool_calls):
+        return 'order_creation_unverified'
     successful = [call for call in tool_calls if "error" not in call.get("result", {})]
     if _customer_erasure_completion_claim(candidate):
         return "customer_erasure_unverified"
@@ -573,7 +639,7 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *,
         ]
         if not active_claims:
             continue
-        bound = resolve_claim_skus(clause, successful, focus_sku=None)
+        bound = resolve_claim_skus(clause, successful, focus_sku=focus_sku)
         if not bound:
             bound = answer_quote_skus if len(answer_quote_skus) == 1 else (
                 {focus_sku} if focus_sku else set())
@@ -682,6 +748,8 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         return FALLBACK, "empty_answer"
     answer = candidate
     candidate = normalize_zero_fees(assertion_text(candidate))
+    if _order_creation_unverified(candidate, tool_calls):
+        return FALLBACK, 'order_creation_unverified'
     if _customer_erasure_completion_claim(candidate):
         return FALLBACK, "customer_erasure_unverified"
     if _INTERNAL.search(candidate) or _PRICE_REFERENCE.search(candidate):
@@ -691,6 +759,10 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         for call in tool_calls
         if "error" not in call.get("result", {})
     ]
+    from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
+    current_skus = resolve_claim_skus(customer_text, successful)
+    if len(current_skus) == 1:
+        focus_sku = next(iter(current_skus))
     policy_claim = bool(candidate.strip() and (_POLICY.search(candidate) or _POLICY.search(customer_text)))
     from app.agent.guardrails.policy_grounding import (policy_evidence_for_answer,
         policy_clarification_or_refusal, policy_durations_supported)
@@ -817,8 +889,6 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     existing_order_processing = any(
         call["name"] in {"order.status", "order.update"} for call in successful
     )
-    if (_ORDER.search(candidate) or re.search(r'(?i)đã\s+ghi nhận\s+đơn hàng', candidate)) and not created_order:
-        return FALLBACK, "order_creation_unverified"
     if (re.search(r'(?i)đơn hàng.{0,30}đang được xử lý', candidate)
             and not (created_order or existing_order_processing)):
         return FALLBACK, "order_creation_unverified"

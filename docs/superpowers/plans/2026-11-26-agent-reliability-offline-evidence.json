@@ -1,0 +1,79 @@
+{
+  "kind": "offline_checker_replay",
+  "baseline_commit": "6159449ab062506e0501f2a2d88ea385bc5497ff",
+  "dialogue_source": "eval_results/after_p2/btc7.full.jsonl",
+  "dialogue_sha256": "ee8669a1dc8a7cc20a376a858c6e52f97289b8e103ef16adcb0ffabfa756f72b",
+  "turns": 39,
+  "changed_decisions": [
+    {
+      "line": 36,
+      "before_reason": "price_without_quote",
+      "after_reason": "order_creation_unverified"
+    }
+  ],
+  "rag_source": "results-rag/e2e-02/trace.jsonl",
+  "rag_sha256": "07f8993da9e3c4a441d9b1cc81e4316576399dfd50e5a3bb3448dcf78a771f08",
+  "rag_rows": 60,
+  "observed_explicit_refusals": 8,
+  "generator_action_disagreements": 6,
+  "limitations": [
+    "Frozen generated answers replayed against deterministic checks only.",
+    "No new model generations, business outcome judgments or live latency measurements.",
+    "No TSR, HR or private-test improvement can be inferred from this replay.",
+    "Observed refusal is a conservative whole-answer literal diagnostic.",
+    "Replay uses only tool observations recorded on each row, so missing session evidence can cause additional rejection; not a recreation of runtime context."
+  ],
+  "changed_grounding_decisions": [
+    {
+      "line": 36,
+      "before_reason": null,
+      "after_reason": "order_creation_unverified"
+    }
+  ],
+  "baseline_integration": {
+    "selected": 19,
+    "failed": 19,
+    "method": "Original HEAD application modules loaded with an import hook in an isolated process; checkout unchanged.",
+    "comparison_stage": "before_current_product_focus_followup",
+    "matched_failures_at_recorded_stage": true
+  },
+  "focused_connected_verification": {
+    "passed": 98,
+    "failed": 0,
+    "command": "PYTHONPATH=ai-services:ai-services/test:. ai-services/.venv/bin/python -m pytest -q --tb=short ai-services/test/test_bounded_agent_completion.py ai-services/test/test_chat_stream_runtime.py ai-services/test/test_voice_playback.py ai-services/test/test_semantic_grounding.py ai-services/test/test_repair_and_safe_fallback.py ai-services/test/test_answer_contract_boundaries.py ai-services/test/test_verified_delivery_boundaries.py"
+  },
+  "live_measurement": {
+    "status": "pending_permission_and_eval_stack",
+    "new_model_calls": 0,
+    "metric_improvement_claimed": false,
+    "readiness": {
+      "checked_at_utc": "2026-11-26 14:34:53 UTC",
+      "runner": "scripts.btc_host.configuration",
+      "configuration_ready": true,
+      "btc_source_exists": true,
+      "runtime_policy_config_exists": false,
+      "postgres_reachable": false,
+      "qdrant_reachable": false,
+      "mcp_catalog_reachable": false,
+      "mcp_order_reachable": false,
+      "mcp_memory_reachable": false,
+      "mcp_knowledge_reachable": false,
+      "probe": "TCP connection only; no server startup, reset, seed or inference"
+    },
+    "prepared_scope": {
+      "scenarios": 7,
+      "calls": 13,
+      "turns": 39,
+      "source": "../BTC-Data-Vong1-TEAMS/test_set/public_sample",
+      "command": "ai-services/.venv/bin/python run_eval.py --config full --scenarios ../BTC-Data-Vong1-TEAMS/test_set/public_sample --out results-reliability-2026-11-26/full.jsonl",
+      "executed": false
+    }
+  },
+  "current_product_focus_verification": {
+    "passed": 165,
+    "failed": 0,
+    "command": "PYTHONPATH=ai-services:ai-services/test:. ai-services/.venv/bin/python -m pytest -q --tb=short ai-services/test/test_current_product_focus.py ai-services/test/test_commerce_evidence.py ai-services/test/test_price_grounding.py ai-services/test/test_promotion_grounding.py ai-services/test/test_semantic_grounding.py ai-services/test/test_guarded_streaming.py ai-services/test/test_product_switch_grounding.py::test_generic_price_is_bound_to_customer_model_not_stale_focus",
+    "synthetic_regressions": 7,
+    "existing_regression_now_passing": "test_generic_price_is_bound_to_customer_model_not_stale_focus"
+  }
+}

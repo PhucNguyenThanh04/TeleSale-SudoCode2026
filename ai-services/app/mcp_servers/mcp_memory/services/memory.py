@@ -141,7 +141,7 @@ async def _committed_episode_view(repo, conn, customer_id, session_id, previous,
 
 async def _operational_facts(repo, conn, customer_id, sessions, facts, rows_cache, revision_barriers):
     from app.agent.memory.deterministic_tool_facts import verified_tool_candidates
-    from app.agent.memory.deterministic_tool_facts import verified_variant_details
+    from app.agent.memory.deterministic_tool_facts import verified_order_details
     from app.mcp_servers.mcp_memory.services.langmem_admission import admit_profile_candidates
     indexed = {(fact.get('scope_type', 'global'), fact.get('scope_id', ''), fact.get('key')): fact
                for fact in facts if isinstance(fact, dict)}
@@ -173,7 +173,7 @@ async def _operational_facts(repo, conn, customer_id, sessions, facts, rows_cach
             accepted, _ = admit_profile_candidates(customer_id, session_id, candidates, [turn], calls)
             for call in calls:
                 sku = call.get('args', {}).get('sku')
-                accepted.extend(verified_variant_details(call, variants.get(sku), tid))
+                accepted.extend(verified_order_details(call, variants.get(sku), tid))
             for fact in accepted:
                 key = (fact.get('scope_type', 'global'), fact.get('scope_id', ''), fact['key'])
                 if key[0] == 'room':

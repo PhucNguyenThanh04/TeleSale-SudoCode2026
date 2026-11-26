@@ -47,9 +47,11 @@ class TurnState(TypedDict, total=False):
     memory_failure: str
     memory_blocked: bool
     memory_include_prior: bool
+    memory_fact_ttl_days: int
     agent_text: str
     verified_answer: str
     agent_draft: str
+    agent_continuation: Any
     selected_system_prompt: str
     reply_context: dict[str, Any]
     reply_error: str | None

@@ -148,8 +148,8 @@ def test_build_runtime_enables_two_repairs_and_safe_fallback():
         runtime = build_runtime(settings, gateway=FakeGateway())
     assert runtime.nodes.max_repair_attempts == 1
     assert runtime.nodes.safe_fallback_on_rejection is True
-    assert runtime.nodes.semantic_review_enabled is False
-    assert runtime.progressive_streaming is True
+    assert runtime.nodes.semantic_review_enabled is True
+    assert runtime.progressive_streaming is False
 
 
 def test_grounding_review_unavailable_fails_fast_without_safe_fallback():

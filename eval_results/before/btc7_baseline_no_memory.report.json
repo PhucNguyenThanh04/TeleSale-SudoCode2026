@@ -1,0 +1,119 @@
+{
+  "coverage": {
+    "scenarios": 7,
+    "calls": 13,
+    "turns": 39,
+    "hard_cases": 3
+  },
+  "safety_issues": [],
+  "turn_diagnostics": {
+    "trace_sha256": "555c9621ffb38d659656b8b95370105fe82719b4772eb1bc75085f62125f8d07",
+    "rows": 39,
+    "stages": {
+      "path": "btc7_baseline_no_memory.stages.json",
+      "sha256": "60baa6d922902477241338d4ea2013f84f8c2c0457a56dc95b60a5276c0931ef"
+    },
+    "events": {
+      "path": "btc7_baseline_no_memory.events.json",
+      "sha256": "b03cf128b80fad0a7ecddda8738cb0c431ddba0086bd772b019ab8836ceb81ec"
+    }
+  },
+  "decision_diagnostics": {
+    "path": "btc7_baseline_no_memory.decisions.jsonl",
+    "sha256": "704cb621faa7dc3d869164df1bcc5f6279671665700e4cd58f827b52801f5ff2",
+    "traces": {
+      "baseline_no_memory": {
+        "path": "btc7_baseline_no_memory.jsonl",
+        "sha256": "555c9621ffb38d659656b8b95370105fe82719b4772eb1bc75085f62125f8d07"
+      }
+    },
+    "complete": false
+  },
+  "execution_health": "healthy",
+  "database_identity": {
+    "database": "telesale_eval_m1",
+    "host": "172.18.0.4/32",
+    "port": 5432,
+    "server_started_at": "2026-11-26T04:21:04.154104+00:00"
+  },
+  "status": "completed",
+  "run_id": "ae75983d-448c-4107-856b-288c5f045905",
+  "config": "baseline_no_memory",
+  "knowledge_release_id": "policy-79dd0a921214cb762c5e4514232d9522",
+  "seed_history": [],
+  "knowledge_release": {
+    "release_id": "policy-79dd0a921214cb762c5e4514232d9522",
+    "manifest_hash": "3e04dcd4eb3fde647580e4563a9d2eb1e679ecf84e676e8612798b596bfe8ac7"
+  },
+  "warmup_turns": 3,
+  "streaming": true,
+  "conversation_measurement": {
+    "lifecycle": "prepare_session -> stream(text, guarded deltas and persistence) -> done; drain_enrichment_at_call_end",
+    "delivery_mode": "text",
+    "playback": "not_applicable",
+    "response_scope": "chat_to_complete_reply",
+    "excluded": [
+      "prepare",
+      "memory_worker_wait",
+      "asr",
+      "tts",
+      "http_transport"
+    ],
+    "ttft_is_proxy": false,
+    "ttft_basis": "streaming_guarded_answer_delta",
+    "total_basis": "streaming_last_answer_delta"
+  },
+  "btc_contract": {
+    "version": "explicit_btc_root",
+    "snapshot_sha256": "1b148999830a56a3d51554d655086e26be2eed61611332f12734e9013e9d4edc"
+  },
+  "catalog_search": {
+    "turns": 39,
+    "search_turns": 10,
+    "one_search_turns": 10,
+    "one_search_rate_among_search_turns": 1.0,
+    "total_calls": 10,
+    "mean_calls_per_turn": 0.256,
+    "calls_per_turn": [
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0
+    ]
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "coverage": {
+    "scenarios": 7,
+    "calls": 13,
+    "turns": 39,
+    "hard_cases": 3
+  },
+  "safety_issues": [],
+  "turn_diagnostics": {
+    "trace_sha256": "ee8669a1dc8a7cc20a376a858c6e52f97289b8e103ef16adcb0ffabfa756f72b",
+    "rows": 39,
+    "stages": {
+      "path": "btc7.full.stages.json",
+      "sha256": "b0641c9dc6e9a4985fc28a0e5a52d5f3039d6e3b695a82c9ff653705761bbdad"
+    },
+    "events": {
+      "path": "btc7.full.events.json",
+      "sha256": "4ffd0938baa78cb91e861c980d8f9afa03f6245af71ba4c137516cbf8c9acf1b"
+    }
+  },
+  "execution_health": "healthy",
+  "database_identity": {
+    "database": "telesale_eval_m1",
+    "host": "172.18.0.4/32",
+    "port": 5432,
+    "server_started_at": "2026-11-26T04:21:04.154104+00:00"
+  },
+  "status": "completed",
+  "run_id": "34caec4b-80dc-4fe5-a842-1417f2d27735",
+  "config": "full",
+  "knowledge_release_id": "policy-79dd0a921214cb762c5e4514232d9522",
+  "seed_history": [],
+  "knowledge_release": {
+    "release_id": "policy-79dd0a921214cb762c5e4514232d9522",
+    "manifest_hash": "3e04dcd4eb3fde647580e4563a9d2eb1e679ecf84e676e8612798b596bfe8ac7"
+  },
+  "warmup_turns": 3,
+  "streaming": true,
+  "conversation_measurement": {
+    "lifecycle": "prepare_session -> stream(text, guarded deltas and persistence) -> done; drain_enrichment_at_call_end",
+    "delivery_mode": "text",
+    "playback": "not_applicable",
+    "response_scope": "chat_to_complete_reply",
+    "excluded": [
+      "prepare",
+      "memory_worker_wait",
+      "asr",
+      "tts",
+      "http_transport"
+    ],
+    "ttft_is_proxy": false,
+    "ttft_basis": "streaming_guarded_answer_delta",
+    "total_basis": "streaming_last_answer_delta"
+  },
+  "btc_contract": {
+    "version": "explicit_btc_root",
+    "snapshot_sha256": "1b148999830a56a3d51554d655086e26be2eed61611332f12734e9013e9d4edc"
+  },
+  "catalog_search": {
+    "turns": 39,
+    "search_turns": 7,
+    "one_search_turns": 7,
+    "one_search_rate_among_search_turns": 1.0,
+    "total_calls": 7,
+    "mean_calls_per_turn": 0.179,
+    "calls_per_turn": [
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  }
+}

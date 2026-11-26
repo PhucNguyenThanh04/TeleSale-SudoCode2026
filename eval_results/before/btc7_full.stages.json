@@ -1,0 +1,1926 @@
+[
+  {
+    "scenario_id": "SC01",
+    "call": "call_1",
+    "turn": 1,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {},
+      "room": {}
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 4,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "catalog.search",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "9bd01519db857f4ff2570285154a3939289206ba8958bf6dcb41e6699f620cc6"
+  },
+  {
+    "scenario_id": "SC01",
+    "call": "call_1",
+    "turn": 2,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-AP-X": [
+          "product_advised"
+        ],
+        "SKU-AP-Y": [
+          "product_advised"
+        ],
+        "SKU-XM-4L": [
+          "product_advised"
+        ]
+      },
+      "room": {}
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 5,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "pricing.get_quote",
+        "status": "unknown"
+      },
+      {
+        "name": "catalog.get_details",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "3830cd5a09164b17e421afbd8438ed04ebaa7153243af2a794c00e826a0aa1bc"
+  },
+  {
+    "scenario_id": "SC01",
+    "call": "call_1",
+    "turn": 3,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-XM-4L": [
+          "product_advised"
+        ],
+        "SKU-AP-Y": [
+          "price_quoted_vnd",
+          "product_advised",
+          "promo_code",
+          "promo_expiry"
+        ],
+        "SKU-AP-X": [
+          "product_advised"
+        ]
+      },
+      "room": {
+        "[redacted_scope]": [
+          "room_area_m2"
+        ]
+      }
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 0,
+    "memory_write_status": "ok",
+    "business_tools": [],
+    "agent_text_sha256": "079d9771b0f42e3a63051bd9280b7f29759f7dbc475ee7851e800a5ab35de7e3"
+  },
+  {
+    "scenario_id": "SC01",
+    "call": "call_1",
+    "turn": 4,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-XM-4L": [
+          "product_advised"
+        ],
+        "SKU-AP-Y": [
+          "price_quoted_vnd",
+          "product_advised",
+          "promo_code",
+          "promo_expiry"
+        ],
+        "SKU-AP-X": [
+          "product_advised"
+        ]
+      },
+      "room": {
+        "[redacted_scope]": [
+          "room_area_m2"
+        ]
+      }
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 0,
+    "memory_write_status": "ok",
+    "business_tools": [],
+    "agent_text_sha256": "a355eb2839276d6f55099a44b668a90fdb227a5ffe8a7b3b76e49144148016ad"
+  },
+  {
+    "scenario_id": "SC01",
+    "call": "call_2",
+    "turn": 1,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [
+      "budget_vnd",
+      "has_children"
+    ],
+    "prior_fact_keys": [
+      "budget_vnd",
+      "has_children"
+    ],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-AP-Y": [
+          "price_quoted_vnd",
+          "product_advised",
+          "promo_code",
+          "promo_expiry"
+        ],
+        "SKU-XM-4L": [
+          "product_advised"
+        ],
+        "SKU-AP-X": [
+          "product_advised"
+        ]
+      },
+      "room": {
+        "[redacted_scope]": [
+          "room_area_m2"
+        ]
+      }
+    },
+    "prior_episode_count": 1,
+    "call_brief_present": true,
+    "call_brief_fields": [
+      "customer_name",
+      "customer_phone",
+      "generated_at",
+      "honorific",
+      "is_returning",
+      "last_session",
+      "latency_ms",
+      "must_not_ask",
+      "n_previous_sessions",
+      "open_blockers",
+      "open_questions",
+      "orders",
+      "precomputed_parts",
+      "products_advised",
+      "profile_facts",
+      "recommended_sku",
+      "selected_sku",
+      "stale_warnings",
+      "suggested_next_action",
+      "suggested_opening"
+    ],
+    "call_brief_counts": {
+      "must_not_ask": 2,
+      "open_blockers": 0,
+      "open_questions": 0,
+      "stale_warnings": 0
+    },
+    "memory_write_count": 1,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "catalog.get_details",
+        "status": "unknown"
+      },
+      {
+        "name": "inventory.check",
+        "status": "unknown"
+      },
+      {
+        "name": "pricing.get_quote",
+        "status": "unknown"
+      },
+      {
+        "name": "catalog.get_details",
+        "status": "unknown"
+      },
+      {
+        "name": "inventory.check",
+        "status": "unknown"
+      },
+      {
+        "name": "pricing.get_quote",
+        "status": "unknown"
+      },
+      {
+        "name": "catalog.get_details",
+        "status": "unknown"
+      },
+      {
+        "name": "inventory.check",
+        "status": "unknown"
+      },
+      {
+        "name": "pricing.get_quote",
+        "status": "unknown"
+      },
+      {
+        "name": "catalog.get_details",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "7cea2f115651343043a03f5c97cbe0df4cfc8f774765ccba25a2e39659af4799"
+  },
+  {
+    "scenario_id": "SC01",
+    "call": "call_2",
+    "turn": 2,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [
+      "budget_vnd",
+      "has_children"
+    ],
+    "prior_fact_keys": [
+      "budget_vnd",
+      "has_children"
+    ],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-AP-Y": [
+          "price_quoted_vnd",
+          "product_advised",
+          "promo_code",
+          "promo_expiry"
+        ],
+        "SKU-XM-4L": [
+          "product_advised"
+        ],
+        "SKU-AP-X": [
+          "product_advised"
+        ]
+      },
+      "room": {
+        "[redacted_scope]": [
+          "room_area_m2"
+        ]
+      }
+    },
+    "prior_episode_count": 1,
+    "call_brief_present": true,
+    "call_brief_fields": [
+      "customer_name",
+      "customer_phone",
+      "generated_at",
+      "honorific",
+      "is_returning",
+      "last_session",
+      "latency_ms",
+      "must_not_ask",
+      "n_previous_sessions",
+      "open_blockers",
+      "open_questions",
+      "orders",
+      "precomputed_parts",
+      "products_advised",
+      "profile_facts",
+      "recommended_sku",
+      "selected_sku",
+      "stale_warnings",
+      "suggested_next_action",
+      "suggested_opening"
+    ],
+    "call_brief_counts": {
+      "must_not_ask": 2,
+      "open_blockers": 0,
+      "open_questions": 0,
+      "stale_warnings": 0
+    },
+    "memory_write_count": 0,
+    "memory_write_status": "ok",
+    "business_tools": [],
+    "agent_text_sha256": "f5d41f86e0f3a5caa8caee5caa3a33926b22d5ec2b34773bf26c71407ebef199"
+  },
+  {
+    "scenario_id": "SC01",
+    "call": "call_2",
+    "turn": 3,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [
+      "budget_vnd",
+      "has_children"
+    ],
+    "prior_fact_keys": [
+      "budget_vnd",
+      "has_children"
+    ],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-AP-Y": [
+          "price_quoted_vnd",
+          "product_advised",
+          "promo_code",
+          "promo_expiry"
+        ],
+        "SKU-XM-4L": [
+          "product_advised"
+        ],
+        "SKU-AP-X": [
+          "product_advised"
+        ]
+      },
+      "room": {
+        "[redacted_scope]": [
+          "room_area_m2"
+        ]
+      }
+    },
+    "prior_episode_count": 1,
+    "call_brief_present": true,
+    "call_brief_fields": [
+      "customer_name",
+      "customer_phone",
+      "generated_at",
+      "honorific",
+      "is_returning",
+      "last_session",
+      "latency_ms",
+      "must_not_ask",
+      "n_previous_sessions",
+      "open_blockers",
+      "open_questions",
+      "orders",
+      "precomputed_parts",
+      "products_advised",
+      "profile_facts",
+      "recommended_sku",
+      "selected_sku",
+      "stale_warnings",
+      "suggested_next_action",
+      "suggested_opening"
+    ],
+    "call_brief_counts": {
+      "must_not_ask": 2,
+      "open_blockers": 0,
+      "open_questions": 0,
+      "stale_warnings": 0
+    },
+    "memory_write_count": 4,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "pricing.get_quote",
+        "status": "unknown"
+      },
+      {
+        "name": "inventory.check",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "0ce88b67d99a73e7c954c0c1e608bf0ee4732fcceeb7cd1d9f8812f8c7907da0"
+  },
+  {
+    "scenario_id": "SC02",
+    "call": "call_1",
+    "turn": 1,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {},
+      "room": {}
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 4,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "catalog.search",
+        "status": "unknown"
+      },
+      {
+        "name": "pricing.get_quote",
+        "status": "unknown"
+      },
+      {
+        "name": "catalog.get_details",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "91578f7185b8d1c1a20ab1024ce36634101f4b98fe7f1dc9c2fb399e123b9f1f"
+  },
+  {
+    "scenario_id": "SC02",
+    "call": "call_1",
+    "turn": 2,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-AP-X": [
+          "price_quoted_vnd",
+          "product_advised",
+          "promo_code",
+          "promo_expiry"
+        ]
+      },
+      "room": {}
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 0,
+    "memory_write_status": "ok",
+    "business_tools": [],
+    "agent_text_sha256": "67dd8121e389657a3788c20431d8787ac8a20c11a5028ef474099e1f5daa1465"
+  },
+  {
+    "scenario_id": "SC02",
+    "call": "call_1",
+    "turn": 3,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-AP-X": [
+          "price_quoted_vnd",
+          "product_advised",
+          "promo_code",
+          "promo_expiry"
+        ]
+      },
+      "room": {}
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 0,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "policy.search",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "9c520b57a350f26b48788bfaa94024d4b02896df708678d154cfcae5523d833d"
+  },
+  {
+    "scenario_id": "SC02",
+    "call": "call_2",
+    "turn": 1,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-AP-X": [
+          "price_quoted_vnd",
+          "product_advised",
+          "promo_code",
+          "promo_expiry"
+        ]
+      },
+      "room": {}
+    },
+    "prior_episode_count": 1,
+    "call_brief_present": true,
+    "call_brief_fields": [
+      "customer_name",
+      "customer_phone",
+      "generated_at",
+      "honorific",
+      "is_returning",
+      "last_session",
+      "latency_ms",
+      "must_not_ask",
+      "n_previous_sessions",
+      "open_blockers",
+      "open_questions",
+      "orders",
+      "precomputed_parts",
+      "products_advised",
+      "profile_facts",
+      "recommended_sku",
+      "selected_sku",
+      "stale_warnings",
+      "suggested_next_action",
+      "suggested_opening"
+    ],
+    "call_brief_counts": {
+      "must_not_ask": 0,
+      "open_blockers": 0,
+      "open_questions": 0,
+      "stale_warnings": 0
+    },
+    "memory_write_count": 0,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "catalog.get_details",
+        "status": "unknown"
+      },
+      {
+        "name": "inventory.check",
+        "status": "unknown"
+      },
+      {
+        "name": "pricing.get_quote",
+        "status": "unknown"
+      },
+      {
+        "name": "catalog.get_details",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "f5d41f86e0f3a5caa8caee5caa3a33926b22d5ec2b34773bf26c71407ebef199"
+  },
+  {
+    "scenario_id": "SC02",
+    "call": "call_2",
+    "turn": 2,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-AP-X": [
+          "price_quoted_vnd",
+          "product_advised",
+          "promo_code",
+          "promo_expiry"
+        ]
+      },
+      "room": {}
+    },
+    "prior_episode_count": 1,
+    "call_brief_present": true,
+    "call_brief_fields": [
+      "customer_name",
+      "customer_phone",
+      "generated_at",
+      "honorific",
+      "is_returning",
+      "last_session",
+      "latency_ms",
+      "must_not_ask",
+      "n_previous_sessions",
+      "open_blockers",
+      "open_questions",
+      "orders",
+      "precomputed_parts",
+      "products_advised",
+      "profile_facts",
+      "recommended_sku",
+      "selected_sku",
+      "stale_warnings",
+      "suggested_next_action",
+      "suggested_opening"
+    ],
+    "call_brief_counts": {
+      "must_not_ask": 0,
+      "open_blockers": 0,
+      "open_questions": 0,
+      "stale_warnings": 0
+    },
+    "memory_write_count": 0,
+    "memory_write_status": "ok",
+    "business_tools": [],
+    "agent_text_sha256": "1abef052ad12e69ac1900ea15d026e90bba93fa43d60dc264fca16fc51afad2a"
+  },
+  {
+    "scenario_id": "SC02",
+    "call": "call_2",
+    "turn": 3,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-AP-X": [
+          "price_quoted_vnd",
+          "product_advised",
+          "promo_code",
+          "promo_expiry"
+        ]
+      },
+      "room": {}
+    },
+    "prior_episode_count": 1,
+    "call_brief_present": true,
+    "call_brief_fields": [
+      "customer_name",
+      "customer_phone",
+      "generated_at",
+      "honorific",
+      "is_returning",
+      "last_session",
+      "latency_ms",
+      "must_not_ask",
+      "n_previous_sessions",
+      "open_blockers",
+      "open_questions",
+      "orders",
+      "precomputed_parts",
+      "products_advised",
+      "profile_facts",
+      "recommended_sku",
+      "selected_sku",
+      "stale_warnings",
+      "suggested_next_action",
+      "suggested_opening"
+    ],
+    "call_brief_counts": {
+      "must_not_ask": 0,
+      "open_blockers": 0,
+      "open_questions": 0,
+      "stale_warnings": 0
+    },
+    "memory_write_count": 1,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "order.create",
+        "status": "success"
+      }
+    ],
+    "agent_text_sha256": "80d86c9f5263f4525b323430bb7b4f1c9a4304bf03ea6d1792aa8e9a1b73c565"
+  },
+  {
+    "scenario_id": "SC03",
+    "call": "call_1",
+    "turn": 1,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {},
+      "room": {}
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 5,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "catalog.search",
+        "status": "unknown"
+      },
+      {
+        "name": "inventory.check",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "ef2e4dc36ca2fc3a67980510220677d13e972e8aae4ef450876bc8f0a0975861"
+  },
+  {
+    "scenario_id": "SC03",
+    "call": "call_1",
+    "turn": 2,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-SN-CAS": [
+          "color",
+          "product_advised",
+          "size",
+          "variant_sku"
+        ]
+      },
+      "room": {}
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 5,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "pricing.get_quote",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "1823ce173b0225c790d6222dfbe6c6ca661b3ee06baa6f29c51cf079a589043b"
+  },
+  {
+    "scenario_id": "SC03",
+    "call": "call_1",
+    "turn": 3,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-SN-CAS": [
+          "color",
+          "product_advised",
+          "size",
+          "variant_sku"
+        ],
+        "SKU-SN-CAS-39-DEN": [
+          "price_quoted_vnd"
+        ]
+      },
+      "room": {}
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 7,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "order.create",
+        "status": "success"
+      }
+    ],
+    "agent_text_sha256": "9c84b919c4eb88cbf374a5b01755a115ad74eba9c042e6630d82f1da85b7f0d0"
+  },
+  {
+    "scenario_id": "SC03",
+    "call": "call_2",
+    "turn": 1,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [
+      "order_id",
+      "payment"
+    ],
+    "prior_fact_keys": [
+      "order_id",
+      "payment"
+    ],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-SN-CAS": [
+          "color",
+          "payment",
+          "product_advised",
+          "size",
+          "variant_sku"
+        ],
+        "SKU-SN-CAS-39-DEN": [
+          "price_quoted_vnd"
+        ]
+      },
+      "room": {}
+    },
+    "prior_episode_count": 1,
+    "call_brief_present": true,
+    "call_brief_fields": [
+      "customer_name",
+      "customer_phone",
+      "generated_at",
+      "honorific",
+      "is_returning",
+      "last_session",
+      "latency_ms",
+      "must_not_ask",
+      "n_previous_sessions",
+      "open_blockers",
+      "open_questions",
+      "orders",
+      "precomputed_parts",
+      "products_advised",
+      "profile_facts",
+      "recommended_sku",
+      "selected_sku",
+      "stale_warnings",
+      "suggested_next_action",
+      "suggested_opening"
+    ],
+    "call_brief_counts": {
+      "must_not_ask": 2,
+      "open_blockers": 0,
+      "open_questions": 0,
+      "stale_warnings": 0
+    },
+    "memory_write_count": 9,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "catalog.get_details",
+        "status": "unknown"
+      },
+      {
+        "name": "inventory.check",
+        "status": "unknown"
+      },
+      {
+        "name": "pricing.get_quote",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "d17333402e60a718e7dfdaae1c83137de210dfaca75701a0bada110496f3c83e"
+  },
+  {
+    "scenario_id": "SC03",
+    "call": "call_2",
+    "turn": 2,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [
+      "order_id",
+      "payment"
+    ],
+    "prior_fact_keys": [
+      "order_id",
+      "payment"
+    ],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-SN-CAS": [
+          "color",
+          "payment",
+          "product_advised",
+          "size",
+          "variant_sku"
+        ],
+        "SKU-SN-CAS-39-DEN": [
+          "price_quoted_vnd"
+        ]
+      },
+      "room": {}
+    },
+    "prior_episode_count": 1,
+    "call_brief_present": true,
+    "call_brief_fields": [
+      "customer_name",
+      "customer_phone",
+      "generated_at",
+      "honorific",
+      "is_returning",
+      "last_session",
+      "latency_ms",
+      "must_not_ask",
+      "n_previous_sessions",
+      "open_blockers",
+      "open_questions",
+      "orders",
+      "precomputed_parts",
+      "products_advised",
+      "profile_facts",
+      "recommended_sku",
+      "selected_sku",
+      "stale_warnings",
+      "suggested_next_action",
+      "suggested_opening"
+    ],
+    "call_brief_counts": {
+      "must_not_ask": 2,
+      "open_blockers": 0,
+      "open_questions": 0,
+      "stale_warnings": 0
+    },
+    "memory_write_count": 5,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "inventory.check",
+        "status": "unknown"
+      },
+      {
+        "name": "policy.search",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "646af73158ae945140760ee170d715113a773a014a1bf945735cae00c8424b9a"
+  },
+  {
+    "scenario_id": "SC03",
+    "call": "call_2",
+    "turn": 3,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [
+      "order_id",
+      "payment"
+    ],
+    "prior_fact_keys": [
+      "order_id",
+      "payment"
+    ],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-SN-CAS": [
+          "color",
+          "payment",
+          "product_advised",
+          "size",
+          "variant_sku"
+        ],
+        "SKU-SN-CAS-39-DEN": [
+          "price_quoted_vnd"
+        ],
+        "SKU-SN-CAS-40-DEN": [
+          "in_stock"
+        ]
+      },
+      "room": {}
+    },
+    "prior_episode_count": 1,
+    "call_brief_present": true,
+    "call_brief_fields": [
+      "customer_name",
+      "customer_phone",
+      "generated_at",
+      "honorific",
+      "is_returning",
+      "last_session",
+      "latency_ms",
+      "must_not_ask",
+      "n_previous_sessions",
+      "open_blockers",
+      "open_questions",
+      "orders",
+      "precomputed_parts",
+      "products_advised",
+      "profile_facts",
+      "recommended_sku",
+      "selected_sku",
+      "stale_warnings",
+      "suggested_next_action",
+      "suggested_opening"
+    ],
+    "call_brief_counts": {
+      "must_not_ask": 2,
+      "open_blockers": 0,
+      "open_questions": 0,
+      "stale_warnings": 2
+    },
+    "memory_write_count": 0,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "order.preview_update",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "d5a10946a2a4334c0b918d02f1c2d1180742810c6a2b1eb91b8b44835ffe2a26"
+  },
+  {
+    "scenario_id": "SC04",
+    "call": "call_1",
+    "turn": 1,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "unknown",
+    "memory_read_status": "unknown",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {},
+      "room": {}
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 1,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "catalog.search",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "bb2c4e457c79b7091b8d8dc0d224c915de70424e035e62e73ad7392a1763aa5e"
+  },
+  {
+    "scenario_id": "SC04",
+    "call": "call_1",
+    "turn": 2,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "unknown",
+    "memory_read_status": "unknown",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {},
+      "room": {}
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 0,
+    "memory_write_status": "ok",
+    "business_tools": [],
+    "agent_text_sha256": "f5d41f86e0f3a5caa8caee5caa3a33926b22d5ec2b34773bf26c71407ebef199"
+  },
+  {
+    "scenario_id": "SC04",
+    "call": "call_1",
+    "turn": 3,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {},
+      "room": {}
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 0,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "catalog.search",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "c625947c20bd089fb448383aa2dcee1d01205bcd941c85665520f90c4998e27a"
+  },
+  {
+    "scenario_id": "SC04",
+    "call": "call_2",
+    "turn": 1,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-SN-RUN2": [
+          "product_advised"
+        ]
+      },
+      "room": {}
+    },
+    "prior_episode_count": 1,
+    "call_brief_present": true,
+    "call_brief_fields": [
+      "customer_name",
+      "customer_phone",
+      "generated_at",
+      "honorific",
+      "is_returning",
+      "last_session",
+      "latency_ms",
+      "must_not_ask",
+      "n_previous_sessions",
+      "open_blockers",
+      "open_questions",
+      "orders",
+      "precomputed_parts",
+      "products_advised",
+      "profile_facts",
+      "recommended_sku",
+      "selected_sku",
+      "stale_warnings",
+      "suggested_next_action",
+      "suggested_opening"
+    ],
+    "call_brief_counts": {
+      "must_not_ask": 0,
+      "open_blockers": 0,
+      "open_questions": 0,
+      "stale_warnings": 0
+    },
+    "memory_write_count": 1,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "catalog.get_details",
+        "status": "unknown"
+      },
+      {
+        "name": "inventory.check",
+        "status": "unknown"
+      },
+      {
+        "name": "pricing.get_quote",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "4b08c325c76b6defce6747899e5d7b6e9ba6d6eab4693fdad1915258490a1d8b"
+  },
+  {
+    "scenario_id": "SC04",
+    "call": "call_2",
+    "turn": 2,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-SN-RUN2": [
+          "product_advised"
+        ]
+      },
+      "room": {}
+    },
+    "prior_episode_count": 1,
+    "call_brief_present": true,
+    "call_brief_fields": [
+      "customer_name",
+      "customer_phone",
+      "generated_at",
+      "honorific",
+      "is_returning",
+      "last_session",
+      "latency_ms",
+      "must_not_ask",
+      "n_previous_sessions",
+      "open_blockers",
+      "open_questions",
+      "orders",
+      "precomputed_parts",
+      "products_advised",
+      "profile_facts",
+      "recommended_sku",
+      "selected_sku",
+      "stale_warnings",
+      "suggested_next_action",
+      "suggested_opening"
+    ],
+    "call_brief_counts": {
+      "must_not_ask": 0,
+      "open_blockers": 0,
+      "open_questions": 0,
+      "stale_warnings": 0
+    },
+    "memory_write_count": 0,
+    "memory_write_status": "ok",
+    "business_tools": [],
+    "agent_text_sha256": "a978eeca4a66fca2f7c9bc40d2c6f8e46d664d6e6b57d37c8535992a43cb561a"
+  },
+  {
+    "scenario_id": "SC04",
+    "call": "call_2",
+    "turn": 3,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-SN-RUN2": [
+          "product_advised"
+        ]
+      },
+      "room": {}
+    },
+    "prior_episode_count": 1,
+    "call_brief_present": true,
+    "call_brief_fields": [
+      "customer_name",
+      "customer_phone",
+      "generated_at",
+      "honorific",
+      "is_returning",
+      "last_session",
+      "latency_ms",
+      "must_not_ask",
+      "n_previous_sessions",
+      "open_blockers",
+      "open_questions",
+      "orders",
+      "precomputed_parts",
+      "products_advised",
+      "profile_facts",
+      "recommended_sku",
+      "selected_sku",
+      "stale_warnings",
+      "suggested_next_action",
+      "suggested_opening"
+    ],
+    "call_brief_counts": {
+      "must_not_ask": 0,
+      "open_blockers": 0,
+      "open_questions": 0,
+      "stale_warnings": 0
+    },
+    "memory_write_count": 17,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "inventory.check",
+        "status": "unknown"
+      },
+      {
+        "name": "pricing.get_quote",
+        "status": "unknown"
+      },
+      {
+        "name": "order.create",
+        "status": "success"
+      }
+    ],
+    "agent_text_sha256": "1d2c222734108d7da1ddacae6bfd1d9861a1d99c3736849d66bca6823dfa2401"
+  },
+  {
+    "scenario_id": "SC05",
+    "call": "call_1",
+    "turn": 1,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {},
+      "room": {}
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 2,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "catalog.search",
+        "status": "unknown"
+      },
+      {
+        "name": "pricing.get_quote",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "b41a24e25c91ae277665d409863a7ecd0447ac4a532b9b01184d54be94cae7fc"
+  },
+  {
+    "scenario_id": "SC05",
+    "call": "call_1",
+    "turn": 2,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-AP-X": [
+          "price_quoted_vnd",
+          "product_advised"
+        ]
+      },
+      "room": {}
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 0,
+    "memory_write_status": "ok",
+    "business_tools": [],
+    "agent_text_sha256": "d0306af4a7cb32fc4884c0b406768d6d576cb510960ee0e0bba1d7c0717ec706"
+  },
+  {
+    "scenario_id": "SC05",
+    "call": "call_2",
+    "turn": 1,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-AP-X": [
+          "price_quoted_vnd",
+          "product_advised"
+        ]
+      },
+      "room": {}
+    },
+    "prior_episode_count": 1,
+    "call_brief_present": true,
+    "call_brief_fields": [
+      "customer_name",
+      "customer_phone",
+      "generated_at",
+      "honorific",
+      "is_returning",
+      "last_session",
+      "latency_ms",
+      "must_not_ask",
+      "n_previous_sessions",
+      "open_blockers",
+      "open_questions",
+      "orders",
+      "precomputed_parts",
+      "products_advised",
+      "profile_facts",
+      "recommended_sku",
+      "selected_sku",
+      "stale_warnings",
+      "suggested_next_action",
+      "suggested_opening"
+    ],
+    "call_brief_counts": {
+      "must_not_ask": 0,
+      "open_blockers": 0,
+      "open_questions": 0,
+      "stale_warnings": 0
+    },
+    "memory_write_count": 4,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "catalog.get_details",
+        "status": "unknown"
+      },
+      {
+        "name": "inventory.check",
+        "status": "unknown"
+      },
+      {
+        "name": "pricing.get_quote",
+        "status": "unknown"
+      },
+      {
+        "name": "catalog.get_details",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "c39dbbcdbde977c04f58f912ac9f4392993f62da887e5f8090173208ca01da0b"
+  },
+  {
+    "scenario_id": "SC05",
+    "call": "call_2",
+    "turn": 2,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-AP-X": [
+          "price_quoted_vnd",
+          "product_advised",
+          "promo_code",
+          "promo_expiry"
+        ]
+      },
+      "room": {}
+    },
+    "prior_episode_count": 1,
+    "call_brief_present": true,
+    "call_brief_fields": [
+      "customer_name",
+      "customer_phone",
+      "generated_at",
+      "honorific",
+      "is_returning",
+      "last_session",
+      "latency_ms",
+      "must_not_ask",
+      "n_previous_sessions",
+      "open_blockers",
+      "open_questions",
+      "orders",
+      "precomputed_parts",
+      "products_advised",
+      "profile_facts",
+      "recommended_sku",
+      "selected_sku",
+      "stale_warnings",
+      "suggested_next_action",
+      "suggested_opening"
+    ],
+    "call_brief_counts": {
+      "must_not_ask": 0,
+      "open_blockers": 0,
+      "open_questions": 0,
+      "stale_warnings": 0
+    },
+    "memory_write_count": 0,
+    "memory_write_status": "ok",
+    "business_tools": [],
+    "agent_text_sha256": "b24be2a2fbc0d41e4b1c2f31db894d8bb361755e6923b59bb775c62aecaedc9c"
+  },
+  {
+    "scenario_id": "SC05",
+    "call": "call_2",
+    "turn": 3,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-AP-X": [
+          "price_quoted_vnd",
+          "product_advised",
+          "promo_code",
+          "promo_expiry"
+        ]
+      },
+      "room": {}
+    },
+    "prior_episode_count": 1,
+    "call_brief_present": true,
+    "call_brief_fields": [
+      "customer_name",
+      "customer_phone",
+      "generated_at",
+      "honorific",
+      "is_returning",
+      "last_session",
+      "latency_ms",
+      "must_not_ask",
+      "n_previous_sessions",
+      "open_blockers",
+      "open_questions",
+      "orders",
+      "precomputed_parts",
+      "products_advised",
+      "profile_facts",
+      "recommended_sku",
+      "selected_sku",
+      "stale_warnings",
+      "suggested_next_action",
+      "suggested_opening"
+    ],
+    "call_brief_counts": {
+      "must_not_ask": 0,
+      "open_blockers": 0,
+      "open_questions": 0,
+      "stale_warnings": 0
+    },
+    "memory_write_count": 0,
+    "memory_write_status": "ok",
+    "business_tools": [],
+    "agent_text_sha256": "c3b83260bbf35d4aafd38a2dde59252de0504dfae8b1e050740fcd7a57fce9fb"
+  },
+  {
+    "scenario_id": "SC06",
+    "call": "call_1",
+    "turn": 1,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {},
+      "room": {}
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 4,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "catalog.search",
+        "status": "unknown"
+      },
+      {
+        "name": "pricing.get_quote",
+        "status": "unknown"
+      },
+      {
+        "name": "catalog.get_details",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "df7e9af9422f2871ee5d265014c49d9e6ec535301715a86895a5e2c0350dad5c"
+  },
+  {
+    "scenario_id": "SC06",
+    "call": "call_1",
+    "turn": 2,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-XM-4P": [
+          "price_quoted_vnd",
+          "product_advised",
+          "promo_code",
+          "promo_expiry"
+        ]
+      },
+      "room": {}
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 1,
+    "memory_write_status": "ok",
+    "business_tools": [],
+    "agent_text_sha256": "82f04d19c2a8e72c6add15e2dfa63e69e00af4432b55b55ae6b67f32a6467a12"
+  },
+  {
+    "scenario_id": "SC06",
+    "call": "call_1",
+    "turn": 3,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-XM-4P": [
+          "price_quoted_vnd",
+          "product_advised",
+          "promo_code",
+          "promo_expiry"
+        ]
+      },
+      "room": {}
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 0,
+    "memory_write_status": "ok",
+    "business_tools": [],
+    "agent_text_sha256": "d231d70a6c32d5df74816a67f824baaffa5c2e97959f70e2d248ba3a6caaf08d"
+  },
+  {
+    "scenario_id": "SC06",
+    "call": "call_2",
+    "turn": 1,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-XM-4P": [
+          "price_quoted_vnd",
+          "product_advised",
+          "promo_code",
+          "promo_expiry"
+        ]
+      },
+      "room": {
+        "[redacted_scope]": [
+          "room_area_m2"
+        ]
+      }
+    },
+    "prior_episode_count": 1,
+    "call_brief_present": true,
+    "call_brief_fields": [
+      "customer_name",
+      "customer_phone",
+      "generated_at",
+      "honorific",
+      "is_returning",
+      "last_session",
+      "latency_ms",
+      "must_not_ask",
+      "n_previous_sessions",
+      "open_blockers",
+      "open_questions",
+      "orders",
+      "precomputed_parts",
+      "products_advised",
+      "profile_facts",
+      "recommended_sku",
+      "selected_sku",
+      "stale_warnings",
+      "suggested_next_action",
+      "suggested_opening"
+    ],
+    "call_brief_counts": {
+      "must_not_ask": 0,
+      "open_blockers": 0,
+      "open_questions": 0,
+      "stale_warnings": 0
+    },
+    "memory_write_count": 1,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "catalog.get_details",
+        "status": "unknown"
+      },
+      {
+        "name": "inventory.check",
+        "status": "unknown"
+      },
+      {
+        "name": "pricing.get_quote",
+        "status": "unknown"
+      },
+      {
+        "name": "catalog.get_details",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "1eaadab1022c1081832aaf43b0ac9fe173d0d6602196005bb374f60f89bc693c"
+  },
+  {
+    "scenario_id": "SC06",
+    "call": "call_2",
+    "turn": 2,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-XM-4P": [
+          "price_quoted_vnd",
+          "product_advised",
+          "promo_code",
+          "promo_expiry"
+        ]
+      },
+      "room": {
+        "[redacted_scope]": [
+          "room_area_m2"
+        ]
+      }
+    },
+    "prior_episode_count": 1,
+    "call_brief_present": true,
+    "call_brief_fields": [
+      "customer_name",
+      "customer_phone",
+      "generated_at",
+      "honorific",
+      "is_returning",
+      "last_session",
+      "latency_ms",
+      "must_not_ask",
+      "n_previous_sessions",
+      "open_blockers",
+      "open_questions",
+      "orders",
+      "precomputed_parts",
+      "products_advised",
+      "profile_facts",
+      "recommended_sku",
+      "selected_sku",
+      "stale_warnings",
+      "suggested_next_action",
+      "suggested_opening"
+    ],
+    "call_brief_counts": {
+      "must_not_ask": 0,
+      "open_blockers": 0,
+      "open_questions": 0,
+      "stale_warnings": 0
+    },
+    "memory_write_count": 0,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "pricing.get_quote",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "7ccd1dc832908fc2a5447b3749ee596f544b7c17574f171fdaf34d1b418c2dd9"
+  },
+  {
+    "scenario_id": "SC06",
+    "call": "call_2",
+    "turn": 3,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {
+        "SKU-XM-4P": [
+          "price_quoted_vnd",
+          "product_advised",
+          "promo_code",
+          "promo_expiry"
+        ]
+      },
+      "room": {
+        "[redacted_scope]": [
+          "room_area_m2"
+        ]
+      }
+    },
+    "prior_episode_count": 1,
+    "call_brief_present": true,
+    "call_brief_fields": [
+      "customer_name",
+      "customer_phone",
+      "generated_at",
+      "honorific",
+      "is_returning",
+      "last_session",
+      "latency_ms",
+      "must_not_ask",
+      "n_previous_sessions",
+      "open_blockers",
+      "open_questions",
+      "orders",
+      "precomputed_parts",
+      "products_advised",
+      "profile_facts",
+      "recommended_sku",
+      "selected_sku",
+      "stale_warnings",
+      "suggested_next_action",
+      "suggested_opening"
+    ],
+    "call_brief_counts": {
+      "must_not_ask": 0,
+      "open_blockers": 0,
+      "open_questions": 0,
+      "stale_warnings": 0
+    },
+    "memory_write_count": 1,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "order.create",
+        "status": "success"
+      }
+    ],
+    "agent_text_sha256": "3696beff7d9834870baa59f733d590dd2bb9e78e7ef1a7587ae5bd37e0f49e5f"
+  },
+  {
+    "scenario_id": "SC07",
+    "call": "call_1",
+    "turn": 1,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {},
+      "room": {}
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 0,
+    "memory_write_status": "ok",
+    "business_tools": [
+      {
+        "name": "policy.search",
+        "status": "unknown"
+      }
+    ],
+    "agent_text_sha256": "99f7977d0dde0ee38deae7df51008d89b18c59a7921670840f211de8aac212a5"
+  },
+  {
+    "scenario_id": "SC07",
+    "call": "call_1",
+    "turn": 2,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {},
+      "room": {}
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 0,
+    "memory_write_status": "ok",
+    "business_tools": [],
+    "agent_text_sha256": "fd1a77869a4fe0beb9e85166fe090596b55939f952dc438b39193ff42697d7a0"
+  },
+  {
+    "scenario_id": "SC07",
+    "call": "call_1",
+    "turn": 3,
+    "run_id": "8f6a6f6b-1984-4e02-b691-dca3704a5cb6",
+    "config": "full",
+    "identity_status": "known",
+    "memory_read_status": "ok",
+    "profile_keys": [],
+    "prior_fact_keys": [],
+    "scoped_fact_keys": {
+      "product": {},
+      "room": {}
+    },
+    "prior_episode_count": 0,
+    "call_brief_present": false,
+    "call_brief_fields": [],
+    "call_brief_counts": {},
+    "memory_write_count": 0,
+    "memory_write_status": "ok",
+    "business_tools": [],
+    "agent_text_sha256": "9cf749bc9f18152f4e18c25ddfd077583d67778bedb010e6b99879064dff41a9"
+  }
+]
