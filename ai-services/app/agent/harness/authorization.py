@@ -104,105 +104,69 @@ def build_write_context(state, name, args):
             'tool_failed', 'private_delivery', 'context_source_complete')}))
 
 
-_FAST_AUTH_CONFIRM_RE = re.compile(
-    r'(?:lên đơn|chốt đơn|tạo đơn|đặt đơn|đặt hàng|đặt cho|lấy luôn|chốt luôn|mua luôn'
-    r'|xác nhận\s+(?:đặt|mua|lấy|lên đơn|chốt)|ok\s+(?:em\s+)?(?:lên đơn|chốt|đặt|lấy)'
-    r'|đồng ý\s+(?:đặt|mua|lấy|lên đơn|chốt))',
-    re.IGNORECASE,
-)
-_FAST_AUTH_BLOCK_RE = re.compile(
-    r'(?:\?|(?<!\w)(?:chưa|không|ko|k|đừng|thôi|hủy|huỷ|nếu|giả sử|nhỡ|cân nhắc|suy nghĩ'
-    r'|để xem|hỏi lại|hỏi trước|hỏi thử|chỉ hỏi|vợ|chồng|bố|mẹ|ba|má|bạn|người nhà|sếp'
-    r'|đồng nghiệp|nhưng|tuy nhiên|bao nhiêu|mấy ngày|khi nào|thế nào|sao|đổi ý|khoan|chờ)(?!\w))',
-    re.IGNORECASE,
-)
-_FAST_AUTH_PRICE_RE = re.compile(
-    r'(?<!\d)(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?\s*(?:triệu|tr|nghìn|ngàn|k|đ|đồng|vnd))(?!\w)',
-    re.IGNORECASE,
-)
-
-
-def _parse_vnd_mention(raw: str) -> int | None:
-    s = raw.lower().strip()
-    for suffix, mult in (('triệu', 1_000_000), ('tr', 1_000_000), ('nghìn', 1_000), ('ngàn', 1_000), ('k', 1_000)):
-        if s.endswith(suffix):
-            num = s[:-len(suffix)].strip().replace(',', '.')
-            try:
-                return int(round(float(num) * mult))
-            except ValueError:
-                return None
-    cleaned = re.sub(r'(?:đồng|vnd|đ|\s|\.|,)', '', s)
-    if cleaned.isdigit():
-        val = int(cleaned)
-        return val if val >= 1000 else None
-    return None
-
-
 def deterministic_fast_authorize(name: str, args: dict, state: dict) -> bool | None:
-    if name != 'order.create' or not isinstance(args, dict):
+    from app.agent.harness.policy import order_evidence_error
+    from app.mcp_servers.mcp_shared.commerce_evidence import CATALOG_TOOLS, build_commerce_evidence
+    from app.mcp_servers.mcp_shared.commerce_rules import _search_text
+
+    if (name != 'order.create' or not isinstance(args, dict)
+            or args.get('lines') is not None or args.get('address')
+            or args.get('basket_skus') or args.get('promo_code')):
         return None
-    if args.get('lines') is not None:
-        return None
-    sku = args.get('sku')
-    price_vnd = args.get('price_vnd')
-    qty = args.get('qty', 1)
+    sku, price, qty = args.get('sku'), args.get('price_vnd'), args.get('qty', 1)
     payment = args.get('payment') or 'COD'
-    if (not isinstance(sku, str) or not sku.strip()
-            or not isinstance(price_vnd, int) or price_vnd <= 0
-            or not isinstance(qty, int) or qty <= 0):
+    if (not isinstance(sku, str) or type(price) is not int or price <= 0
+            or type(qty) is not int or qty <= 0
+            or payment not in {'COD', 'bank', 'momo', 'zalopay'}
+            or payment == 'COD' and price * qty > 10_000_000):
         return None
-    if payment not in {'COD', 'bank', 'momo', 'zalopay'}:
+    text = state.get('safe_text') or ''
+    if not text.strip() or '?' in text:
         return None
-    if payment == 'COD' and price_vnd * qty > 10_000_000:
+    if order_evidence_error(state, {**args, 'qty': qty}) is not None:
         return None
-    request = state.get('request')
+    calls = build_commerce_evidence(state)
+    items = {item['sku']: item for call in calls if call['name'] in CATALOG_TOOLS
+             for item in call['result'].get('items', [])
+             if isinstance(item, dict) and isinstance(item.get('sku'), str)}
+    if sku not in items or items[sku].get('variants'):
+        return None
+    aliases = {}
+    for code, item in items.items():
+        words = _search_text(item.get('name') or '').split()
+        labels = {code, ' '.join(words)} | {
+            ' '.join(words[-count:]) for count in range(2, min(len(words), 5) + 1)}
+        for label in labels:
+            if label:
+                aliases.setdefault(_search_text(label), set()).add(code)
+    labels = [re.escape(label) for label, codes in aliases.items() if codes == {sku}]
+    product = '(?:' + '|'.join(sorted(labels, key=len, reverse=True)) + ')'
+    folded = _search_text(text)
+    folded = re.sub(r'(?<!\d)[,.!]|[,.!](?!\d)', ' ', folded)
+    folded = ' '.join(folded.split())
+    request = re.fullmatch(
+        r'(?:(?:ok|da|vang|dong y) )?(?:(?:anh|chi|toi|minh) )?'
+        r'(?:xac nhan )?(?:em )?(?:len don|tao don|chot don|dat hang|dat|mua|lay) '
+        r'(?:(?:giup|cho) (?:anh|chi|toi|minh) )?'
+        r'(?:(?P<qty>\d+|mot|hai|ba|bon|nam|sau|bay|tam|chin|muoi) '
+        r'(?:chiec|cai|bo|doi|tam|san pham) )?'
+        + product +
+        r'(?: gia (?P<price>\d[\d.,]*(?: (?:dong|vnd)|d)?))?'
+        r'(?: (?:thanh toan )?(?P<payment>cod|tien mat|bank|chuyen khoan|momo|zalopay))?'
+        r'(?: (?:a|nhe|nha))?', folded)
     if request is None:
         return None
-    address = args.get('address')
-    if isinstance(address, str) and address and address not in request.text:
+    numbers = dict(zip(('mot', 'hai', 'ba', 'bon', 'nam', 'sau', 'bay', 'tam', 'chin', 'muoi'), range(1, 11)))
+    stated_qty = request['qty'] or '1'
+    stated_qty = int(stated_qty) if stated_qty.isdecimal() else numbers[stated_qty]
+    stated_payment = {'tien mat': 'COD', 'cod': 'COD', 'chuyen khoan': 'bank'}.get(
+        request['payment'], request['payment'] or 'COD')
+    if stated_qty != qty or stated_payment != payment:
         return None
-    safe_text = state.get('safe_text') or ''
-    if not safe_text.strip():
-        return None
-    if _FAST_AUTH_BLOCK_RE.search(safe_text) or not _FAST_AUTH_CONFIRM_RE.search(safe_text):
-        return None
-    lowered = safe_text.lower()
-    if re.search(r'(?:chuyển khoản|\bck\b|\bbank\b)', lowered) and payment != 'bank':
-        return None
-    if re.search(r'\bmomo\b', lowered) and payment != 'momo':
-        return None
-    if re.search(r'\bzalopay\b', lowered) and payment != 'zalopay':
-        return None
-    if re.search(r'(?:\bcod\b|tiền mặt)', lowered) and payment != 'COD':
-        return None
-    for match in _FAST_AUTH_PRICE_RE.finditer(safe_text):
-        mentioned = _parse_vnd_mention(match.group(1))
-        if mentioned is None or mentioned not in {price_vnd, price_vnd * qty}:
+    if request['price']:
+        stated_price = int(re.sub(r'[^\d]', '', request['price']))
+        if stated_price != price:
             return None
-    on_str = str(request.on)
-    all_calls = [*(state.get('session_tool_calls') or []), *(state.get('tool_calls') or [])]
-    has_quote = any(
-        c.get('name') == 'pricing.get_quote'
-        and isinstance(c.get('args'), dict)
-        and c['args'].get('sku') == sku
-        and str(c['args'].get('on') or on_str) == on_str
-        and isinstance(c.get('result'), dict)
-        and 'error' not in c['result']
-        and c['result'].get('final_price_vnd') == price_vnd
-        for c in all_calls
-    )
-    has_stock = any(
-        c.get('name') == 'inventory.check'
-        and isinstance(c.get('args'), dict)
-        and c['args'].get('sku') == sku
-        and str(c['args'].get('on') or on_str) == on_str
-        and isinstance(c.get('result'), dict)
-        and 'error' not in c['result']
-        and c['result'].get('in_stock') is True
-        for c in all_calls
-    )
-    if not (has_quote and has_stock):
-        return None
     return True
 
 

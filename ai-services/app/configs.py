@@ -43,8 +43,8 @@ class Settings(BaseSettings):
     agent_guardrails_enabled: bool = True
     agent_authorizer_enabled: bool = True
     agent_verify_enabled: bool = True
-    agent_progressive_streaming: bool = True
-    agent_semantic_review_enabled: bool = False
+    agent_progressive_streaming: bool = False
+    agent_semantic_review_enabled: bool = True
     agent_turn_timeout_seconds: float = Field(default=90, gt=0)
     langmem_model: str | None = None
     langmem_max_tokens: int = Field(default=1024, ge=256, le=8192)

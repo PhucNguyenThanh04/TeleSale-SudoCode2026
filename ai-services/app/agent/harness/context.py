@@ -138,8 +138,9 @@ def prompt_context(state: TurnState, history_turns: int) -> dict[str, Any]:
         state = {**state, 'history': [], 'customer_statements': [], 'profile': {}, 'scoped_facts': {'product': {}, 'room': {}},
                  'episodes': [], 'current_episode': None, 'call_brief': None, 'session_tool_calls': []}
     on = state['request'].on
-    customer_facts, sales_history = _split_facts(state.get("profile", {}), on=on)
-    scoped = _safe_scoped_facts(state.get("scoped_facts", {}), on=on)
+    ttl = state.get('memory_fact_ttl_days', 240)
+    customer_facts, sales_history = _split_facts(state.get("profile", {}), on=on, fact_ttl_days=ttl)
+    scoped = _safe_scoped_facts(state.get("scoped_facts", {}), on=on, fact_ttl_days=ttl)
     rooms = scoped.get("room", {}) if isinstance(scoped, dict) else {}
     products = scoped.get("product", {}) if isinstance(scoped, dict) else {}
     if isinstance(rooms, dict) and rooms:
@@ -150,7 +151,7 @@ def prompt_context(state: TurnState, history_turns: int) -> dict[str, Any]:
         product_preferences = []
         for sku, facts in products.items():
             if isinstance(sku, str) and isinstance(facts, dict):
-                preferences, _ = _split_facts(facts)
+                preferences, _ = _split_facts(facts, on=on, fact_ttl_days=ttl)
                 if preferences:
                     product_preferences.append({"sku": sku, **preferences})
         if product_preferences:
@@ -341,7 +342,8 @@ def _mask_context(value: Any, path: tuple[str, ...] = ()) -> Any:
     return value
 
 
-def _safe_scoped_facts(value: Any, *, on: date | None = None) -> dict[str, dict[str, dict[str, Any]]]:
+def _safe_scoped_facts(value: Any, *, on: date | None = None,
+                       fact_ttl_days: int = 240) -> dict[str, dict[str, dict[str, Any]]]:
     safe = {"product": {}, "room": {}}
     if not isinstance(value, dict):
         return safe
@@ -352,7 +354,8 @@ def _safe_scoped_facts(value: Any, *, on: date | None = None) -> dict[str, dict[
         for scope_id, facts in groups.items():
             if not isinstance(scope_id, str) or mask_pii(scope_id) != scope_id:
                 continue
-            admitted, sales = _split_facts(facts if isinstance(facts, dict) else {}, on=on)
+            admitted, sales = _split_facts(facts if isinstance(facts, dict) else {}, on=on,
+                                          fact_ttl_days=fact_ttl_days)
             values = {**admitted, **sales}
             if values:
                 safe[scope_type][scope_id] = values
@@ -485,7 +488,9 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
     context_checkpoint("context_loaded", state, context)
     history = _mask_context(context.get("history", []), ("history",))
     profile = context.get("profile", {})
-    scoped_facts = _safe_scoped_facts(context.get("scoped_facts", {}), on=state['request'].on)
+    ttl = getattr(memory, 'fact_ttl_days', 240)
+    scoped_facts = _safe_scoped_facts(context.get("scoped_facts", {}), on=state['request'].on,
+                                      fact_ttl_days=ttl)
     episodes = list(context.get("episodes", []))
     accepted = context.get("accepted_episodes") or []
     if customer_id and getattr(memory, "include_prior", True) and accepted:
@@ -535,7 +540,7 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
     create_brief = (bool(episodes) and bool(state.get("customer_phone"))
                     and state.get("identity_status") == "known")
     warnings = []
-    safe_customer, safe_sales = _split_facts(profile, on=state['request'].on)
+    safe_customer, safe_sales = _split_facts(profile, on=state['request'].on, fact_ttl_days=ttl)
     profile = {**safe_customer, **safe_sales}
     advised = safe_sales.get(Slot.PRODUCT_ADVISED, {}).get("value")
     scoped_products = scoped_facts["product"]
@@ -645,7 +650,7 @@ async def load_context(state: TurnState, memory: MemoryStore, tools: ToolGateway
         for order_entry in brief.get("orders", []):
             if order_entry.get("variant_sku") is None:
                 order_entry.pop("variant_sku", None)
-    return {**erased, "history": history, "profile": profile,
+    return {**erased, "history": history, "profile": profile, 'memory_fact_ttl_days': ttl,
             'context_source_complete': context.get('context_complete', True),
             'private_delivery': delivery,
             'customer_statements': _mask_context(context.get('customer_statements', []), ('customer_statements',)),

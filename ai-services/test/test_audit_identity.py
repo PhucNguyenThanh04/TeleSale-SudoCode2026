@@ -23,7 +23,9 @@ def test_numeric_chat_identity_cannot_fall_back_to_phone_at_repository_boundary(
     assert session.execute.await_count == 1
 
 
-def test_a_self_asserted_phone_does_not_load_a_chat_customers_profile():
+@pytest.mark.parametrize('channel,key', [('chat_fanpage', 'fb_id'), ('zalo_oa', 'zalo_id')])
+@pytest.mark.parametrize('channel_identity', ['unlinked-social-user', '0900000027'])
+def test_a_self_asserted_phone_does_not_load_a_chat_customers_profile(channel, key, channel_identity):
     calls = []
 
     async def invoke(name, args):
@@ -31,13 +33,26 @@ def test_a_self_asserted_phone_does_not_load_a_chat_customers_profile():
         return ({'found': True, 'customer_id': 'OTHER', 'phone': '0900000027',
                  'orders': [], 'sessions': []} if args.get('phone') else {'found': False})
 
-    turn = SimpleNamespace(channel='chat_fanpage', channel_identity='unlinked-page-user',
+    turn = SimpleNamespace(channel=channel, channel_identity=channel_identity,
         verified_customer_id=None, verified_phone=None, text='SĐT tôi là 0900000027',
         session_id=uuid4(), client_msg_id=uuid4())
     identity, _ = asyncio.run(initialize_identity(turn, SimpleNamespace(invoke=invoke)))
     assert identity['identity_status'] == 'unknown'
     assert identity['customer_id'] is None
-    assert calls == [{'fb_id': 'unlinked-page-user'}]
+    assert calls == [{key: channel_identity}]
+
+
+@pytest.mark.parametrize('channel,key', [('chat_fanpage', 'fb_id'), ('zalo_oa', 'zalo_id')])
+def test_linked_chat_identity_ignores_a_different_self_asserted_phone(channel, key):
+    tools = SimpleNamespace(invoke=AsyncMock(return_value={
+        'found': True, 'customer_id': 'LINKED-OWNER', 'phone': '0900000019',
+        'orders': [], 'sessions': []}))
+    turn = SimpleNamespace(channel=channel, channel_identity='linked-social-user',
+        verified_customer_id=None, verified_phone=None, text='Số của tôi là 0900000027',
+        session_id=uuid4(), client_msg_id=uuid4())
+    identity, _ = asyncio.run(initialize_identity(turn, tools))
+    assert identity['customer_id'] == 'LINKED-OWNER'
+    tools.invoke.assert_awaited_once_with('crm.get_customer', {key: 'linked-social-user'})
 
 
 class UnlinkedRepo(OrderRepo):

@@ -16,7 +16,8 @@ def build_runtime(settings: Settings, *, gateway=None) -> AgentHarnessRuntime:
     gateway = gateway or MCPGateway(settings.mcp_catalog_url, settings.mcp_order_url,
                          settings.mcp_memory_url,
                          settings.mcp_internal_token.get_secret_value(), knowledge=settings.mcp_knowledge_url)
-    memory = MCPMemoryStore(gateway, max_episodes=settings.memory_max_episodes)
+    memory = MCPMemoryStore(gateway, max_episodes=settings.memory_max_episodes,
+                            fact_ttl_days=settings.memory_fact_ttl_days)
     return AgentHarnessRuntime(build_llm(settings), gateway, memory,
                               max_tool_calls=settings.agent_max_tool_calls,
                               prompt_history_turns=settings.agent_prompt_history_turns,

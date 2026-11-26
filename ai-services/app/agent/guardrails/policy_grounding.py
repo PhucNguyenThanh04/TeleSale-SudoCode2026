@@ -43,4 +43,16 @@ def policy_durations_supported(candidate, source_text):
         return {(int(n) * (12 if unit == 'năm' else 1),
                  'ngày' if unit == 'ngày' else 'tháng')
                 for n, unit in re.findall(r'\b(\d+)\s+(ngày|tháng|năm)\b', text.casefold())}
-    return durations(candidate) <= durations(source_text)
+    if not durations(candidate) <= durations(source_text):
+        return False
+    universal = re.compile(r'(?i)\b(?:mọi|tất cả|bất kỳ|toàn bộ)\b')
+    conditional = re.compile(r'(?i)\b(?:riêng|chỉ|nếu|khi|trừ|đối với|áp dụng cho)\b')
+    sources = re.split(r'[.;!?\n]', source_text)
+    for clause in re.split(r'[.;!?\n]', candidate):
+        if not universal.search(clause) or conditional.search(clause):
+            continue
+        for duration in durations(clause):
+            support = [part for part in sources if duration in durations(part)]
+            if support and all(conditional.search(part) for part in support):
+                return False
+    return True

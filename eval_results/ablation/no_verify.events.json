@@ -1,0 +1,3313 @@
+[
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC01",
+    "call": "call_1",
+    "turn": 1,
+    "agent_text_sha256": "3a9e17cc3af4784398e36d004eec9340a13a0825d4812262c8bb1e9cf8d927e5",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 24
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 614
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 30,
+        "tool": "catalog.search"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 1770
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 2455
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 23
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC01",
+    "call": "call_1",
+    "turn": 2,
+    "agent_text_sha256": "2738f6907106fa6a60e10944399cc5410007e365d2dd13ce13438f1b8a72ddfe",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 31
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 777
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 32,
+        "tool": "pricing.get_quote"
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 32,
+        "tool": "pricing.get_quote"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 618
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 26,
+        "tool": "catalog.get_details"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 1220
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 2723
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 1
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 18
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC01",
+    "call": "call_1",
+    "turn": 3,
+    "agent_text_sha256": "cfa6c63e6dd615c6935612ef69dc7df8c682c91bba11d7fd42d2c9d78ca89f28",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 35
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 1889
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 1923
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 20
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC01",
+    "call": "call_1",
+    "turn": 4,
+    "agent_text_sha256": "9954454d78adec9ca692d11ca98e3722cb31a5f3e89ae974e06c01bfe7b2fead",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 34
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 912
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 945
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 16
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC01",
+    "call": "call_2",
+    "turn": 1,
+    "agent_text_sha256": "0aa87347e9e09fa24d3f5fdda6e5479dccb2c29d254898df01bf13b003d70802",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 32
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 1341
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 1379
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 27
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC01",
+    "call": "call_2",
+    "turn": 2,
+    "agent_text_sha256": "27175fe5072f443d030460a396d2b4829227cb710bec6a0c72cb3492a857563c",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 44
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 1498
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 1533
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 15
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC01",
+    "call": "call_2",
+    "turn": 3,
+    "agent_text_sha256": "30ab73cd3aff484f15a439d3f9c2bc0282435d41957bdb4152841e302478798d",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 58
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 1089
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 1136
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 1
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 18
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC02",
+    "call": "call_1",
+    "turn": 1,
+    "agent_text_sha256": "ea719308e5c87c46c63aa7548865a29b6367d736fe379c418ab81c883b31ac2f",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 23
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 820
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 153,
+        "tool": "catalog.search"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 604
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 14,
+        "tool": "pricing.get_quote"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 651
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 27,
+        "tool": "catalog.get_details"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 841
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 3169
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 20
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC02",
+    "call": "call_1",
+    "turn": 2,
+    "agent_text_sha256": "03607f82ff26a253fbb0f3a0dbf31476596979d451ae60e6ea341e953e809afc",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 37
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 1887
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 1919
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 37
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC02",
+    "call": "call_1",
+    "turn": 3,
+    "agent_text_sha256": "1b0f22585b1e50cf6911c7d837b98ab18b0945c21ae95101bee157fc48071103",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 38
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 769
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 330,
+        "tool": "policy.search"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 1341
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 2492
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 19
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC02",
+    "call": "call_2",
+    "turn": 1,
+    "agent_text_sha256": "60dc0426c250d98ba14cb5ae4727142915d6c26a45a032e053b1e587711d7f76",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 37
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 1223
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 1255
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 24
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC02",
+    "call": "call_2",
+    "turn": 2,
+    "agent_text_sha256": "b960b9c848170458da732c124a51619994ec1b56515965ef25e595d235f70acf",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 46
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 1114
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 1151
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 13
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC02",
+    "call": "call_2",
+    "turn": 3,
+    "agent_text_sha256": "4bcae8399dbdcf101e40003eff60d81f35357a5522aa3118116517c51784f6ff",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 46
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 813
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 34,
+        "tool": "order.create"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 889
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 3323
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 22
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC03",
+    "call": "call_1",
+    "turn": 1,
+    "agent_text_sha256": "3d81bda74c2daa7fd1031d94010abc83a0108bd223483914e10950460066b89a",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 25
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 713
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 23,
+        "tool": "catalog.search"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 642
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 32,
+        "tool": "inventory.check"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 747
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 2210
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 23
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC03",
+    "call": "call_1",
+    "turn": 2,
+    "agent_text_sha256": "5d18f8c996e704a20d5b59a6fb3d8d5904355a84523fe9afdc47c5d4a1bf5314",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 33
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 1449
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 20,
+        "tool": "pricing.get_quote"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 814
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 2332
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 24
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC03",
+    "call": "call_1",
+    "turn": 3,
+    "agent_text_sha256": "f41c918aed3d408b3bf10eaf695b92d401e9690f4e95f8f58a9b8b94b636fe58",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 27
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 709
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 29,
+        "tool": "order.create"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 856
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 1651
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 22
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC03",
+    "call": "call_2",
+    "turn": 1,
+    "agent_text_sha256": "5d04e64968f197b812319ff463f341fa4b82752389e3fdf82f0da114b56e656d",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 29
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 1034
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 1068
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 1
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 24
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC03",
+    "call": "call_2",
+    "turn": 2,
+    "agent_text_sha256": "968c28e04e539e5544e991f6421b5dce97eaf6cfefb407d5df617329d5531667",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 40
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 805
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 21,
+        "tool": "inventory.check"
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 350,
+        "tool": "policy.search"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 888
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 2093
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 52
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC03",
+    "call": "call_2",
+    "turn": 3,
+    "agent_text_sha256": "e3e57a18d8d54b04e2ac34bd711b621f0236f5d44e3cc122d62ae9e6718adc6b",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 37
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 919
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 34,
+        "tool": "order.update"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 890
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 2730
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 20
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC04",
+    "call": "call_1",
+    "turn": 1,
+    "agent_text_sha256": "c3d1657ea7d86171b78fc862104d6d50bc8b1d76e1a89930fbd944fd2f56893b",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 14
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 632
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 20,
+        "tool": "catalog.search"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 837
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 1537
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 15
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC04",
+    "call": "call_1",
+    "turn": 2,
+    "agent_text_sha256": "748d8425cb8b9e1d6ef4a4177f0296d5338a34d41a8d41429e7988b2ab99be2a",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 11
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 861
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 896
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 1
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 19
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC04",
+    "call": "call_1",
+    "turn": 3,
+    "agent_text_sha256": "27e82bd35507a913b6b66d7d72d5585196138391057db44ffd81d32c04f7febc",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 28
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 760
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 798
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 36
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC04",
+    "call": "call_2",
+    "turn": 1,
+    "agent_text_sha256": "b881c61b011e15c9400b66896c7cbdb2c8969dc230aadc35159ad100b4bfd50f",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 25
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 993
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 1026
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 1
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 20
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC04",
+    "call": "call_2",
+    "turn": 2,
+    "agent_text_sha256": "303a870fc6a1846218b9b924f0c8bf0625c48c07211f77e8b7ceb313bf0f54a5",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 38
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 1015
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 1050
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 24
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC04",
+    "call": "call_2",
+    "turn": 3,
+    "agent_text_sha256": "272de73f328b034a60c7a357127d72d9f0207355b8308996979427305e3273fa",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 41
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 785
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 27,
+        "tool": "inventory.check"
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 27,
+        "tool": "pricing.get_quote"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 786
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 24,
+        "tool": "order.create"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 894
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 2581
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 35
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC05",
+    "call": "call_1",
+    "turn": 1,
+    "agent_text_sha256": "b41a24e25c91ae277665d409863a7ecd0447ac4a532b9b01184d54be94cae7fc",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 33
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 832
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 32,
+        "tool": "catalog.search"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 616
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 30,
+        "tool": "pricing.get_quote"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 827
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 2417
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 23
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC05",
+    "call": "call_1",
+    "turn": 2,
+    "agent_text_sha256": "027c440f0a1a736923ea79dab67637dfeba36509e39867b1999caa9df89e7ab9",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 32
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 746
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 778
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 28
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC05",
+    "call": "call_2",
+    "turn": 1,
+    "agent_text_sha256": "b05f7b37c0ea5e4aefbbf02ce78b8dc97c6c9dea3e92e9823c16d1dda279df4b",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 31
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 1178
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 1210
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 25
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC05",
+    "call": "call_2",
+    "turn": 2,
+    "agent_text_sha256": "1db58fc0b42526e24faa198b37a850d31c01dac3ede47c72594fe3813edcf93f",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 50
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 1297
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 1467
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 1
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 21
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC05",
+    "call": "call_2",
+    "turn": 3,
+    "agent_text_sha256": "0a1425bd52fe0145febf8b8003df20bd917ec92f86ebb9b4d79670263d73848a",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 52
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 1158
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 705
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 863
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 2785
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 19
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC06",
+    "call": "call_1",
+    "turn": 1,
+    "agent_text_sha256": "df7e9af9422f2871ee5d265014c49d9e6ec535301715a86895a5e2c0350dad5c",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 34
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 611
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 28,
+        "tool": "catalog.search"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 667
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 21,
+        "tool": "pricing.get_quote"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 675
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 19,
+        "tool": "catalog.get_details"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 797
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 2879
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 34
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC06",
+    "call": "call_1",
+    "turn": 2,
+    "agent_text_sha256": "be5521f3ef2e565c554681f9ee9e5d81c8fc4d8b11fb08a5e39441c319c1a2cb",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 29
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 760
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 793
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 19
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC06",
+    "call": "call_1",
+    "turn": 3,
+    "agent_text_sha256": "b5853d40fd13b975ae439309bcaf02023282c584351a39f824dcc50cab5a1ba2",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 43
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 963
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 993
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 19
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC06",
+    "call": "call_2",
+    "turn": 1,
+    "agent_text_sha256": "724da7f04ed9c8344753be140a6944334c809cd5fc8b27e23d1ae3f67e980571",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 32
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 1144
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 1180
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 36
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC06",
+    "call": "call_2",
+    "turn": 2,
+    "agent_text_sha256": "c67f8307d7159e55e993f98029af31b0284cc50041b71fc212b59065579f7883",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 38
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 1853
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 1885
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 17
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC06",
+    "call": "call_2",
+    "turn": 3,
+    "agent_text_sha256": "d66cb4b6bff475e3a8dee1d3f2555978dc38d723e1fa26709fce3c956abf8641",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 53
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 822
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 642
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 22,
+        "tool": "pricing.get_quote"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 729
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 39,
+        "tool": "order.create"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 1620
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 4755
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 21
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC07",
+    "call": "call_1",
+    "turn": 1,
+    "agent_text_sha256": "c8e43715aeaced0e340f5895bfbd8a4662a05991668d1fbc81e7dd140ec7eec8",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 27
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 636
+      },
+      {
+        "step": "call_tool",
+        "event": "tool_timing",
+        "duration_ms": 311,
+        "tool": "policy.search"
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 906
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 1897
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 1
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 22
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC07",
+    "call": "call_1",
+    "turn": 2,
+    "agent_text_sha256": "acc1b81e0a3158f5ac22b9f880756a2b4462dd56dd7b742fed6aef3c072f8460",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 27
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 2562
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 2593
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 28
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  },
+  {
+    "run_id": "653345f0-2ed0-4e0e-91fb-bd710c9bf090",
+    "config": "full",
+    "scenario_id": "SC07",
+    "call": "call_1",
+    "turn": 3,
+    "agent_text_sha256": "ee47e4bae0e397a70322854dc20c2253910bc737ec03298921857b5519eadd7b",
+    "checks": [],
+    "runtime_events": [
+      {
+        "step": "accept",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "retrieve_context",
+        "event": "completed",
+        "duration_ms": 29
+      },
+      {
+        "step": "run_agent",
+        "event": "model_timing",
+        "duration_ms": 764
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "model_invocation",
+        "status": "succeeded",
+        "invocation": "initial"
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "postprocess",
+        "status": "succeeded"
+      },
+      {
+        "step": "run_agent",
+        "event": "completed",
+        "duration_ms": 796
+      },
+      {
+        "step": "execution",
+        "event": "phase_result",
+        "version": 1,
+        "phase": "verification",
+        "status": "succeeded"
+      },
+      {
+        "step": "verify",
+        "event": "completed",
+        "duration_ms": 0
+      },
+      {
+        "step": "persist",
+        "event": "completed",
+        "duration_ms": 26
+      }
+    ],
+    "tool_failures": [],
+    "fallback_observed": false,
+    "runtime_error": null,
+    "model": {
+      "status": "succeeded"
+    },
+    "grounding": {
+      "status": "unknown"
+    },
+    "verifier_rejected": false,
+    "recovery": {
+      "status": "unknown",
+      "attempts": 0
+    }
+  }
+]

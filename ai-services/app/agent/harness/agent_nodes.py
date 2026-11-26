@@ -51,17 +51,20 @@ from app.agent.harness.execution_diagnostics import (
 
 SAFE_VERIFICATION_FALLBACK = (
     "Dạ, em xin lỗi anh/chị vì hiện em chưa xác minh đủ thông tin để khẳng định chính xác. "
-    "Anh/chị vui lòng cho em biết thêm chi tiết hoặc chờ em kiểm tra lại ạ."
+    "Em chưa thể xác nhận thông tin này ạ."
 )
 
 
 def _contextual_safe_fallback(state: TurnState, calls: list[dict[str, Any]], reason: str) -> str:
     honorific = state.get("honorific") if state.get("identity_status") == "known" else None
     address = honorific if isinstance(honorific, str) and honorific in {"anh", "chị", "cô", "chú", "bạn"} else "anh/chị"
+    from app.agent.memory.reported_facts import _gift_only_skus
+    gift_only = _gift_only_skus(calls)
     catalog_items = [
         item for call in calls if call.get("name") in {"catalog.search", "catalog.get_details"}
         for item in (call.get("result") or {}).get("items", [])
         if isinstance(item, dict) and isinstance(item.get("name"), str) and item.get("sku")
+        and item["sku"] not in gift_only
     ]
     unique_items = {item["sku"]: item for item in catalog_items}
     target = None
@@ -80,29 +83,9 @@ def _contextual_safe_fallback(state: TurnState, calls: list[dict[str, Any]], rea
     name = mask_pii(target["name"].strip())
     if not name:
         return SAFE_VERIFICATION_FALLBACK
-    has_variants = bool(target.get("variants"))
-    quoted_variants = {
-        call.get("args", {}).get("sku") for call in calls
-        if call.get("name") in {"pricing.get_quote", "inventory.check"}
-        and isinstance(call.get("args", {}).get("sku"), str)
-    }
-    variant_skus = {
-        v.get("variant_sku") for v in (target.get("variants") or [])
-        if isinstance(v, dict) and v.get("variant_sku")
-    }
-    if has_variants and not (quoted_variants & variant_skus):
-        return (
-            f"Dạ {address}, để kiểm tra chính xác thông tin cho {name}, "
-            f"{address} cho em biết mình đang quan tâm size và màu nào để em kiểm tra ngay giúp mình ạ?"
-        )
-    if reason in {"price_without_quote", "promotion_quote_missing", "promotion_unverified", "promotion_detail_unverified"}:
-        return (
-            f"Dạ {address}, em đang kiểm tra lại thông tin mới nhất cho {name} để báo chính xác. "
-            f"{address.capitalize()} cho em biết thêm nhu cầu cụ thể (như số lượng hoặc khu vực giao) để em hỗ trợ ngay ạ?"
-        )
     return (
         f"Dạ {address}, hiện em chưa xác minh đủ chi tiết về {name} để khẳng định chính xác. "
-        f"{address.capitalize()} cho em biết thêm thông tin cần kiểm tra để em tra cứu lại giúp mình ạ."
+        "Em chưa thể xác nhận thông tin này ạ."
     )
 
 
@@ -146,17 +129,37 @@ class AgentNodes(SessionNodes):
             if not self.authorizer_enabled:
                 log_event(state, "run_agent", "authorizer_disabled", level=logging.WARNING, tool=name)
                 return True
-            return await authorize_write(self.llm, state, name, args, self.prompt_history_turns)
+            return await authorize_write(self.llm, business.state, name, args, self.prompt_history_turns)
 
         business = BusinessTools(self.tools, state, self.max_tool_calls, self.clock,
                                  authorize_write=current_authorization)
         draft = ""
         reply_context = {}
+        continuation = None
         try:
             set_execution_phase("build")
             system_prompt = await asyncio.to_thread(text_prompt, SALES_PROMPT, _SYSTEM_PROMPT)
             state['selected_system_prompt'] = system_prompt
             agent = build_agent("deep", self.llm, business, system_prompt)
+
+            async def continue_agent(current, rejected_answer, reason):
+                import json
+                business.state = current
+                messages = prompt_messages(prompt_context(current, self.prompt_history_turns))
+                messages.extend([AIMessage(content=rejected_answer), HumanMessage(content=json.dumps({
+                    'validation_error': reason,
+                    'task': 'Hoàn tất đúng yêu cầu hiện tại bằng công cụ khi đủ dữ kiện và quyền. '
+                            'Không hỏi xác nhận lại khi khách đã đồng ý rõ; không suy consent từ lời sửa này. '
+                            'Giữ mọi điều kiện của khách. Chỉ báo thao tác thành công khi có biên nhận. '
+                            'Nếu bị từ chối, thiếu dữ kiện hoặc công cụ lỗi, nói rõ giới hạn; không lặp thao tác.'
+                }, ensure_ascii=False))])
+                result = await invoke_agent(agent, {'messages': messages},
+                    config={'recursion_limit': max(12, self.max_tool_calls * 4 + 4)}, state=current)
+                finals = [message for message in result.get('messages', [])
+                          if isinstance(message, AIMessage) and not message.tool_calls]
+                return mask_pii(_answer_text(finals[-1])) if finals else ''
+
+            continuation = continue_agent
             context = prompt_context(state, self.prompt_history_turns)
             set_execution_phase("model_invocation", "initial")
             result = await invoke_agent(agent, {"messages": prompt_messages(context)},
@@ -179,6 +182,7 @@ class AgentNodes(SessionNodes):
                       error_type=type(exc).__name__)
             set_execution_phase("postprocess")
         return {"agent_draft": mask_pii(draft), "reply_context": reply_context,
+                'agent_continuation': continuation,
                 'selected_system_prompt': state.get('selected_system_prompt', _SYSTEM_PROMPT),
                 "tool_calls": state["tool_calls"],
                 "tool_count": state.get("tool_count", 0),
@@ -193,11 +197,12 @@ class AgentNodes(SessionNodes):
         progress = active_turn_progress.get()
         if progress is not None:
             progress['state'] = state
+        continuation = state.pop('agent_continuation', None)
         draft = state.get("agent_draft", "")
         if not self.verify_enabled:
             masked = mask_pii(draft.strip())
             log_event(state, "verify", "verify_disabled", level=logging.WARNING)
-            return {"agent_text": masked, "verified_answer": masked, "reply_error": None}
+            return {'agent_continuation': None, "agent_text": masked, "verified_answer": masked, "reply_error": None}
         model_state = state
         if state.get('tool_failed'):
             model_state = {**state, 'history': [], 'customer_statements': [], 'profile': {},
@@ -227,12 +232,29 @@ class AgentNodes(SessionNodes):
 
         answer, reason = await validate(draft)
         if reason is None:
-            return {"agent_text": answer, 'verified_answer': answer, 'reply_error': None}
+            return {'agent_continuation': None, "agent_text": answer, 'verified_answer': answer, 'reply_error': None}
         rejected = [rejected_draft(state, reason, draft)] if draft else []
         tool_updates = {}
         try:
             import json
             from langchain_core.messages import SystemMessage
+            if (callable(continuation) and not state.get('tool_failed')
+                    and reason in {'unanswered_request', 'unnecessary_clarification',
+                                   'customer_constraint_violated', 'order_creation_unverified'}
+                    and state.get('tool_count', 0) < self.max_tool_calls
+                    and state.get('tool_attempts', 0) < self.max_tool_calls * 2):
+                log_event(state, 'verify', 'completion_attempt', reason=reason)
+                set_execution_phase('model_invocation', 'completion')
+                draft = await continuation(state, draft, reason)
+                calls = build_commerce_evidence(model_state)
+                tool_updates = {key: state.get(key) for key in (
+                    'tool_calls', 'tool_count', 'tool_attempts', 'policy_order_bindings',
+                    'needs_handoff', 'handoff_ticket_id') if key in state}
+                answer, reason = await validate(draft)
+                if reason is None:
+                    return {'agent_continuation': None, 'agent_text': answer, 'verified_answer': answer, 'reply_error': None,
+                            'verifier_events': rejected, **tool_updates}
+                rejected.append(rejected_draft(state, reason, draft))
             if self.tools is not None and not state.get('tool_failed'):
                 known = set()
                 for call in calls:
@@ -313,8 +335,8 @@ class AgentNodes(SessionNodes):
                                 and state.get('tool_count', 0) < self.max_tool_calls):
                             await business.invoke('inventory.check', {'sku': sku})
                             stocked_today.add(sku)
-                tool_updates = {key: state.get(key, [] if key == 'tool_calls' else 0)
-                                for key in ('tool_calls', 'tool_count', 'tool_attempts')}
+                tool_updates.update({key: state.get(key, [] if key == 'tool_calls' else 0)
+                                     for key in ('tool_calls', 'tool_count', 'tool_attempts')})
                 calls = build_commerce_evidence(model_state)
             context = prompt_context(model_state, self.prompt_history_turns)
             base_messages = [SystemMessage(content=state.get('selected_system_prompt', _SYSTEM_PROMPT)),
@@ -376,7 +398,7 @@ class AgentNodes(SessionNodes):
                 checked, repair_reason = await validate(repaired)
                 if repair_reason is None:
                     log_event(state, 'verify', 'recovery_succeeded', level=logging.DEBUG)
-                    return {"agent_text": checked, 'verified_answer': checked,
+                    return {'agent_continuation': None, "agent_text": checked, 'verified_answer': checked,
                             'reply_error': None, "verifier_events": rejected, **tool_updates}
                 log_event(state, 'verify', 'recovery_rejected', level=logging.DEBUG, reason=repair_reason)
                 rejected.append(rejected_draft(state, repair_reason, repaired))
@@ -403,14 +425,14 @@ class AgentNodes(SessionNodes):
                     )
                     if fb_reason is None and fb_answer:
                         log_event(state, 'verify', 'recovery_fallback', level=logging.WARNING, reason=last_reason)
-                        return {"agent_text": fb_answer, 'verified_answer': fb_answer,
+                        return {'agent_continuation': None, "agent_text": fb_answer, 'verified_answer': fb_answer,
                                 'reply_error': None, "verifier_events": rejected, **tool_updates}
         except Exception as exc:
             execution_result(state, exc=exc)
             log_event(state, "verify", "repair_failed", level=logging.WARNING,
                       error_type=type(exc).__name__)
         log_event(state, 'verify', 'recovery_exhausted', level=logging.DEBUG)
-        return {"agent_text": '', 'verified_answer': '', 'reply_error': 'agent_reply_unavailable',
+        return {'agent_continuation': None, "agent_text": '', 'verified_answer': '', 'reply_error': 'agent_reply_unavailable',
                 "verifier_events": rejected, **tool_updates}
 
     @trace_node("persist")

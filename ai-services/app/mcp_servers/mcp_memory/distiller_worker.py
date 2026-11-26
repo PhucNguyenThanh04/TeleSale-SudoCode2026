@@ -15,8 +15,7 @@ from app.agent.memory.episode_review import review_episode_resolutions, EpisodeR
 from app.knowledge.schemas import digest
 from app.agent.memory.deterministic_tool_facts import (deterministic_episode_tools,
                                                        verified_order_details,
-                                                       verified_tool_candidates,
-                                                       verified_variant_details)
+                                                       verified_tool_candidates)
 from app.constants import Slot
 from app.schemas.langmem import ProfileFactCandidate
 from app.configs import get_settings
@@ -211,12 +210,6 @@ async def process_one(repo: MemoryRepo, extractor, projector, *, fact_reviewer=N
                         async with repo.transaction() as conn:
                             variant = await repo.variant_details(conn, sku)
                     accepted.extend(verified_order_details(call, variant, source_turn_id))
-                elif name in {"inventory.check", "pricing.get_quote"}:
-                    sku = result.get("sku") or call.get("args", {}).get("sku")
-                    if isinstance(sku, str) and sku.count("-") >= 3:
-                        async with repo.transaction() as conn:
-                            variant = await repo.variant_details(conn, sku)
-                        accepted.extend(verified_variant_details(call, variant, source_turn_id))
             delta = (admit_episode_candidate(customer_id, session_id, episode,
                                              [committed], calls, prior_open_map)
                      if episode else None)

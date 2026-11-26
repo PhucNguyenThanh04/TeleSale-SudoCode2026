@@ -1,0 +1,109 @@
+{
+  "n_scenarios": 7,
+  "system": {
+    "repeat_question_rate": {
+      "value": 5.3,
+      "redundant": 1,
+      "total_questions": 19,
+      "examples": [
+        {
+          "scenario": "SC04",
+          "call": "call_2",
+          "turn": 2,
+          "slot": "product_advised",
+          "type": "confirm",
+          "text": "Hiện tại đây là mức giá ưu đãi nhất cho sản phẩm này, chị xem chốt mẫu này luôn không ạ?"
+        }
+      ]
+    },
+    "context_carryover_rate": {
+      "value": 52.4,
+      "used": 11,
+      "required": 21
+    },
+    "task_success_rate": {
+      "value": 71.4,
+      "passed": 5,
+      "total": 7,
+      "hard_cases": {
+        "value": 66.7,
+        "total": 3
+      },
+      "failures": [
+        {
+          "scenario": "SC01",
+          "call": "call_2",
+          "hard_case": null,
+          "reasons": [
+            "không có tool call order.create khớp args_match"
+          ]
+        },
+        {
+          "scenario": "SC05",
+          "call": "call_2",
+          "hard_case": "doi_khuyen_mai_het_han",
+          "reasons": [
+            "không có tool call order.create khớp args_match"
+          ]
+        }
+      ]
+    },
+    "hallucination_rate": {
+      "value": 6.7,
+      "wrong": 1,
+      "total_claims": 15,
+      "price_promo_only": {
+        "value": 9.1,
+        "wrong": 1,
+        "total": 11
+      },
+      "examples": [
+        {
+          "scenario": "SC05",
+          "call": "call_2",
+          "turn": 1,
+          "field": "promo_AP-SEP_active",
+          "claimed": true,
+          "truth": false
+        }
+      ]
+    },
+    "avg_turns_per_call": 3,
+    "calls_to_close": {
+      "value": 1.75,
+      "n_closed": 4,
+      "n_scenarios": 7
+    },
+    "guardrail_violations": {
+      "total": 0,
+      "by_type": {
+        "pii_in_memory_or_text": 0,
+        "over_escalation": 0,
+        "claims_human": 0,
+        "forbidden_pattern": 0
+      },
+      "examples": []
+    },
+    "memory_checks": [],
+    "latency": {
+      "n_turns": 39,
+      "warning": "Cần ≥ 100 lượt để p95 có ý nghĩa",
+      "ttft": {
+        "n": 39,
+        "p50_ms": 2140,
+        "p95_ms": 5374
+      },
+      "total": {
+        "n": 39,
+        "p50_ms": 2140,
+        "p95_ms": 5374
+      },
+      "ttfa": null,
+      "call_brief": {
+        "n": 6,
+        "p50_ms": 119,
+        "p95_ms": 175
+      }
+    }
+  }
+}

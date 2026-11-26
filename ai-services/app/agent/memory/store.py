@@ -56,11 +56,13 @@ class MCPMemoryStore:
     supports_durable_replay = True
 
     def __init__(self, gateway: ToolGateway, namespace: str = "",
-                 include_prior: bool = True, max_episodes: int = 5) -> None:
+                 include_prior: bool = True, max_episodes: int = 5,
+                 fact_ttl_days: int = 240) -> None:
         self.gateway = gateway
         self.namespace = namespace
         self.include_prior = include_prior
         self.max_episodes = max_episodes
+        self.fact_ttl_days = fact_ttl_days
 
     def _id(self, customer_id: str | None) -> str | None:
         return f"{self.namespace}:{customer_id}" if customer_id and self.namespace else customer_id
