@@ -45,7 +45,9 @@ class AgentHarnessRuntime:
                  max_repair_attempts: int = 1,
                  safe_fallback_on_rejection: bool = False,
                  semantic_review_enabled: bool = True,
-                 progressive_streaming: bool = False) -> None:
+                 progressive_streaming: bool = False,
+                 authorizer_enabled: bool = True,
+                 verify_enabled: bool = True) -> None:
         self.memory = memory
         self.tools = tools
         self.tracing = tracing
@@ -58,7 +60,9 @@ class AgentHarnessRuntime:
                                 prompt_history_turns, clock,
                                 max_repair_attempts=max_repair_attempts,
                                 safe_fallback_on_rejection=safe_fallback_on_rejection,
-                                semantic_review_enabled=semantic_review_enabled)
+                                semantic_review_enabled=semantic_review_enabled,
+                                authorizer_enabled=authorizer_enabled,
+                                verify_enabled=verify_enabled)
         self.graph = build_graph(llm, tools, memory, max_tool_calls,
                                  prompt_history_turns, clock, guardrails_enabled,
                                  nodes=self.nodes)

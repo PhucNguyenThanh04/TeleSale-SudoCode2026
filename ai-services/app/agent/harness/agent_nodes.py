@@ -111,15 +111,21 @@ class AgentNodes(SessionNodes):
     max_repair_attempts = 1
     safe_fallback_on_rejection = False
     semantic_review_enabled = True
+    authorizer_enabled = True
+    verify_enabled = True
 
     def __init__(self, llm, tools, memory, max_tool_calls: int, prompt_history_turns: int,
                  clock=None, *, max_repair_attempts: int = 1,
                  safe_fallback_on_rejection: bool = False,
-                 semantic_review_enabled: bool = True) -> None:
+                 semantic_review_enabled: bool = True,
+                 authorizer_enabled: bool = True,
+                 verify_enabled: bool = True) -> None:
         super().__init__(llm, tools, memory, max_tool_calls, prompt_history_turns, clock)
         self.max_repair_attempts = max(1, max_repair_attempts)
         self.safe_fallback_on_rejection = safe_fallback_on_rejection
         self.semantic_review_enabled = semantic_review_enabled
+        self.authorizer_enabled = authorizer_enabled
+        self.verify_enabled = verify_enabled
 
     @trace_node("run_agent")
     @execution_node("preparation")
@@ -137,6 +143,9 @@ class AgentNodes(SessionNodes):
         from app.agent.harness.authorization import authorize_write
 
         async def current_authorization(name, args):
+            if not self.authorizer_enabled:
+                log_event(state, "run_agent", "authorizer_disabled", level=logging.WARNING, tool=name)
+                return True
             return await authorize_write(self.llm, state, name, args, self.prompt_history_turns)
 
         business = BusinessTools(self.tools, state, self.max_tool_calls, self.clock,
@@ -185,6 +194,10 @@ class AgentNodes(SessionNodes):
         if progress is not None:
             progress['state'] = state
         draft = state.get("agent_draft", "")
+        if not self.verify_enabled:
+            masked = mask_pii(draft.strip())
+            log_event(state, "verify", "verify_disabled", level=logging.WARNING)
+            return {"agent_text": masked, "verified_answer": masked, "reply_error": None}
         model_state = state
         if state.get('tool_failed'):
             model_state = {**state, 'history': [], 'customer_statements': [], 'profile': {},

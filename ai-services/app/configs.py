@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     agent_max_tool_calls: int = Field(default=DEFAULT_MAX_TOOL_CALLS, ge=3, le=20)
     agent_prompt_history_turns: int = Field(default=DEFAULT_PROMPT_HISTORY_TURNS, ge=1, le=12)
     agent_guardrails_enabled: bool = True
+    agent_authorizer_enabled: bool = True
+    agent_verify_enabled: bool = True
+    agent_progressive_streaming: bool = True
+    agent_semantic_review_enabled: bool = False
     agent_turn_timeout_seconds: float = Field(default=90, gt=0)
     langmem_model: str | None = None
     langmem_max_tokens: int = Field(default=1024, ge=256, le=8192)
