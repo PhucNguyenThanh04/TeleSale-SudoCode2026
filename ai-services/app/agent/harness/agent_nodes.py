@@ -246,11 +246,11 @@ class AgentNodes(SessionNodes):
             if (transaction_selection_mismatch(model_state)
                     and re.search(r'đã\s+(?:lên|tạo|đặt|chốt)\s+đơn', answer, re.I)):
                 return '', 'order_selection_mismatch'
-            reason = check_grounding(answer, calls)
-            if not self.guardrails_enabled:
-                log_event(state, 'verify', 'answer_check_disabled', reason='configured_disabled')
-            if reason is None and self.guardrails_enabled:
+            if self.guardrails_enabled:
                 answer, reason = check_answer(answer, calls, state["safe_text"], focus_sku=_claim_focus(model_state))
+            else:
+                log_event(state, 'verify', 'answer_check_disabled', reason='configured_disabled')
+                reason = check_grounding(answer, calls)
             if reason is None and self.semantic_review_enabled:
                 context = prompt_context(model_state, self.prompt_history_turns)
                 review_key = (answer, json.dumps(context, sort_keys=True, ensure_ascii=False, default=str))
@@ -409,8 +409,6 @@ class AgentNodes(SessionNodes):
                     'không cam kết chắc chắn.' if current_reason == 'delivery_unverified'
                     else ' Chỉ nêu trạng thái còn/hết hàng khớp đúng inventory.check hiện tại của đúng sản phẩm.'
                     if current_reason.startswith('stock_')
-                    else ' Không dùng từ so sánh tuyệt đối như tốt nhất, phù hợp nhất, hiệu quả nhất cho sản phẩm.'
-                    if current_reason == 'unsupported_comparison'
                     else ' Bỏ toàn bộ chi tiết quy trình, số ngày, điều kiện hoặc khẳng định không có trong tool_observations hiện tại; chỉ giữ phần có nguồn hoặc hỏi thông tin còn thiếu.'
                     if current_reason == 'unsupported_answer_claim'
                     else ' Bắt buộc trả lời bằng văn bản tiếng Việt rõ ràng, không gọi công cụ và không để trống.'
@@ -463,10 +461,9 @@ class AgentNodes(SessionNodes):
                     and state.get('reply_context', {}).get('reason') not in {'model_unavailable', 'memory_unavailable'}):
                 candidate_fb = _contextual_safe_fallback(model_state, calls, last_reason)
                 for fb_text in (candidate_fb, SAFE_VERIFICATION_FALLBACK):
-                    fb_grounding = check_grounding(fb_text, calls)
                     fb_answer, fb_reason = (
                         check_answer(fb_text, calls, state["safe_text"], focus_sku=_claim_focus(model_state))
-                        if fb_grounding is None and self.guardrails_enabled else (fb_text, fb_grounding)
+                        if self.guardrails_enabled else (fb_text, check_grounding(fb_text, calls))
                     )
                     if fb_reason is None and fb_answer:
                         log_event(state, 'verify', 'recovery_fallback', level=logging.WARNING, reason=last_reason)

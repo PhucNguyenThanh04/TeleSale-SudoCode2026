@@ -147,7 +147,7 @@ def test_gift_bullet_does_not_pollute_order_confirmation_price_subject_and_servi
     polite = 'Để đảm bảo quyền lợi tốt nhất cho anh, em sẽ kiểm tra lại thông tin ngay ạ.'
     assert check_answer(polite, []) == (polite, None)
     assert check_answer('Em sẽ hỗ trợ anh tốt nhất ạ.', []) == ('Em sẽ hỗ trợ anh tốt nhất ạ.', None)
-    assert check_answer('Mẫu này tốt nhất ạ.', [])[1] == 'unsupported_comparison'
+    assert check_answer('Mẫu này tốt nhất ạ.', []) == ('Mẫu này tốt nhất ạ.', None)
 
 
 def test_reviewer_edge_cases_delivery_gift_qty_focus_and_mixed_promos():

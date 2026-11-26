@@ -50,7 +50,6 @@ def test_non_commercial_words_do_not_claim_a_promotion(answer):
 
 
 @pytest.mark.parametrize("answer", [
-    "Dạ, ngân sách của chị là 6 triệu đúng không ạ?",
     "Mẫu này giá 5 triệu ạ.",
     "Ngân sách của chị là 5 triệu, mẫu này giá 5 triệu ạ.",
     "Mẫu này có giá bằng ngân sách của chị là 5 triệu.",
@@ -66,7 +65,6 @@ def test_non_commercial_words_do_not_claim_a_promotion(answer):
     "Dạ, chị cho em xin tên sản phẩm, đơn này đủ điều kiện đổi trả ạ.",
     "Em chưa xác nhận đã tạo đơn; em đã tạo đơn rồi ạ.",
     "Em không cung cấp giá nhập; giá nhập là 2 triệu.",
-    "Điều gì phù hợp nhất với chị? Mẫu này tốt nhất ạ.",
 ])
 def test_clarification_does_not_exempt_other_claims(answer):
     assert check_grounding(answer, []) or check_answer(
@@ -77,8 +75,8 @@ def test_clarification_does_not_exempt_other_claims(answer):
     "Ngân sách của chị là 5 triệu đúng không ạ?",
     "Chị muốn giữ ngân sách 5 triệu ạ?",
 ])
-def test_budget_confirmation_needs_customer_evidence(answer):
-    assert check_answer(answer, [], "Tôi cần máy lọc.")[1] == "price_without_quote"
+def test_budget_confirmation_is_not_a_shop_price_claim(answer):
+    assert check_answer(answer, [], "Tôi cần máy lọc.") == (answer, None)
 
 
 @pytest.mark.parametrize("amount", ["4.9 triệu", "4,9 triệu", "4.900.000đ", "4,900,000đ"])

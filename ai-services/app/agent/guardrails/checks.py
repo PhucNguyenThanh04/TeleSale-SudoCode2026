@@ -47,10 +47,6 @@ _BOOLEAN_FEATURE_ALIASES = {
     "child_safe_lock": (r"\bkhoa (?:an toan )?tre em\b",),
 }
 _SUPERLATIVE = re.compile(r"(?i)\b(?:phù hợp nhất|tốt nhất|hiệu quả nhất)\b")
-_SERVICE_SUPERLATIVE = re.compile(
-    r"(?i)\b(?:quyền lợi|hỗ trợ|phục vụ|chăm sóc|trải nghiệm)"
-    r"(?:\s+(?:anh/chị|anh|chị|bạn|khách\s+hàng))?\s+tốt nhất\b"
-)
 _LEGACY_SKU_SIGNAL = re.compile(r"\bSKU-[A-Z0-9-]+\b")
 _PROMOTION = re.compile(r"(?i)\b(?:khuyến mãi|giảm giá|còn giảm|được giảm|mã giảm|freeship|miễn phí (?:ship|vận chuyển))\b")
 _DELIVERY = re.compile(r"(?i)\b(?:dự kiến giao|giao(?:\s+hàng)?\s+dự kiến|ngày giao|giao trong|giao vào|giao ngày|giao\s+\d)\b")
@@ -58,7 +54,9 @@ _POLICY = re.compile(r"(?i)\b(?:bảo hành|đổi trả|đổi size|hoàn tiề
 _INTERNAL = re.compile(r"(?i)\b(?:giá nhập|giá sàn|nhà cung cấp)\b")
 _PII_KEY = re.compile(r"(?i)(?:phone|address|name|email|zalo|fb_id|cccd|bank|account|card|password|token|sdt|stk)")
 _PROMO_CODE = re.compile(r"\b[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+\b")
-_ORDER_STATUS = re.compile(r"(?i)\b(?:đơn đang giao|đơn đã giao|đơn đã tạo|đã hủy đơn)\b")
+_ORDER_STATUS = re.compile(
+    r"(?i)\b(?:đơn(?: hàng)?(?:\s+OD[A-Z0-9-]+)?(?:\s+của\s+(?:anh/chị|anh|chị|mình|bạn))?"
+    r"(?:\s+hiện)?\s+(?:đang(?: được)? giao|đã(?: được)? (?:giao|tạo))|đã hủy đơn)\b")
 _PRICE_REFERENCE = re.compile(r"(?i)\bgiá\b[^.!?]{0,40}\b(?:như hôm trước|vẫn vậy|không đổi|còn hiệu lực)\b")
 _STOCK_QTY = re.compile(r"(?i)\bcòn\s+(\d+)\s+(?:cái|chiếc|sản phẩm)\b")
 _ORDER_ID = re.compile(r"\bOD[A-Z0-9-]+\b")
@@ -500,7 +498,12 @@ def _order_creation_unverified(candidate: str, tool_calls: list[dict[str, Any]])
         match = _ORDER.search(clause) or re.search(r'(?i)đã\s+ghi nhận\s+đơn hàng', clause)
         if match is None:
             continue
-        if _ORDER_STATUS.fullmatch(match.group().strip()):
+        if _ORDER_STATUS.fullmatch(match.group().strip()) and any(
+                call.get('name') == 'order.status' and isinstance(call.get('result'), dict)
+                and not ('error' in call['result'] or call['result'].get('ok') is False
+                         or call['result'].get('success') is False)
+                and any(isinstance(order, dict) and order.get('status') == 'created' and order.get('order_id')
+                        for order in call['result'].get('orders', [])) for call in tool_calls):
             continue
         prefix = _fold_text(clause[:match.start()])
         if re.search(r'\b(?:chua|khong)\s+(?:the\s+)?xac nhan\b', prefix):
@@ -773,13 +776,10 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         return FALLBACK, "empty_answer"
     answer = candidate
     candidate = normalize_zero_fees(assertion_text(candidate))
-    if _order_creation_unverified(candidate, tool_calls):
-        return FALLBACK, 'order_creation_unverified'
-    if _order_update_unverified(candidate, tool_calls):
-        return FALLBACK, 'order_update_unverified'
-    if _customer_erasure_completion_claim(candidate):
-        return FALLBACK, "customer_erasure_unverified"
-    if _INTERNAL.search(candidate) or _PRICE_REFERENCE.search(candidate):
+    grounding_reason = check_grounding(candidate, tool_calls)
+    if grounding_reason:
+        return FALLBACK, grounding_reason
+    if _INTERNAL.search(candidate):
         return FALLBACK, "unsupported_policy_or_internal_claim"
     successful = [
         call
@@ -787,44 +787,38 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         if "error" not in call.get("result", {})
     ]
     from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
-    current_skus = resolve_claim_skus(customer_text, successful)
+    current_skus = resolve_claim_skus(customer_text or _promotion_subject(candidate), successful)
     if len(current_skus) == 1:
         focus_sku = next(iter(current_skus))
-    policy_claim = bool(candidate.strip() and (_POLICY.search(candidate) or _POLICY.search(customer_text)))
-    from app.agent.guardrails.policy_grounding import (policy_evidence_for_answer,
-        policy_clarification_or_refusal, policy_durations_supported)
+    policy_claim = bool(_POLICY.search(candidate))
+    from app.agent.guardrails.policy_grounding import policy_evidence_for_answer, policy_clarification_or_refusal
     policy_chunks = policy_evidence_for_answer(candidate, successful)
     if policy_clarification_or_refusal(candidate) or _catalog_warranty_evidenced(candidate, successful, customer_text):
         policy_claim = False
-    if policy_claim:
-        if not policy_chunks:
-            return FALLBACK, "unsupported_policy_or_internal_claim"
-        source_text = " ".join(chunk["content"] for chunk in policy_chunks)
-        if not policy_durations_supported(candidate, source_text):
-            return FALLBACK, "unsupported_policy_or_internal_claim"
     evidenced_skus = known_skus(successful)
-    if _SUPERLATIVE.search(_SERVICE_SUPERLATIVE.sub("", candidate)):
-        return FALLBACK, "unsupported_comparison"
-    if _unsupported_feature(candidate, successful):
-        return FALLBACK, "unsupported_product_spec"
-    customer_budgets = customer_budget_amounts(customer_text)
-    has_quote = any(call.get("name") in {"pricing.get_quote", "pricing.quote_order"} for call in successful)
-    def budget_repetition(match):
-        amounts = _money_claims(match.group('amount'))
-        if len(amounts) == 1 and amounts[0][0] in customer_budgets:
-            return ''
-        return match.group()
+    for clause in commercial_clauses(candidate):
+        if not _PRICE_REFERENCE.search(clause):
+            continue
+        quoted_skus = {call['args']['sku'] for call in successful
+                       if call['name'] == 'pricing.get_quote' and call.get('args', {}).get('sku')
+                       and type(call['result'].get('final_price_vnd')) is int}
+        baskets = [call for call in successful if call['name'] == 'pricing.quote_order']
+        quoted_skus.update(unit['sku'] for call in baskets for unit in call['result'].get('units', [])
+                           if unit.get('sku') and type(unit.get('final_price_vnd')) is int)
+        bound = resolve_claim_skus(_promotion_subject(clause), successful, focus_sku=focus_sku)
+        if (not quoted_skus or bound and not bound <= quoted_skus
+                or not bound and len(quoted_skus) != 1 and len(baskets) != 1):
+            return FALLBACK, 'price_without_quote'
     budget_pattern = (
-        r'(?<!bằng\s)(?:(?:ngân sách|tầm giá|mức giá|giới hạn|tối đa|ngưỡng)\s+'
+        r'(?:^|(?<=[.!?;,\n]))\s*(?:(?:Dạ|Vâng)[,\s]+)?(?:(?:với|theo)\s+)?'
+        r'(?:ngân sách\s+'
         r'(?:(?:tối đa|tầm|khoảng|là|dưới|mức|của\s+(?:anh/chị|anh|chị|bạn))\s+)*'
-        r'|(?:\b(?:anh/chị|anh|chị|bạn)\s+muốn giữ ngân sách\s+(?:là\s+)?))'
-        r'(?P<amount>\d[\d.,]*\s*(?:triệu|tr|nghìn|ngàn|k|đồng|đ|vnd))\b'
-        if has_quote else
-        r'(?:^|(?<=[.!?;]))\s*(?:(?:Dạ|Vâng)[, ]+)?(?:với |theo )?'
-        r'(?:ngân sách của (?:anh/chị|anh|chị|bạn)|(?:anh/chị|anh|chị|bạn) muốn giữ ngân sách)\s+'
-        r'(?:là\s+)?(?P<amount>\d[\d.,]*\s*(?:triệu|tr|nghìn|ngàn|k|đồng|đ|vnd))\b'
+        r'|(?:anh/chị|anh|chị|bạn)\s+(?:có|muốn giữ)\s+ngân sách\s+(?:là\s+)?)'
+        r'\d[\d.,]*\s*(?:triệu|tr|nghìn|ngàn|k|đồng|đ|vnd)\b'
+        r'(?![^.!?;,\n]*\bgiá\b)'
     )
-    money_candidate = re.sub(budget_pattern, budget_repetition, candidate, flags=re.IGNORECASE)
+    money_candidate = (candidate if re.search(r'(?i)\b(?:không|chưa)\s+(?:có|tìm thấy)\s+(?:mẫu|sản phẩm)\b', candidate)
+                       else re.sub(budget_pattern, '', candidate, flags=re.IGNORECASE))
     money_claims = _money_claims(money_candidate)
     if (money_claims and 'gia niem yet' not in _fold_text(candidate)
             and _empty_catalog_budget_evidenced(candidate, customer_text, money_claims, successful)):
@@ -991,21 +985,30 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
                     and not re.search(r'\bneu\b', folded)):
                 return FALLBACK, 'order_status_unverified'
     if _ORDER_STATUS.search(candidate):
-        status_results = [call["result"] for call in successful if call["name"] == "order.status"]
-        if len(status_results) != 1 or not isinstance(status_results[0].get("orders"), list) \
-                or len(status_results[0]["orders"]) != 1:
+        orders = {order['order_id']: order for call in successful
+                  if call['result'].get('ok') is not False and call['result'].get('success') is not False
+                  for order in (call['result'].get('orders', []) if call['name'] == 'order.status'
+                                else [call['result']] if call['name'] == 'order.create'
+                                and call['result'].get('status') == 'created' else [])
+                  if isinstance(order, dict) and order.get('order_id')}
+        order_ids = set(_ORDER_ID.findall(candidate))
+        if order_ids and not order_ids <= orders.keys():
+            return FALLBACK, 'order_id_mismatch'
+        if not order_ids:
+            order_ids = {call['result']['order_id'] for call in successful
+                         if call['name'] == 'order.create' and call['result'].get('status') == 'created'
+                         and call['result'].get('order_id') in orders} or set(orders)
+        if len(order_ids) != 1:
             return FALLBACK, "order_status_unverified"
-        status = status_results[0]["orders"][0].get("status")
+        status = orders[next(iter(order_ids))].get('status')
         expected_phrases = {
-            "shipping": "đơn đang giao", "delivered": "đơn đã giao",
-            "created": "đơn đã tạo", "cancelled": "đã hủy đơn",
+            "shipping": r"đang(?: được)? giao", "delivered": r"đã(?: được)? giao",
+            "created": r"đã(?: được)? tạo", "cancelled": r"đã hủy đơn",
         }
         expected = expected_phrases.get(status)
-        if expected is None or expected not in candidate.lower():
+        if expected is None or not all(re.search(expected, claim, re.I)
+                                      for claim in _ORDER_STATUS.findall(candidate)):
             return FALLBACK, "order_status_mismatch"
-        order_ids = set(_ORDER_ID.findall(candidate))
-        if order_ids and order_ids != {status_results[0]["orders"][0].get("order_id")}:
-            return FALLBACK, "order_id_mismatch"
     return mask_pii(answer.strip()), None
 
 

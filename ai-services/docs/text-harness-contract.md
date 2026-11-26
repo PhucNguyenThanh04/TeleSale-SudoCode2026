@@ -38,6 +38,23 @@ business tools nor writes customer speech. Invalid output or a five-second
 deadline denies publication. The existing single repair passes the same review.
 Grounding review remains mandatory with optional answer checks disabled.
 
+The normal verifier calls `check_answer` once; that function includes grounding
+and receipt validation. Keyword wording alone does not forbid recommendations,
+refusals to disclose internal information, or references to an unchanged price
+supported by a current quote for the referenced product or basket. An owned-order status read can support reporting
+that an existing order was created; a new action still needs its write receipt.
+Order evidence is selected by the named order ID, so reading an old order does
+not invalidate a successful receipt for a different new order.
+Gift SKUs already present in an active quote need no extra name lookup unless
+the answer introduces a gift name or additional details. Repeated customer
+budgets are checked against customer context by semantic review rather than
+treated as shop prices. Only budget clauses receive that exemption; statements
+linking a budget amount to a product price still require a quote.
+Product prices, promotional benefits and stock still
+require matching commercial evidence. Claims that no affordable product exists
+retain their evidence checks. This follows BTC PB-02/PB-05/PB-08 and J02/J11;
+it does not establish improved live scores or reviewer accuracy.
+
 Provider message completion does not publish text. The stream publishes only
 the exact masked answer approved by final verification, once. This adds one
 model inference for an otherwise valid answer, or two reviews when a repair is

@@ -44,7 +44,7 @@ def test_safe_verification_fallback_passes_all_deterministic_guardrails():
 
 def test_second_repair_attempt_succeeds_after_first_repair_rejected():
     replies = [
-        AIMessage(content="Mẫu này tốt nhất hiện nay ạ."),
+        AIMessage(content="Mẫu này giá 9.000.000đ ạ."),
         AIMessage(content="Dạ, em chưa có báo giá hiện tại, anh cho em xin tên mẫu để em kiểm tra ạ."),
     ]
     model = ReviewModel([verdict()])
@@ -55,13 +55,13 @@ def test_second_repair_attempt_succeeds_after_first_repair_rejected():
     assert result["agent_text"] == replies[1].content
     assert result["verified_answer"] == replies[1].content
     assert model.ainvoke.await_count == 2
-    assert [e["reason"] for e in result["verifier_events"]] == ["price_without_quote", "unsupported_comparison"]
+    assert [e["reason"] for e in result["verifier_events"]] == ["price_without_quote", "price_without_quote"]
 
 
 def test_safe_fallback_returned_when_both_repairs_rejected_by_guardrails():
     replies = [
-        AIMessage(content="Mẫu này tốt nhất ạ."),
-        AIMessage(content="Mẫu này phù hợp nhất ạ."),
+        AIMessage(content="Mẫu này giá 8.000.000đ ạ."),
+        AIMessage(content="Mẫu này giá 9.000.000đ ạ."),
     ]
     model = ReviewModel([])
     model.ainvoke = AsyncMock(side_effect=replies)
@@ -102,8 +102,8 @@ def test_runtime_run_and_stream_survive_double_guardrail_rejection_with_safe_fal
     async def run(delivery: str):
         model = FakeToolModel(replies=[
             AIMessage(content="Mẫu này giá 5.000.000đ ạ."),
-            AIMessage(content="Mẫu này tốt nhất ạ."),
-            AIMessage(content="Mẫu này phù hợp nhất ạ."),
+            AIMessage(content="Mẫu này giá 8.000.000đ ạ."),
+            AIMessage(content="Mẫu này giá 9.000.000đ ạ."),
         ])
         runtime = AgentHarnessRuntime(
             model, FakeGateway(), FakeMemory(),
@@ -168,8 +168,8 @@ def test_turn_diagnostics_records_recovery_fallback_event_and_status():
 
     model = ReviewModel([])
     model.ainvoke = AsyncMock(side_effect=[
-        AIMessage(content="Mẫu này tốt nhất ạ."),
-        AIMessage(content="Mẫu này phù hợp nhất ạ."),
+        AIMessage(content="Mẫu này giá 8.000.000đ ạ."),
+        AIMessage(content="Mẫu này giá 9.000.000đ ạ."),
     ])
     nodes = AgentNodes(model, None, None, 6, 6, max_repair_attempts=2, safe_fallback_on_rejection=True)
     with capture_diagnostic_events() as events:
