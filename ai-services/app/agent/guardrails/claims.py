@@ -12,8 +12,11 @@ _LOOKUP = re.compile(
     r"(?: hien tai| hom nay| lai| cho (?:anh/chi|anh|chi)| khong| a| nhe)*"
 )
 _NON_ASSERTION = re.compile(
-    r"em (?:chua|khong the) xac nhan da (?:len|tao|dat|chot) don(?: a)?"
-    r"|em khong (?:the )?cung cap (?:gia nhap|gia san|nha cung cap)(?: a)?"
+    r"em (?:chua(?: the)?|khong the) xac nhan "
+    r"(?:da (?:len|tao|dat|chot) don|don(?: hang)? da (?:duoc )?(?:len|tao|dat|chot))(?: a)?"
+    r"|em (?:chua|khong)(?: the| duoc phep)? cung cap "
+    r"(?:gia nhap|gia san|(?:ten )?nha cung cap)"
+    r"(?: (?:va|hoac|hay) (?:gia nhap|gia san|(?:ten )?nha cung cap))*(?: a)?"
     r"|(?:dieu gi|yeu to nao) (?:phu hop nhat|tot nhat|hieu qua nhat)"
     r" voi (?:nhu cau cua )?(?:anh/chi|anh|chi)(?: a)?\?"
 )
@@ -61,6 +64,8 @@ def assertion_text(text: str) -> str:
     for index in range(0, len(sentences), 2):
         sentence = re.sub(r'[*`]|__', '', sentences[index]).strip()
         folded = _search_text(re.sub(r'^(?:Dạ|Vâng)[,\s]+', '', sentence, flags=re.IGNORECASE))
+        if _NON_ASSERTION.fullmatch(folded + ('?' if index + 1 < len(sentences) and sentences[index + 1] == '?' else '')):
+            continue
         capability = _CAPABILITY.search(folded)
         if (capability and _CAPABILITY_ACTION.search(folded, capability.end())
                 and not _CONCRETE_CAPABILITY_CLAIM.search(folded)):

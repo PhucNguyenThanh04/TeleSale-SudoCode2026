@@ -70,7 +70,8 @@ def _gift_supported(clause: str, promos: list[dict], items: list[dict]) -> bool:
         subject = re.split(r'(?:,\s*(?:thi\s+)?|\bthi\b\s+)', before)[-1].strip()
         subject = re.sub(r'^(?:da|vang)[,\s]+', '', subject).strip()
         subject = re.sub(r'^(?:cai|chiec|bo|phan|mon)\s+', '', subject).strip()
-        if not subject or re.fullmatch(r'qua(?:\s+tang)?', subject):
+        if (not subject or re.fullmatch(r'qua(?:\s+tang)?', subject)
+                or any(subject == _fold(p['gift_sku']) for p in gifts)):
             return True
         return any(_named(subject, name) or len(subject.split()) >= 2 and _named(name, subject)
                    for name in names)
@@ -92,6 +93,8 @@ def _gift_supported(clause: str, promos: list[dict], items: list[dict]) -> bool:
     without_address = re.sub(r'\s+(?:anh|chi|em)(?:\s+(?:a|nhe))?$', '', description)
     descriptions.append(re.sub(r'\s+mien phi$', '', without_address))
     descriptions += [re.sub(r'^(?:cai|chiec|bo)\s+', '', value) for value in descriptions]
+    if any(value == _fold(p['gift_sku']) for value in descriptions for p in gifts):
+        return True
     return any(_named(value, name) or len(value.split()) >= 2 and _named(name, value)
                for value in descriptions for name in names)
 
