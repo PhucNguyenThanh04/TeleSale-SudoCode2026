@@ -494,7 +494,7 @@ _POLICY_MONEY_CONTEXT = re.compile(
 
 
 _INACTIVE_DISCOUNT_CLAUSE = re.compile(
-    r"(?i)\b(?:hết hạn|hết hiệu lực|không còn|không áp dụng|không được áp dụng|đã kết thúc|ngừng áp dụng)\b"
+    r"(?i)\b(?:hết hạn|hết hiệu lực|không còn|không áp dụng|không được áp dụng|đã kết thúc|ngừng áp dụng|hôm trước|lần trước)\b"
 )
 
 
@@ -588,6 +588,10 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *,
         quote = quotes[next(iter(mentioned))]
         prices = {quote.get(key) for key in ('final_price_vnd', 'list_price_vnd')
                   if type(quote.get(key)) is int}
+        if clause_inactive_discount and customer_amounts and type(quote.get('list_price_vnd')) is int:
+            for cust_disc in customer_amounts:
+                if 0 < cust_disc < quote['list_price_vnd']:
+                    prices.add(quote['list_price_vnd'] - cust_disc)
         actual_discount = (quote['list_price_vnd'] - quote['final_price_vnd']
                            if all(type(quote.get(key)) is int for key in
                                   ('list_price_vnd', 'final_price_vnd')) else None)

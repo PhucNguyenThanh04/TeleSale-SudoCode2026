@@ -620,11 +620,18 @@ def test_expired_customer_mentioned_discount_is_allowed_while_fabricated_rejecte
         },
     ]
     _, err_ok = check_answer(
-        "Chương trình giảm 500.000đ (mã AP-SEP) đã hết hạn rồi ạ; giá hiện tại của Máy Mẫu X là 4.890.000đ.",
+        "Lần trước giá sau giảm 500.000đ (mã AP-SEP) là 4.390.000đ nhưng đã hết hạn rồi ạ; giá hiện tại của Máy Mẫu X là 4.890.000đ.",
         calls,
         "Chị gọi lại lấy Máy Mẫu X giảm 500k hôm trước nhé.",
     )
     assert err_ok is None
+
+    _, err_current_wrong = check_answer(
+        "Giá hiện tại của Máy Mẫu X là 4.390.000đ.",
+        calls,
+        "Chị gọi lại lấy Máy Mẫu X giảm 500k hôm trước nhé.",
+    )
+    assert err_current_wrong == "price_without_quote"
 
     _, err_fabricated = check_answer(
         "Chương trình giảm 800.000đ (mã AP-SEP) đã hết hạn rồi ạ; giá hiện tại của Máy Mẫu X là 4.890.000đ.",
@@ -719,3 +726,36 @@ def test_order_update_reports_actionable_precondition_error():
     )
     assert res["error"] == "address_only_for_update_address"
     assert "address" in res["next_action"]
+
+
+def test_self_declared_phone_linking_and_third_party_rejection():
+    from app.agent.harness.session_identity import extract_self_declared_phone, initialize_identity
+
+    assert extract_self_declared_phone("sdt minh 0994893949 de minh goi hotline sau nhe") == "0994893949"
+    assert extract_self_declared_phone("Số điện thoại của chị là 0912345678.") == "0912345678"
+    assert extract_self_declared_phone("Số của bạn chị là 0912345678.") is None
+    assert extract_self_declared_phone("Chị gọi hộ em gái số 0912345678.") is None
+    assert extract_self_declared_phone("Số chồng mình 0912345678.") is None
+    assert extract_self_declared_phone("Số của mình 0912345678 hoặc 0987654321.") is None
+
+    async def run():
+        tools = AsyncMock()
+        tools.invoke.side_effect = [
+            {"found": False},
+            {"found": True, "customer_id": "C017", "phone": "0994893949", "honorific": "chị", "orders": [], "sessions": []},
+        ]
+        req = TextTurnRequest(
+            session_id=uuid4(),
+            client_msg_id=uuid4(),
+            channel="chat_fanpage",
+            channel_identity="fb.khach.123",
+            input_mode="clean",
+            text="sdt minh 0994893949 de minh goi hotline sau nhe",
+            on=date(2026, 10, 20),
+        )
+        identity, calls = await initialize_identity(req, tools)
+        assert identity["identity_status"] == "known"
+        assert identity["customer_id"] == "C017"
+        assert calls[-1]["args"] == {"phone": "0994893949"}
+
+    asyncio.run(run())
