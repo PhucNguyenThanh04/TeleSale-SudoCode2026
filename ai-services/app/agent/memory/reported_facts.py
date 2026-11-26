@@ -125,7 +125,10 @@ def _gift_only_skus(calls: list[dict[str, Any]]) -> set[str]:
         call.get("result", {}).get("sku") or call.get("args", {}).get("sku")
         for call in calls
         if isinstance(call.get("result"), dict) and "error" not in call["result"]
-        and call.get("name") in {"pricing.get_quote", "inventory.check", "order.create"}
+        and call.get("name") == "order.create"
+        and call['result'].get('status') == 'created'
+        and call['result'].get('ok') is not False and call['result'].get('success') is not False
+        and isinstance(call['result'].get('order_id'), str) and call['result']['order_id'].strip()
     } | {
         unit.get("sku")
         for call in calls
@@ -173,7 +176,7 @@ def reported_tool_fact(key: str, value: Any, answer: str,
         if named_skus and sku not in named_skus:
             return False
     if key == Slot.PRODUCT_ADVISED:
-        return isinstance(value, str) and _product_named(answer, value, calls)
+        return isinstance(value, str) and value not in gift_only and _product_named(answer, value, calls)
     if key == Slot.PRICE_QUOTED_VND:
         quotes = [call for call in calls if call.get("name") == "pricing.get_quote"
                   and call.get("result", {}).get("final_price_vnd") == value

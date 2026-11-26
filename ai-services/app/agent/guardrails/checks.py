@@ -515,10 +515,35 @@ def _order_creation_unverified(candidate: str, tool_calls: list[dict[str, Any]])
         for call in tool_calls)
 
 
+def _order_update_unverified(candidate: str, tool_calls: list[dict[str, Any]]) -> bool:
+    submitted = False
+    for clause in re.findall(r'[^.!?;\n]+[.!?;\n]?', candidate):
+        if clause.rstrip().endswith('?'):
+            continue
+        folded = _fold_text(clause)
+        match = re.search(
+            r'\bda\s+(?:duoc\s+)?(?:tiep nhan|tao|gui|chuyen)\s+(?:yeu cau|phieu)\s+(?:doi|tra|cap nhat)\b'
+            r'|\b(?:yeu cau|phieu)\s+(?:doi|tra|cap nhat)\b.{0,80}\bda\s+(?:duoc\s+)?(?:tao|gui|chuyen|tiep nhan)\b',
+            folded)
+        if match is not None and not re.search(
+                r'\b(?:chua|khong)\s+(?:the\s+)?xac nhan\b', folded[:match.start()]):
+            submitted = True
+    return submitted and not any(
+        call.get('name') == 'order.update' and isinstance(call.get('result'), dict)
+        and not ('error' in call['result'] or call['result'].get('ok') is False
+                 or call['result'].get('success') is False)
+        and call['result'].get('status') in {'review_pending', 'pickup_scheduled', 'updated'}
+        and isinstance(call['result'].get('order_id'), str) and call['result']['order_id'].strip()
+        and call['result']['order_id'] == call.get('args', {}).get('order_id')
+        for call in tool_calls)
+
+
 def check_grounding(candidate: str, tool_calls: list[dict[str, Any]]) -> str | None:
     candidate = assertion_text(candidate)
     if _order_creation_unverified(candidate, tool_calls):
         return 'order_creation_unverified'
+    if _order_update_unverified(candidate, tool_calls):
+        return 'order_update_unverified'
     successful = [call for call in tool_calls if "error" not in call.get("result", {})]
     if _customer_erasure_completion_claim(candidate):
         return "customer_erasure_unverified"
@@ -750,6 +775,8 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     candidate = normalize_zero_fees(assertion_text(candidate))
     if _order_creation_unverified(candidate, tool_calls):
         return FALLBACK, 'order_creation_unverified'
+    if _order_update_unverified(candidate, tool_calls):
+        return FALLBACK, 'order_update_unverified'
     if _customer_erasure_completion_claim(candidate):
         return FALLBACK, "customer_erasure_unverified"
     if _INTERNAL.search(candidate) or _PRICE_REFERENCE.search(candidate):

@@ -88,6 +88,22 @@ def test_gateway_materializes_seed_before_returning_resolved_identity_once():
     assert materialize.await_count == 1
 
 
+def test_verified_social_actor_materializes_history_through_its_trusted_identity():
+    inner = AsyncMock()
+    inner.invoke.return_value = {'found': False}
+    inner.invoke_trusted.return_value = {'found': True, 'customer_id': 'OWNER-81', 'sessions': []}
+    materialize = AsyncMock(return_value=HISTORY)
+    gateway = SeedHistoryGateway(inner, materialize=materialize)
+    gateway.select('INDEPENDENT', {'hotline': {'0900000081'}, 'zalo_oa': {'unlinked'}}, HISTORY)
+    asyncio.run(gateway.prepare_history('zalo_oa', 'unlinked',
+        verified_customer_id='OWNER-81', verified_phone='0900000081'))
+    assert gateway.customer_id == 'OWNER-81'
+    assert gateway.materialized
+    inner.invoke.assert_not_awaited()
+    inner.invoke_trusted.assert_awaited_once_with('crm.get_customer', {'phone': '0900000081'},
+                                                'OWNER-81', 'zalo_oa', 'unlinked')
+
+
 def test_shared_phone_defers_seed_until_trusted_identity_selects_the_owner():
     from uuid import uuid4
     from app.agent.harness.session_identity import initialize_identity

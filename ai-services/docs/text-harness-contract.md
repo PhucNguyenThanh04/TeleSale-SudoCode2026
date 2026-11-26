@@ -15,15 +15,16 @@ mutation was performed during implementation.
 3. Let the model propose business tools. The harness validates their arguments,
    identity, commercial evidence, current authorization and tool budget. It does
    not prepare or complete a purchase through a second language-rule controller.
-4. Return actual MCP results to the model. Tools are serialized within a turn;
+4. Return actual MCP results to the model. Independent reads can run concurrently;
    built-in filesystem/subagent tools are excluded. Reads can be cached, writes
    use stable operation keys and an uncertain write retries only through the
    same idempotent operation.
-5. Check the answer against available evidence. An invalid draft gets at most
-   one answer-only model repair. A completed write's receipt is evidence for the
-   model to compose its acknowledgement, without executing another action. If
-   generation/verification still fails, report a protocol error; no scripted
-   sentence replaces the current answer.
+5. Check the answer against available evidence. An incomplete task can get one
+   tool-enabled continuation with the same authorization, receipts and budgets,
+   followed by at most one answer-only repair. A completed write's receipt is
+   reused when composing its acknowledgement. If a safe fallback is configured,
+   it must pass mechanical evidence checks and cannot choose a gift or a target
+   from the rejected draft. Otherwise report a protocol error.
 6. Publish checked text, then commit the customer turn and actually published
    assistant text. A disconnect does not cancel an in-flight business write.
    Repeated requests must agree on identity, utterance, date and delivery mode.
@@ -41,6 +42,9 @@ Provider message completion does not publish text. The stream publishes only
 the exact masked answer approved by final verification, once. This adds one
 model inference for an otherwise valid answer, or two reviews when a repair is
 needed; offline checks establish the boundary, not semantic accuracy or latency.
+Within one verification pass, an unchanged answer with identical source context
+reuses its completed semantic verdict. Changed context and unavailable reviews
+require another review; no verdict is reused across customer turns.
 
 Business writes require a strict turn-local authorization decision and a signed
 MCP grant. The controller binds approval to the current source, session/request,
@@ -62,6 +66,17 @@ Transient signatures are excluded from durable operation hashes. Successful loca
 receipts can be reused for the same current source/request/identity/arguments;
 old state receipts and errors cannot bypass authorization or stock/quote checks.
 Review attempts remain bounded, and an exhausted tool budget does not invoke review.
+
+Evaluation call specifications may supply `verified_customer_id` and
+`verified_phone` together when the simulator has an explicitly verified actor.
+The runner preserves that pair through preparation, every turn, seed-history
+materialization and voice playback. The runtime still checks the pair against
+CRM and channel ownership. These fields are trusted transport input, never
+extracted from customer speech or inferred from top-level `customer_phone`.
+Without an explicit `channel_identity`, only hotline uses `customer_phone` as
+its caller identity; Facebook/Zalo remain unidentified. Missing social mappings
+require a real linked account or an explicit verified actor from the caller;
+evaluation does not invent links or alter source CRM records.
 
 Callbacks use the reviewed `mcp_shared/business-calendar.json` schedule, timezone
 and dated opening exceptions. The controller normalizes `callback_at` before
