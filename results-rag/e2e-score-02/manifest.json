@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "kind": "scores",
+  "status": "complete",
+  "source_manifest_sha256": "9d1b1e68dbdef3e31b3ba31f68750fd52dc925c59c7a75f9afb959dc31d5dae7",
+  "source_trace_sha256": "07f8993da9e3c4a441d9b1cc81e4316576399dfd50e5a3bb3448dcf78a771f08",
+  "files": {
+    "human_labels.template.json": "9cb1787ebff80bb8c0373d04d011d64765088839a4540ae7f5963e11f2f5e64f",
+    "judgments.json": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+    "rag_results.json": "4dfda521741c7aad3ab2382a51e3bb4a140970e5ce13771adadea51b83e80725",
+    "report.json": "06dcd0181d99ae123898988e92fc127667ffb2a91e1025ca2df155af521e94ae",
+    "report.md": "c9c196e94c5a4bb3bbc47c4c925e26d9799bc7a29263bbf8e1d83ed325c8edfb"
+  }
+}

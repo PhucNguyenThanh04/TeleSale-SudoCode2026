@@ -10,7 +10,7 @@ from app.agent.memory.langmem_extractor import _mask_payload
 from app.constants import SLOT_SPEC_BY_KEY
 
 
-REVIEW_TIMEOUT_SECONDS = 10
+REVIEW_TIMEOUT_SECONDS = 20
 
 
 class FactReviewUnavailable(RuntimeError):
