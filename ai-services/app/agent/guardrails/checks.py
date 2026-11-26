@@ -488,7 +488,14 @@ def _quote_money_values(result: dict[str, Any]) -> set[int]:
     return {value for value in values if type(value) is int}
 
 
-def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *, focus_sku: str | None = None) -> bool:
+_POLICY_MONEY_CONTEXT = re.compile(
+    r"(?i)\b(?:chính sách|bảo hành|vận chuyển|ship|freeship|đổi trả|đổi size|hoàn tiền|ngưỡng|tối thiểu|tối đa|phí|cod|đơn từ|giá từ|máy từ|áp dụng cho)\b"
+)
+
+
+def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *,
+                     focus_sku: str | None = None,
+                     policy_values: set[int] | None = None) -> bool:
     from app.mcp_servers.mcp_shared.basket import basket_money_evidenced
     from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
     previews = [call for call in successful if call.get('name') == 'order.preview_update'
@@ -527,7 +534,19 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *, focus_
         quotes[sku] = result
     if not quotes:
         return False
-    clauses = commercial_clauses(candidate)
+    raw_clauses = commercial_clauses(candidate)
+    clauses: list[str] = []
+    for raw_clause in raw_clauses:
+        if not _money_claims(raw_clause):
+            clauses.append(raw_clause)
+            continue
+        initial_bound = resolve_claim_skus(raw_clause, successful, focus_sku=None)
+        if len(initial_bound & quotes.keys()) > 1 and "," in raw_clause:
+            parts = [p.strip() for p in re.split(r",\s+(?=[A-ZĐa-zđ])", raw_clause) if p.strip()]
+            if len(parts) > 1 and all(_money_claims(p) for p in parts):
+                clauses.extend(parts)
+                continue
+        clauses.append(raw_clause)
     answer_skus = set()
     for _clause in clauses:
         answer_skus.update(resolve_claim_skus(_promotion_subject(_clause), successful, focus_sku=None))
@@ -538,6 +557,10 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *, focus_
             continue
         if set(_LEGACY_SKU_SIGNAL.findall(clause)) - known_skus(successful):
             return False
+        clause_policy = bool(policy_values and _POLICY_MONEY_CONTEXT.search(clause))
+        active_claims = [c for c in claims if not (clause_policy and c[0] in policy_values)]
+        if not active_claims:
+            continue
         bound = resolve_claim_skus(clause, successful, focus_sku=None)
         if not bound:
             bound = answer_quote_skus if len(answer_quote_skus) == 1 else (
@@ -568,17 +591,17 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *, focus_
             qty = selected_call.get('args', {}).get('qty', 1)
             total_values = {quote[k] * qty for k in ('final_price_vnd', 'list_price_vnd')
                             if type(quote.get(k)) is int and type(qty) is int}
-            price_claims = [amount for amount, kind, _ in claims if kind == 'price']
+            price_claims = [amount for amount, kind, _ in active_claims if kind == 'price']
             if price_claims and (not any(amount in total_values for amount in price_claims)
                                  or any(amount not in (prices | total_values) for amount in price_claims)):
                 return False
             prices |= total_values
         if any(amount not in (discounts if kind == 'discount' else prices)
-               for amount, kind, _ in claims):
+               for amount, kind, _ in active_claims):
             return False
         if any(kind == "discount" and negative and amount > 0
                and amount in discounts
-               for amount, kind, negative in claims):
+               for amount, kind, negative in active_claims):
             return False
     return True
 
@@ -692,7 +715,7 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
             and _empty_catalog_budget_evidenced(candidate, customer_text, money_claims, successful)):
         return FALLBACK, 'final_budget_unverified'
     policy_amounts = (_money_claims(" ".join(chunk["content"] for chunk in policy_chunks))
-                      if policy_claim else [])
+                      if policy_chunks else [])
     policy_values = {amount for amount, _, _ in policy_amounts}
     policy_literal = re.sub(r'^Theo thông tin chính sách đã kiểm tra:\s*', '', candidate)
     policy_money_clauses = [clause.strip() for clause in
@@ -721,7 +744,8 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
             not remaining_money_clauses
             or _money_evidenced("; ".join(remaining_money_clauses), successful, focus_sku=focus_sku)
         )
-    if money_claims and not (_money_evidenced(money_candidate, successful, focus_sku=focus_sku) or
+    if money_claims and not (_money_evidenced(money_candidate, successful, focus_sku=focus_sku,
+                                              policy_values=(policy_values if policy_chunks else None)) or
                              exact_policy_quote or
                              mixed_policy_and_quote or
                              policy_claim and not re.search(r"(?i)\bgiá(?:\s+bán)?\b", candidate)

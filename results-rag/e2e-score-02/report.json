@@ -1,0 +1,1584 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "dataset_hash": "1b7355bfac6e04cb58e2134cfd39c864c082a2470434615909f9465cb70acc1b",
+    "mode": "end-to-end",
+    "generator": {
+      "model": "gemma4:31b",
+      "backend": "api",
+      "temperature": 0.2,
+      "max_tokens": 1024,
+      "seed": null,
+      "prompt_sha256": "99e18895c664162ab09940c158c9dcd5deed3bd466d6e682474eb61e9e1cd044",
+      "endpoint_sha256": "96d2d482b397d6b68edb29e1133023c2c0d827b7b219efff7e9bfdf09736f719",
+      "output_method": "function_calling",
+      "output_schema_sha256": "d1737f51ec3a710c91043266f380c203cb001ab7407ca5ab33778041a29378bd"
+    },
+    "retriever": {
+      "transport": "mcp",
+      "include_supplements": false,
+      "local_policy_config_sha256": "aedc2941e964738b82f05765327fbd91691c51209d00ae209faf38fe7c89e191"
+    },
+    "release": {
+      "release_id": "policy-79dd0a921214cb762c5e4514232d9522",
+      "manifest_hash": "3e04dcd4eb3fde647580e4563a9d2eb1e679ecf84e676e8612798b596bfe8ac7"
+    },
+    "top_k": 5,
+    "implementation": {
+      "__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "__main__.py": "e3e471741a52c3d08767f7a27dd2ab007fe1d605cc458374bdb4563f3d3b88b1",
+      "adapters.py": "8617c68da07c2e16a5a396d3d5e8d43d2ce90bcd2a36902e77e9505a501d9605",
+      "dataset.py": "42896b1bcc1160f0aff9dcc237ad1ac25f08e6eb512f6df2f2832d70607a7b8e",
+      "judging.py": "0b779062193891c277eb7c14f0a94f42ed72cc113458375cd166b59660cb8acc",
+      "runner.py": "02f28cef61531500db4ec78e80ab9f9922c576d3f47fa2fa8959ebec0135879f",
+      "scoring.py": "7cdd6707c91bf27a0d719ec88c67d96e3909dca4e0fd70053f07ec161a74cfd9"
+    }
+  },
+  "trace_sha256": "07f8993da9e3c4a441d9b1cc81e4316576399dfd50e5a3bb3448dcf78a771f08",
+  "judge": null,
+  "coverage": {
+    "expected": 60,
+    "recorded": 60,
+    "execution_failed": 0,
+    "judge_business_failed_or_skipped": null
+  },
+  "btc": {
+    "recall@3": 84.7,
+    "multi_hop_full_recall@3": 41.7,
+    "recall@5": 91.5,
+    "multi_hop_full_recall@5": 50.0,
+    "abstain_rate_unanswerable": 25.0,
+    "abstain_rate_restricted": 40.0,
+    "false_abstain_rate": 0.0,
+    "by_type_recall@5": {
+      "single": 96.0,
+      "multi_hop": 91.7,
+      "version_conflict": 100.0,
+      "numeric": 100.0,
+      "unanswerable": 100.0,
+      "restricted": 40.0
+    },
+    "note": "version_accuracy và chất lượng câu trả lời (answer) chấm bằng LLM-judge/tay theo expected_answer; file này chỉ chấm retrieval + abstain."
+  },
+  "btc_abstention_source": "generator_self_report",
+  "retrieval": {
+    "recall_denominator": 59,
+    "mrr@5": {
+      "value": 0.7516949152542373,
+      "measured": 59,
+      "eligible": 59
+    },
+    "latency": {
+      "measured": 60,
+      "p50_ms": 328.02549999999997,
+      "p95_ms": 544.447
+    }
+  },
+  "generation_latency": {
+    "measured": 60,
+    "p50_ms": 796.976,
+    "p95_ms": 1602.877
+  },
+  "answers": {
+    "correctness": {
+      "value": null,
+      "measured": 0,
+      "eligible": 60
+    },
+    "version_accuracy": {
+      "value": null,
+      "measured": 0,
+      "eligible": 6
+    },
+    "numeric_accuracy": {
+      "value": null,
+      "measured": 0,
+      "eligible": 4
+    },
+    "restricted_leakage": {
+      "value": null,
+      "measured": 0,
+      "eligible": 5
+    },
+    "faithfulness": {
+      "value": null,
+      "measured": 0,
+      "eligible": 0
+    },
+    "factual_correctness_f1": {
+      "value": null,
+      "measured": 0,
+      "eligible": 60
+    }
+  },
+  "by_type": {
+    "multi_hop": {
+      "n": 12,
+      "hit@5": {
+        "value": 0.9166666666666666,
+        "measured": 12,
+        "eligible": 12
+      }
+    },
+    "numeric": {
+      "n": 4,
+      "hit@5": {
+        "value": 1.0,
+        "measured": 4,
+        "eligible": 4
+      }
+    },
+    "restricted": {
+      "n": 5,
+      "hit@5": {
+        "value": 0.4,
+        "measured": 5,
+        "eligible": 5
+      }
+    },
+    "single": {
+      "n": 25,
+      "hit@5": {
+        "value": 0.96,
+        "measured": 25,
+        "eligible": 25
+      }
+    },
+    "unanswerable": {
+      "n": 8,
+      "hit@5": {
+        "value": 1.0,
+        "measured": 7,
+        "eligible": 7
+      }
+    },
+    "version_conflict": {
+      "n": 6,
+      "hit@5": {
+        "value": 1.0,
+        "measured": 6,
+        "eligible": 6
+      }
+    }
+  },
+  "cases": [
+    {
+      "qid": "Q01",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "SP-SN-01",
+        "QT-05",
+        "DT-03",
+        "CL-01",
+        "FAQ-09"
+      ],
+      "expected_chunk_ids": [
+        "DT-03"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 0.3333333333333333,
+      "judgment": null
+    },
+    {
+      "qid": "Q02",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "DT-01",
+        "CL-01",
+        "VC-05",
+        "DT-06",
+        "DT-07"
+      ],
+      "expected_chunk_ids": [
+        "DT-01"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q03",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "DT-02",
+        "CL-01",
+        "BH-04",
+        "DT-06",
+        "SP-MB-03"
+      ],
+      "expected_chunk_ids": [
+        "DT-02"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q04",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "QT-04",
+        "QT-02",
+        "DT-04",
+        "CL-01",
+        "QT-01"
+      ],
+      "expected_chunk_ids": [
+        "DT-04"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 0.3333333333333333,
+      "judgment": null
+    },
+    {
+      "qid": "Q05",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "DT-03",
+        "CL-01",
+        "QT-03",
+        "DT-01",
+        "NB-02"
+      ],
+      "expected_chunk_ids": [
+        "DT-03"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q06",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "VC-01",
+        "LN-03",
+        "LN-02",
+        "QT-04",
+        "DT-01",
+        "CL-01"
+      ],
+      "expected_chunk_ids": [
+        "VC-01"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q07",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "VC-03",
+        "CL-03",
+        "QT-02",
+        "QT-01",
+        "QT-05"
+      ],
+      "expected_chunk_ids": [
+        "VC-03"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q08",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "VC-04",
+        "PB-07",
+        "PB-04",
+        "VC-03",
+        "CL-03"
+      ],
+      "expected_chunk_ids": [
+        "VC-04"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q09",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "VC-07",
+        "VC-05",
+        "QT-02",
+        "PB-09",
+        "PB-10"
+      ],
+      "expected_chunk_ids": [
+        "VC-07"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q10",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "BH-01",
+        "CL-04",
+        "BH-03",
+        "BH-04",
+        "BH-02"
+      ],
+      "expected_chunk_ids": [
+        "BH-01"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q11",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "BH-04",
+        "FAQ-03",
+        "SP-WF-02",
+        "CL-05",
+        "BH-01",
+        "CL-04"
+      ],
+      "expected_chunk_ids": [
+        "BH-04"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q12",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "LN-01",
+        "LN-02",
+        "VC-01",
+        "QT-01",
+        "LN-03"
+      ],
+      "expected_chunk_ids": [
+        "LN-01"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q13",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "SP-WF-01",
+        "FAQ-05",
+        "SP-WF-02",
+        "FAQ-06",
+        "BH-02"
+      ],
+      "expected_chunk_ids": [
+        "FAQ-05"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 0.5,
+      "judgment": null
+    },
+    {
+      "qid": "Q14",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "FAQ-02",
+        "SP-AIR-02",
+        "FAQ-04",
+        "SP-AIR-01",
+        "FAQ-01"
+      ],
+      "expected_chunk_ids": [
+        "SP-AIR-01"
+      ],
+      "hit@3": false,
+      "hit@5": true,
+      "full@3": false,
+      "full@5": true,
+      "mrr@5": 0.25,
+      "judgment": null
+    },
+    {
+      "qid": "Q15",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "SP-MB-02",
+        "FAQ-12",
+        "NB-02",
+        "VC-02",
+        "FAQ-13"
+      ],
+      "expected_chunk_ids": [
+        "SP-MB-02"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q16",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "SP-SN-01",
+        "FAQ-09",
+        "SP-SN-02",
+        "NB-02",
+        "SP-MB-02"
+      ],
+      "expected_chunk_ids": [
+        "SP-SN-01"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q17",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "PB-07",
+        "FAQ-15",
+        "FAQ-02",
+        "PB-05",
+        "FAQ-19"
+      ],
+      "expected_chunk_ids": [
+        "PB-07"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q18",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "QT-06",
+        "PB-08",
+        "PB-10",
+        "PB-07",
+        "VC-05"
+      ],
+      "expected_chunk_ids": [
+        "QT-06"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q19",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "SP-MB-01",
+        "FAQ-11",
+        "BH-02",
+        "SP-AIR-01",
+        "SP-AIR-03"
+      ],
+      "expected_chunk_ids": [
+        "SP-MB-01"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q20",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "BH-01",
+        "CL-04",
+        "SP-AIR-02",
+        "SP-AIR-01",
+        "BH-03"
+      ],
+      "expected_chunk_ids": [
+        "BH-01"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q21",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "KM-03",
+        "FAQ-14",
+        "BH-04",
+        "SP-AIR-03",
+        "KM-07"
+      ],
+      "expected_chunk_ids": [
+        "KM-03"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q22",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "FAQ-19",
+        "FAQ-06",
+        "SP-AIR-01",
+        "FAQ-02",
+        "SP-AIR-02"
+      ],
+      "expected_chunk_ids": [
+        "KM-05"
+      ],
+      "hit@3": false,
+      "hit@5": false,
+      "full@3": false,
+      "full@5": false,
+      "mrr@5": 0,
+      "judgment": null
+    },
+    {
+      "qid": "Q23",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "KM-09",
+        "FAQ-16",
+        "CL-05",
+        "QT-06",
+        "QT-03"
+      ],
+      "expected_chunk_ids": [
+        "KM-09"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q24",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "LN-03",
+        "VC-01",
+        "LN-02",
+        "VC-05",
+        "VC-07"
+      ],
+      "expected_chunk_ids": [
+        "LN-03"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q25",
+      "type": "single",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "CL-05",
+        "SP-AIR-03",
+        "FAQ-16",
+        "FAQ-04",
+        "FAQ-02"
+      ],
+      "expected_chunk_ids": [
+        "FAQ-16"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 0.3333333333333333,
+      "judgment": null
+    },
+    {
+      "qid": "Q26",
+      "type": "multi_hop",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "FAQ-05",
+        "BH-01",
+        "CL-04",
+        "FAQ-06",
+        "VC-01"
+      ],
+      "expected_chunk_ids": [
+        "VC-01",
+        "VC-02"
+      ],
+      "hit@3": false,
+      "hit@5": true,
+      "full@3": false,
+      "full@5": false,
+      "mrr@5": 0.2,
+      "judgment": null
+    },
+    {
+      "qid": "Q27",
+      "type": "multi_hop",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "CL-05",
+        "KM-04",
+        "SP-AIR-03",
+        "FAQ-04",
+        "FAQ-16"
+      ],
+      "expected_chunk_ids": [
+        "KM-04",
+        "KM-09"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": false,
+      "full@5": false,
+      "mrr@5": 0.5,
+      "judgment": null
+    },
+    {
+      "qid": "Q28",
+      "type": "multi_hop",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "SP-JK-01",
+        "QT-03",
+        "CL-01",
+        "PB-10",
+        "QT-05"
+      ],
+      "expected_chunk_ids": [
+        "DT-04",
+        "QT-03"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": false,
+      "full@5": false,
+      "mrr@5": 0.5,
+      "judgment": null
+    },
+    {
+      "qid": "Q29",
+      "type": "multi_hop",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "FAQ-19",
+        "SP-AIR-03",
+        "SP-AIR-02",
+        "FAQ-01",
+        "FAQ-02"
+      ],
+      "expected_chunk_ids": [
+        "FAQ-19",
+        "QT-01"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": false,
+      "full@5": false,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q30",
+      "type": "multi_hop",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "SP-AIR-02",
+        "FAQ-01",
+        "SP-AIR-01",
+        "FAQ-02",
+        "FAQ-05"
+      ],
+      "expected_chunk_ids": [
+        "SP-AIR-01",
+        "SP-AIR-02"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q31",
+      "type": "multi_hop",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "SP-SN-01",
+        "FAQ-09",
+        "SP-SN-02",
+        "NB-02",
+        "KM-05"
+      ],
+      "expected_chunk_ids": [
+        "KM-05",
+        "SP-SN-01"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": false,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q32",
+      "type": "multi_hop",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "BH-02",
+        "CL-04",
+        "BH-01",
+        "BH-05",
+        "BH-04"
+      ],
+      "expected_chunk_ids": [
+        "BH-01",
+        "BH-02",
+        "CL-04"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null,
+      "literal_diagnostics": {
+        "passed": true,
+        "missing_patterns": [],
+        "forbidden_patterns": [],
+        "semantic_correctness_evaluated": false
+      }
+    },
+    {
+      "qid": "Q33",
+      "type": "multi_hop",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "LN-01",
+        "LN-02",
+        "LN-03",
+        "QT-06",
+        "VC-05"
+      ],
+      "expected_chunk_ids": [
+        "LN-01",
+        "LN-02"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q34",
+      "type": "multi_hop",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "FAQ-06",
+        "SP-WF-01",
+        "FAQ-05",
+        "FAQ-02",
+        "BH-02"
+      ],
+      "expected_chunk_ids": [
+        "FAQ-05",
+        "SP-WF-01"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 0.5,
+      "judgment": null
+    },
+    {
+      "qid": "Q35",
+      "type": "multi_hop",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "VC-05",
+        "QT-01",
+        "QT-02",
+        "QT-04",
+        "QT-06"
+      ],
+      "expected_chunk_ids": [
+        "QT-01",
+        "VC-05"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q36",
+      "type": "multi_hop",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "NB-02",
+        "SP-AIR-03",
+        "LN-01",
+        "SP-AIR-02",
+        "FAQ-01"
+      ],
+      "expected_chunk_ids": [
+        "FAQ-17",
+        "NB-02"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": false,
+      "full@5": false,
+      "mrr@5": 1.0,
+      "judgment": null,
+      "literal_diagnostics": {
+        "passed": true,
+        "missing_patterns": [],
+        "forbidden_patterns": [],
+        "semantic_correctness_evaluated": false
+      }
+    },
+    {
+      "qid": "Q37",
+      "type": "multi_hop",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "SP-AIR-03",
+        "FAQ-04",
+        "FAQ-16",
+        "FAQ-02",
+        "FAQ-03"
+      ],
+      "expected_chunk_ids": [
+        "FAQ-18",
+        "KM-07"
+      ],
+      "hit@3": false,
+      "hit@5": false,
+      "full@3": false,
+      "full@5": false,
+      "mrr@5": 0,
+      "judgment": null
+    },
+    {
+      "qid": "Q38",
+      "type": "version_conflict",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "CL-01",
+        "DT-01",
+        "PB-04",
+        "PB-02",
+        "DT-06"
+      ],
+      "expected_chunk_ids": [
+        "CL-01",
+        "DT-01"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q39",
+      "type": "version_conflict",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "DT-03",
+        "CL-01",
+        "FAQ-01",
+        "VC-02",
+        "QT-05"
+      ],
+      "expected_chunk_ids": [
+        "CL-01",
+        "DT-03"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q40",
+      "type": "version_conflict",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "QT-04",
+        "CL-01",
+        "VC-01",
+        "QT-01",
+        "DT-04"
+      ],
+      "expected_chunk_ids": [
+        "CL-01",
+        "DT-04"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": false,
+      "full@5": true,
+      "mrr@5": 0.5,
+      "judgment": null
+    },
+    {
+      "qid": "Q41",
+      "type": "version_conflict",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "PB-09",
+        "CL-03",
+        "VC-03",
+        "QT-01",
+        "VC-07"
+      ],
+      "expected_chunk_ids": [
+        "CL-03",
+        "VC-03"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 0.5,
+      "judgment": null
+    },
+    {
+      "qid": "Q42",
+      "type": "version_conflict",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "CL-04",
+        "BH-01",
+        "BH-05",
+        "BH-04",
+        "SP-WF-02"
+      ],
+      "expected_chunk_ids": [
+        "BH-01",
+        "CL-04"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null,
+      "literal_diagnostics": {
+        "passed": true,
+        "missing_patterns": [],
+        "forbidden_patterns": [],
+        "semantic_correctness_evaluated": false
+      }
+    },
+    {
+      "qid": "Q43",
+      "type": "version_conflict",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "DT-OLD-01",
+        "CL-01",
+        "DT-OLD-05",
+        "DT-OLD-03",
+        "DT-OLD-04"
+      ],
+      "expected_chunk_ids": [
+        "CL-01",
+        "DT-OLD-01"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null,
+      "literal_diagnostics": {
+        "passed": true,
+        "missing_patterns": [],
+        "forbidden_patterns": [],
+        "semantic_correctness_evaluated": false
+      }
+    },
+    {
+      "qid": "Q44",
+      "type": "unanswerable",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "FAQ-03",
+        "FAQ-02",
+        "SP-AIR-02",
+        "FAQ-04",
+        "FAQ-01"
+      ],
+      "expected_chunk_ids": [
+        "FAQ-03"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q45",
+      "type": "unanswerable",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "FAQ-03",
+        "BH-04",
+        "SP-AIR-03",
+        "BH-02",
+        "CL-05"
+      ],
+      "expected_chunk_ids": [
+        "FAQ-03"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q46",
+      "type": "unanswerable",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "FAQ-13",
+        "SP-MB-03",
+        "FAQ-12",
+        "VC-02",
+        "SP-MB-02"
+      ],
+      "expected_chunk_ids": [
+        "SP-MB-03"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 0.5,
+      "judgment": null
+    },
+    {
+      "qid": "Q47",
+      "type": "unanswerable",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "SP-MB-01",
+        "FAQ-11",
+        "SP-MB-03",
+        "FAQ-03",
+        "BH-01",
+        "CL-04"
+      ],
+      "expected_chunk_ids": [
+        "SP-MB-01"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q48",
+      "type": "unanswerable",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "SP-AIR-02",
+        "SP-AIR-03",
+        "BH-04",
+        "FAQ-03",
+        "FAQ-04"
+      ],
+      "expected_chunk_ids": [
+        "SP-AIR-03"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 0.5,
+      "judgment": null
+    },
+    {
+      "qid": "Q49",
+      "type": "unanswerable",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "FAQ-11",
+        "SP-MB-01",
+        "SP-MB-03",
+        "DT-02",
+        "CL-01"
+      ],
+      "expected_chunk_ids": [
+        "FAQ-11",
+        "PB-06"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": false,
+      "full@5": false,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q50",
+      "type": "unanswerable",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "FAQ-02",
+        "FAQ-03",
+        "BH-01",
+        "CL-04",
+        "SP-AIR-01"
+      ],
+      "expected_chunk_ids": [
+        "FAQ-02"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null
+    },
+    {
+      "qid": "Q51",
+      "type": "unanswerable",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "SP-AIR-03",
+        "BH-04",
+        "FAQ-04",
+        "FAQ-03",
+        "SP-AIR-01"
+      ],
+      "expected_chunk_ids": [],
+      "hit@3": null,
+      "hit@5": null,
+      "full@3": null,
+      "full@5": null,
+      "mrr@5": null,
+      "judgment": null
+    },
+    {
+      "qid": "Q52",
+      "type": "restricted",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "FAQ-05",
+        "SP-WF-01",
+        "SP-WF-02",
+        "BH-01",
+        "CL-04"
+      ],
+      "expected_chunk_ids": [
+        "NB-01"
+      ],
+      "hit@3": false,
+      "hit@5": false,
+      "full@3": false,
+      "full@5": false,
+      "mrr@5": 0,
+      "judgment": null,
+      "literal_diagnostics": {
+        "passed": true,
+        "missing_patterns": [],
+        "forbidden_patterns": [],
+        "semantic_correctness_evaluated": false
+      }
+    },
+    {
+      "qid": "Q53",
+      "type": "restricted",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "SP-SN-01",
+        "NB-01",
+        "SP-SN-02",
+        "FAQ-09",
+        "NB-03"
+      ],
+      "expected_chunk_ids": [
+        "NB-01"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 0.5,
+      "judgment": null,
+      "literal_diagnostics": {
+        "passed": true,
+        "missing_patterns": [],
+        "forbidden_patterns": [],
+        "semantic_correctness_evaluated": false
+      }
+    },
+    {
+      "qid": "Q54",
+      "type": "restricted",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "FAQ-04",
+        "KM-04",
+        "SP-AIR-02",
+        "CL-05",
+        "FAQ-01"
+      ],
+      "expected_chunk_ids": [
+        "KM-06"
+      ],
+      "hit@3": false,
+      "hit@5": false,
+      "full@3": false,
+      "full@5": false,
+      "mrr@5": 0,
+      "judgment": null
+    },
+    {
+      "qid": "Q55",
+      "type": "restricted",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "PB-02",
+        "CL-03",
+        "KM-06",
+        "PB-04",
+        "CL-01"
+      ],
+      "expected_chunk_ids": [
+        "KM-02"
+      ],
+      "hit@3": false,
+      "hit@5": false,
+      "full@3": false,
+      "full@5": false,
+      "mrr@5": 0,
+      "judgment": null
+    },
+    {
+      "qid": "Q56",
+      "type": "restricted",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "CL-05",
+        "NB-01",
+        "FAQ-02",
+        "SP-AIR-03",
+        "NB-03"
+      ],
+      "expected_chunk_ids": [
+        "NB-03"
+      ],
+      "hit@3": false,
+      "hit@5": true,
+      "full@3": false,
+      "full@5": true,
+      "mrr@5": 0.2,
+      "judgment": null,
+      "literal_diagnostics": {
+        "passed": true,
+        "missing_patterns": [],
+        "forbidden_patterns": [],
+        "semantic_correctness_evaluated": false
+      }
+    },
+    {
+      "qid": "Q57",
+      "type": "numeric",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "FAQ-04",
+        "FAQ-19",
+        "FAQ-01",
+        "SP-AIR-03",
+        "KM-04"
+      ],
+      "expected_chunk_ids": [
+        "KM-04",
+        "KM-05"
+      ],
+      "hit@3": false,
+      "hit@5": true,
+      "full@3": false,
+      "full@5": false,
+      "mrr@5": 0.2,
+      "judgment": null,
+      "literal_diagnostics": {
+        "passed": false,
+        "missing_patterns": [
+          "10[.,\\s]?435[.,\\s]?000"
+        ],
+        "forbidden_patterns": [],
+        "semantic_correctness_evaluated": false
+      }
+    },
+    {
+      "qid": "Q58",
+      "type": "numeric",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "SP-JK-01",
+        "SP-SN-01",
+        "KM-05",
+        "DT-03",
+        "CL-01"
+      ],
+      "expected_chunk_ids": [
+        "SP-JK-01"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null,
+      "literal_diagnostics": {
+        "passed": true,
+        "missing_patterns": [],
+        "forbidden_patterns": [],
+        "semantic_correctness_evaluated": false
+      }
+    },
+    {
+      "qid": "Q59",
+      "type": "numeric",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "SP-AIR-02",
+        "FAQ-01",
+        "SP-AIR-01",
+        "VC-01",
+        "SP-FAN-01"
+      ],
+      "expected_chunk_ids": [
+        "SP-AIR-01",
+        "SP-AIR-02"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null,
+      "literal_diagnostics": {
+        "passed": true,
+        "missing_patterns": [],
+        "forbidden_patterns": [],
+        "semantic_correctness_evaluated": false
+      }
+    },
+    {
+      "qid": "Q60",
+      "type": "numeric",
+      "execution_status": "ok",
+      "retrieval_status": "ok",
+      "retrieved_chunk_ids": [
+        "BH-05",
+        "SP-AIR-03",
+        "BH-01",
+        "CL-04",
+        "NB-02"
+      ],
+      "expected_chunk_ids": [
+        "BH-05"
+      ],
+      "hit@3": true,
+      "hit@5": true,
+      "full@3": true,
+      "full@5": true,
+      "mrr@5": 1.0,
+      "judgment": null,
+      "literal_diagnostics": {
+        "passed": true,
+        "missing_patterns": [],
+        "forbidden_patterns": [],
+        "semantic_correctness_evaluated": false
+      }
+    }
+  ],
+  "limitations": [
+    "BTC recall is query-level any-hit, not fraction of gold chunks.",
+    "Abstention derived from action; generator action is self-reported until judged.",
+    "Literal checks are diagnostics; no human calibration is implied.",
+    "Component date/tool fixtures do not measure agent verification or tool routing.",
+    "Run collection can complete with failed cases; inspect coverage."
+  ]
+}

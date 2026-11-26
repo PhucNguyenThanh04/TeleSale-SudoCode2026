@@ -431,3 +431,146 @@ def test_agent_nodes_skips_semantic_review_when_disabled():
     assert out["reply_error"] is None
     assert out["verified_answer"] == "Sản phẩm Mẫu A có giá 1.800.000đ."
     assert mock_review.await_count == 0
+
+
+def test_comma_separated_multi_sku_prices_and_same_clause_policy_fee():
+    calls = [
+        {
+            "name": "catalog.search",
+            "args": {"query": "Ghế A"},
+            "result": {"items": [{"sku": "SKU-CHAIR", "name": "Ghế Mẫu A", "list_price_vnd": 4990000}]},
+        },
+        {
+            "name": "catalog.search",
+            "args": {"query": "Xe B"},
+            "result": {"items": [{"sku": "SKU-STROLLER", "name": "Xe Đẩy Mẫu B", "list_price_vnd": 3490000}]},
+        },
+        {
+            "name": "pricing.get_quote",
+            "args": {"sku": "SKU-CHAIR", "on": "2026-10-23"},
+            "result": {"sku": "SKU-CHAIR", "list_price_vnd": 4990000, "final_price_vnd": 4990000, "applied_promos": []},
+        },
+        {
+            "name": "pricing.get_quote",
+            "args": {"sku": "SKU-STROLLER", "on": "2026-10-23"},
+            "result": {"sku": "SKU-STROLLER", "list_price_vnd": 3490000, "final_price_vnd": 3490000, "applied_promos": []},
+        },
+    ]
+    _, err_ok = check_answer(
+        "Ghế Mẫu A có giá 4.990.000đ, xe đẩy Mẫu B có giá 3.490.000đ.",
+        calls,
+        "Hai mẫu này giá từng món bao nhiêu?",
+    )
+    assert err_ok is None
+
+    _, err_swapped = check_answer(
+        "Ghế Mẫu A có giá 3.490.000đ, xe đẩy Mẫu B có giá 4.990.000đ.",
+        calls,
+        "Hai mẫu này giá từng món bao nhiêu?",
+    )
+    assert err_swapped == "price_without_quote"
+
+    policy_calls = [
+        {
+            "name": "catalog.get_details",
+            "args": {"sku": "SKU-COAT"},
+            "result": {"items": [{"sku": "SKU-COAT", "name": "Áo Khoác Mẫu C", "list_price_vnd": 690000}]},
+        },
+        {
+            "name": "pricing.get_quote",
+            "args": {"sku": "SKU-COAT", "address": "Hà Nội", "on": "2026-10-15"},
+            "result": {"sku": "SKU-COAT", "list_price_vnd": 690000, "final_price_vnd": 690000, "applied_promos": []},
+        },
+        {
+            "name": "policy.search",
+            "args": {"query": "phí ship Hà Nội", "on": "2026-10-15"},
+            "result": {
+                "evidence": [
+                    {"content": "Phí vận chuyển nội thành Hà Nội là 30.000đ, miễn phí vận chuyển cho đơn từ 1.000.000đ."}
+                ]
+            },
+        },
+    ]
+    _, err_mixed = check_answer(
+        "Áo Khoác Mẫu C giá 690.000đ nên chưa đạt ngưỡng miễn phí vận chuyển từ 1.000.000đ, phí vận chuyển là 30.000đ.",
+        policy_calls,
+        "Phí vận chuyển Hà Nội thế nào?",
+    )
+    assert err_mixed is None
+
+    _, err_mixed_bad = check_answer(
+        "Áo Khoác Mẫu C giá 690.000đ, phí vận chuyển là 55.000đ.",
+        policy_calls,
+        "Phí vận chuyển Hà Nội thế nào?",
+    )
+    assert err_mixed_bad == "price_without_quote"
+
+
+def test_promotion_grounding_accepts_address_and_non_address_quotes_and_same_sku_basket():
+    from app.agent.guardrails.promotion_grounding import check_promotion_grounding
+
+    dual_quote_calls = [
+        {
+            "name": "catalog.get_details",
+            "args": {"sku": "SKU-ITEM-1"},
+            "result": {"items": [{"sku": "SKU-ITEM-1", "name": "Sản phẩm Mẫu A"}]},
+        },
+        {
+            "name": "pricing.get_quote",
+            "args": {"sku": "SKU-ITEM-1", "on": "2026-10-20"},
+            "result": {
+                "sku": "SKU-ITEM-1",
+                "list_price_vnd": 1000000,
+                "final_price_vnd": 1000000,
+                "applied_promos": [{"promo_code": "COD-0", "type": "freecod", "discount_vnd": 0}],
+                "freeship": False,
+            },
+        },
+        {
+            "name": "pricing.get_quote",
+            "args": {"sku": "SKU-ITEM-1", "address": "Hà Nội", "on": "2026-10-20"},
+            "result": {
+                "sku": "SKU-ITEM-1",
+                "list_price_vnd": 1000000,
+                "final_price_vnd": 1000000,
+                "applied_promos": [{"promo_code": "COD-0", "type": "freecod", "discount_vnd": 0}],
+                "freeship": True,
+            },
+        },
+    ]
+    assert check_promotion_grounding(
+        "Sản phẩm Mẫu A được miễn phí COD và miễn phí vận chuyển.",
+        dual_quote_calls,
+    ) is None
+
+    basket_calls = [
+        {
+            "name": "catalog.search",
+            "args": {"query": "Máy Mini"},
+            "result": {"items": [{"sku": "SKU-MINI", "name": "Máy Mini"}]},
+        },
+        {
+            "name": "pricing.quote_order",
+            "args": {"lines": [{"sku": "SKU-MINI", "qty": 2}], "on": "2026-10-29"},
+            "result": {
+                "units": [
+                    {"unit": 1, "line": 0, "sku": "SKU-MINI", "list_price_vnd": 2190000, "final_price_vnd": 2190000, "applied_promos": []},
+                    {
+                        "unit": 2,
+                        "line": 0,
+                        "sku": "SKU-MINI",
+                        "list_price_vnd": 2190000,
+                        "final_price_vnd": 1095000,
+                        "applied_promos": [{"promo_code": "SECOND-50", "type": "percent", "discount_vnd": 1095000}],
+                    },
+                ],
+                "total_vnd": 3285000,
+                "order_promos": [{"promo_code": "COD-0", "type": "freecod", "discount_vnd": 0}],
+                "freeship": True,
+            },
+        },
+    ]
+    assert check_promotion_grounding(
+        "Đơn 2 máy Máy Mini được giảm 50% theo mã SECOND-50 và miễn phí COD.",
+        basket_calls,
+    ) is None

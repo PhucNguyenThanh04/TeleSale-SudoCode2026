@@ -52,7 +52,7 @@ async def review_episode_resolutions(model, delta, turn, open_items) -> frozense
         if len(set(ids)) != len(ids):
             raise EpisodeReviewUnavailable()
         payload = _mask_payload({'proposals': proposals, 'turn': turn, 'open_items': open_items})
-        async with asyncio.timeout(10):
+        async with asyncio.timeout(20):
             reviewer = model.with_structured_output(ResolutionReview, method='function_calling')
             result = ResolutionReview.model_validate(await reviewer.ainvoke([
                 SystemMessage(content=_INSTRUCTIONS),

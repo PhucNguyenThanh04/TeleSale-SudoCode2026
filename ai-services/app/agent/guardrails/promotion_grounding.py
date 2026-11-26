@@ -150,15 +150,31 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
                 unit['result']['applied_promos'].extend(
                     promo for promo in baskets[0]['result'].get('order_promos', [])
                     if promo.get('type') == 'freecod')
-            if (unit is None and len(baskets) == 1 and (cod or shipping)
-                    and not re.search(r'\b(?:giam|tang|bieu)\b|%', commercial)):
+            if unit is None and len(baskets) == 1:
                 basket = baskets[0]
-                sku = focus_sku
-                if sku and not any(row.get('sku') == sku for row in basket['result'].get('units', [])):
-                    return 'promotion_quote_missing'
-                unit = {'name': 'pricing.get_quote', 'args': {'on': basket.get('args', {}).get('on'), 'sku': sku},
-                        'result': {'applied_promos': basket['result'].get('order_promos', []),
-                                   'freeship': basket['result'].get('freeship', False)}}
+                b_units = basket['result'].get('units', [])
+                b_skus = {row.get('sku') for row in b_units if row.get('sku')}
+                if (cod or shipping) and not re.search(r'\b(?:giam|tang|bieu)\b|%', commercial):
+                    sku = focus_sku
+                    if sku and sku not in b_skus:
+                        return 'promotion_quote_missing'
+                    unit = {'name': 'pricing.get_quote', 'args': {'on': basket.get('args', {}).get('on'), 'sku': sku},
+                            'result': {'applied_promos': basket['result'].get('order_promos', []),
+                                       'freeship': basket['result'].get('freeship', False)}}
+                elif len(b_skus) == 1:
+                    only_sku = next(iter(b_skus))
+                    combined_promos = [p for row in b_units for p in (row.get('applied_promos') or []) if isinstance(p, dict)]
+                    if cod:
+                        combined_promos.extend(
+                            p for p in basket['result'].get('order_promos', [])
+                            if isinstance(p, dict) and p.get('type') == 'freecod'
+                        )
+                    unit = {'name': 'pricing.get_quote', 'args': {'on': basket.get('args', {}).get('on'), 'sku': only_sku},
+                            'result': {'sku': only_sku,
+                                       'list_price_vnd': b_units[0].get('list_price_vnd'),
+                                       'final_price_vnd': b_units[-1].get('final_price_vnd'),
+                                       'applied_promos': combined_promos,
+                                       'freeship': basket['result'].get('freeship', False)}}
             if unit is None:
                 return 'promotion_quote_missing'
             reason = check_promotion_grounding(clause,
@@ -178,14 +194,16 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
                 return "promotion_quote_missing"
         if not selected or len({c.get("args", {}).get("sku") for c in selected}) != 1:
             return "promotion_quote_missing"
-        if len({str((c.get("args"), c["result"])) for c in selected}) != 1:
+        if len({str((c["result"].get("applied_promos"), c["result"].get("expired_promos"),
+                     c["result"].get("ineligible_promos"), c["result"].get("not_applied_exclusive")))
+                for c in selected}) != 1:
             return "promotion_quote_missing"
         call = selected[-1]
         result = call["result"]
         promos = [p for p in result.get("applied_promos", []) if isinstance(p, dict)]
         on = call.get("args", {}).get("on")
         promos = [p for p in promos if not (on and p.get("valid_until") and p["valid_until"] < on)]
-        inactive = bool(re.search(r"het han|het hieu luc|khong con|khong du dieu kien|khong (?:co|duoc)|chua (?:co|duoc)", folded))
+        inactive = bool(re.search(r"het han|het hieu luc|khong con|khong du dieu kien|khong (?:co|duoc|dat|du)|chua (?:co|duoc|dat|du)", folded))
         applied_codes = {p.get("promo_code") for p in promos}
         expired_codes = {p.get('promo_code') if isinstance(p, dict) else p
                          for p in result.get('expired_promos', [])}
@@ -197,6 +215,7 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
             return 'promotion_detail_unverified'
         if inactive and not codes and re.search(r'khong (?:co|con).*(?:khuyen mai|uu dai)', folded) and promos:
             return 'promotion_detail_unverified'
+        cod_supported = any(p.get("type") == "freecod" for p in promos)
         if codes:
             if inactive:
                 supported = (expired_codes if re.search(r'het han|het hieu luc', folded)
@@ -209,7 +228,6 @@ def check_promotion_grounding(candidate: str, tool_calls: list[dict[str, Any]], 
                 return 'promotion_code_mismatch'
             if not inactive:
                 promos = [p for p in promos if p.get('promo_code') in codes]
-        cod_supported = any(p.get("type") == "freecod" for p in promos)
         gift = bool(re.search(r"\b(?:tang|bieu)\b", commercial))
         discount = bool(re.search(r"\bgiam\b", commercial))
         if inactive and not codes and (gift and any(p.get("type") == "gift" for p in promos)
