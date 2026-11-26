@@ -269,7 +269,7 @@ def facts_used(agent_text: str, tool_calls: list[dict], prior_facts: dict,
     if not current_session_id:
         return []
     catalog = [c for c in (catalog_calls if catalog_calls is not None else tool_calls)
-               if c.get('name') == 'catalog.search' and isinstance(c.get('result'), dict)
+               if c.get('name') in {'catalog.search', 'catalog.get_details'} and isinstance(c.get('result'), dict)
                and 'error' not in c['result'] and c['result'].get('ok') is not False
                and c['result'].get('success') is not False]
     candidates = [(key, fact, None, None) for key, fact in prior_facts.items()]
