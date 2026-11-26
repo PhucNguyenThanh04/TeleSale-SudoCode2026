@@ -194,14 +194,32 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
         if state.get("identity_status") != "known":
             return None
         if isinstance(args.get('payment'), str):
-            payment = ' '.join(args['payment'].casefold().replace('_', ' ').split())
-            aliases = {'cod': 'COD', 'bank': 'bank', 'bank transfer': 'bank',
-                       'momo': 'momo', 'zalopay': 'zalopay'}
+            from app.mcp_servers.mcp_shared.commerce_rules import _search_text
+            payment = ' '.join(_search_text(args['payment']).replace('_', ' ').split())
+            aliases = {
+                'cod': 'COD', 'tien mat': 'COD', 'thu ho': 'COD',
+                'thanh toan khi nhan hang': 'COD', 'nhan hang thanh toan': 'COD',
+                'bank': 'bank', 'bank transfer': 'bank', 'transfer': 'bank',
+                'chuyen khoan': 'bank', 'chuyen khoan ngan hang': 'bank',
+                'ck': 'bank', 'ngan hang': 'bank',
+                'momo': 'momo', 'vi momo': 'momo',
+                'zalopay': 'zalopay', 'zalo pay': 'zalopay', 'vi zalopay': 'zalopay',
+            }
             args['payment'] = aliases.get(payment, args['payment'])
         from app.mcp_servers.mcp_order.schemas import CreateInput
         try:
             args = CreateInput.model_validate(args).model_dump(mode='json', exclude_none=True)
         except ValueError:
+            if args.get('lines') is not None and (
+                    args.get('sku') is not None or args.get('price_vnd') is not None
+                    or args.get('basket_skus') or args.get('qty', 1) != 1):
+                state['tool_precondition_error'] = 'conflicting_sku_and_lines'
+            elif args.get('lines') is None and args.get('price_vnd') is None:
+                state['tool_precondition_error'] = 'missing_price_vnd'
+            elif args.get('payment') not in {'COD', 'bank', 'momo', 'zalopay'}:
+                state['tool_precondition_error'] = 'invalid_payment_method'
+            else:
+                state['tool_precondition_error'] = 'invalid_tool_arguments'
             return None
         evidence_error = order_evidence_error(state, args)
         if evidence_error is not None:

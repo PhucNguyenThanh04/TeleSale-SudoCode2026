@@ -3,7 +3,7 @@ import hashlib
 import json
 
 CATALOG_TOOLS = frozenset({'catalog.search', 'catalog.get_details'})
-COMMERCIAL_TOOLS = CATALOG_TOOLS | {'pricing.get_quote', 'pricing.quote_order', 'inventory.check', 'order.preview_update'}
+COMMERCIAL_TOOLS = CATALOG_TOOLS | {'pricing.get_quote', 'pricing.quote_order', 'inventory.check', 'order.preview_update', 'policy.search'}
 
 
 def successful(call: dict) -> bool:
@@ -55,7 +55,7 @@ def build_commerce_evidence(state: dict, *, args: dict | None = None) -> list[di
         if name in {'pricing.get_quote', 'pricing.quote_order'} and index <= quote_barrier:
             continue
         proposed = call.get('args') or {}
-        key = (name, _signature(proposed) if name in CATALOG_TOOLS | {'order.preview_update'} else proposed.get('sku'))
+        key = (name, _signature(proposed) if name in CATALOG_TOOLS | {'order.preview_update', 'policy.search', 'pricing.get_quote'} else proposed.get('sku'))
         previous = latest.get(key)
         same_order = (previous and call.get('observation_order') is not None
                       and call['observation_order'] == previous[1].get('observation_order'))
@@ -76,11 +76,14 @@ def build_commerce_evidence(state: dict, *, args: dict | None = None) -> list[di
         name = call['name']
         proposed, result = call.get('args') or {}, call['result']
         if name not in CATALOG_TOOLS:
-            if on and proposed.get('on') != on:
+            if name == 'policy.search':
+                if on and (index < len(prior) or proposed.get('on') is not None) and proposed.get('on') != on:
+                    continue
+            elif on and proposed.get('on') != on:
                 continue
             if args and args.get('on') and args['on'] != proposed.get('on'):
                 continue
-            if name != 'order.preview_update':
+            if name not in {'order.preview_update', 'policy.search'}:
                 if result.get('sku', proposed.get('sku')) != proposed.get('sku'):
                     continue
                 if args and args.get('sku') and args['sku'] != proposed.get('sku'):

@@ -8,9 +8,9 @@ if [[ ! -x "$PYTHON" ]]; then
 fi
 "$PYTHON" - <<'PY'
 import socket
-for port in (18110, 18111):
+for host, port in (('0.0.0.0', 18110), ('127.0.0.1', 18111)):
     with socket.socket() as sock:
-        sock.bind(('127.0.0.1', port))
+        sock.bind((host, port))
 PY
 export SPEECH_MODEL_DIR="${SPEECH_MODEL_DIR:-$PWD/speech/serving/models}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}"
@@ -26,6 +26,6 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 "$PYTHON" -m uvicorn speech.serving.vieneu_sidecar:app --host 127.0.0.1 --port 18111 &
 pids+=("$!")
-"$PYTHON" -m uvicorn speech.serving.app:app --host 127.0.0.1 --port 18110 &
+"$PYTHON" -m uvicorn speech.serving.app:app --host 0.0.0.0 --port 18110 &
 pids+=("$!")
 wait -n "${pids[@]}"

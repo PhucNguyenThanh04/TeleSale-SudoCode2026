@@ -2,6 +2,10 @@ import re
 
 _UNCONFIRMED = re.compile(r'(?i)(?:chưa (?:thể )?(?:xác (?:minh|nhận)|có thông tin)|theo ngày.{0,25}(?:khai|cung cấp)|nếu .{0,100}(?:ngày|đơn|mua)|cần (?:xác (?:minh|nhận)|kiểm tra))')
 _ENTITLEMENT = re.compile(r'(?i)(?:đủ điều kiện|cam kết|(?:em|shop|bên em)\s+(?:sẽ|đảm bảo)\s+(?:hoàn|đổi|trả)|(?:đơn|anh|chị|bạn|khách).{0,35}\bđược\s+(?:đổi|trả|hoàn|bảo hành))')
+_PII_REFUSAL = re.compile(
+    r'(?i)\b(?:không (?:được phép |thể )?(?:lưu|ghi nhận|nhắc lại|đọc lại|thu thập))\b'
+    r'.{0,90}\b(?:thông tin|tài khoản|ngân hàng|cccd|thẻ|nhạy cảm|cá nhân|dãy số|số tài khoản|biểu mẫu|form)\b'
+)
 
 
 def policy_evidence_for_answer(candidate, calls):
@@ -26,6 +30,9 @@ def policy_clarification_or_refusal(candidate):
             r'(?:Dạ[, ]+)?(?:anh/chị|anh|chị) cho em (?:xin|biết) '
             r'(?:tên sản phẩm|mã sản phẩm|mã đơn hàng)(?: ạ)?[.?]?',
             candidate.strip(), re.IGNORECASE):
+        return True
+    if _PII_REFUSAL.search(candidate) and not (
+            _ENTITLEMENT.search(candidate) or re.search(r'\b\d+\s+(?:ngày|tháng|năm)\b', candidate, re.IGNORECASE)):
         return True
     return (bool(_UNCONFIRMED.search(candidate)) or candidate.rstrip().endswith('?')) and not (
         _ENTITLEMENT.search(candidate) or re.search(r'\d',candidate))

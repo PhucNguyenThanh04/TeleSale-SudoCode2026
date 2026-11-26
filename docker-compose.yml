@@ -245,7 +245,12 @@ services:
         condition: service_started
       knowledge-worker:
         condition: service_started
-    environment: *demo-env
+    environment:
+      <<: *demo-env
+      SPEECH_HTTP_URL: http://host.docker.internal:18110
+      SPEECH_LISTEN_URL: ws://host.docker.internal:18110/v1/speech/listen
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     secrets: [backend_password, ai_internal_token, demo_jwt_secret]
     ports:
       - "${DEMO_HOST:-127.0.0.1}:${DEMO_PORT:-8000}:8000"

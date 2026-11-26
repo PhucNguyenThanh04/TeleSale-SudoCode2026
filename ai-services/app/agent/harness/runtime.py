@@ -40,18 +40,22 @@ class AgentHarnessRuntime:
                  tracing: LangfuseTracing | None = None,
                  turn_timeout_seconds: float = 90,
                  max_repair_attempts: int = 1,
-                 safe_fallback_on_rejection: bool = False) -> None:
+                 safe_fallback_on_rejection: bool = False,
+                 semantic_review_enabled: bool = True,
+                 progressive_streaming: bool = False) -> None:
         self.memory = memory
         self.tools = tools
         self.tracing = tracing
         self.turn_timeout_seconds = turn_timeout_seconds
+        self.progressive_streaming = progressive_streaming
         if not guardrails_enabled:
             log_event(None, "verify", "answer_check_disabled", level=logging.WARNING,
                       reason="cấu hình tắt kiểm tra bổ sung; kiểm tra bằng chứng vẫn chạy")
         self.nodes = AgentNodes(llm, tools, memory, max_tool_calls,
                                 prompt_history_turns, clock,
                                 max_repair_attempts=max_repair_attempts,
-                                safe_fallback_on_rejection=safe_fallback_on_rejection)
+                                safe_fallback_on_rejection=safe_fallback_on_rejection,
+                                semantic_review_enabled=semantic_review_enabled)
         self.graph = build_graph(llm, tools, memory, max_tool_calls,
                                  prompt_history_turns, clock, guardrails_enabled,
                                  nodes=self.nodes)
@@ -296,7 +300,7 @@ class AgentHarnessRuntime:
             raise ValueError('Streaming requires text delivery')
         if not self.nodes.guardrails_enabled:
             raise ValueError('Streaming requires answer guardrails')
-        stream = GuardedStream()
+        stream = GuardedStream(progressive=self.progressive_streaming)
 
         async def produce():
             token = active_stream.set(stream)

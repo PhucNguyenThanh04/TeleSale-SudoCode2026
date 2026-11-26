@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "kind": "collection",
+  "status": "complete",
+  "started_at": "2026-11-26T04:41:03.381205+00:00",
+  "mode": "end-to-end",
+  "top_k": 5,
+  "scope": "isolated_rag_with_reference_tool_fixtures",
+  "generator": {
+    "model": "gemma4:31b",
+    "backend": "api",
+    "temperature": 0.2,
+    "max_tokens": 1024,
+    "seed": null,
+    "prompt_sha256": "99e18895c664162ab09940c158c9dcd5deed3bd466d6e682474eb61e9e1cd044",
+    "endpoint_sha256": "96d2d482b397d6b68edb29e1133023c2c0d827b7b219efff7e9bfdf09736f719",
+    "output_method": "function_calling",
+    "output_schema_sha256": "d1737f51ec3a710c91043266f380c203cb001ab7407ca5ab33778041a29378bd"
+  },
+  "retriever": {
+    "transport": "mcp",
+    "include_supplements": false,
+    "local_policy_config_sha256": "aedc2941e964738b82f05765327fbd91691c51209d00ae209faf38fe7c89e191"
+  },
+  "implementation": {
+    "__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "__main__.py": "e3e471741a52c3d08767f7a27dd2ab007fe1d605cc458374bdb4563f3d3b88b1",
+    "adapters.py": "8617c68da07c2e16a5a396d3d5e8d43d2ce90bcd2a36902e77e9505a501d9605",
+    "dataset.py": "42896b1bcc1160f0aff9dcc237ad1ac25f08e6eb512f6df2f2832d70607a7b8e",
+    "judging.py": "0b779062193891c277eb7c14f0a94f42ed72cc113458375cd166b59660cb8acc",
+    "runner.py": "02f28cef61531500db4ec78e80ab9f9922c576d3f47fa2fa8959ebec0135879f",
+    "scoring.py": "7cdd6707c91bf27a0d719ec88c67d96e3909dca4e0fd70053f07ec161a74cfd9"
+  },
+  "dataset_hash": "1b7355bfac6e04cb58e2134cfd39c864c082a2470434615909f9465cb70acc1b",
+  "release": {
+    "release_id": "policy-79dd0a921214cb762c5e4514232d9522",
+    "manifest_hash": "3e04dcd4eb3fde647580e4563a9d2eb1e679ecf84e676e8612798b596bfe8ac7"
+  },
+  "files": {
+    "assertions.json": "c0920885ff458f2e07693c88ed42153154b299ba2846b6b6369d9934ba3f12f3",
+    "btc/catalog/crm_seed.json": "468c0401ad406c2d1186314eac4afaaf17afe34f1fa654676bc13f818faf18e3",
+    "btc/catalog/inventory_timeline.json": "aabaf8dc955ab93782a49d6a70526df0db77bd27fd8fbf8f37dbf6181474cf80",
+    "btc/catalog/products.csv": "ddf348c2dd76b5ffbb79146e8534b9b477ab091647dab06e59b69d385c891ecb",
+    "btc/catalog/products.json": "ba8f86b5bf80d6570d2cc84649c66d12a2a7050c4622458af942b41232adc2cd",
+    "btc/catalog/promotions.json": "e22d9bfa68e3b1d153324fad2de872061d632e518ff4f305a8c8d88e1c5c25be",
+    "btc/eval/mock_tools.py": "ceda57e5737e4ae628d92d3d3847030578cae33d72acf0f99afdf6a04c6a6a55",
+    "btc/eval/reference_eval.py": "730cc9cfc4b9531cebaf5936063fbb87805d4293f0bed1ac88ddc31fbca35a86",
+    "btc/policy/changelog.md": "106960c3777e8995c5dcd84ea8e62c9593c2d74e2eff335e393f436ab71d0dfa",
+    "btc/policy/chinh-sach-bao-hanh.md": "34c0cf79e532a45a3a3bc7fe97853d5b65e5f5e9d48606c13c2e2a27393e7d11",
+    "btc/policy/chinh-sach-doi-tra-v2026-06-HET-HIEU-LUC.md": "47f5e80b5d62ad3ca6e2168e46c301347af234241f2771a9096b85cf34e23b85",
+    "btc/policy/chinh-sach-doi-tra.md": "8177c41dd7f026623d5fe106cdb0d0cdaa85b1d7cbe2652d6efa07fafcdc2493",
+    "btc/policy/chinh-sach-van-chuyen-thanh-toan.md": "6583a76c6c652a04584016cb5741b795b4f66a1ac6579a76e89cacc2b0af75c6",
+    "btc/policy/dieu-khoan-khuyen-mai.md": "46f8b1e14cfd2194d0f5187f6fd8139b2f2290367102191fa87bd1427464c009",
+    "btc/policy/faq.md": "1c9874be840123bf19c30f87d29ab0ededdfd1b1a50c6d7417d1acadea4f1f60",
+    "btc/policy/ghi-chu-nhap-hang-NOI-BO.md": "de5bc8c3dcf00d35a25c284ae2c0249a3e58fd3c785caa14efe39b69035b90a4",
+    "btc/policy/noi-quy-nhan-vien.md": "f34778d413098ac3609edb8ac968f0b990c7029f0347b2e73ff4c308a773c7f0",
+    "btc/policy/playbook-telesale.md": "ca74b496676a1bf88c7d0caf36cfaada69c9f9003045c98055426f259a0fae0d",
+    "btc/policy/quy-trinh-cod-hoan-hang.md": "554ebae8cc04c64821e8d4270c3b0b7a77da63e7610a8b1ad8a09f58807562e0",
+    "btc/policy/spec-gia-dung.md": "cbeabdb642d817add4063a9b753b422ed710aebaca31a4a012163144aee3dd4b",
+    "btc/policy/spec-thoi-trang-me-be.md": "2737addfdf13628f15649976e2e57b0b5e8ef2d7788b1bc3a4c9c5fd45ebb514",
+    "btc/policy/thong-bao-lich-nghi.md": "332bbaeb4f235e064d5d2fc5c14b7560e27aaf19127c8740487b49bc13da57e9",
+    "btc/rag/qa_labeled.json": "37f5b617bedb7377dd3398d12c8da45b347ed697909b159d13fb1482237dc323",
+    "contexts.json": "7fbbdd6735cf9aee6c79c3633d2d7f52a9bd8428553a53d52588ba3d049d30f8",
+    "generation_prompt.txt": "ee738072bc7231209ade818d826a1bb5c81130938d874e8bb37c23427b9364eb",
+    "trace.jsonl": "07f8993da9e3c4a441d9b1cc81e4316576399dfd50e5a3bb3448dcf78a771f08"
+  },
+  "finished_at": "2026-11-26T04:42:20.464705+00:00"
+}
