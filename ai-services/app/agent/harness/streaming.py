@@ -146,6 +146,9 @@ class GuardedStream:
             tail = verified[len(self.published.rstrip()):]
             if tail:
                 await self._append(tail)
+        else:
+            sep = '' if self.published.endswith('\n') else '\n'
+            await self._append(sep + verified)
         return self.published
 
 

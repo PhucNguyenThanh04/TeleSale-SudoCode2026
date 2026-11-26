@@ -574,3 +574,148 @@ def test_promotion_grounding_accepts_address_and_non_address_quotes_and_same_sku
         "Đơn 2 máy Máy Mini được giảm 50% theo mã SECOND-50 và miễn phí COD.",
         basket_calls,
     ) is None
+
+
+def test_progressive_stream_finish_publishes_repaired_answer_after_greeting_prefix():
+    from langchain_core.messages import AIMessageChunk
+    from app.agent.harness.streaming import GuardedStream
+
+    async def run():
+        emitted = []
+
+        async def sink(text):
+            emitted.append(text)
+            return True
+
+        stream = GuardedStream(sink, progressive=True)
+        st = _base_state("Giá sản phẩm Mẫu A hôm nay thế nào?")
+        await stream.feed(AIMessageChunk(content="Dạ em chào anh. ", id="m1"), st)
+        assert emitted == ["Dạ em chào anh. "]
+        await stream.feed(AIMessageChunk(content="Giá là 9.999.000đ. ", id="m1"), st)
+        st["verified_answer"] = "Sản phẩm Mẫu A hiện có giá 1.800.000đ."
+        final = await stream.finish(st["verified_answer"], st)
+        assert "1.800.000đ" in final
+        assert len(emitted) == 2
+
+    asyncio.run(run())
+
+
+def test_expired_customer_mentioned_discount_is_allowed_while_fabricated_rejected():
+    calls = [
+        {
+            "name": "catalog.get_details",
+            "args": {"sku": "SKU-X"},
+            "result": {"items": [{"sku": "SKU-X", "name": "Máy Mẫu X", "list_price_vnd": 4890000}]},
+        },
+        {
+            "name": "pricing.get_quote",
+            "args": {"sku": "SKU-X", "on": "2026-10-15"},
+            "result": {
+                "sku": "SKU-X",
+                "list_price_vnd": 4890000,
+                "final_price_vnd": 4890000,
+                "applied_promos": [],
+                "expired_promos": ["AP-SEP"],
+            },
+        },
+    ]
+    _, err_ok = check_answer(
+        "Chương trình giảm 500.000đ (mã AP-SEP) đã hết hạn rồi ạ; giá hiện tại của Máy Mẫu X là 4.890.000đ.",
+        calls,
+        "Chị gọi lại lấy Máy Mẫu X giảm 500k hôm trước nhé.",
+    )
+    assert err_ok is None
+
+    _, err_fabricated = check_answer(
+        "Chương trình giảm 800.000đ (mã AP-SEP) đã hết hạn rồi ạ; giá hiện tại của Máy Mẫu X là 4.890.000đ.",
+        calls,
+        "Chị gọi lại lấy Máy Mẫu X giảm 500k hôm trước nhé.",
+    )
+    assert err_fabricated == "price_without_quote"
+
+
+def test_zalo_phone_channel_identity_falls_back_to_phone_crm_lookup():
+    from app.agent.harness.session_identity import initialize_identity
+
+    async def run():
+        tools = AsyncMock()
+        tools.invoke.side_effect = [
+            {"found": False},
+            {"found": True, "customer_id": "C030", "phone": "0991280845", "honorific": "anh", "orders": [], "sessions": []},
+        ]
+        req = TextTurnRequest(
+            session_id=uuid4(),
+            client_msg_id=uuid4(),
+            channel="zalo_oa",
+            channel_identity="0991280845",
+            input_mode="clean",
+            text="Anh hỏi lại mẫu hôm trước",
+            on=date(2026, 10, 20),
+        )
+        identity, calls = await initialize_identity(req, tools)
+        assert identity["identity_status"] == "known"
+        assert identity["customer_id"] == "C030"
+        assert len(calls) == 2
+        assert calls[1]["args"] == {"phone": "0991280845"}
+
+    asyncio.run(run())
+
+
+def test_facts_used_credits_variant_size_color_from_catalog_get_details():
+    from eval_harness.reference_adapter import facts_used
+
+    details_call = {
+        "name": "catalog.get_details",
+        "args": {"sku": "SKU-SHOE-41-XAM"},
+        "result": {
+            "items": [
+                {
+                    "sku": "SKU-SHOE",
+                    "name": "Giày Trekking Mẫu Z",
+                    "variants": [
+                        {"variant_sku": "SKU-SHOE-41-XAM", "size": "41", "color": "xám"},
+                    ],
+                }
+            ]
+        },
+    }
+    quote_call = {
+        "name": "pricing.get_quote",
+        "args": {"sku": "SKU-SHOE-41-XAM", "on": "2026-10-21"},
+        "result": {"sku": "SKU-SHOE-41-XAM", "final_price_vnd": 1990000},
+    }
+    scoped = {
+        "product": {
+            "SKU-SHOE": {
+                "product_advised": {"value": "SKU-SHOE", "source": "langmem:prev-session:turn-1", "status": "active"},
+                "size": {"value": "41", "source": "langmem:prev-session:turn-1", "status": "active"},
+                "color": {"value": "xám", "source": "langmem:prev-session:turn-1", "status": "active"},
+            }
+        },
+        "room": {},
+    }
+    used = facts_used(
+        "Mẫu Giày Trekking Mẫu Z màu xám size 41 hiện còn hàng.",
+        [details_call, quote_call],
+        {},
+        scoped,
+        current_session_id="curr-session",
+        customer_text="Kiểm tra lại mẫu hôm trước giúp anh.",
+    )
+    assert set(used) >= {"product_advised", "size", "color"}
+
+
+def test_order_update_reports_actionable_precondition_error():
+    gateway = AsyncMock()
+    clock = lambda: datetime.now(timezone.utc)
+    st = _base_state("Đổi sang size L giúp anh.")
+    st["owned_order_ids"] = ["OD123"]
+    business = BusinessTools(gateway, st, 5, clock)
+    res = asyncio.run(
+        business.invoke(
+            "order.update",
+            {"order_id": "OD123", "action": "exchange_size", "new_variant_sku": "SKU-ITEM-1", "address": "Hà Nội"},
+        )
+    )
+    assert res["error"] == "address_only_for_update_address"
+    assert "address" in res["next_action"]

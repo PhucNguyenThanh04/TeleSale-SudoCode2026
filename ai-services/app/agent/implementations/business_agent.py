@@ -145,8 +145,8 @@ _TOOL_DESCRIPTION = {
         "Khi khách hỏi từ 2 đơn vị trở lên hoặc nhiều SKU cùng đơn, dùng pricing.quote_order. "
         "sku phải là mã lấy nguyên từ catalog; nếu chỉ có tên sản phẩm, gọi catalog.search trước "
         "để lấy đúng sku từ kết quả. "
-        "Khi khách hỏi phí vận chuyển/freeship về một tỉnh, thành phố hoặc quận/huyện (như 'Hà Nội', 'Quận 7'), "
-        "truyền thẳng địa danh đó vào address để kiểm tra ngay, không hỏi địa chỉ nhà chi tiết. "
+        "Khi khách hỏi phí vận chuyển/freeship hoặc ngày giao dự kiến về một tỉnh, thành phố hoặc quận/huyện (như 'Hà Nội', 'Quận 7'), "
+        "truyền thẳng địa danh đó vào address để lấy estimated_delivery và freeship ngay, không hỏi địa chỉ nhà chi tiết. "
         "Gọi cho SKU sẽ tư vấn khi khách có ngân sách hoặc cần so giá; "
         "catalog.search chỉ cho giá niêm yết, không đủ để báo giá cuối. "
         "Quà trong applied_promos được xác định bằng gift_sku; nếu chưa có tên quà trong catalog, "
@@ -315,6 +315,13 @@ class BusinessTools:
                 return {"error": "purchase_evidence_required", "sku": catalog_variant(self.state, raw),
                         'reason': reason, "next_tools": next_tools,
                         "next_action": next_action}
+            if name == "order.update":
+                reason = self.state.get('tool_precondition_error', 'order_update_precondition_failed')
+                next_action = {
+                    'address_only_for_update_address': 'Omit address unless action is update_address, then retry order.update.',
+                    'invalid_order_update_arguments': 'Provide verified order_id, valid action (exchange_size/exchange_product/return/update_address), and required fields.',
+                }.get(reason, 'Verify the owned order_id with order.status before calling order.update.')
+                return {"error": reason, "next_action": next_action}
             return {"error": "precondition_or_arguments"}
         _, args = prepared
         diagnostic_emit('tool_prepared', state=self.state, tool=name, args=args, status='allowed', context_present=bool(args.get('address')))

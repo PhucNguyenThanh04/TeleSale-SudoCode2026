@@ -1,6 +1,7 @@
 
 import hashlib
 import json
+import re
 from typing import Any
 
 from app.agent.harness.observability import log_event, log_tool_input, log_tool_output
@@ -67,6 +68,18 @@ async def initialize_identity(turn: TextTurnRequest, tools: ToolGateway
     if "error" in result:
         raise RuntimeError("CRM identity lookup failed")
     calls = [{"name": "crm.get_customer", "args": args, "result": result}]
+    if (key != "phone" and not result.get("found") and not result.get("ambiguous")
+            and re.fullmatch(r"(?:\+?84|0)\d{8,10}", turn.channel_identity.strip())):
+        phone_args = {"phone": turn.channel_identity.strip()}
+        log_tool_input("session_identity", "crm.get_customer", phone_args)
+        phone_result = await tools.invoke("crm.get_customer", phone_args)
+        log_event(turn, "session_identity", "tool_result", tool="crm.get_customer",
+                  success="error" not in phone_result)
+        log_tool_output({}, "session_identity", "crm.get_customer", phone_result)
+        if "error" in phone_result:
+            raise RuntimeError("CRM identity lookup failed")
+        calls.append({"name": "crm.get_customer", "args": phone_args, "result": phone_result})
+        result = phone_result
     if result.get("ambiguous"):
         log_event(turn, "session_identity", "identity_resolved", status="ambiguous")
         return _empty_identity("ambiguous"), calls

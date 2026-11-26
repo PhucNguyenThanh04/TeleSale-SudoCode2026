@@ -226,10 +226,17 @@ def prepare_tool_call(state: TurnState, clock: Callable[[], datetime]) -> tuple[
             state['tool_precondition_error'] = evidence_error
             return None
     if name == 'order.update':
+        if args.get('action') != 'update_address' and not args.get('address'):
+            args.pop('address', None)
         from app.mcp_servers.mcp_order.schemas import UpdateInput
         try:
             args = UpdateInput.model_validate(args).model_dump(mode='json', exclude_none=True)
         except ValueError:
+            state['tool_precondition_error'] = (
+                'address_only_for_update_address'
+                if args.get('action') != 'update_address' and args.get('address') is not None
+                else 'invalid_order_update_arguments'
+            )
             return None
     if name == 'order.preview_update':
         from app.mcp_servers.mcp_order.schemas import PreviewUpdateInput
