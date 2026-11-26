@@ -67,7 +67,7 @@ def _episode_context(episode: dict, duplicate_ids: set[str]) -> dict:
 def _bounded_context(context):
     limits = {'customer_facts': 6000, 'sales_history': 4000, 'customer_statements': 10000,
               'session_history': 6000, 'previous_episodes': 6000, 'current_episode': 8000,
-              'call_brief': 4000, 'tool_observations': 14000, 'delivery_context': 1000}
+              'call_brief': 4000, 'tool_observations': 28000, 'delivery_context': 1000}
 
     def size(value):
         return len(json.dumps(value, ensure_ascii=False, default=str))

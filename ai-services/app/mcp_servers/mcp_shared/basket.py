@@ -28,6 +28,23 @@ def basket_unit_quote(clause, calls, *, focus_sku=None):
                        'freeship': call['result'].get('freeship', False)}}
 
 
+def _unit_prices_and_discounts(units, *, include_list_price: bool = False):
+    prices, discounts = set(), set()
+    for unit in units:
+        if type(unit.get('final_price_vnd')) is int:
+            prices.add(unit['final_price_vnd'])
+        if include_list_price and type(unit.get('list_price_vnd')) is int:
+            prices.add(unit['list_price_vnd'])
+        if all(type(unit.get(key)) is int for key in ('list_price_vnd', 'final_price_vnd')):
+            diff = unit['list_price_vnd'] - unit['final_price_vnd']
+            if diff >= 0:
+                discounts.add(diff)
+        for promo in unit.get('applied_promos') or []:
+            if isinstance(promo, dict) and type(promo.get('discount_vnd')) is int:
+                discounts.add(promo['discount_vnd'])
+    return prices, discounts
+
+
 def basket_money_evidenced(text, calls):
     from app.agent.guardrails.checks import _money_claims
     from app.agent.guardrails.claims import commercial_clauses
@@ -49,16 +66,33 @@ def basket_money_evidenced(text, calls):
         mentioned = resolve_claim_skus(clause, calls)
         if mentioned and not mentioned <= skus:
             return False
-        if re.search(r'\btong\b|ca don|ca gio', _search_text(clause)):
-            if any(kind != 'price' or amount != result['total_vnd'] for amount, kind, _ in claims):
+        folded_clause = _search_text(clause)
+        include_list = 'niem yet' in folded_clause
+        if re.search(r'\btong\b|ca don|ca gio', folded_clause):
+            all_unit_prices, all_unit_discounts = _unit_prices_and_discounts(units, include_list_price=include_list)
+            price_claims = [amount for amount, kind, _ in claims if kind == 'price']
+            if not any(amount == result['total_vnd'] for amount in price_claims):
                 return False
+            allowed_prices = all_unit_prices | {result['total_vnd']}
+            for amount, kind, negative in claims:
+                if kind == 'discount':
+                    if amount not in all_unit_discounts or (negative and amount > 0):
+                        return False
+                elif amount not in allowed_prices:
+                    return False
         else:
             quoted_unit = basket_unit_quote(clause, calls)
-            if quoted_unit is None:
-                return False
-            unit = quoted_unit['result']
+            if quoted_unit is not None:
+                target_units = [quoted_unit['result']]
+            else:
+                target_units = [u for u in units if not mentioned or u['sku'] in mentioned]
+                if not target_units or (not mentioned and len(skus) > 1):
+                    return False
+            prices, discounts = _unit_prices_and_discounts(target_units, include_list_price=include_list)
             for amount, kind, negative in claims:
-                expected = (unit['list_price_vnd'] - unit['final_price_vnd']) if kind == 'discount' else unit['final_price_vnd']
-                if amount != expected or kind == 'discount' and negative:
+                if kind == 'discount':
+                    if amount not in discounts or (negative and amount > 0):
+                        return False
+                elif amount not in prices:
                     return False
     return found

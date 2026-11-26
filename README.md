@@ -66,6 +66,14 @@ Sau bước này, mở `http://127.0.0.1:8000/chat`:
 
 Có thể đặt mật khẩu hoặc khách gắn với tài khoản trong `.env` trước lần seed đầu tiên. Seed lại giữ thông tin đăng nhập của tài khoản đã tạo.
 
+Để dùng voice, chạy speech riêng trên cùng host bằng virtualenv `.venv-speech-serving` đã cài `speech/serving/requirements.txt` và `vieneu`, cùng model weights đã chuẩn bị:
+
+```bash
+scripts/serve-speech.sh
+```
+
+Speech API nghe trên `0.0.0.0:18110` để backend trong Docker truy cập qua `host.docker.internal`; VieNeu chỉ nghe trên `127.0.0.1:18111`. Cổng `18110` cũng nhận kết nối từ mạng ngoài nếu firewall cho phép. Sau khi cập nhật cấu hình này, chạy `docker compose up -d --no-deps backend` để tạo lại backend, rồi mở `http://127.0.0.1:8000/` để dùng voice. Nếu speech đang chạy bằng script cũ, dừng bằng Ctrl+C và chạy lại script.
+
 ## 4. Chạy eval
 
 ```bash

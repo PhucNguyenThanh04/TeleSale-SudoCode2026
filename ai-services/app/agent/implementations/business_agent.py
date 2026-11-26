@@ -95,6 +95,12 @@ _CATALOG_FIELD_DESCRIPTION = {
 }
 _ADDRESS_DESCRIPTION = ("Địa điểm khách cung cấp. Nếu context đã che địa chỉ, dùng nguyên "
                         "[ĐỊA CHỈ ĐÃ ẨN]; harness chỉ khôi phục khi có nguồn khách cung cấp rõ ràng.")
+_ORDER_CREATE_FIELD_DESCRIPTION = {
+    "sku": "Mã SKU hoặc biến thể cho đơn 1 sản phẩm; bỏ trống khi dùng lines.",
+    "price_vnd": "Giá cuối final_price_vnd (số nguyên VND) từ pricing.get_quote hiện tại; bắt buộc cho đơn 1 sản phẩm, bỏ trống khi dùng lines.",
+    "lines": "Danh sách từng dòng sản phẩm (sku, qty, price_vnd theo units từ pricing.quote_order) cho đơn nhiều sản phẩm hoặc nhiều đơn vị; khi dùng lines phải bỏ trống sku, price_vnd và basket_skus.",
+    "payment": "Phương thức thanh toán: COD, bank (chuyển khoản), momo hoặc zalopay.",
+}
 
 
 _TOOL_DESCRIPTION = {
@@ -135,7 +141,8 @@ _TOOL_DESCRIPTION = {
     "inventory.check": ("Kiểm tra tồn kho của SKU theo ngày cuộc gọi khi cần khẳng định còn hàng "
                         "hoặc xử lý mua; không cần chỉ để trả lời tính năng sản phẩm."),
     "pricing.get_quote": (
-        "Lấy giá cuối, khuyến mãi và freeship theo ngày cuộc gọi. "
+        "Lấy giá cuối, khuyến mãi và freeship theo ngày cuộc gọi cho 1 sản phẩm (qty=1). "
+        "Khi khách hỏi từ 2 đơn vị trở lên hoặc nhiều SKU cùng đơn, dùng pricing.quote_order. "
         "sku phải là mã lấy nguyên từ catalog; nếu chỉ có tên sản phẩm, gọi catalog.search trước "
         "để lấy đúng sku từ kết quả. "
         "Khi khách hỏi phí vận chuyển/freeship về một tỉnh, thành phố hoặc quận/huyện (như 'Hà Nội', 'Quận 7'), "
@@ -180,7 +187,8 @@ _TOOL_DESCRIPTION = {
 
 _TOOL_SCHEMAS = {name: create_model(name.replace('.', '_').title() + 'Args', **{
     field: (kind, Field(default=default, description=(_ADDRESS_DESCRIPTION if field == 'address' else
-                        _CATALOG_FIELD_DESCRIPTION.get(field) if name == 'catalog.search' else None),
+                        _CATALOG_FIELD_DESCRIPTION.get(field) if name == 'catalog.search' else
+                        _ORDER_CREATE_FIELD_DESCRIPTION.get(field) if name == 'order.create' else None),
                         validation_alias=AliasChoices('max_list_price_vnd', 'max_price_vnd')
                         if name == 'catalog.search' and field == 'max_list_price_vnd' else None))
     for field, (kind, default) in fields.items()}) for name, fields in _TOOL_FIELDS.items()}
@@ -298,9 +306,15 @@ class BusinessTools:
                     'current_stock_required': ['inventory.check'],
                     'current_quote_required': ['pricing.quote_order' if raw.get('lines') else 'pricing.get_quote'],
                 }.get(reason, [])
+                next_action = {
+                    'missing_price_vnd': 'Pass price_vnd equal to final_price_vnd from the current pricing.get_quote and retry order.create.',
+                    'invalid_payment_method': 'Use payment in {COD, bank, momo, zalopay} and retry order.create.',
+                    'conflicting_sku_and_lines': 'When passing lines, omit sku, price_vnd, and basket_skus, and keep qty=1.',
+                    'price_mismatch': 'Match price_vnd (or each line price_vnd) exactly to final_price_vnd from the current quote.',
+                }.get(reason, 'Resolve the reported reason for this exact product and quantity using existing evidence; ask for clarification when needed.')
                 return {"error": "purchase_evidence_required", "sku": catalog_variant(self.state, raw),
                         'reason': reason, "next_tools": next_tools,
-                        "next_action": "Resolve the reported reason for this exact product and quantity using existing evidence; ask for clarification when needed."}
+                        "next_action": next_action}
             return {"error": "precondition_or_arguments"}
         _, args = prepared
         diagnostic_emit('tool_prepared', state=self.state, tool=name, args=args, status='allowed', context_present=bool(args.get('address')))

@@ -59,13 +59,16 @@ class AgentNodes(SessionNodes):
     guardrails_enabled = True
     max_repair_attempts = 1
     safe_fallback_on_rejection = False
+    semantic_review_enabled = True
 
     def __init__(self, llm, tools, memory, max_tool_calls: int, prompt_history_turns: int,
                  clock=None, *, max_repair_attempts: int = 1,
-                 safe_fallback_on_rejection: bool = False) -> None:
+                 safe_fallback_on_rejection: bool = False,
+                 semantic_review_enabled: bool = True) -> None:
         super().__init__(llm, tools, memory, max_tool_calls, prompt_history_turns, clock)
         self.max_repair_attempts = max(1, max_repair_attempts)
         self.safe_fallback_on_rejection = safe_fallback_on_rejection
+        self.semantic_review_enabled = semantic_review_enabled
 
     @trace_node("run_agent")
     @execution_node("preparation")
@@ -152,7 +155,7 @@ class AgentNodes(SessionNodes):
                 log_event(state, 'verify', 'answer_check_disabled', reason='configured_disabled')
             if reason is None and self.guardrails_enabled:
                 answer, reason = check_answer(answer, calls, state["safe_text"], focus_sku=_claim_focus(model_state))
-            if reason is None:
+            if reason is None and self.semantic_review_enabled:
                 reason = await review_answer(self.llm, answer,
                     prompt_context(model_state, self.prompt_history_turns))
             log_event(state, 'verify', 'grounding_checked', accepted=reason is None, reason=reason)

@@ -351,8 +351,8 @@ def _attribute_claim(sentence: str, start: int, end: int) -> str | None:
 
 
 def _unsupported_attribute_feature(candidate: str, catalog_items: list[dict[str, Any]]) -> bool:
-    for sentence in re.split(r"(?<=[!?])|(?<!\d)\.(?!\d)", candidate):
-        folded = _fold_text(sentence)
+    for clause in re.split(r"(?<=[!?])|(?<!\d)\.(?!\d)|[;,]", candidate):
+        folded = _fold_text(clause)
         for key, aliases in _BOOLEAN_FEATURE_ALIASES.items():
             for alias in aliases:
                 for match in re.finditer(alias, folded):
@@ -368,6 +368,9 @@ def _unsupported_attribute_feature(candidate: str, catalog_items: list[dict[str,
                         if any(isinstance(part, str) and part and
                                _fold_text(part) in folded for part in names):
                             named.append(item)
+                    before = folded[max(0, match.start() - 70):match.start()]
+                    if not named and re.search(r"\b(?:nhu cau|yeu cau|tim mau|tim may|tieu chi|dieu kien|can|muon)\b", before):
+                        continue
                     targets = named or (catalog_items if len(catalog_items) == 1 or
                                         re.search(r"\b(?:ca hai|tat ca|cac mau)\b", folded)
                                         else [])
@@ -421,6 +424,33 @@ def _unsupported_feature(candidate: str, successful: list[dict[str, Any]]) -> bo
     return False
 
 
+_NON_WARRANTY_POLICY = re.compile(r"(?i)\b(?:đổi trả|đổi size|hoàn tiền|chính sách)\b")
+
+
+def _catalog_warranty_evidenced(candidate: str, successful: list[dict[str, Any]], customer_text: str = "") -> bool:
+    if _NON_WARRANTY_POLICY.search(candidate) or _NON_WARRANTY_POLICY.search(customer_text):
+        return False
+    warranties = {
+        item["attributes"]["warranty_months"]
+        for call in successful if call.get("name") in CATALOG_TOOLS
+        for item in call.get("result", {}).get("items", [])
+        if isinstance(item, dict) and isinstance(item.get("attributes"), dict)
+        and type(item["attributes"].get("warranty_months")) is int
+    }
+    if not warranties:
+        return False
+    durations = re.findall(r"\b(\d+)\s+(ngày|tháng|năm)\b", candidate.casefold())
+    if not durations:
+        return True
+    for num, unit in durations:
+        if unit == "ngày":
+            return False
+        months = int(num) * (12 if unit == "năm" else 1)
+        if months not in warranties:
+            return False
+    return True
+
+
 def check_grounding(candidate: str, tool_calls: list[dict[str, Any]]) -> str | None:
     candidate = assertion_text(candidate)
     successful = [call for call in tool_calls if "error" not in call.get("result", {})]
@@ -438,7 +468,8 @@ def check_grounding(candidate: str, tool_calls: list[dict[str, Any]]) -> str | N
     from app.agent.guardrails.policy_grounding import (policy_evidence_for_answer,
         policy_clarification_or_refusal, policy_durations_supported)
     policy_calls = [c for c in successful if c.get('name') == 'policy.search']
-    if _POLICY.search(candidate) and not policy_clarification_or_refusal(candidate):
+    if (_POLICY.search(candidate) and not policy_clarification_or_refusal(candidate)
+            and not _catalog_warranty_evidenced(candidate, successful)):
         evidence = policy_evidence_for_answer(candidate, policy_calls)
         if not evidence:
             return 'unsupported_policy_or_internal_claim'
@@ -625,7 +656,7 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     from app.agent.guardrails.policy_grounding import (policy_evidence_for_answer,
         policy_clarification_or_refusal, policy_durations_supported)
     policy_chunks = policy_evidence_for_answer(candidate, successful)
-    if policy_clarification_or_refusal(candidate):
+    if policy_clarification_or_refusal(candidate) or _catalog_warranty_evidenced(candidate, successful, customer_text):
         policy_claim = False
     if policy_claim:
         if not policy_chunks:
@@ -639,16 +670,23 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     if _unsupported_feature(candidate, successful):
         return FALLBACK, "unsupported_product_spec"
     customer_budgets = customer_budget_amounts(customer_text)
+    has_quote = any(call.get("name") in {"pricing.get_quote", "pricing.quote_order"} for call in successful)
     def budget_repetition(match):
         amounts = _money_claims(match.group('amount'))
         if len(amounts) == 1 and amounts[0][0] in customer_budgets:
             return ''
         return match.group()
-    money_candidate = re.sub(
+    budget_pattern = (
+        r'(?<!bằng\s)(?:(?:ngân sách|tầm giá|mức giá|giới hạn|tối đa|ngưỡng)\s+'
+        r'(?:(?:tối đa|tầm|khoảng|là|dưới|mức|của\s+(?:anh/chị|anh|chị|bạn))\s+)*'
+        r'|(?:\b(?:anh/chị|anh|chị|bạn)\s+muốn giữ ngân sách\s+(?:là\s+)?))'
+        r'(?P<amount>\d[\d.,]*\s*(?:triệu|tr|nghìn|ngàn|k|đồng|đ|vnd))\b'
+        if has_quote else
         r'(?:^|(?<=[.!?;]))\s*(?:(?:Dạ|Vâng)[, ]+)?(?:với |theo )?'
         r'(?:ngân sách của (?:anh/chị|anh|chị|bạn)|(?:anh/chị|anh|chị|bạn) muốn giữ ngân sách)\s+'
-        r'(?:là\s+)?(?P<amount>\d[\d.,]*\s*(?:triệu|tr|nghìn|ngàn|k|đồng|đ|vnd))\b',
-        budget_repetition, candidate, flags=re.IGNORECASE)
+        r'(?:là\s+)?(?P<amount>\d[\d.,]*\s*(?:triệu|tr|nghìn|ngàn|k|đồng|đ|vnd))\b'
+    )
+    money_candidate = re.sub(budget_pattern, budget_repetition, candidate, flags=re.IGNORECASE)
     money_claims = _money_claims(money_candidate)
     if (money_claims and 'gia niem yet' not in _fold_text(candidate)
             and _empty_catalog_budget_evidenced(candidate, customer_text, money_claims, successful)):
@@ -664,8 +702,28 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
             ' '.join(re.sub(r'[*`_]', '', chunk['content']).split())
             for chunk in policy_chunks)
         for clause in policy_money_clauses))
+    mixed_policy_and_quote = False
+    if money_claims and policy_claim and policy_values:
+        remaining_money_clauses = []
+        for clause in commercial_clauses(money_candidate):
+            clause_claims = _money_claims(clause)
+            if not clause_claims:
+                continue
+            all_in_policy = all(amount in policy_values for amount, _, _ in clause_claims)
+            policy_context = bool(re.search(
+                r"(?i)\b(?:chính sách|bảo hành|vận chuyển|ship|freeship|đổi trả|hoàn tiền|ngưỡng|tối thiểu|tối đa|phí|cod|đơn từ|giá từ|máy từ|áp dụng cho)\b",
+                clause,
+            ))
+            if all_in_policy and policy_context:
+                continue
+            remaining_money_clauses.append(clause)
+        mixed_policy_and_quote = (
+            not remaining_money_clauses
+            or _money_evidenced("; ".join(remaining_money_clauses), successful, focus_sku=focus_sku)
+        )
     if money_claims and not (_money_evidenced(money_candidate, successful, focus_sku=focus_sku) or
                              exact_policy_quote or
+                             mixed_policy_and_quote or
                              policy_claim and not re.search(r"(?i)\bgiá(?:\s+bán)?\b", candidate)
                              and all(amount in policy_values
                                      for amount, _, _ in money_claims) or
@@ -775,11 +833,13 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
                         {focus_sku} if focus_sku else set())
                 if not skus and len(available_quotes) == 1 and available_quotes[0].get('args', {}).get('sku'):
                     skus = {available_quotes[0]['args']['sku']}
-                quotes = [c for c in available_quotes if c.get('args', {}).get('sku') in skus]
-                expected = quotes[0]['result'].get('estimated_delivery') if len(quotes) == 1 else None
+                quotes = [c for c in available_quotes if c.get('args', {}).get('sku') in skus
+                          and c.get('result', {}).get('estimated_delivery')]
+                expected_dates = {c['result']['estimated_delivery'] for c in quotes}
+                expected = next(iter(expected_dates)) if len(expected_dates) == 1 else None
                 dates = _parse_dates(clause, expected)
                 if (not re.search(r'\bdự kiến\b', clause, re.IGNORECASE)
-                        or len(skus) != 1 or len(quotes) != 1 or len(dates) != 1
+                        or len(skus) != 1 or not expected or len(dates) != 1
                         or dates[0] != expected
                         or re.search(r'\d+\s*(?:ngày|giờ)', clause)):
                     delivery_verified = False

@@ -24,4 +24,6 @@ def build_runtime(settings: Settings, *, gateway=None) -> AgentHarnessRuntime:
                               turn_timeout_seconds=settings.agent_turn_timeout_seconds,
                               tracing=LangfuseTracing(settings) if settings.langfuse_enabled else None,
                               max_repair_attempts=2,
-                              safe_fallback_on_rejection=True)
+                              safe_fallback_on_rejection=True,
+                              semantic_review_enabled=False,
+                              progressive_streaming=True)
