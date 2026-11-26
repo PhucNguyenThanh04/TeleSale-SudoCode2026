@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     knowledge_admin_database_url: SecretStr | None = None
     knowledge_release_id: str | None = None
     memory_max_episodes: int = Field(default=5, ge=0, le=20)
+    memory_fact_ttl_days: int = Field(default=240, ge=1, le=3650)
     ai_internal_token: SecretStr | None = None
     mcp_internal_token: SecretStr | None = None
     mcp_internal_token_file: Path | None = None

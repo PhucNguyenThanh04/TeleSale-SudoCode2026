@@ -206,10 +206,11 @@ async def process_one(repo: MemoryRepo, extractor, projector, *, fact_reviewer=N
                     continue
                 if name == "order.create" and result.get("status") == "created":
                     sku = call.get("args", {}).get("sku")
+                    variant = None
                     if isinstance(sku, str):
                         async with repo.transaction() as conn:
                             variant = await repo.variant_details(conn, sku)
-                        accepted.extend(verified_order_details(call, variant, source_turn_id))
+                    accepted.extend(verified_order_details(call, variant, source_turn_id))
                 elif name in {"inventory.check", "pricing.get_quote"}:
                     sku = result.get("sku") or call.get("args", {}).get("sku")
                     if isinstance(sku, str) and sku.count("-") >= 3:

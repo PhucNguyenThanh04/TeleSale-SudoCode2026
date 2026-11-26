@@ -133,18 +133,56 @@ def _room_area_evidenced(value: Any, customer_text: str) -> bool:
 
 
 
-def safe_tool_result(result: dict[str, Any]) -> dict[str, Any]:
-    def clean(value: Any, field='') -> Any:
+_TOOL_RESULT_ALLOWLIST: dict[str, frozenset[str]] = {
+    "crm.get_customer": frozenset({"found", "ambiguous", "customer_id", "name", "honorific", "identities", "orders", "sessions", "error"}),
+    "catalog.search": frozenset({"items", "total", "error", "ok", "success"}),
+    "catalog.get_details": frozenset({"requested_sku", "items", "technical_evidence", "specifications", "error", "ok", "success"}),
+    "inventory.check": frozenset({"sku", "in_stock", "qty", "successor_sku", "discontinued", "error", "ok", "success"}),
+    "pricing.get_quote": frozenset({
+        "sku", "list_price_vnd", "final_price_vnd", "applied_promos", "expired_promos",
+        "ineligible_promos", "not_applied_exclusive", "freeship", "shipping_fee_vnd",
+        "estimated_delivery", "cod_eligible", "error", "ok", "success",
+    }),
+    "pricing.quote_order": frozenset({
+        "units", "total_vnd", "order_promos", "applied_promos", "expired_promos",
+        "ineligible_promos", "not_applied_exclusive", "freeship", "shipping_fee_vnd",
+        "estimated_delivery", "cod_eligible", "error", "ok", "success",
+    }),
+    "order.create": frozenset({
+        "order_id", "status", "total_vnd", "needs_confirmation_call",
+        "estimated_delivery", "lines", "sku", "qty", "payment", "error", "ok", "success",
+    }),
+    "order.status": frozenset({"orders", "error", "ok", "success"}),
+    "order.update": frozenset({
+        "order_id", "status", "action", "estimate", "estimated_total_payment_vnd",
+        "estimated_total_refund_vnd", "fee_vnd", "price_diff_vnd", "error", "ok", "success",
+    }),
+    "order.preview_update": frozenset({
+        "order_id", "status", "action", "estimate", "estimated_total_payment_vnd",
+        "estimated_total_refund_vnd", "fee_vnd", "price_diff_vnd",
+        "requires_policy_check", "replacement_inventory", "error", "ok", "success",
+    }),
+    "schedule.callback": frozenset({"callback_id", "status", "callback_at", "moved_from", "error", "ok", "success"}),
+    "handoff.transfer": frozenset({"ticket_id", "status", "error", "ok", "success"}),
+    "policy.search": frozenset({"retrieval_status", "context", "evidence", "chunks", "error", "ok", "success"}),
+}
+
+
+def safe_tool_result(result: dict[str, Any], tool_name: str | None = None) -> dict[str, Any]:
+    allowed = _TOOL_RESULT_ALLOWLIST.get(tool_name) if isinstance(tool_name, str) else None
+
+    def clean(value: Any, field='', depth: int = 0) -> Any:
         if isinstance(value, str):
             if field in {'source_hash', 'content_hash'} and re.fullmatch(r'[a-f0-9]{64}', value):
                 return value
             return mask_pii(value)
         if isinstance(value, list):
-            return [clean(item) for item in value]
+            return [clean(item, field, depth + 1) for item in value]
         if isinstance(value, dict):
             return {
-                key: clean(item, key) for key, item in value.items()
+                key: clean(item, key, depth + 1) for key, item in value.items()
                 if not key.startswith("_") and key not in {"phone", "customer_phone", "address", "candidates"}
+                and (depth > 0 or allowed is None or key in allowed)
             }
         return value
 

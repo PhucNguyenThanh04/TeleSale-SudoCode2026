@@ -166,7 +166,7 @@ def prompt_context(state: TurnState, history_turns: int) -> dict[str, Any]:
         sales_history["remembered_order_ids"] = list(state["remembered_order_ids"])
     observations = [
         {'name': call['name'], 'args': safe_tool_result(call.get('args', {})),
-         'result': safe_tool_result(call['result']),
+         'result': safe_tool_result(call['result'], tool_name=call['name']),
          'evidence_scope': ('current_session' if call in state.get('session_tool_calls', [])
                             else 'current_turn')}
         for call in build_commerce_evidence(state) if call['name'] != 'crm.get_customer'
@@ -240,7 +240,8 @@ def _uuid_fact_source(value: Any) -> bool:
         return False
 
 
-def _split_facts(profile: dict[str, Any], *, on: date | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
+def _split_facts(profile: dict[str, Any], *, on: date | None = None,
+                 fact_ttl_days: int | None = 240) -> tuple[dict[str, Any], dict[str, Any]]:
     sales_keys = TOOL_ONLY_SLOT_KEYS | {Slot.PRODUCT_ADVISED}
     customer, sales = {}, {}
     for key, fact in profile.items():
@@ -252,8 +253,12 @@ def _split_facts(profile: dict[str, Any], *, on: date | None = None) -> tuple[di
             try:
                 if fact.get('valid_until') and date.fromisoformat(fact['valid_until']) < on:
                     continue
-                if fact.get('on') and date.fromisoformat(fact['on']) > on:
-                    continue
+                if fact.get('on'):
+                    observed = date.fromisoformat(fact['on'])
+                    if observed > on:
+                        continue
+                    if fact_ttl_days is not None and (on - observed).days > fact_ttl_days:
+                        continue
             except (ValueError, TypeError):
                 continue
         value = fact.get("value")

@@ -426,7 +426,7 @@ class BusinessTools:
             self.state["handoff_ticket_id"] = result["ticket_id"]
         if name == "order.create" and result.get("status") == "created" and result.get("order_id"):
             self.state.setdefault("owned_order_ids", []).append(result["order_id"])
-        return safe_tool_result(result)
+        return safe_tool_result(result, tool_name=name)
 
     def langchain_tools(self) -> list[StructuredTool]:
         validate_model_tool_names(_TOOL_FIELDS)
