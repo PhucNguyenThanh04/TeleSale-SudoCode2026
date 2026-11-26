@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from typing import Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -103,12 +104,117 @@ def build_write_context(state, name, args):
             'tool_failed', 'private_delivery', 'context_source_complete')}))
 
 
+_FAST_AUTH_CONFIRM_RE = re.compile(
+    r'(?:lên đơn|chốt đơn|tạo đơn|đặt đơn|đặt hàng|đặt cho|lấy luôn|chốt luôn|mua luôn'
+    r'|xác nhận\s+(?:đặt|mua|lấy|lên đơn|chốt)|ok\s+(?:em\s+)?(?:lên đơn|chốt|đặt|lấy)'
+    r'|đồng ý\s+(?:đặt|mua|lấy|lên đơn|chốt))',
+    re.IGNORECASE,
+)
+_FAST_AUTH_BLOCK_RE = re.compile(
+    r'(?:\?|(?<!\w)(?:chưa|không|ko|k|đừng|thôi|hủy|huỷ|nếu|giả sử|nhỡ|cân nhắc|suy nghĩ'
+    r'|để xem|hỏi lại|hỏi trước|hỏi thử|chỉ hỏi|vợ|chồng|bố|mẹ|ba|má|bạn|người nhà|sếp'
+    r'|đồng nghiệp|nhưng|tuy nhiên|bao nhiêu|mấy ngày|khi nào|thế nào|sao|đổi ý|khoan|chờ)(?!\w))',
+    re.IGNORECASE,
+)
+_FAST_AUTH_PRICE_RE = re.compile(
+    r'(?<!\d)(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?\s*(?:triệu|tr|nghìn|ngàn|k|đ|đồng|vnd))(?!\w)',
+    re.IGNORECASE,
+)
+
+
+def _parse_vnd_mention(raw: str) -> int | None:
+    s = raw.lower().strip()
+    for suffix, mult in (('triệu', 1_000_000), ('tr', 1_000_000), ('nghìn', 1_000), ('ngàn', 1_000), ('k', 1_000)):
+        if s.endswith(suffix):
+            num = s[:-len(suffix)].strip().replace(',', '.')
+            try:
+                return int(round(float(num) * mult))
+            except ValueError:
+                return None
+    cleaned = re.sub(r'(?:đồng|vnd|đ|\s|\.|,)', '', s)
+    if cleaned.isdigit():
+        val = int(cleaned)
+        return val if val >= 1000 else None
+    return None
+
+
+def deterministic_fast_authorize(name: str, args: dict, state: dict) -> bool | None:
+    if name != 'order.create' or not isinstance(args, dict):
+        return None
+    if args.get('lines') is not None:
+        return None
+    sku = args.get('sku')
+    price_vnd = args.get('price_vnd')
+    qty = args.get('qty', 1)
+    payment = args.get('payment') or 'COD'
+    if (not isinstance(sku, str) or not sku.strip()
+            or not isinstance(price_vnd, int) or price_vnd <= 0
+            or not isinstance(qty, int) or qty <= 0):
+        return None
+    if payment not in {'COD', 'bank', 'momo', 'zalopay'}:
+        return None
+    if payment == 'COD' and price_vnd * qty > 10_000_000:
+        return None
+    request = state.get('request')
+    if request is None:
+        return None
+    address = args.get('address')
+    if isinstance(address, str) and address and address not in request.text:
+        return None
+    safe_text = state.get('safe_text') or ''
+    if not safe_text.strip():
+        return None
+    if _FAST_AUTH_BLOCK_RE.search(safe_text) or not _FAST_AUTH_CONFIRM_RE.search(safe_text):
+        return None
+    lowered = safe_text.lower()
+    if re.search(r'(?:chuyển khoản|\bck\b|\bbank\b)', lowered) and payment != 'bank':
+        return None
+    if re.search(r'\bmomo\b', lowered) and payment != 'momo':
+        return None
+    if re.search(r'\bzalopay\b', lowered) and payment != 'zalopay':
+        return None
+    if re.search(r'(?:\bcod\b|tiền mặt)', lowered) and payment != 'COD':
+        return None
+    for match in _FAST_AUTH_PRICE_RE.finditer(safe_text):
+        mentioned = _parse_vnd_mention(match.group(1))
+        if mentioned is None or mentioned not in {price_vnd, price_vnd * qty}:
+            return None
+    on_str = str(request.on)
+    all_calls = [*(state.get('session_tool_calls') or []), *(state.get('tool_calls') or [])]
+    has_quote = any(
+        c.get('name') == 'pricing.get_quote'
+        and isinstance(c.get('args'), dict)
+        and c['args'].get('sku') == sku
+        and str(c['args'].get('on') or on_str) == on_str
+        and isinstance(c.get('result'), dict)
+        and 'error' not in c['result']
+        and c['result'].get('final_price_vnd') == price_vnd
+        for c in all_calls
+    )
+    has_stock = any(
+        c.get('name') == 'inventory.check'
+        and isinstance(c.get('args'), dict)
+        and c['args'].get('sku') == sku
+        and str(c['args'].get('on') or on_str) == on_str
+        and isinstance(c.get('result'), dict)
+        and 'error' not in c['result']
+        and c['result'].get('in_stock') is True
+        for c in all_calls
+    )
+    if not (has_quote and has_stock):
+        return None
+    return True
+
+
 async def authorize_write(model, state, name, args, history_turns):
     if name not in WRITE_TOOLS:
         return False
     context = prompt_context(state, history_turns)
     if not context['context_completeness']['complete']:
         return False
+    fast = deterministic_fast_authorize(name, args, state)
+    if fast is not None:
+        return fast
     payload = {**context, 'proposed_write': {'tool': name, 'args': safe_tool_result(args)}}
     address = args.get('address')
     if isinstance(address, str) and address:
