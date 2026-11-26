@@ -55,6 +55,57 @@ SAFE_VERIFICATION_FALLBACK = (
 )
 
 
+def _contextual_safe_fallback(state: TurnState, calls: list[dict[str, Any]], reason: str) -> str:
+    honorific = state.get("honorific") if state.get("identity_status") == "known" else None
+    address = honorific if isinstance(honorific, str) and honorific in {"anh", "chị", "cô", "chú", "bạn"} else "anh/chị"
+    catalog_items = [
+        item for call in calls if call.get("name") in {"catalog.search", "catalog.get_details"}
+        for item in (call.get("result") or {}).get("items", [])
+        if isinstance(item, dict) and isinstance(item.get("name"), str) and item.get("sku")
+    ]
+    unique_items = {item["sku"]: item for item in catalog_items}
+    target = None
+    if len(unique_items) == 1:
+        target = next(iter(unique_items.values()))
+    elif unique_items:
+        from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
+        named = resolve_claim_skus(
+            f"{state.get('safe_text', '')} {state.get('agent_draft', '')}", calls
+        )
+        matched = [unique_items[s] for s in named if s in unique_items]
+        if len(matched) == 1:
+            target = matched[0]
+    if target is None:
+        return SAFE_VERIFICATION_FALLBACK
+    name = mask_pii(target["name"].strip())
+    if not name:
+        return SAFE_VERIFICATION_FALLBACK
+    has_variants = bool(target.get("variants"))
+    quoted_variants = {
+        call.get("args", {}).get("sku") for call in calls
+        if call.get("name") in {"pricing.get_quote", "inventory.check"}
+        and isinstance(call.get("args", {}).get("sku"), str)
+    }
+    variant_skus = {
+        v.get("variant_sku") for v in (target.get("variants") or [])
+        if isinstance(v, dict) and v.get("variant_sku")
+    }
+    if has_variants and not (quoted_variants & variant_skus):
+        return (
+            f"Dạ {address}, để kiểm tra chính xác thông tin cho {name}, "
+            f"{address} cho em biết mình đang quan tâm size và màu nào để em kiểm tra ngay giúp mình ạ?"
+        )
+    if reason in {"price_without_quote", "promotion_quote_missing", "promotion_unverified", "promotion_detail_unverified"}:
+        return (
+            f"Dạ {address}, em đang kiểm tra lại thông tin mới nhất cho {name} để báo chính xác. "
+            f"{address.capitalize()} cho em biết thêm nhu cầu cụ thể (như số lượng hoặc khu vực giao) để em hỗ trợ ngay ạ?"
+        )
+    return (
+        f"Dạ {address}, hiện em chưa xác minh đủ chi tiết về {name} để khẳng định chính xác. "
+        f"{address.capitalize()} cho em biết thêm thông tin cần kiểm tra để em tra cứu lại giúp mình ạ."
+    )
+
+
 class AgentNodes(SessionNodes):
     guardrails_enabled = True
     max_repair_attempts = 1
@@ -206,6 +257,49 @@ class AgentNodes(SessionNodes):
                             or state.get('tool_attempts', 0) >= self.max_tool_calls * 2):
                         break
                     await business.invoke('catalog.get_details', {'sku': sku})
+                if reason in {'price_without_quote', 'promotion_quote_missing', 'promotion_unverified',
+                              'stock_sku_mismatch', 'stock_result_mismatch', 'delivery_unverified'}:
+                    from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
+                    raw_calls = [*state.get('tool_calls', []), *state.get('session_tool_calls', [])]
+                    quoted_today = {
+                        c.get('args', {}).get('sku') for c in raw_calls
+                        if c.get('name') == 'pricing.get_quote'
+                    }
+                    stocked_today = {
+                        c.get('args', {}).get('sku') for c in raw_calls
+                        if c.get('name') == 'inventory.check'
+                    }
+                    catalog_map = {}
+                    for c in calls:
+                        if c.get('name') in {'catalog.search', 'catalog.get_details'}:
+                            for item in (c.get('result') or {}).get('items') or []:
+                                if isinstance(item, dict) and item.get('sku'):
+                                    catalog_map[item['sku']] = item
+                                    for v in item.get('variants') or []:
+                                        if isinstance(v, dict) and v.get('variant_sku'):
+                                            catalog_map[v['variant_sku']] = {**v, 'variants': []}
+                    mentioned_skus = resolve_claim_skus(f"{state.get('safe_text', '')} {draft}", calls)
+                    candidate_skus = [
+                        s for s in (mentioned_skus or list(catalog_map))
+                        if s in catalog_map and not catalog_map[s].get('variants')
+                    ][:3]
+                    need_quote = reason in {'price_without_quote', 'promotion_quote_missing',
+                                            'promotion_unverified', 'delivery_unverified'}
+                    need_stock = reason in {'stock_sku_mismatch', 'stock_result_mismatch'} or bool(
+                        re.search(r'(?i)\b(?:còn hàng|hết hàng|tồn kho|sẵn hàng)\b',
+                                  f"{state.get('safe_text', '')} {draft}")
+                    )
+                    for sku in candidate_skus:
+                        if (state.get('tool_count', 0) >= self.max_tool_calls
+                                or state.get('tool_attempts', 0) >= self.max_tool_calls * 2):
+                            break
+                        if need_quote and sku not in quoted_today:
+                            await business.invoke('pricing.get_quote', {'sku': sku})
+                            quoted_today.add(sku)
+                        if (need_stock and sku not in stocked_today
+                                and state.get('tool_count', 0) < self.max_tool_calls):
+                            await business.invoke('inventory.check', {'sku': sku})
+                            stocked_today.add(sku)
                 tool_updates = {key: state.get(key, [] if key == 'tool_calls' else 0)
                                 for key in ('tool_calls', 'tool_count', 'tool_attempts')}
                 calls = build_commerce_evidence(model_state)
@@ -287,15 +381,17 @@ class AgentNodes(SessionNodes):
                     and bool(draft)
                     and last_reason not in {'internal_output', 'grounding_review_unavailable'}
                     and state.get('reply_context', {}).get('reason') not in {'model_unavailable', 'memory_unavailable'}):
-                fb_grounding = check_grounding(SAFE_VERIFICATION_FALLBACK, calls)
-                fb_answer, fb_reason = (
-                    check_answer(SAFE_VERIFICATION_FALLBACK, calls, state["safe_text"], focus_sku=_claim_focus(model_state))
-                    if fb_grounding is None and self.guardrails_enabled else (SAFE_VERIFICATION_FALLBACK, fb_grounding)
-                )
-                if fb_reason is None and fb_answer:
-                    log_event(state, 'verify', 'recovery_fallback', level=logging.WARNING, reason=last_reason)
-                    return {"agent_text": fb_answer, 'verified_answer': fb_answer,
-                            'reply_error': None, "verifier_events": rejected, **tool_updates}
+                candidate_fb = _contextual_safe_fallback(model_state, calls, last_reason)
+                for fb_text in (candidate_fb, SAFE_VERIFICATION_FALLBACK):
+                    fb_grounding = check_grounding(fb_text, calls)
+                    fb_answer, fb_reason = (
+                        check_answer(fb_text, calls, state["safe_text"], focus_sku=_claim_focus(model_state))
+                        if fb_grounding is None and self.guardrails_enabled else (fb_text, fb_grounding)
+                    )
+                    if fb_reason is None and fb_answer:
+                        log_event(state, 'verify', 'recovery_fallback', level=logging.WARNING, reason=last_reason)
+                        return {"agent_text": fb_answer, 'verified_answer': fb_answer,
+                                'reply_error': None, "verifier_events": rejected, **tool_updates}
         except Exception as exc:
             execution_result(state, exc=exc)
             log_event(state, "verify", "repair_failed", level=logging.WARNING,
