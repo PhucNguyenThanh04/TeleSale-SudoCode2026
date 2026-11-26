@@ -17,7 +17,10 @@ from app.agent.harness.agent_nodes import AgentNodes
 from app.agent.memory.store import MemoryStore
 from app.agent.harness.observability import log_event
 from app.agent.harness.context import load_context
-from app.agent.harness.session_identity import identity_fingerprint, initialize_identity, _empty_identity, turn_fingerprint
+from app.agent.harness.session_identity import (
+    extract_self_declared_phone, identity_fingerprint, initialize_identity,
+    _empty_identity, turn_fingerprint,
+)
 from app.agent.harness.state import TurnState
 from app.agent.harness.session_state import SessionState
 from app.agent.harness.tracing import LangfuseTracing
@@ -189,7 +192,9 @@ class AgentHarnessRuntime:
         if bound is not None and bound[0] != fingerprint:
             raise ValueError("Session channel identity mismatch")
         if bound is None or (not bound[1].get('erased_customer_id') and bound[1]["identity_status"] != "known"
-                             and turn.verified_customer_id):
+                             and (turn.verified_customer_id
+                                  or (bound[1]["identity_status"] == "unknown"
+                                      and extract_self_declared_phone(turn.text) is not None))):
             identity, calls = await initialize_identity(turn, self.tools)
             self._session_identities[session_id] = (fingerprint, identity)
         else:
@@ -456,6 +461,18 @@ class AgentHarnessRuntime:
                     prepared_calls = [{**call, 'customer_id': identity.get('customer_id'),
                         'session_id': session_id, 'source_turn_id': str(turn.client_msg_id)}
                         for call in prepared_calls]
+                    if (bound is not None and bound[1].get("identity_status") == "unknown"
+                            and identity.get("identity_status") == "known"
+                            and identity.get("customer_id")):
+                        carried_reads = [
+                            {**call, 'customer_id': identity['customer_id'],
+                             'session_id': session_id, 'source_turn_id': str(turn.client_msg_id)}
+                            for call in self._session_tool_calls[session_id]
+                            if call.get('name') in {'catalog.search', 'catalog.get_details',
+                                                    'inventory.check', 'pricing.get_quote'}
+                            and 'error' not in (call.get('result') or {})
+                        ]
+                        prepared_calls = [*carried_reads, *prepared_calls]
                     config = {"configurable": {"thread_id": session_id},
                               "run_name": "process-chat-turn"}
                     if trace:
