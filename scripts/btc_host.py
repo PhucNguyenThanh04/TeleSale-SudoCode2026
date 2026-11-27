@@ -12,6 +12,13 @@ class ConfigurationError(ValueError):
     pass
 
 
+def ensure_utf8_mode():
+    if sys.platform == 'win32' and not sys.flags.utf8_mode:
+        import subprocess
+        raise SystemExit(subprocess.call([sys.executable, '-X', 'utf8', *sys.argv],
+                                         env={**os.environ, 'PYTHONUTF8': '1'}))
+
+
 def configuration(root, source=None):
     from dotenv import dotenv_values
 

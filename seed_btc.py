@@ -9,7 +9,7 @@ import sys
 import time
 from urllib.request import urlopen
 
-from scripts.btc_host import ConfigurationError as SeedError, configuration
+from scripts.btc_host import ConfigurationError as SeedError, configuration, ensure_utf8_mode
 
 ROOT = Path(__file__).resolve().parent
 
@@ -106,4 +106,5 @@ def main():
 
 
 if __name__ == '__main__':
+    ensure_utf8_mode()
     main()

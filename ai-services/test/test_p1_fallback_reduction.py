@@ -101,3 +101,41 @@ def test_p1_contextual_safe_fallback_preserves_product_and_asks_variant_when_nee
     assert "Giày chạy bộ RunLite 2 Pro" in fb
     assert "size" in fb.lower() or "màu" in fb.lower()
     assert "1.690.000" not in fb
+
+
+def _backfill_nodes(quote_price: int, repair_text: str):
+    gateway = AsyncMock()
+    gateway.invoke_trusted.side_effect = [
+        {"sku": "SKU-AP-X", "list_price_vnd": quote_price, "final_price_vnd": quote_price, "applied_promos": []},
+        {"sku": "SKU-AP-X", "in_stock": True, "qty": 10},
+    ]
+    llm = AsyncMock()
+    llm.ainvoke.return_value = AIMessage(content=repair_text)
+    nodes = AgentNodes(llm=llm, tools=gateway, memory=AsyncMock(), max_tool_calls=6, prompt_history_turns=6,
+                       clock=lambda: datetime.now(timezone.utc), max_repair_attempts=1,
+                       safe_fallback_on_rejection=True, semantic_review_enabled=False)
+    catalog_call = {"name": "catalog.search", "args": {"query": "AirPure X"},
+                    "result": {"items": [{"sku": "SKU-AP-X", "name": "Máy lọc không khí AirPure X",
+                                          "list_price_vnd": 4890000, "variants": []}]}}
+    return nodes, llm, catalog_call
+
+
+def test_backfilled_evidence_accepts_original_draft_without_repair_call():
+    nodes, llm, catalog_call = _backfill_nodes(4890000, "Không dùng bản sửa này.")
+    draft = "Máy lọc không khí AirPure X có giá 4.890.000đ và hiện còn hàng."
+    st = _turn_state("Máy lọc không khí AirPure X giá bao nhiêu và còn hàng không?", draft, [catalog_call])
+    out = asyncio.run(nodes.verify_agent(st))
+    assert out["reply_error"] is None
+    assert out["verified_answer"] == draft
+    llm.ainvoke.assert_not_awaited()
+
+
+def test_backfilled_evidence_still_repairs_draft_with_wrong_price():
+    nodes, llm, catalog_call = _backfill_nodes(
+        4590000, "Máy lọc không khí AirPure X hiện còn hàng với giá 4.590.000 đồng ạ.")
+    st = _turn_state("Máy lọc không khí AirPure X giá bao nhiêu và còn hàng không?",
+                     "Máy lọc không khí AirPure X có giá 4.890.000đ và hiện còn hàng.", [catalog_call])
+    out = asyncio.run(nodes.verify_agent(st))
+    assert out["reply_error"] is None
+    assert "4.890.000" not in out["verified_answer"]
+    llm.ainvoke.assert_awaited()

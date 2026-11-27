@@ -37,6 +37,8 @@ python -m pip install -r config/requirements/host.txt
 Copy-Item .env.example .env
 ```
 
+> Trên Windows, `seed_btc.py`, `run_eval.py` và `run_knowledge_eval.py` tự chạy lại ở chế độ UTF-8 (`python -X utf8`), không cần đặt `PYTHONUTF8`.
+
 > Nếu PowerShell chặn kích hoạt venv, chạy `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` (hoặc dùng CMD: `.\.venv\Scripts\activate.bat`).
 
 Điền API key, model và endpoint trong `.env` (nếu dùng lại `.env` từ bản cũ, xóa dòng `COMPOSE_FILE`).
@@ -50,6 +52,7 @@ python scripts/compose_up.py
 ```
 
 - Lệnh kiểm tra GPU bằng container CUDA rồi tự chọn image GPU hoặc CPU. Trên Ubuntu, cần cho user quyền truy cập Docker trước khi chạy.
+- Image speech GPU khá nặng (CUDA + PyTorch); thiếu dung lượng trống, Docker có thể dừng giữa lúc giải nén image (`rpc error ... EOF`). Trên Windows, kiểm tra ổ chứa dữ liệu Docker Desktop (mặc định ổ C) còn đủ 20 GiB, có thể dọn cache build bằng `docker builder prune -a`.
 - Nếu muốn chạy CPU trực tiếp: `docker compose up -d --build`.
 - Bước này chưa cần dữ liệu BTC. Lần đầu chạy, container ứng dụng có thể báo `Waiting for BTC data` cho tới khi hoàn tất bước 3.
 - Dừng stack: `docker compose down` (giữ nguyên volume dữ liệu).
@@ -118,6 +121,8 @@ python run_knowledge_eval.py --base-run "./results-submission/<run-k0>"
 ## 5. ASR local (tùy chọn)
 
 Cài đặt trong virtualenv riêng để không xung đột thư viện harness (mặc định dùng `Systran/faster-whisper-small` trên CPU/int8):
+
+Thư mục `./dataset` cần có `audio/` và `ground_truth.json`; audio nhóm không nằm trong Git, giải nén gói audio (ví dụ `audio-vieneu-120-cuoc.zip`) vào đó trước khi chạy.
 
 **Ubuntu / macOS:**
 ```bash

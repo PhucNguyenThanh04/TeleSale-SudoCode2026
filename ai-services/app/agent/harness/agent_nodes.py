@@ -109,6 +109,11 @@ def _contextual_safe_fallback(state: TurnState, calls: list[dict[str, Any]], rea
     name = mask_pii(target["name"].strip())
     if not name:
         return SAFE_VERIFICATION_FALLBACK
+    if target.get("variants"):
+        return (
+            f"Dạ {address}, {name} có nhiều phiên bản nên em cần biết đúng size/màu để kiểm tra chính xác. "
+            f"{address[0].upper() + address[1:]} cho em xin size/màu mình muốn ạ?"
+        )
     return (
         f"Dạ {address}, hiện em chưa xác minh đủ chi tiết về {name} để khẳng định chính xác. "
         "Em chưa thể xác nhận thông tin này ạ."
@@ -303,6 +308,7 @@ class AgentNodes(SessionNodes):
                 log_event(state, 'verify', 'recovery_rejected', reason=reason)
                 rejected.append(rejected_draft(state, reason, draft))
             if self.tools is not None and not state.get('tool_failed'):
+                backfilled_from = len(state.get('tool_calls', []))
                 known = set()
                 for call in calls:
                     if call.get('name') in {'catalog.search', 'catalog.get_details'}:
@@ -385,6 +391,12 @@ class AgentNodes(SessionNodes):
                 tool_updates.update({key: state.get(key, [] if key == 'tool_calls' else 0)
                                      for key in ('tool_calls', 'tool_count', 'tool_attempts')})
                 calls = build_commerce_evidence(model_state)
+                if draft and len(state.get('tool_calls', [])) > backfilled_from:
+                    answer, backfill_reason = await validate(draft)
+                    if backfill_reason is None and not _requested_write_missing(state):
+                        log_event(state, 'verify', 'recovery_succeeded', source='evidence_backfill')
+                        return {'agent_continuation': None, 'agent_text': answer, 'verified_answer': answer,
+                                'reply_error': None, 'verifier_events': rejected, **tool_updates}
             context = prompt_context(model_state, self.prompt_history_turns)
             base_messages = [SystemMessage(content=state.get('selected_system_prompt', _SYSTEM_PROMPT)),
                              *prompt_messages(context)]
