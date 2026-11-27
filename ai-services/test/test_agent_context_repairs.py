@@ -325,19 +325,19 @@ def test_empty_list_price_search_cannot_rule_out_discounted_affordable_products(
                         'Ngân sách của tôi tối đa 5 triệu.')[1] is None
 
 
-@pytest.mark.parametrize('reason,answer', [
-    ('unanswered_request', 'Mẫu A có kết nối Zigbee.'),
-    ('unnecessary_clarification', 'Mình muốn hỏi tính năng gì?'),
-    ('customer_constraint_violated', 'Em tư vấn một chiếc màu đỏ.'),
+@pytest.mark.parametrize('reason,answer,expected', [
+    ('unanswered_request', 'Mẫu A có kết nối Zigbee.', None),
+    ('unnecessary_clarification', 'Mình muốn hỏi tính năng gì?', None),
+    ('customer_constraint_violated', 'Em tư vấn một chiếc màu đỏ.', 'customer_constraint_violated'),
 ])
-def test_grounding_review_rejects_unfulfilled_requests_and_redundant_questions(reason, answer):
+def test_grounding_review_only_blocks_explicit_customer_constraint_violations(reason, answer, expected):
     from app.agent.guardrails.semantic_grounding import review_answer
     from test_semantic_grounding import ReviewModel, context
 
     data = context()
     data['customer_text'] = 'Tôi cần 2 chiếc màu xanh, mẫu B có Wi-Fi không?'
     model = ReviewModel([{'supported': False, 'reason': reason, 'unsupported_claim': answer}])
-    assert asyncio.run(review_answer(model, answer, data)) == reason
+    assert asyncio.run(review_answer(model, answer, data)) == expected
 
 
 def test_changed_committed_customer_sources_invalidate_write_review():

@@ -250,17 +250,26 @@ def test_promotion_repair_reads_the_quoted_gift_name():
     assert 'gift_sku' in json.loads(request[-1].content)['task']
 
 
-@pytest.mark.parametrize('second_review', [
-    verdict(False, 'unsupported_claim', 'Bluetooth'), RuntimeError('Review failed'),
-])
-def test_rejected_or_unverifiable_repair_has_no_publishable_answer(second_review):
+def test_rejected_repair_has_no_publishable_answer():
     from app.agent.harness.agent_nodes import AgentNodes
-    model = ReviewModel([verdict(False, 'unsupported_claim', 'Wi-Fi'), second_review],
+    model = ReviewModel([verdict(False, 'unsupported_claim', 'Wi-Fi'),
+                         verdict(False, 'unsupported_claim', 'Bluetooth')],
                         'Thiết bị hỗ trợ Bluetooth.')
     result = asyncio.run(AgentNodes(model, None, None, 8, 6).verify_agent(
         turn_state('Thiết bị hỗ trợ Wi-Fi.')))
     assert result['agent_text'] == '' and result['reply_error'] == 'agent_reply_unavailable'
     assert not result.get('verified_answer') and model.ainvoke.await_count == 1
+
+
+def test_review_failure_during_repair_does_not_reject_a_valid_repair():
+    from app.agent.harness.agent_nodes import AgentNodes
+    model = ReviewModel([verdict(False, 'unsupported_claim', 'Wi-Fi'), RuntimeError('Review failed')],
+                        'Thiết bị hỗ trợ Zigbee.')
+    result = asyncio.run(AgentNodes(model, None, None, 8, 6).verify_agent(
+        turn_state('Thiết bị hỗ trợ Wi-Fi.')))
+    assert result['verified_answer'] == 'Thiết bị hỗ trợ Zigbee.'
+    assert result['reply_error'] is None
+    assert result['verifier_events'][0]['reason'] == 'unsupported_answer_claim'
 
 
 def test_provider_stop_cannot_publish_before_semantic_verification():

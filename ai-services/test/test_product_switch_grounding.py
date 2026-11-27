@@ -5,6 +5,7 @@ import pytest
 
 from test_commerce_evidence import state, catalog, quote
 from test_consultation_shortlist import clock
+from test_semantic_grounding import ReviewModel, verdict
 from app.agent.guardrails.checks import check_answer
 from app.agent.harness.agent_nodes import AgentNodes
 from app.agent.implementations.business_agent import BusinessTools
@@ -34,8 +35,10 @@ def test_unknown_model_cannot_be_answered_with_a_valid_old_price():
     s['session_tool_calls'] = [catalog(), quote()]
     s['history'] = [{'customer': 'Hỏi Aster.', 'agent': 'Em đề xuất Aster giá 900.000đ.'}]
     s['agent_draft'] = 'Aster giá 900.000đ.'
-    result = asyncio.run(AgentNodes(None, None, None, 6, 6).verify_agent(s))
-    assert '900.000' not in result['agent_text']
+    repaired = 'Em chưa có thông tin xác minh về Cedar 99.'
+    model = ReviewModel([verdict(False, 'wrong_subject', 'Aster giá 900.000đ.'), verdict()], repaired)
+    result = asyncio.run(AgentNodes(model, None, None, 6, 6).verify_agent(s))
+    assert result['agent_text'] == repaired
 
 
 def test_promotion_for_old_product_cannot_answer_new_product_question():
@@ -52,8 +55,10 @@ def test_failed_new_quote_cannot_fall_back_to_old_product_price():
     s['tool_calls'] = [{'name': 'pricing.get_quote', 'args': quote('SKU-BERYL')['args'],
                         'result': {'error': 'unavailable'}}]
     s['agent_draft'] = 'Aster giá 900.000đ.'
-    result = asyncio.run(AgentNodes(None, None, None, 6, 6).verify_agent(s))
-    assert '900.000' not in result['agent_text']
+    repaired = 'Em chưa có báo giá hiện tại của Beryl 20.'
+    model = ReviewModel([verdict(False, 'wrong_subject', 'Aster giá 900.000đ.'), verdict()], repaired)
+    result = asyncio.run(AgentNodes(model, None, None, 6, 6).verify_agent(s))
+    assert result['agent_text'] == repaired
 
 
 def test_comparison_can_keep_two_independently_quoted_products():

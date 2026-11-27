@@ -302,3 +302,36 @@ def test_timeline_browser_error_retry_empty_and_stale_response(text_site, browse
     timeline['status'], timeline['items'] = 'available', []
     js("document.querySelector('#timeline-reload').click(); waitFor(() => document.querySelector('#timeline-status').textContent.includes('Chưa có tương tác'))")
     assert len(calls) == 1
+
+
+def test_chat_auto_connects_on_first_message_without_manual_session_start(text_site, browser):
+    url, calls, _ = text_site
+    command, evaluate = browser
+    command('Page.enable')
+    command('Page.navigate', url=url)
+    deadline = time.monotonic() + 10
+    while not evaluate("!!document.querySelector('#login-form')"):
+        assert time.monotonic() < deadline
+        time.sleep(.02)
+    evaluate("document.querySelector('#username').value='offline'; document.querySelector('#password').value='browser-password'; document.querySelector('#login-form').requestSubmit()")
+    while not evaluate("!!document.querySelector('#identity')?.readOnly"):
+        assert time.monotonic() < deadline
+        time.sleep(.02)
+    command('Page.navigate', url=url)
+    while not evaluate("!!document.querySelector('#identity')?.readOnly && !document.querySelector('#text')?.disabled"):
+        assert time.monotonic() < deadline
+        time.sleep(.02)
+    evaluate("""window.waitFor = predicate => new Promise((resolve, reject) => {
+      const started = Date.now(); const poll = () => {
+        if (predicate()) resolve(true);
+        else if (Date.now() - started > 5000) reject(Error(document.body.innerText));
+        else setTimeout(poll, 20);
+      }; poll();
+    });
+    document.querySelector('#text').value = 'Xin chào trợ lý';
+    document.querySelector('#chat-form').requestSubmit();
+    waitFor(() => document.querySelectorAll('.message.agent').length === 1 && !document.querySelector('#send').disabled);""")
+    assert len(calls) == 1
+    assert calls[0]['channel_identity'] == USER['phone']
+    assert calls[0]['text'] == 'Xin chào trợ lý'
+

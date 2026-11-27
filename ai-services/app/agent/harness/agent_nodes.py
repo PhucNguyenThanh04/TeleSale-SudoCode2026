@@ -258,8 +258,10 @@ class AgentNodes(SessionNodes):
                     reason = semantic_reviews[review_key]
                 else:
                     reason = await review_answer(self.llm, answer, context)
-                    if reason != 'grounding_review_unavailable':
-                        semantic_reviews[review_key] = reason
+                    if reason == 'grounding_review_unavailable':
+                        log_event(state, 'verify', 'grounding_checked', accepted=True, reason=reason)
+                        return answer, None
+                    semantic_reviews[review_key] = reason
             log_event(state, 'verify', 'grounding_checked', accepted=reason is None, reason=reason)
             return answer, reason
 

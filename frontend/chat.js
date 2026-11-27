@@ -1,30 +1,44 @@
 import { setupProfile } from './auth.js';
+
 const $ = id => document.getElementById(id);
 const fields = [$('channel'), $('identity'), $('scenario-date')];
 const panels = new Map();
 const replies = new Map();
 let socket = null;
 let busy = false;
+let ready = false;
 let timelineSession = null;
 let timelineNext = null;
 let timelineController = null;
 let timelineVersion = 0;
+
 $('scenario-date').value = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(new Date());
-
-await setupProfile();
 
 function controls(connected) {
   fields.forEach(field => { field.disabled = connected; });
   $('connect').disabled = connected;
   $('end').disabled = !connected;
-  $('text').disabled = !connected || busy;
-  $('send').disabled = !connected || busy;
+  $('text').disabled = !ready || busy;
+  $('send').disabled = !ready || busy;
+  $('status-indicator').dataset.state = connected ? (busy ? 'busy' : 'online') : 'idle';
 }
+
 function error(message) {
   $('error').textContent = message;
   $('error').hidden = false;
+}
+
+function scrollBottom() {
+  const scroller = $('chat-scroll');
+  if (scroller) scroller.scrollTop = scroller.scrollHeight;
+}
+
+function autoResize() {
+  const input = $('text');
+  input.style.height = 'auto';
+  input.style.height = `${Math.min(input.scrollHeight, 180)}px`;
 }
 
 function resetTimeline() {
@@ -48,8 +62,11 @@ async function loadTimeline(reset = true) {
   $('timeline-more').disabled = true;
   $('timeline-status').textContent = 'Đang tải lịch sử…';
   try {
-    const response = await fetch('/api/chat/timeline', { method: 'POST', cache: 'no-store',
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(query), signal: timelineController.signal });
+    const response = await fetch('/api/chat/timeline', {
+      method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(query), signal: timelineController.signal,
+    });
     if (response.status === 401) location.replace('/login');
     if (!response.ok) throw Error('timeline_unavailable');
     const data = await response.json();
@@ -77,7 +94,7 @@ async function loadTimeline(reset = true) {
       ? 'Chưa xác minh khách hàng để hiển thị lịch sử.'
       : page.total === 0 ? 'Chưa có tương tác đã lưu.'
         : `Đang hiển thị ${$('timeline-items').childElementCount}/${page.total} phiên.`;
-  } catch (exception) {
+  } catch {
     if (version !== timelineVersion) return;
     $('timeline-items').replaceChildren();
     timelineNext = null;
@@ -90,21 +107,38 @@ async function loadTimeline(reset = true) {
     }
   }
 }
+
 $('timeline-reload').addEventListener('click', () => loadTimeline());
 $('timeline-more').addEventListener('click', () => loadTimeline(false));
+
 function message(role, text) {
+  $('chat-empty')?.remove();
   const article = document.createElement('article');
   article.className = `message ${role}`;
-  const label = document.createElement('div');
-  label.className = 'message-label';
-  label.textContent = role === 'user' ? 'BẠN' : 'TRỢ LÝ TELESALE';
-  const body = document.createElement('p');
-  body.textContent = text;
-  article.append(label, body);
+  if (role === 'agent') {
+    const avatar = document.createElement('div');
+    avatar.className = 'message-avatar';
+    avatar.setAttribute('aria-hidden', 'true');
+    avatar.textContent = 'AI';
+    const content = document.createElement('div');
+    content.className = 'message-body';
+    const label = document.createElement('div');
+    label.className = 'message-label';
+    label.textContent = 'TRỢ LÝ TELESALE';
+    const body = document.createElement('p');
+    body.textContent = text;
+    content.append(label, body);
+    article.append(avatar, content);
+  } else {
+    const body = document.createElement('p');
+    body.textContent = text;
+    article.append(body);
+  }
   $('messages').append(article);
-  article.scrollIntoView({ block: 'nearest' });
+  scrollBottom();
   return article;
 }
+
 function brief(value) {
   if (!value?.is_returning || $('brief').childElementCount) return;
   const panel = document.createElement('details');
@@ -134,6 +168,7 @@ function brief(value) {
   row('Bước tiếp theo', value.suggested_next_action);
   $('brief').append(panel);
 }
+
 const labels = {
   room_area_m2: 'Diện tích phòng', budget_vnd: 'Ngân sách', has_children: 'Có trẻ nhỏ',
   product_advised: 'Sản phẩm đã tư vấn', price_quoted_vnd: 'Giá đã báo',
@@ -143,6 +178,7 @@ const labels = {
   variant_sku: 'Phiên bản', size: 'Cỡ', color: 'Màu', payment: 'Thanh toán',
   owned_sku: 'Sản phẩm đang có', callback_scheduled: 'Đã hẹn gọi lại', alt_suggested: 'Mẫu thay thế',
 };
+
 function memory(panel, update, finished = false) {
   panel.replaceChildren();
   panel.dataset.status = update.status;
@@ -172,8 +208,18 @@ function memory(panel, update, finished = false) {
   }
 }
 
-$('connect').addEventListener('click', () => {
-  if (!fields.every(field => field.reportValidity())) return;
+function sendText(current, text) {
+  current.send(JSON.stringify({ event: 'text', client_msg_id: crypto.randomUUID(), text }));
+  busy = true;
+  controls(true);
+  $('status').textContent = 'Trợ lý đang xử lý…';
+}
+
+function startSession(initialText = null) {
+  if (!fields.every(field => field.reportValidity())) {
+    $('settings').open = true;
+    return;
+  }
   $('error').hidden = true;
   $('brief').replaceChildren();
   resetTimeline();
@@ -182,10 +228,13 @@ $('connect').addEventListener('click', () => {
   busy = true;
   controls(true);
   $('status').textContent = 'Đang kết nối…';
+  let queuedText = initialText;
   const current = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/chat/stream`);
   socket = current;
-  current.onopen = () => current.send(JSON.stringify({ event: 'start', channel: $('channel').value,
-    channel_identity: $('identity').value.trim(), on: $('scenario-date').value }));
+  current.onopen = () => current.send(JSON.stringify({
+    event: 'start', channel: $('channel').value,
+    channel_identity: $('identity').value.trim(), on: $('scenario-date').value,
+  }));
   current.onmessage = event => {
     if (socket !== current) return;
     let data;
@@ -194,10 +243,16 @@ $('connect').addEventListener('click', () => {
       brief(data.call_brief);
       timelineSession = { session_id: data.session_id, channel: $('channel').value, on: $('scenario-date').value };
       loadTimeline();
-      busy = false;
-      controls(true);
-      $('status').textContent = 'Sẵn sàng trò chuyện';
-      $('text').focus();
+      if (queuedText) {
+        const textToSend = queuedText;
+        queuedText = null;
+        sendText(current, textToSend);
+      } else {
+        busy = false;
+        controls(true);
+        $('status').textContent = 'Sẵn sàng trò chuyện';
+        $('text').focus();
+      }
     } else if (data.event === 'agent_delta') {
       let article = replies.get(data.client_msg_id);
       if (!article) {
@@ -205,22 +260,24 @@ $('connect').addEventListener('click', () => {
         replies.set(data.client_msg_id, article);
       }
       article.querySelector('p').textContent += data.text;
-      article.scrollIntoView({ block: 'nearest' });
+      scrollBottom();
       $('status').textContent = 'Trợ lý đang trả lời…';
     } else if (data.event === 'agent_reply') {
       brief(data.call_brief);
       const article = replies.get(data.client_msg_id) || message('agent', data.agent_text);
+      const target = article.querySelector('.message-body') || article;
       const panel = document.createElement('div');
       panel.className = 'memory-update';
-      article.append(panel);
+      target.append(panel);
       panels.set(data.client_msg_id, panel);
       memory(panel, data.memory_update);
       if (data.memory_update?.status === 'completed') loadTimeline();
       if (data.needs_handoff) message('agent', 'Yêu cầu đã được chuyển để nhân viên tiếp nhận.');
       busy = false;
       controls(true);
-      $('status').textContent = 'Sẵn sàng nhận tin nhắn tiếp theo';
+      $('status').textContent = 'Sẵn sàng trò chuyện';
       $('text').focus();
+      scrollBottom();
     } else if (data.event === 'memory_update') {
       const panel = panels.get(data.client_msg_id);
       if (panel) memory(panel, data.memory_update, data.tracking_finished);
@@ -241,26 +298,61 @@ $('connect').addEventListener('click', () => {
     socket = null;
     busy = false;
     controls(false);
-    $('status').textContent = 'Phiên đã kết thúc. Bắt đầu phiên mới để tiếp tục.';
+    $('status').textContent = 'Phiên đã kết thúc. Nhắn tin hoặc bấm Phiên mới để tiếp tục.';
     for (const panel of panels.values()) {
       if (panel.dataset.status === 'pending') memory(panel, { status: 'pending', changes: [] }, true);
     }
   };
-});
+}
+
+$('connect').addEventListener('click', () => startSession());
+
 $('chat-form').addEventListener('submit', event => {
   event.preventDefault();
   const text = $('text').value.trim();
-  if (!text || busy || socket?.readyState !== WebSocket.OPEN) return;
+  if (!text || busy || !ready) return;
   $('error').hidden = true;
-  message('user', text);
-  socket.send(JSON.stringify({ event: 'text', client_msg_id: crypto.randomUUID(), text }));
   $('text').value = '';
-  busy = true;
-  controls(true);
-  $('status').textContent = 'Trợ lý đang xử lý…';
+  autoResize();
+  if (socket?.readyState === WebSocket.OPEN) {
+    message('user', text);
+    sendText(socket, text);
+  } else {
+    message('user', text);
+    startSession(text);
+  }
 });
+
+$('text').addEventListener('input', autoResize);
+$('text').addEventListener('keydown', event => {
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    $('chat-form').requestSubmit();
+  }
+});
+
+for (const chip of document.querySelectorAll('.prompt-chip')) {
+  chip.addEventListener('click', () => {
+    if (!ready || busy) return;
+    $('text').value = chip.dataset.prompt || '';
+    autoResize();
+    $('chat-form').requestSubmit();
+  });
+}
+
 $('end').addEventListener('click', () => {
   resetTimeline();
   if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ event: 'end' }));
   socket?.close();
 });
+
+try {
+  await setupProfile();
+  ready = true;
+  controls(false);
+  $('status').textContent = 'Sẵn sàng trò chuyện';
+  $('text').focus();
+} catch (failure) {
+  error(failure.message || 'Không tải được thông tin tài khoản.');
+  $('status').textContent = 'Chưa tải được tài khoản.';
+}

@@ -71,6 +71,7 @@ VALUE_LABELS = {
     "unanswered_request": "chưa hoàn tất yêu cầu hiện tại",
     "unnecessary_clarification": "hỏi lại dữ kiện đã rõ",
     "customer_constraint_violated": "không giữ đúng điều kiện khách yêu cầu",
+    "grounding_review_unavailable": "không có kết luận kiểm duyệt ngữ nghĩa",
     "callback_unverified": "chưa có kết quả đặt lịch gọi lại",
     "policy_question_unanswered": "chưa trả lời câu hỏi chính sách",
     "promotion_quote_missing": "chưa có báo giá khuyến mãi",
