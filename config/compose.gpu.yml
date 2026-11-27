@@ -1,0 +1,23 @@
+x-speech-gpu: &speech-gpu
+  image: telesale-btc-speech-gpu:${SUBMISSION_IMAGE_TAG:-local}
+  environment:
+    SPEECH_ASR_PROVIDER: cuda
+    SPEECH_VAD_PROVIDER: cuda
+    SPEECH_TTS_PROVIDER: cuda
+    NVIDIA_DRIVER_CAPABILITIES: compute,utility
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+
+services:
+  speech:
+    <<: *speech-gpu
+    build:
+      target: speech-gpu
+
+  vieneu:
+    <<: *speech-gpu

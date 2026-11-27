@@ -46,10 +46,11 @@ Copy-Item .env.example .env
 Chạy giống nhau trên Ubuntu, macOS và Windows (đảm bảo Docker Desktop đang bật trên Windows/macOS):
 
 ```bash
-docker compose up -d --build
+python scripts/compose_up.py
 ```
 
-- Trên Ubuntu, dùng `sudo docker compose up -d --build` nếu user chưa thuộc nhóm `docker`.
+- Lệnh kiểm tra GPU bằng container CUDA rồi tự chọn image GPU hoặc CPU. Trên Ubuntu, cần cho user quyền truy cập Docker trước khi chạy.
+- Nếu muốn chạy CPU trực tiếp: `docker compose up -d --build`.
 - Bước này chưa cần dữ liệu BTC. Lần đầu chạy, container ứng dụng có thể báo `Waiting for BTC data` cho tới khi hoàn tất bước 3.
 - Dừng stack: `docker compose down` (giữ nguyên volume dữ liệu).
 
@@ -68,21 +69,20 @@ python seed_btc.py --data-dir ../BTC-Data-Vong1-TEAMS
 - `demo1` / `demo1-btc-2026` (khách `C001`)
 - `demo2` / `demo2-btc-2026` (khách `C002`)
 
-### Dùng Voice (tùy chọn)
+### Dùng Voice
 
-Cần tạo `.venv-speech-serving`, cài `speech/serving/requirements.txt` cùng `vieneu` và chuẩn bị model weights:
+`python scripts/compose_up.py` tự khởi động cả `speech` (Gipformer ASR, Silero VAD, KorvaTTS) và `vieneu` (VieNeu TTS). Backend kết nối trực tiếp qua mạng Docker và chờ speech sẵn sàng trước khi khởi động.
 
-- **Ubuntu / macOS:**
-  ```bash
-  scripts/serve-speech.sh
-  ```
-- **Windows (PowerShell — mở 2 terminal):**
-  ```powershell
-  .\.venv-speech-serving\Scripts\python.exe -m uvicorn speech.serving.vieneu_sidecar:app --host 127.0.0.1 --port 18111
-  .\.venv-speech-serving\Scripts\python.exe -m uvicorn speech.serving.app:app --host 0.0.0.0 --port 18110
-  ```
+- Có GPU NVIDIA dùng được qua Docker (bao gồm RTX 3050): tự chọn image CUDA 13, chạy ASR/VAD/KorvaTTS và VieNeu trên GPU. Không có GPU, driver không tương thích hoặc Docker chưa được cấp GPU: tự chọn image CPU.
+- Trên Linux, chế độ GPU cần driver NVIDIA tương thích CUDA 13 và [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). Trên Windows, dùng Docker Desktop với WSL2 và driver NVIDIA hỗ trợ GPU trong WSL2. Không cần cài CUDA Toolkit hay `.venv-speech-serving` trên host.
+- RTX 3050 Laptop hiện tại có 4 GiB VRAM; VieNeu giới hạn một luồng. Chưa đo mức dùng VRAM khi chạy đầy đủ trong container; cần để đủ VRAM trống cho cả hai service.
+- GPU dùng các phiên bản trong `speech/serving/requirements-cuda13.txt`; image CPU giữ thư viện riêng. Cả hai dùng Gipformer, KorvaTTS và VieNeu `3.8.3`; Gipformer dùng FP32 trên GPU và INT8 trên CPU.
+- Lần đầu cần Internet để tải model và chờ warmup; quá trình này có thể mất nhiều phút. Model được lưu trong các volume `speech-models` và `speech-huggingface`, giữ lại khi chạy `docker compose down`.
+- Nếu đang chạy speech trực tiếp trên host, dừng tiến trình đó trước để giải phóng cổng `18110`, hoặc đổi `SUBMISSION_SPEECH_PORT` trong `.env`.
+- Xem tiến trình khởi động: `docker compose logs -f speech vieneu`.
+- Kiểm tra API: `http://127.0.0.1:18110/health` (đổi cổng theo `SUBMISSION_SPEECH_PORT` nếu đã cấu hình).
 
-Nếu mới cập nhật cấu hình speech, tạo lại backend bằng `docker compose up -d --no-deps backend`, sau đó mở `http://127.0.0.1:8000/`.
+Sau khi nạp dữ liệu BTC và các service sẵn sàng, mở `http://127.0.0.1:8000/` để dùng Voice.
 
 ## 4. Chạy Eval
 

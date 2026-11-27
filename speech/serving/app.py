@@ -42,8 +42,8 @@ MAX_AUDIO_BYTES = 10 * 1024 * 1024
 requests_by_ip: dict[str, deque[float]] = defaultdict(deque)
 logger = logging.getLogger(__name__)
 VOICES = {"bao_kim", "gia_bao", "khanh_vy", "hoang_nam", "ngoc_huyen", "huu_dat", "phuong_linh", "quang_huy", "quynh_nhu", "thanh_phong"}
-VIENEU_URL = "http://127.0.0.1:18111"
-WEB_URL = "http://127.0.0.1:8000"
+VIENEU_URL = os.getenv("VIENEU_URL", "http://127.0.0.1:18111")
+WEB_URL = os.getenv("WEB_URL", "http://127.0.0.1:8000")
 HOP_HEADERS = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
                "te", "trailer", "transfer-encoding", "upgrade", "content-length",
                "x-forwarded-for", "forwarded", "x-real-ip"}
