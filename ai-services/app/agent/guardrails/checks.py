@@ -604,6 +604,12 @@ def _money_evidenced(candidate: str, successful: list[dict[str, Any]], *,
         values = {value for call in previews for value in _vnd_values(call['result'])}
         if all(amount in values for amount, _, _ in _money_claims(candidate)):
             return True
+    orders = [call for call in successful if call.get('name') == 'order.create'
+              and call.get('result', {}).get('status') == 'created']
+    if orders:
+        values = {value for call in orders for value in _vnd_values(call['result'])}
+        if all(amount in values for amount, _, _ in _money_claims(candidate)):
+            return True
     baskets = [call for call in successful if call.get('name') == 'pricing.quote_order']
     if baskets:
         basket_skus = {unit['sku'] for call in baskets for unit in call['result'].get('units', [])}

@@ -4,6 +4,9 @@ from pathlib import Path
 import sys
 from urllib.parse import quote
 
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 
 class ConfigurationError(ValueError):
     pass

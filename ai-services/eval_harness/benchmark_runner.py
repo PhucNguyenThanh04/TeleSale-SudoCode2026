@@ -618,6 +618,7 @@ async def run_configuration(*, scenarios: dict[str, dict], config: str, runtime,
                 on_row=append, trace=trace, safety_issues=safety_issues, on_turn=on_turn, diagnostics=diagnostics,
                 delivery_mode=delivery_mode)
         finally:
+            stream.close()
             write_jsonl(trace, out)
             diagnostic_refs = diagnostics.write(out)
             from app.mcp_servers.mcp_shared.decision_diagnostics import enabled as decision_enabled

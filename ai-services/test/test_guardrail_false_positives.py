@@ -150,3 +150,22 @@ def test_stock_claim_is_not_bound_to_a_gift_in_another_sentence(stock_sentence, 
     answer = stock_sentence + ' Được tặng quà SKU-XM-FLT.'
     assert check_grounding(answer, calls) is None
     assert check_answer(answer, calls)[1] == reason
+
+
+_CREATED_ORDER = {"name": "order.create",
+                  "args": {"sku": "SKU-AP-FLT-P", "qty": 1, "price_vnd": 990000, "payment": "COD"},
+                  "result": {"order_id": "OD600025", "status": "created", "total_vnd": 990000,
+                             "needs_confirmation_call": False, "estimated_delivery": "2026-10-28"}}
+
+
+def test_created_order_total_evidences_repeated_price():
+    answer = ("Dạ, em đã lên đơn một màng lọc thay thế cho máy AirPure Pro của chị với giá 990.000đ rồi ạ. "
+              "Mã đơn hàng của chị là OD600025, dự kiến chị sẽ nhận được hàng vào ngày 28/10.")
+    assert check_answer(answer, [_CREATED_ORDER])[1] is None
+
+
+def test_created_order_does_not_evidence_other_price():
+    answer = "Dạ, em đã lên đơn OD600025 với giá 890.000đ rồi ạ."
+    assert check_answer(answer, [_CREATED_ORDER])[1] == "price_without_quote"
+    failed = {**_CREATED_ORDER, "result": {"error": "price_mismatch"}}
+    assert check_answer("Dạ, em đã lên đơn với giá 990.000đ rồi ạ.", [failed])[1] is not None
