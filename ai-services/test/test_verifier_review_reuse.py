@@ -13,14 +13,16 @@ from test_semantic_grounding import ReviewModel, turn_state, verdict
 class EvidenceReviewer:
     def __init__(self):
         self.payloads = []
-        self.ainvoke = AsyncMock(return_value=AIMessage(content='Thiết bị hỗ trợ Zigbee.'))
+        self.ainvoke = AsyncMock(return_value=AIMessage(content='Em chưa xác minh được kết nối Wi-Fi của mẫu này.'))
 
     def with_structured_output(self, schema, **kwargs):
         async def review(messages):
             payload = json.loads(messages[-1].content)
             self.payloads.append(payload)
-            supported = (payload['answer'] == 'Thiết bị hỗ trợ Zigbee.'
-                         or len(payload['context']['tool_observations']) > 1)
+            supported = (payload['answer'] == 'Em chưa xác minh được kết nối Wi-Fi của mẫu này.'
+                         or any(item.get('attributes', {}).get('connectivity') == 'Wi-Fi'
+                                for call in payload['context']['tool_observations']
+                                for item in call.get('result', {}).get('items', [])))
             return verdict() if supported else verdict(False, 'customer_constraint_violated', payload['answer'])
         return SimpleNamespace(ainvoke=review)
 
@@ -32,8 +34,8 @@ def test_unchanged_rejected_draft_is_reviewed_once_before_answer_repair():
     state['agent_continuation'] = AsyncMock(return_value=draft)
     model = EvidenceReviewer()
     result = asyncio.run(AgentNodes(model, None, None, 8, 6).verify_agent(state))
-    assert result['verified_answer'] == 'Thiết bị hỗ trợ Zigbee.'
-    assert [payload['answer'] for payload in model.payloads] == [draft, 'Thiết bị hỗ trợ Zigbee.']
+    assert result['verified_answer'] == 'Em chưa xác minh được kết nối Wi-Fi của mẫu này.'
+    assert [payload['answer'] for payload in model.payloads] == [draft, 'Em chưa xác minh được kết nối Wi-Fi của mẫu này.']
 
 
 def test_same_draft_is_reviewed_again_after_continuation_adds_evidence():
@@ -76,7 +78,7 @@ def test_review_reuse_never_crosses_verifier_invocations():
             state = turn_state(draft)
             state['safe_text'] = 'Chị cần kết nối Wi-Fi.'
             state['agent_continuation'] = AsyncMock(return_value=draft)
-            assert (await node.verify_agent(state))['verified_answer'] == 'Thiết bị hỗ trợ Zigbee.'
+            assert (await node.verify_agent(state))['verified_answer'] == 'Em chưa xác minh được kết nối Wi-Fi của mẫu này.'
 
     asyncio.run(run())
     assert len(model.payloads) == 4
