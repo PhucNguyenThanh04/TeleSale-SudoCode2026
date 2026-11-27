@@ -103,3 +103,43 @@ def test_p2_parallel_read_tools_execute_concurrently():
         assert elapsed < 0.32, f"Read tools ran serially ({elapsed:.3f}s)"
 
     asyncio.run(run())
+
+
+def _catalog_gateway(items):
+    async def invoke(name, args, *_a, **_kw):
+        if name == "catalog.search":
+            return {"items": items}
+        if name == "inventory.check":
+            return {"sku": args["sku"], "in_stock": True, "qty": 5}
+        if name == "pricing.get_quote":
+            return {"sku": args["sku"], "list_price_vnd": 4890000, "final_price_vnd": 4590000, "applied_promos": []}
+        raise AssertionError(name)
+    gateway = AsyncMock()
+    gateway.invoke_trusted.side_effect = invoke
+    return gateway
+
+
+def test_single_catalog_hit_carries_current_quote_and_stock():
+    item = {"sku": "SKU-AP-X", "name": "Máy lọc không khí AirPure X", "list_price_vnd": 4890000, "variants": []}
+    gateway = _catalog_gateway([item])
+    st = _state("AirPure X giá bao nhiêu, còn hàng không?")
+    st["tool_calls"], st["session_tool_calls"] = [], []
+    result = asyncio.run(BusinessTools(gateway, st, 8, lambda: datetime.now(timezone.utc)).invoke(
+        "catalog.search", {"query": "AirPure X"}))
+    assert result["current_quote"]["final_price_vnd"] == 4590000
+    assert result["current_stock"]["in_stock"] is True
+    assert sorted(call["name"] for call in st["tool_calls"]) == ["catalog.search", "inventory.check", "pricing.get_quote"]
+
+
+def test_ambiguous_or_variant_catalog_hits_are_not_prefetched():
+    variant = {"sku": "SKU-SN-RUN2", "name": "Giày RunLite 2 Pro",
+               "variants": [{"variant_sku": "SKU-SN-RUN2-40-DEN", "size": "40"}]}
+    other = {"sku": "SKU-AP-Y", "name": "Máy lọc không khí AirPure Y", "variants": []}
+    plain = {"sku": "SKU-AP-X", "name": "Máy lọc không khí AirPure X", "variants": []}
+    for items in ([variant], [plain, other]):
+        st = _state("Cho anh xem mẫu này")
+        st["tool_calls"], st["session_tool_calls"] = [], []
+        result = asyncio.run(BusinessTools(_catalog_gateway(items), st, 8, lambda: datetime.now(timezone.utc)).invoke(
+            "catalog.search", {"query": "mẫu"}))
+        assert "current_quote" not in result and "current_stock" not in result
+        assert [call["name"] for call in st["tool_calls"]] == ["catalog.search"]

@@ -136,7 +136,9 @@ _TOOL_DESCRIPTION = {
         "attribute_sources/attribute_conflicts giữ nguồn ưu tiên và giá trị đã giải quyết; "
         "không khẳng định thuộc tính có resolution=unresolved. "
         "thiếu thuộc tính là chưa biết, không bổ sung từ kiến thức có sẵn. "
-        "chỉ tìm lại khi khách đổi điều kiện hoặc cần loại sản phẩm khác."
+        "chỉ tìm lại khi khách đổi điều kiện hoặc cần loại sản phẩm khác. "
+        "Khi items chỉ có một sản phẩm không có biến thể, kết quả kèm current_quote (pricing.get_quote) "
+        "và current_stock (inventory.check) theo ngày cuộc gọi; dùng trực tiếp, không gọi lại hai công cụ này cho mẫu đó."
     ),
     "inventory.check": ("Kiểm tra tồn kho của SKU theo ngày cuộc gọi khi cần khẳng định còn hàng "
                         "hoặc xử lý mua; không cần chỉ để trả lời tính năng sản phẩm."),
@@ -331,7 +333,16 @@ class BusinessTools:
                     return payload
             result = await self._execute_gateway_read(name, payload)
             async with self.lock:
-                return self._finalize_read_locked(name, payload, result)
+                finalized = self._finalize_read_locked(name, payload, result)
+            items = finalized.get('items') if name == 'catalog.search' else None
+            if (isinstance(items, list) and len(items) == 1 and isinstance(items[0], dict)
+                    and isinstance(items[0].get('sku'), str) and not items[0].get('variants')
+                    and self.state.get('tool_count', 0) + 2 <= self.max_tool_calls):
+                quote, stock = await asyncio.gather(
+                    self.invoke('pricing.get_quote', {'sku': items[0]['sku']}),
+                    self.invoke('inventory.check', {'sku': items[0]['sku']}))
+                finalized = {**finalized, 'current_quote': quote, 'current_stock': stock}
+            return finalized
 
     def _prepare_read_locked(self, name: str, proposed: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         from app.agent.harness.streaming import active_stream
