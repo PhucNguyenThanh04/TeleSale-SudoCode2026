@@ -152,14 +152,14 @@ def test_build_runtime_enables_two_repairs_and_safe_fallback():
     assert runtime.progressive_streaming is False
 
 
-def test_grounding_review_unavailable_fails_fast_without_safe_fallback():
+def test_grounding_review_unavailable_preserves_the_valid_draft_without_repair():
     model = ReviewModel([RuntimeError("reviewer_timeout"), RuntimeError("reviewer_timeout")],
                         "Dạ, em nghe ạ.")
     nodes = AgentNodes(model, None, None, 6, 6, max_repair_attempts=2, safe_fallback_on_rejection=True)
     result = asyncio.run(nodes.verify_agent(make_state("Dạ, em nghe ạ.")))
-    assert result["agent_text"] == ""
-    assert result["reply_error"] == "agent_reply_unavailable"
-    assert model.ainvoke.await_count == 1
+    assert result["agent_text"] == "Dạ, em nghe ạ."
+    assert result["reply_error"] is None
+    model.ainvoke.assert_not_awaited()
 
 
 def test_turn_diagnostics_records_recovery_fallback_event_and_status():

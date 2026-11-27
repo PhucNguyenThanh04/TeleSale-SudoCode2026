@@ -20,6 +20,19 @@ _NON_ASSERTION = re.compile(
     r"|(?:dieu gi|yeu to nao) (?:phu hop nhat|tot nhat|hieu qua nhat)"
     r" voi (?:nhu cau cua )?(?:anh/chi|anh|chi)(?: a)?\?"
 )
+_MENTION_CONTEXT = re.compile(
+    r'(?:(?:hien tai|hien|van)\s+)?(?:(?:em|toi|ben em|he thong)\s+)?'
+    r'(?:chua\s+(?:the\s+)?(?:biet|ro|xac minh|xac nhan|co thong tin|co du lieu)'
+    r'|khong\s+(?:the\s+)?(?:biet|ro|xac minh|xac nhan)'
+    r'|(?:can|se|dang)\s+(?:kiem tra|tra cuu|xac minh))\b'
+    r'|(?:em\s+(?:da\s+)?ghi nhan\s+)?(?:anh/chi|anh|chi|ban|co|chu)\s+'
+    r'(?:dang\s+)?(?:can|muon|tim|uu tien|yeu cau|cho em (?:xin|biet))\b'
+    r'|em\s+(?:da\s+)?ghi nhan\s+(?:anh/chi|anh|chi|ban)\s+(?:thay|noi|bao|ke)\b'
+)
+_INDEPENDENT_CLAIM = re.compile(
+    r'^(?:hien|hom nay|mau|may|san pham|don|ben em|shop|gia|duoc|tang|bieu|cam ket|em da)\b'
+)
+_QUESTION_END = re.compile(r'\b(?:khong|chua|nao|gi|bao nhieu|bao lau|the nao)(?:\s+a)?$')
 _CAPABILITY = re.compile(r'\b(?:em|toi|ben em)\s+(?:co the|san sang)\b')
 _CAPABILITY_ACTION = re.compile(r'\b(?:tim kiem|kiem tra|tra cuu|tu van|cung cap thong tin|giai dap)\b')
 _CONCRETE_CAPABILITY_CLAIM = re.compile(
@@ -58,11 +71,38 @@ def commercial_clauses(text: str) -> list[str]:
     return re.split(r'[;!?\n]|\.(?!\d)|(?=\b(?:tặng|biếu)\b)', text, flags=re.IGNORECASE)
 
 
+def price_assertion_text(text: str) -> str:
+    budget_pattern = (
+        r'\b(?:ngân sách\s+'
+        r'(?:(?:tối đa|tầm|khoảng|là|dưới|mức|của\s+(?:anh/chị|anh|chị|bạn))\s+)*'
+        r'|(?:anh/chị|anh|chị|bạn)\s+(?:muốn|định|có thể)\s+chi\s+(?:là\s+)?)'
+        r'\d[\d.,]*\s*(?:triệu|tr|nghìn|ngàn|k|đồng|đ|vnd)\b'
+    )
+    return ''.join(
+        clause if re.search(r'(?i)\b(?:giá|bán|thành tiền|thanh toán|trả thêm)\b|'
+                            r'\b(?:không|chưa)\s+(?:có|tìm thấy)\s+(?:mẫu|sản phẩm)\b', clause)
+        else re.sub(budget_pattern, '', clause, flags=re.IGNORECASE)
+        for clause in re.split(r'([.!?;,\n](?!\d))', text)
+    )
+
+
+def _context_only(text: str, question: bool) -> bool:
+    folded = re.sub(r'^(?:da|vang)(?:\s+(?:anh/chi|anh|chi|ban|co|chu))?[,\s]+',
+                    '', _search_text(text).strip())
+    parts = re.split(r',\s*(?!\d)|\b(?:va|nhung)\b', folded)
+    if _MENTION_CONTEXT.match(folded):
+        return not any(_INDEPENDENT_CLAIM.match(part.strip()) for part in parts[1:])
+    return question and len(parts) == 1 and _QUESTION_END.search(folded) is not None
+
+
 def assertion_text(text: str) -> str:
     sentences = re.split(r'([?!;]|\.(?!\d)|\n)', text)
     assertions = []
     for index in range(0, len(sentences), 2):
         sentence = re.sub(r'[*`]|__', '', sentences[index]).strip()
+        question = index + 1 < len(sentences) and sentences[index + 1] == '?'
+        if _context_only(sentence, question):
+            continue
         folded = _search_text(re.sub(r'^(?:Dạ|Vâng)[,\s]+', '', sentence, flags=re.IGNORECASE))
         if _NON_ASSERTION.fullmatch(folded + ('?' if index + 1 < len(sentences) and sentences[index + 1] == '?' else '')):
             continue
@@ -72,15 +112,17 @@ def assertion_text(text: str) -> str:
             continue
         assertions.append(sentences[index] + (sentences[index + 1] if index + 1 < len(sentences) else ''))
     text = ''.join(assertions)
-    parts = re.split(r"([?!;]|\.(?!\d)|\n|\bnhưng\b|\bvà\b)", text,
+    parts = re.split(r"([?!;]|\.(?!\d)|\n|\bnhưng\b|\bvà\b|,\s*(?!\d))", text,
                      flags=re.IGNORECASE)
     kept = []
     for index in range(0, len(parts), 2):
         part = parts[index]
         separator = parts[index + 1] if index + 1 < len(parts) else ''
-        folded = re.sub(r"^(?:da|vang)[,\s]+", "", _search_text(part).strip())
+        folded = re.sub(r"^(?:da|vang)(?:\s+(?:anh/chi|anh|chi|ban|co|chu))?[,\s]+",
+                        "", _search_text(part).strip())
         if (_LOOKUP.fullmatch(folded.rstrip("?!;. "))
-                or _NON_ASSERTION.fullmatch(folded + ('?' if separator == '?' else ''))):
+                or _NON_ASSERTION.fullmatch(folded + ('?' if separator == '?' else ''))
+                or _context_only(part, separator == '?')):
             continue
         kept.append(part + separator)
     return ''.join(kept)

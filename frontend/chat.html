@@ -7,39 +7,79 @@
   <link rel="stylesheet" href="/assets/style.css">
   <script type="module" src="/assets/chat.js"></script>
 </head>
-<body>
-  <header><a class="brand" href="/">tele<span>sale</span></a><a href="/">Gọi bằng giọng nói</a></header>
-  <main>
-    <section class="call-panel" aria-labelledby="title">
-      <h1 id="title">Trò chuyện với trợ lý</h1>
-      <p class="intro">Tư vấn sản phẩm và tiếp tục trao đổi từ những lần trước.</p>
-      <div class="settings-grid">
-        <label>Kênh<select id="channel"><option value="hotline">Hotline</option><option value="chat_fanpage">Fanpage</option><option value="zalo_oa">Zalo OA</option><option value="web_chat">Website</option></select></label>
-        <label>Định danh kênh<input id="identity" required maxlength="200" autocomplete="off"></label>
-        <label>Ngày nghiệp vụ<input id="scenario-date" type="date" required></label>
+<body class="chat-page">
+  <header>
+    <div class="header-left">
+      <a class="brand" href="/">tele<span>sale</span><span class="brand-dot">●</span></a>
+      <nav class="header-nav" aria-label="Chế độ trò chuyện">
+        <a href="/chat" class="nav-link active" aria-current="page">Tin nhắn</a>
+        <a href="/" class="nav-link">Gọi bằng giọng nói</a>
+      </nav>
+    </div>
+  </header>
+  <main class="chat-shell">
+    <aside class="chat-sidebar" aria-label="Điều khiển phiên trò chuyện">
+      <div class="sidebar-actions">
+        <button id="connect" type="button" class="btn-primary">
+          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span>Phiên mới</span>
+        </button>
+        <button id="end" type="button" class="btn-ghost" disabled>Kết thúc phiên</button>
       </div>
-      <div class="actions"><button id="connect" type="button">Bắt đầu phiên</button><button id="end" type="button" disabled>Kết thúc phiên</button></div>
-      <p id="status" role="status" aria-live="polite">Nhập thông tin để bắt đầu.</p>
-      <p id="error" class="error" role="alert" hidden></p>
-      <form id="chat-form">
-        <label for="text">Tin nhắn</label>
-        <textarea id="text" required maxlength="8000" rows="4" disabled></textarea>
-        <button id="send" type="submit" disabled>Gửi</button>
-      </form>
-    </section>
+      <div class="sidebar-status">
+        <span class="status-indicator" id="status-indicator"></span>
+        <p id="status" role="status" aria-live="polite">Đang tải thông tin tài khoản…</p>
+      </div>
+      <details id="settings" class="sidebar-settings">
+        <summary>Thông tin phiên</summary>
+        <div class="settings-grid">
+          <label>Kênh<select id="channel"><option value="hotline">Hotline</option><option value="chat_fanpage">Fanpage</option><option value="zalo_oa">Zalo OA</option><option value="web_chat">Website</option></select></label>
+          <label>Định danh kênh<input id="identity" required maxlength="200" autocomplete="off"></label>
+          <label>Ngày nghiệp vụ<input id="scenario-date" type="date" required></label>
+        </div>
+      </details>
+    </aside>
     <section class="conversation text-conversation" aria-labelledby="conversation-title">
-      <h2 id="conversation-title">Nội dung trao đổi</h2>
-      <div id="brief"></div>
+      <h1 id="conversation-title" class="sr-only">Trò chuyện với trợ lý TeleSale</h1>
       <details id="timeline-panel" class="memory-timeline" open>
         <summary>Lịch sử tương tác</summary>
         <p id="timeline-status" role="status" aria-live="polite">Bắt đầu phiên để xem lịch sử.</p>
         <ol id="timeline-items" aria-label="Các phiên tương tác đã lưu"></ol>
-        <div class="actions">
+        <div class="timeline-actions">
           <button id="timeline-reload" type="button" disabled>Tải lại lịch sử</button>
           <button id="timeline-more" type="button" hidden>Xem thêm</button>
         </div>
       </details>
-      <div id="messages" role="log" aria-live="polite"></div>
+      <div class="chat-scroll" id="chat-scroll">
+        <div class="chat-column">
+          <div id="brief"></div>
+          <div id="messages" role="log" aria-live="polite">
+            <div id="chat-empty" class="chat-empty">
+              <div class="chat-empty-badge" aria-hidden="true">✦</div>
+              <h2>Em có thể hỗ trợ gì cho bạn hôm nay?</h2>
+              <p>Hỏi về sản phẩm, giá ưu đãi hoặc tiếp tục nội dung đã trao đổi trước đó.</p>
+              <div class="prompt-chips">
+                <button type="button" class="prompt-chip" data-prompt="Tư vấn giúp mình sản phẩm phù hợp">Tư vấn sản phẩm phù hợp</button>
+                <button type="button" class="prompt-chip" data-prompt="Hiện tại có chương trình ưu đãi nào không?">Kiểm tra ưu đãi hiện có</button>
+                <button type="button" class="prompt-chip" data-prompt="Mình muốn tiếp tục trao đổi từ lần trước">Tiếp tục từ lần trước</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="composer-wrap">
+        <div class="chat-column">
+          <p id="error" class="error" role="alert" hidden></p>
+          <form id="chat-form" class="composer">
+            <label for="text" class="sr-only">Tin nhắn</label>
+            <textarea id="text" required maxlength="8000" rows="1" placeholder="Nhắn tin cho trợ lý TeleSale…" disabled></textarea>
+            <button id="send" type="submit" disabled aria-label="Gửi">
+              <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 15V5m0 0-4.5 4.5M10 5l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </form>
+          <p class="composer-hint">Enter để gửi · Shift + Enter để xuống dòng</p>
+        </div>
+      </div>
     </section>
   </main>
 </body>

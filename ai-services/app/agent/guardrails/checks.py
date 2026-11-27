@@ -15,7 +15,7 @@ from app.mcp_servers.mcp_shared.episode_evidence import evidence_supports
 from app.constants import PROFILE_SLOT_KEYS, SLOT_SPEC_BY_KEY, TOOL_ONLY_SLOT_KEYS, Slot
 from app.agent.guardrails.skus import known_skus, mentioned_skus
 from app.agent.guardrails.promotion_grounding import _promotion_subject, check_promotion_grounding
-from app.agent.guardrails.claims import COMPOUND_VND, assertion_text, commercial_clauses, compound_vnd, normalize_zero_fees
+from app.agent.guardrails.claims import COMPOUND_VND, assertion_text, commercial_clauses, compound_vnd, normalize_zero_fees, price_assertion_text
 
 
 FALLBACK = ""
@@ -809,16 +809,7 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
         if (not quoted_skus or bound and not bound <= quoted_skus
                 or not bound and len(quoted_skus) != 1 and len(baskets) != 1):
             return FALLBACK, 'price_without_quote'
-    budget_pattern = (
-        r'(?:^|(?<=[.!?;,\n]))\s*(?:(?:Dạ|Vâng)[,\s]+)?(?:(?:với|theo)\s+)?'
-        r'(?:ngân sách\s+'
-        r'(?:(?:tối đa|tầm|khoảng|là|dưới|mức|của\s+(?:anh/chị|anh|chị|bạn))\s+)*'
-        r'|(?:anh/chị|anh|chị|bạn)\s+(?:có|muốn giữ)\s+ngân sách\s+(?:là\s+)?)'
-        r'\d[\d.,]*\s*(?:triệu|tr|nghìn|ngàn|k|đồng|đ|vnd)\b'
-        r'(?![^.!?;,\n]*\bgiá\b)'
-    )
-    money_candidate = (candidate if re.search(r'(?i)\b(?:không|chưa)\s+(?:có|tìm thấy)\s+(?:mẫu|sản phẩm)\b', candidate)
-                       else re.sub(budget_pattern, '', candidate, flags=re.IGNORECASE))
+    money_candidate = price_assertion_text(candidate)
     money_claims = _money_claims(money_candidate)
     if (money_claims and 'gia niem yet' not in _fold_text(candidate)
             and _empty_catalog_budget_evidenced(candidate, customer_text, money_claims, successful)):
