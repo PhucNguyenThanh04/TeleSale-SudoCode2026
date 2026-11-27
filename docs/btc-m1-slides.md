@@ -1,7 +1,7 @@
 ---
 title: TeleSale SudoCode
 subtitle: 'M1 · Tư vấn qua chat có bộ nhớ đa phiên'
-date: 22/11/2026
+date: 28/11/2026
 lang: vi-VN
 ---
 
@@ -40,10 +40,10 @@ Schema, xác nhận mua và bằng chứng tool kiểm soát giá, quyền ghi v
 
 ## Corpus và tiếng Việt
 
-- 121 transcript, 39 nhóm khách đa phiên, 10 nhóm dùng cả hotline và chat; phiên bổ sung là dữ liệu tổng hợp.
-- Thoại gồm khách do dự hỏi người nhà, khách so giá và khách đổi size.
-- 22 WAV Edge TTS, khoảng 19 phút 33 giây. Hai vùng giọng và 1 giờ audio còn cần bổ sung bằng chứng.
-- ASR local xử lý thoại Việt, từ mượn, số tiền và thực thể. WER, CER và Entity Accuracy báo riêng cho bộ team và BTC.
+- 48 kịch bản eval (118 cuộc gọi), khách đa phiên và đa kênh; dữ liệu tổng hợp, không dùng dữ liệu khách thật.
+- 120 cuộc audio VieNeu-TTS, 134 phút, giọng Bắc và Nam, 31 cuộc trộn nhiễu.
+- ASR local whisper-turbo (B2): WER 8,4%, CER 5,2%, Entity 78,1% trên 120 file; BTC 4 hội thoại WER 10,7%.
+- Diarization theo lượt: 83,5% (120 file), 97,1% (BTC).
 
 ## Đo Full và baseline
 
@@ -52,17 +52,27 @@ Schema, xác nhận mua và bằng chứng tool kiểm soát giá, quyền ghi v
 - Eval chạy hai cấu hình, lưu trace theo schema BTC và in bảng từ scorer tham chiếu.
 - BTC chạy riêng từng cấu hình bằng `run_eval.py` với bộ scenario chấm chéo.
 
-## Kết quả lịch sử ngày 18/11
+## Kết quả 48 kịch bản (27/11)
 
-Run trên bộ team dùng 29 scenario và 170 lượt mỗi cấu hình. Bản release cần chạy và review extractor lại.
+Run `113656Z`, 323 lượt mỗi cấu hình, scorer `reference_eval.py` của BTC.
 
 | Chỉ số | Full | Baseline |
 |---|---:|---:|
-| RQR ↓ | 0,0% | 51,4% |
-| CCR ↑ | 67,1% | 16,5% |
-| TSR ↑ | 100,0% | 75,9% |
-| HR ↓ | 0,0% | 0,0% |
-| Lượt TB/cuộc | 2,54 | 2,54 |
+| RQR ↓ | 3,0% | 26,6% |
+| CCR ↑ | 65,6% | 13,5% |
+| TSR ↑ | 81,2% | 62,5% |
+| HR giá/KM ↓ | 0,0% | 0,0% |
+| Call Brief p95 | 287 ms | — |
+| TTFT / Total p95 | 6,4 s | 6,4 s |
+
+Đạt: RQR giảm 88,7%, TSR ≥ 70%, HR giá/KM ≤ 5%, Total ≤ 8 s. Chưa đạt: TTFT p95 ≤ 3 s.
+
+## Cải tiến latency
+
+- Mỗi lần gọi `gemma4:31b` mất ~1 s; một lượt cần 2–3 lần gọi nối tiếp.
+- Tra kèm giá và tồn kho khi tìm thấy đúng một sản phẩm; xác nhận đơn từ biên nhận; kiểm lại bản nháp sau khi tự bổ sung bằng chứng.
+- Guardrail nhận bằng chứng từ đơn đã tạo và tra cứu đơn, bớt chặn nhầm.
+- Số lần gọi model giảm 15%, TTFT p95 7,4 → 6,4 s, lượt trả lời xin lỗi chung 70 → 52, TSR giữ 81,2%.
 
 ## Vòng cải tiến tri thức
 
@@ -74,20 +84,20 @@ Run trên bộ team dùng 29 scenario và 170 lượt mỗi cấu hình. Bản r
 
 ## Lỗi quan sát được
 
-- Giá của SKU trước xuất hiện khi khách chuyển sang SKU mới.
-- Query đổi size mất ngữ cảnh, dẫn đến trích chính sách phí ship chung.
-- Nhầm phụ thu biến thể với giá ưu đãi và tự suy thành điều kiện áp dụng.
-- Báo cáo 15 ca lưu vị trí trace và hướng kiểm hồi quy. Chi phí/cuộc cần đo token cho cả agent và worker rồi đối chiếu giá provider.
+- Báo giá theo địa chỉ cũ trong bộ nhớ sau khi khách đổi nơi nhận, dẫn đến nói sai freeship (TEAM-33, toàn bộ HR 3,8%).
+- 16% lượt trả câu xin lỗi chung vì bản nháp bị chặn hai lần, chủ yếu `price_without_quote`.
+- Gọi tool thiếu tham số kịch bản: tìm sản phẩm không truyền ngân sách, tra đơn không truyền mã đơn.
+- Báo cáo phân tích 14 ca kèm vị trí trace và hướng xử lý.
 
-## Demo hai phiên
+## Demo ba cuộc gọi
 
-- Dùng tài khoản demo liên kết cùng khách. Chọn ngày nghiệp vụ phù hợp với kịch bản BTC.
-- Phiên 1 tư vấn và báo giá kèm khuyến mãi. Khách nói cần hỏi người nhà.
-- Phiên 2 mở bằng Call Brief và timeline. Agent tiếp nối nhu cầu, kiểm tra báo giá hiện tại và xác nhận đơn.
-- Mở kết quả Full/baseline do runner sinh. Chỉ trình chiếu kết quả đã gắn với đúng run.
+- Cuộc 1: tư vấn, báo giá kèm khuyến mãi, khách hẹn hỏi người nhà.
+- Cuộc 2 (vài ngày sau): Call Brief hiện ra, agent mở đầu bằng xác nhận tiếp nối, không hỏi lại, chốt đơn.
+- Cuộc 3: khách gọi lại đổi size, agent tra đơn, kiểm tồn và cập nhật đơn.
+- Timeline bộ nhớ của khách hiển thị trên giao diện sau mỗi cuộc.
 
 ## Gói chạy và trạng thái nghiệm thu
 
-- BTC clone nhánh `main` của repo GitHub và đối chiếu SHA commit nộp bài. Demo và eval dùng cùng stack Compose đã seed. Eval reset dữ liệu hội thoại trước mỗi cấu hình, nên tạm dừng demo khi chạy eval.
-- Đã rehearsal offline trên PostgreSQL, Qdrant và bốn MCP. Paired eval và chấm chéo đã sinh trace với model giả lập.
-- Cần chạy thật từ ZIP trên Docker, chốt corpus đủ audio, điểm ASR, vòng cải tiến và video 5–8 phút.
+- Chạy trên Linux, macOS và Windows: `compose_up.py` → `seed_btc.py` → `run_eval.py`.
+- Run 48 kịch bản validated, execution healthy; trace theo schema BTC.
+- Còn lại: TTFT p95, duyệt extraction, phát hành K1 cho vòng cải tiến tri thức.
