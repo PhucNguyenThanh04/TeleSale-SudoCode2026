@@ -17,7 +17,7 @@ Mỗi commit đã so danh sách test fail trước/sau: không phát sinh fail m
 
 ## 2. Kết quả eval (48 kịch bản, 323 lượt mỗi cấu hình)
 
-Thư mục run nằm ngoài Git (`results-submission/` bị ignore): `065208Z` ở `D:\Github\TeleSale-SudoCode2026esults-submission\`, các run còn lại ở `D:\Github\TeleSale-khoi_fix_ttftesults-submission\` trên máy chạy eval. Log tương ứng trong `logs/` của từng worktree.
+Thư mục run nằm ngoài Git (`results-submission/` bị ignore): `065208Z` ở `D:\Github\TeleSale-SudoCode2026\results-submission\`, các run còn lại ở `D:\Github\TeleSale-khoi_fix_ttft\results-submission\` trên máy chạy eval. Log tương ứng trong `logs/` của từng worktree.
 
 | Chỉ số | Code cũ `main` 26/11 (run `065208Z`) | Code mới + fix Windows, trước các fix TTFT (run `084346Z`) | Nhánh này `323dd6e`, review bật (run `113656Z`) | Nhánh này, review tắt (run `124247Z`) |
 |---|---:|---:|---:|---:|
