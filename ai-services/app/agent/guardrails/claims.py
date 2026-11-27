@@ -22,6 +22,7 @@ _NON_ASSERTION = re.compile(
 )
 _MENTION_CONTEXT = re.compile(
     r'(?:(?:hien tai|hien|van)\s+)?(?:(?:em|toi|ben em|he thong)\s+)?'
+    r'(?:(?:cung|van)\s+)?'
     r'(?:chua\s+(?:the\s+)?(?:biet|ro|xac minh|xac nhan|co thong tin|co du lieu)'
     r'|khong\s+(?:the\s+)?(?:biet|ro|xac minh|xac nhan)'
     r'|(?:can|se|dang)\s+(?:kiem tra|tra cuu|xac minh))\b'
@@ -73,23 +74,26 @@ def commercial_clauses(text: str) -> list[str]:
 
 def price_assertion_text(text: str) -> str:
     budget_pattern = (
-        r'\b(?:ngân sách\s+'
-        r'(?:(?:tối đa|tầm|khoảng|là|dưới|mức|của\s+(?:anh/chị|anh|chị|bạn))\s+)*'
-        r'|(?:anh/chị|anh|chị|bạn)\s+(?:muốn|định|có thể)\s+chi\s+(?:là\s+)?)'
+        r'(?:\bngân sách\s+'
+        r'(?:(?:tối đa|tầm|khoảng|là|dưới|mức|(?:của\s+)?(?:anh/chị|anh|chị|bạn))\s+)*'
+        r'|\b(?:anh/chị|anh|chị|bạn)\s+(?:muốn|định|có thể)\s+chi\s+(?:là\s+)?'
+        r'|^\s*(?:với|theo)\s+(?:tầm|mức)\s+giá\s+(?:của\s+)?'
+        r'(?:anh/chị|anh|chị|bạn)\s+(?:mong muốn|muốn chi)\s+(?:là\s+)?)'
         r'\d[\d.,]*\s*(?:triệu|tr|nghìn|ngàn|k|đồng|đ|vnd)\b'
     )
-    return ''.join(
-        clause if re.search(r'(?i)\b(?:giá|bán|thành tiền|thanh toán|trả thêm)\b|'
-                            r'\b(?:không|chưa)\s+(?:có|tìm thấy)\s+(?:mẫu|sản phẩm)\b', clause)
-        else re.sub(budget_pattern, '', clause, flags=re.IGNORECASE)
-        for clause in re.split(r'([.!?;,\n](?!\d))', text)
-    )
+    parts = []
+    for clause in re.split(r'([.!?;,\n](?!\d))', text):
+        stripped = re.sub(budget_pattern, '', clause, flags=re.IGNORECASE)
+        commercial = re.search(r'(?i)\b(?:giá|bán|thành tiền|thanh toán|trả thêm)\b|'
+                               r'\b(?:không|chưa)\s+(?:có|tìm thấy)\s+(?:mẫu|sản phẩm)\b', stripped)
+        parts.append(clause if commercial else stripped)
+    return ''.join(parts)
 
 
 def _context_only(text: str, question: bool) -> bool:
     folded = re.sub(r'^(?:da|vang)(?:\s+(?:anh/chi|anh|chi|ban|co|chu))?[,\s]+',
                     '', _search_text(text).strip())
-    parts = re.split(r',\s*(?!\d)|\b(?:va|nhung)\b', folded)
+    parts = re.split(r',\s*(?!\d)|\b(?:va|nhung|nen)\b', folded)
     if _MENTION_CONTEXT.match(folded):
         return not any(_INDEPENDENT_CLAIM.match(part.strip()) for part in parts[1:])
     return question and len(parts) == 1 and _QUESTION_END.search(folded) is not None
@@ -112,7 +116,7 @@ def assertion_text(text: str) -> str:
             continue
         assertions.append(sentences[index] + (sentences[index + 1] if index + 1 < len(sentences) else ''))
     text = ''.join(assertions)
-    parts = re.split(r"([?!;]|\.(?!\d)|\n|\bnhưng\b|\bvà\b|,\s*(?!\d))", text,
+    parts = re.split(r"([?!;]|\.(?!\d)|\n|\bnhưng\b|\bvà\b|\bnên\b|,\s*(?!\d))", text,
                      flags=re.IGNORECASE)
     kept = []
     for index in range(0, len(parts), 2):

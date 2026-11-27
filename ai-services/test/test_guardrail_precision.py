@@ -42,6 +42,11 @@ def no_network(monkeypatch):
     'Em ghi nhận chị thấy bên kia bán 5 triệu.',
     'Em cần kiểm tra mẫu này có HEPA và PM2.5 không.',
     'Chị cho em xin mã đơn để kiểm tra bảo hành ạ.',
+    'Ngân sách chị khoảng 5 triệu, em ghi nhận rồi ạ.',
+    'Với tầm giá chị mong muốn là 5 triệu, em sẽ tìm mẫu phù hợp.',
+    'Em chưa xác minh được ưu đãi; em cũng chưa biết có miễn phí vận chuyển hay không.',
+    'Em chưa có thông tin về HEPA, hiện tại em vẫn chưa xác minh được tính năng đó.',
+    'Em chưa xác minh được HEPA nên cần kiểm tra thêm ạ.',
 ])
 def test_mentions_and_customer_needs_are_not_commercial_assertions(answer):
     customer = 'NHÀ CHỊ CÓ BÉ NHỎ TẦM 5 triệu THÔI EM'
@@ -62,6 +67,9 @@ def test_mentions_and_customer_needs_are_not_commercial_assertions(answer):
     'Em chưa rõ về HEPA và mẫu này có HEPA H13.',
     'Chị muốn hỏi HEPA không ạ? Mẫu này có HEPA H13.',
     'Mẫu này còn hàng, chị muốn mua không ạ?',
+    'Em chưa rõ ưu đãi nên hiện được miễn phí vận chuyển.',
+    'Chị cần máy có HEPA nên mẫu này có HEPA H13.',
+    'Mẫu này đúng với tầm giá chị mong muốn là 5 triệu.',
 ])
 def test_non_assertions_do_not_hide_separate_real_violations(answer):
     assert check_answer(answer, [], 'Ngân sách tôi 5 triệu.')[1] is not None

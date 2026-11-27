@@ -230,7 +230,10 @@ def test_mixed_policy_threshold_and_product_quote_passes_while_unverified_fails(
     assert err_bad == "price_without_quote"
 
 
-def test_customer_budget_echo_passes_and_unverified_amount_fails():
+def test_customer_budget_echo_and_mismatch_use_their_respective_evidence():
+    from app.agent.harness.agent_nodes import AgentNodes
+    from test_semantic_grounding import ReviewModel, turn_state, verdict
+
     calls = [
         {
             "name": "catalog.search",
@@ -251,12 +254,17 @@ def test_customer_budget_echo_passes_and_unverified_amount_fails():
     )
     assert err_ok is None
 
-    _, err_bad = check_answer(
-        "Quạt Mẫu B giá 2.450.000đ mỗi chiếc, vượt ngân sách tối đa 3.200.000đ của chị.",
-        calls,
-        customer_text,
-    )
-    assert err_bad == "price_without_quote"
+    wrong = "Quạt Mẫu B giá 2.450.000đ mỗi chiếc, vượt ngân sách tối đa 3.200.000đ của chị."
+    assert check_answer(wrong, calls, customer_text) == (wrong, None)
+    corrected = "Quạt Mẫu B giá 2.450.000đ mỗi chiếc, vượt ngân sách tối đa 2.500.000đ của chị."
+    state = turn_state(wrong)
+    state['request'].on = date(2026, 10, 20)
+    state.update(safe_text=customer_text, tool_calls=calls)
+    model = ReviewModel([verdict(False, 'customer_constraint_violated', '3.200.000đ'), verdict()], corrected)
+    result = asyncio.run(AgentNodes(model, None, None, 8, 6).verify_agent(state))
+    assert result['verified_answer'] == corrected
+    assert result['reply_error'] is None
+    assert [event['reason'] for event in result['verifier_events']] == ['customer_constraint_violated']
 
 
 def test_basket_money_evidenced_handles_total_with_unit_breakdown_and_list_price():
