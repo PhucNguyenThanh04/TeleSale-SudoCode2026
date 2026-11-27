@@ -1,10 +1,21 @@
 # TeleSale SudoCode 2026
 
-Harness telesale tiếng Việt có bộ nhớ đa phiên. Luồng bàn giao gồm ba bước riêng: **bật server → nạp dữ liệu BTC → chạy eval**.
+Harness telesale tiếng Việt có bộ nhớ đa phiên. Luồng chạy gồm 3 bước: **bật server → nạp dữ liệu BTC → chạy eval**.
 
-## 1. Clone và đặt cấu hình
+## Yêu cầu
 
-Máy cần Linux x86-64, Git, Python 3.12 trở lên và Docker Compose 2.20 trở lên. Docker chạy các server; seed và eval chạy bằng Python trên host, không gọi Docker và không cần `sudo`. Bộ thư viện host dùng cùng lock AI với image để đồng bộ phiên bản harness.
+- Git, Python ≥ 3.12, Docker Compose ≥ 2.20 (khuyến nghị 4 vCPU, 8 GiB RAM, 20 GiB trống).
+- Docker chạy các server; script seed và eval chạy trực tiếp bằng Python trên host.
+
+| Hệ điều hành | Chuẩn bị môi trường |
+|---|---|
+| **Ubuntu (Linux)** | Cài Docker Engine + Compose plugin (`docker compose`), `git`, `python3.12`, `python3.12-venv`. |
+| **macOS** | Cài [Docker Desktop](https://www.docker.com/products/docker-desktop/) (hoặc OrbStack/Colima), `git`, Python 3.12+ (`brew install python@3.12`). |
+| **Windows** | Cài [Docker Desktop](https://www.docker.com/products/docker-desktop/) (bật WSL2), `git`, Python 3.12+ (chọn *Add Python to PATH*). Có thể dùng PowerShell hoặc chạy toàn bộ trong WSL2 theo mục Ubuntu. |
+
+## 1. Cài đặt & Cấu hình
+
+### Ubuntu / macOS
 
 ```bash
 git clone --branch main --single-branch https://github.com/PhucNguyenThanh04/TeleSale-SudoCode2026.git
@@ -12,161 +23,129 @@ cd TeleSale-SudoCode2026
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r config/requirements/host.txt
+cp .env.example .env
 ```
 
-Đặt file `.env` ở gốc repo. Nếu tự tạo cấu hình, copy `.env.example` thành `.env` rồi điền key, model và endpoint của BTC. Nếu dùng lại `.env` từ bản trước, xóa dòng `COMPOSE_FILE`. Compose mặc định đọc `docker-compose.yml` với tên project `telesale-btc` để tiếp tục dùng các volume hiện có của project.
+### Windows (PowerShell)
 
-## 2. Bật toàn bộ server
+```powershell
+git clone --branch main --single-branch https://github.com/PhucNguyenThanh04/TeleSale-SudoCode2026.git
+cd TeleSale-SudoCode2026
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r config/requirements/host.txt
+Copy-Item .env.example .env
+```
+
+> Nếu PowerShell chặn kích hoạt venv, chạy `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` (hoặc dùng CMD: `.\.venv\Scripts\activate.bat`).
+
+Điền API key, model và endpoint trong `.env` (nếu dùng lại `.env` từ bản cũ, xóa dòng `COMPOSE_FILE`).
+
+## 2. Bật server
+
+Chạy giống nhau trên Ubuntu, macOS và Windows (đảm bảo Docker Desktop đang bật trên Windows/macOS):
 
 ```bash
 docker compose up -d --build
 ```
 
-Lệnh bật PostgreSQL, Qdrant, Redis, bốn MCP server, AI service, backend và các worker. Bước này chỉ cần repo và `.env`, chưa cần thư mục dữ liệu BTC. Các server dùng volume nội bộ; lệnh không nạp dữ liệu và không chạy eval.
-
-Compose build hai image từ `Dockerfile`. MCP và worker dùng chung image AI. Seed và eval kết nối tới các server đang chạy. `.dockerignore` loại virtualenv, cache, test, báo cáo, model weights và audio khỏi build context.
-
-Nếu máy yêu cầu quyền quản trị Docker, dùng `sudo docker compose up -d --build` ở bước này. Các lệnh Python bên dưới chạy bằng user thường trong `.venv`.
-
-Lần đầu database còn trống, các container ứng dụng chờ dữ liệu; log có thể hiện `Waiting for BTC data` và health ở trạng thái `starting`. Chạy bước 3 để hoàn tất khởi tạo.
+- Trên Ubuntu, dùng `sudo docker compose up -d --build` nếu user chưa thuộc nhóm `docker`.
+- Bước này chưa cần dữ liệu BTC. Lần đầu chạy, container ứng dụng có thể báo `Waiting for BTC data` cho tới khi hoàn tất bước 3.
+- Dừng stack: `docker compose down` (giữ nguyên volume dữ liệu).
 
 ## 3. Nạp dữ liệu BTC
 
-Giải nén gói BTC vào thư mục bất kỳ, rồi truyền đường dẫn trực tiếp cho script Python:
-
-```text
-thu_muc_lam_viec/
-├── BTC-Data-Vong1-TEAMS/
-└── TeleSale-SudoCode2026/
-    ├── .env
-    ├── docker-compose.yml
-    ├── seed_btc.py
-    ├── runtime/
-    └── run_eval.py
-```
+Giải nén gói BTC (ví dụ đặt tại `../BTC-Data-Vong1-TEAMS`), giữ `.venv` đang kích hoạt rồi chạy:
 
 ```bash
 python seed_btc.py --data-dir ../BTC-Data-Vong1-TEAMS
 ```
 
-`--data-dir` nhận cả đường dẫn tương đối và tuyệt đối. Script kết nối thẳng tới PostgreSQL/Qdrant trên loopback, không gọi Docker và không cần `sudo`. Cấu hình kết nối và API được đọc từ `.env` ở root.
+- Script nạp catalog/CRM/policy vào PostgreSQL (`127.0.0.1:15432`) và Qdrant (`127.0.0.1:16333`), ghi `BTC_ROOT` vào `.env` và chờ toàn bộ service sẵn sàng.
+- Giữ nguyên thư mục dữ liệu BTC cho bước eval. Không tự reset DB nếu đã seed từ nguồn khác.
 
-Script nạp catalog/CRM/policy vào PostgreSQL, tạo schema runtime, dựng chỉ mục policy trên Qdrant, cấp quyền bốn MCP và tạo tài khoản demo. Policy/tokenizer được ghi vào `runtime/` của repo; các container đọc thư mục này ở chế độ chỉ đọc. Hai thư mục rỗng đã có trong repo nên `up` không cần dữ liệu BTC tồn tại trước. Lần đầu seed tải tokenizer có kiểm checksum và gọi embedding theo cấu hình.
+**Truy cập UI** tại `http://127.0.0.1:8000/chat`:
+- `demo1` / `demo1-btc-2026` (khách `C001`)
+- `demo2` / `demo2-btc-2026` (khách `C002`)
 
-Sau khi nạp thành công, script lưu đường dẫn nguồn vào `BTC_ROOT` trong `.env` cho bước eval và chờ AI, bốn MCP cùng backend sẵn sàng. PostgreSQL mở ở `127.0.0.1:15432`, Qdrant ở `127.0.0.1:16333`; có thể đổi bằng `SUBMISSION_POSTGRES_PORT` và `SUBMISSION_QDRANT_PORT` rồi khởi tạo lại container bằng Compose. Các cổng kiểm tra AI/MCP cũng chỉ mở trên loopback và có thể đổi bằng các biến `SUBMISSION_*_PORT` trong file mẫu.
+### Dùng Voice (tùy chọn)
 
-Dùng lại cùng nguồn thì script giữ dữ liệu hiện có; nguồn khác trên database đã khởi tạo sẽ bị từ chối. Script không tự xóa hoặc reset database.
+Cần tạo `.venv-speech-serving`, cài `speech/serving/requirements.txt` cùng `vieneu` và chuẩn bị model weights:
 
-Giữ gói dữ liệu BTC tại `BTC_ROOT` cho bước eval vì runner cần schema, scorer và kiểm tra nguồn khớp với database.
+- **Ubuntu / macOS:**
+  ```bash
+  scripts/serve-speech.sh
+  ```
+- **Windows (PowerShell — mở 2 terminal):**
+  ```powershell
+  .\.venv-speech-serving\Scripts\python.exe -m uvicorn speech.serving.vieneu_sidecar:app --host 127.0.0.1 --port 18111
+  .\.venv-speech-serving\Scripts\python.exe -m uvicorn speech.serving.app:app --host 0.0.0.0 --port 18110
+  ```
 
-Sau bước này, mở `http://127.0.0.1:8000/chat`:
+Nếu mới cập nhật cấu hình speech, tạo lại backend bằng `docker compose up -d --no-deps backend`, sau đó mở `http://127.0.0.1:8000/`.
 
-- `demo1` / `demo1-btc-2026`, gắn khách `C001`.
-- `demo2` / `demo2-btc-2026`, gắn khách `C002`.
+## 4. Chạy Eval
 
-Có thể đặt mật khẩu hoặc khách gắn với tài khoản trong `.env` trước lần seed đầu tiên. Seed lại giữ thông tin đăng nhập của tài khoản đã tạo.
-
-Để dùng voice, chạy speech riêng trên cùng host bằng virtualenv `.venv-speech-serving` đã cài `speech/serving/requirements.txt` và `vieneu`, cùng model weights đã chuẩn bị:
-
-```bash
-scripts/serve-speech.sh
-```
-
-Speech API nghe trên `0.0.0.0:18110` để backend trong Docker truy cập qua `host.docker.internal`; VieNeu chỉ nghe trên `127.0.0.1:18111`. Cổng `18110` cũng nhận kết nối từ mạng ngoài nếu firewall cho phép. Sau khi cập nhật cấu hình này, chạy `docker compose up -d --no-deps backend` để tạo lại backend, rồi mở `http://127.0.0.1:8000/` để dùng voice. Nếu speech đang chạy bằng script cũ, dừng bằng Ctrl+C và chạy lại script.
-
-## 4. Chạy eval
-
-```bash
-python run_eval.py
-```
-
-Script chạy Full và baseline không bộ nhớ liên phiên trên stack đã bật, gọi scorer BTC và in bảng chỉ số. Script không tự bật server hoặc nạp dữ liệu. Hai cấu hình dùng cùng model, tham số, seed, nguồn, knowledge release và bộ test; baseline giữ ngữ cảnh trong phiên, tắt bộ nhớ liên phiên.
-
-Kết quả nằm trong `RESULTS_DIR/<run-id>/`, mặc định `results-submission/<run-id>/`, gồm `run.json`, hai trace JSONL, `btc_score.json` và `m1_conversation_acceptance.json`. Đọc cả trạng thái thực thi và kết quả nghiệm thu.
-
-Thử một scenario trước khi chạy toàn bộ:
+Giữ `.venv` đang kích hoạt (chạy giống nhau trên cả 3 hệ điều hành):
 
 ```bash
-python run_eval.py --limit-scenarios 1
+python run_eval.py --limit-scenarios 1   # thử nhanh 1 scenario
+python run_eval.py                       # chạy đầy đủ Full vs Baseline
 ```
 
-Runner chạy ngay trong `.venv` trên host, đọc `.env` root và kết nối PostgreSQL/MCP qua các cổng loopback. Script không tạo container, không build lại image và không cần quyền Docker. Kết quả do user hiện tại tạo. Khi eval chạy, dừng thao tác chat/review trên UI vì runner reset runtime trước mỗi cấu hình. Database này dành riêng cho bản nộp, không dùng cho dữ liệu vận hành thật.
+- Kết quả lưu tại `results-submission/<run-id>/` (`run.json`, trace JSONL, `btc_score.json`, `m1_conversation_acceptance.json`).
+- Không thao tác chat/review trên UI trong lúc eval chạy vì runner sẽ reset runtime trước mỗi cấu hình.
 
 ### Chấm chéo theo giao diện BTC
 
-`run_eval.py` nhận đường dẫn trên máy host, không yêu cầu BTC tự đổi sang đường dẫn trong container:
-
 ```bash
-python run_eval.py --scenarios ./eval/scenario_final \
-  --config full --out ./results-submission/full.jsonl
+python run_eval.py --scenarios ./eval/scenario_final --config full --out ./results-submission/full.jsonl
+python run_eval.py --scenarios ./eval/scenario_final --config baseline_no_memory --out ./results-submission/baseline.jsonl
 
-python run_eval.py --scenarios ./eval/scenario_final \
-  --config baseline_no_memory --out ./results-submission/baseline.jsonl
+python ../BTC-Data-Vong1-TEAMS/eval/reference_eval.py --scenarios ./eval/scenario_final --trace ./results-submission/full.jsonl --baseline ./results-submission/baseline.jsonl --out ./results-submission/cross-check-score.json
 ```
 
-BTC thay `--scenarios` bằng thư mục bộ ẩn. `--config` xuất một trace; bỏ `--config` thì script chạy cả cặp và in bảng. Khi chạy cả cặp, `--out` nếu có là thư mục kết quả; khi chạy một cấu hình, `--out` là file JSONL. Runner kiểm tra nguồn BTC khớp database đã seed và từ chối ghi đè kết quả hoặc báo cáo lần chạy trước.
+Thay `--scenarios` bằng thư mục bộ ẩn nếu cần. Runner không ghi đè file kết quả đã tồn tại.
 
-Khi eval thất bại, CLI in `phase`, `code`, `service` và đường dẫn `*.report.json`. Nếu bộ kiểm tra từ chối câu trả lời, report ghi các mã lý do trong `verification_rejections`. Các lệnh eval gọi model thật và có thể phát sinh phí API.
+### Vòng cải tiến tri thức (K0 → K1)
 
-Scorer BTC có thể chấm lại hai trace, với các đường dẫn theo bố cục mặc định:
-
-```bash
-python3 ../BTC-Data-Vong1-TEAMS/eval/reference_eval.py \
-  --scenarios ./eval/scenario_final \
-  --trace ./results-submission/full.jsonl \
-  --baseline ./results-submission/baseline.jsonl \
-  --out ./results-submission/cross-check-score.json
-```
-
-Đổi đường dẫn nguồn/bộ ẩn nếu dùng bố cục khác. Trace tuân theo `schemas/trace_log.schema.json`; extractor của nhóm tạo `questions` và `claims` để BTC kiểm tra. Theo giải đáp tháng 11, `trace_must_not_match` xét `agent_text` và `memory_writes`; tool args giữ giá trị thực thi. Seed history được nhập trước lượt khách, không tính seed writes vào trace.
-
-`BTC_CALLBACK_MOCK=1` trong mẫu giúp lịch hẹn của runner và MCP order khớp mock tham chiếu BTC. Mốc M1: RQR giảm tương đối ≥40%, TSR ≥70%, HR giá/KM ≤5%, Call Brief ≤5 giây, TTFT p95 ≤3 giây và Total p95 ≤8 giây, tối thiểu 100 lượt sau 3 lượt warm-up. Nếu cả hai RQR bằng 0, BGK xét CCR thay thế; script không tự kết luận giảm 100%.
-
-## 5. Demo hai phiên và vòng cải tiến
-
-1. Đăng nhập `demo1`, mở phiên ngày **15/10/2026**, hỏi máy lọc cho phòng khoảng 25 m² có trẻ nhỏ; xem giá/KM từ tool rồi hẹn hỏi người nhà.
-2. Mở phiên mới cùng khách ngày **17/10/2026**; kiểm tra Call Brief và timeline, tiếp nối tư vấn và chốt đơn sau xác nhận.
-3. Video 5–8 phút có hai phiên và phần chạy eval so với baseline.
-
-Sau run K0, mở link `/knowledge?run_id=...` mà runner in ra. Reviewer đối chiếu nguồn và regression, duyệt/phát hành K1 rồi chạy:
+Sau run K0, mở link `/knowledge?run_id=...` do runner in ra để duyệt và phát hành K1, sau đó chạy:
 
 ```bash
 python run_knowledge_eval.py --base-run "./results-submission/<run-k0>"
 ```
 
-Bảng so sánh ở thư mục có hậu tố `.knowledge`. Giữ cùng code/model/seed/test để đối chiếu hai vòng; lưu bằng chứng người duyệt, báo cả cải thiện và suy giảm cùng chi phí/cuộc.
+## 5. ASR local (tùy chọn)
 
-## 6. ASR local
+Cài đặt trong virtualenv riêng để không xung đột thư viện harness (mặc định dùng `Systran/faster-whisper-small` trên CPU/int8):
 
-Bộ audio do nhóm bàn giao riêng, gồm `audio/*.wav` và `ground_truth.json`. ASR cũng chạy trên host, đọc `.env` root. Cài lock ASR trong virtualenv riêng để giữ nguyên phiên bản thư viện của harness:
-
+**Ubuntu / macOS:**
 ```bash
 python3 -m venv .venv-asr
 .venv-asr/bin/python -m pip install -r config/requirements/asr.txt
-.venv-asr/bin/python -m speech transcribe \
-  --audio ./dataset/audio --out ./results-submission/asr-team
-.venv-asr/bin/python -m speech eval \
-  --dataset ./dataset --runs ./results-submission/asr-team
+.venv-asr/bin/python -m speech transcribe --audio ./dataset/audio --out ./results-submission/asr-team
+.venv-asr/bin/python -m speech eval --dataset ./dataset --runs ./results-submission/asr-team
 ```
 
-Đổi sang bộ public BTC và dùng output `./results-submission/asr-btc` để báo riêng WER/CER/Entity Accuracy. BTC không phát audio public D01–D04; nhóm tự thu/TTS theo kịch bản và ground truth mới. Bộ private dùng xếp hạng do BTC giữ. Corpus M1 cần ≥40 cuộc audio, tổng ≥60 phút; báo cáo ASR team cần ≥20 file. Ghi rõ hạn chế giọng, không dùng ghi âm khách thật.
+**Windows (PowerShell):**
+```powershell
+py -3.12 -m venv .venv-asr
+.\.venv-asr\Scripts\python.exe -m pip install -r config/requirements/asr.txt
+.\.venv-asr\Scripts\python.exe -m speech transcribe --audio ./dataset/audio --out ./results-submission/asr-team
+.\.venv-asr\Scripts\python.exe -m speech eval --dataset ./dataset --runs ./results-submission/asr-team
+```
 
-ASR `whisper-small` dùng weights `Systran/faster-whisper-small`, mặc định CPU/int8. Weights tải lần transcribe đầu vào cache model trên host; máy offline cần chuẩn bị cache cùng phiên bản. Transcript ASR đi qua cùng harness; bộ có `customer_turns_asr` dùng cùng input cho Full và baseline.
+## Cấu hình chính (`.env`)
 
-## 7. Cấu hình và hồ sơ
-
-| Nhóm cấu hình | Cách dùng |
+| Biến | Mô tả |
 |---|---|
-| `BTC_ROOT` | Gói BTC có `catalog/`, `policy/`, `schemas/`, `eval/`, `asr/`. |
-| `SUBMISSION_POSTGRES_PORT`, `SUBMISSION_QDRANT_PORT` | Cổng loopback để script Python seed/eval trên host kết nối vào database trong Docker. |
-| `SCENARIOS_DIR`, `RESULTS_DIR` | Bộ scenario mặc định và nơi ghi kết quả; cờ của script eval có thể ghi đè. |
-| `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, `LANGMEM_MODEL` | API tương thích OpenAI; khai báo model chính xác. LangMem để trống dùng cùng model hội thoại. |
-| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_API_BASE_URL` | Embedding Cloudflare `@cf/baai/bge-m3`; cấu hình policy ở `config/policy-runtime.json`. Tokenizer được tải và kiểm checksum ở bước seed. |
-| Mật khẩu DB, token nội bộ, tài khoản demo | Có giá trị mẫu; Compose cấp riêng cho từng container qua environment/secret mount. |
-| `ASR_*`, `ELEVENLABS_*` | ASR local; ElevenLabs chỉ cần khi sinh audio bằng TTS. |
+| `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, `LANGMEM_MODEL` | API tương thích OpenAI (`LANGMEM_MODEL` để trống sẽ dùng `LLM_MODEL`). |
+| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_API_BASE_URL` | Embedding `@cf/baai/bge-m3` cho policy (`config/policy-runtime.json`). |
+| `BTC_ROOT`, `SCENARIOS_DIR`, `RESULTS_DIR` | Đường dẫn gói BTC, bộ scenario mặc định và thư mục kết quả. |
+| `SUBMISSION_POSTGRES_PORT`, `SUBMISSION_QDRANT_PORT` | Cổng loopback cho host kết nối vào DB trong Docker. |
+| `BTC_CALLBACK_MOCK` | Đặt `1` để lịch hẹn khớp mock tham chiếu BTC. |
+| `ASR_*`, `ELEVENLABS_*` | Cấu hình ASR local và TTS (khi sinh audio). |
 
-Tài nguyên CPU dự kiến: Linux x86-64, 4 vCPU, RAM 8 GiB, 20 GiB trống, không cần GPU cho ASR CPU/int8. Đây là cấu hình dự kiến; latency phải đo trên phần cứng/provider thực tế. Gói BTC phải đúng phiên bản; ground truth mới có D01 entity dạng list và D02 cùng khách D01. Manifest scenario kiểm hash và từ chối nguồn cũ.
+## Tài liệu tham khảo
 
-Bộ team mặc định có 48 scenario, 118 phiên. Bảy mẫu BTC chỉ dùng thử tích hợp. Xem [scenario](eval/scenario_final/README.md), [trạng thái M2](docs/evaluation/m2-readiness.md), [corpus](dataset/M1-CORPUS.md), [kiến trúc](docs/m1-architecture.md), [báo cáo](docs/btc-m1-evaluation-report.md), [slide](docs/btc-m1-slides.md) và [bằng chứng diễn tập](docs/btc-submission-evidence.md). Kết quả lịch sử không thay cho đánh giá trên commit nộp bài; video và slide chuẩn bị theo thông báo BTC.
-
-Ghi SHA bản nộp bằng `git rev-parse HEAD`. Ngừng stack bằng `docker compose down`; lệnh này giữ volume dữ liệu. Giữ nguyên các cổng và mật khẩu trong `.env` sau khi bật stack để seed/eval kết nối đúng server.
+- [Scenario](eval/scenario_final/README.md) · [Kiến trúc](docs/m1-architecture.md) · [Báo cáo M1](docs/btc-m1-evaluation-report.md) · [Trạng thái M2](docs/evaluation/m2-readiness.md) · [Corpus](dataset/M1-CORPUS.md)
