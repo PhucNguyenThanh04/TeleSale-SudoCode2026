@@ -169,3 +169,27 @@ def test_created_order_does_not_evidence_other_price():
     assert check_answer(answer, [_CREATED_ORDER])[1] == "price_without_quote"
     failed = {**_CREATED_ORDER, "result": {"error": "price_mismatch"}}
     assert check_answer("Dạ, em đã lên đơn với giá 990.000đ rồi ạ.", [failed])[1] is not None
+
+
+_STATUS_LOOKUP = {"name": "order.status", "args": {"order_id": "OD600004"},
+                  "result": {"orders": [{"order_id": "OD600004", "sku": "SKU-AF-6L", "qty": 1,
+                                         "total_vnd": 3990000, "created_on": "2026-10-28",
+                                         "status": "created", "payment": "COD"}]}}
+
+
+@pytest.mark.parametrize("answer", [
+    "Dạ chị, hiện tại đơn hàng nồi chiên không dầu của chị vẫn đang ở trạng thái **đã tạo** ạ.",
+    "Dạ, đơn hàng chị đã đặt hôm 28/10 hiện đang chờ xử lý ạ.",
+    "Dạ, đơn OD600004 đã được tạo và đang chờ bàn giao vận chuyển ạ.",
+])
+def test_order_status_lookup_evidences_existing_order(answer):
+    assert check_grounding(answer, [_STATUS_LOOKUP]) is None
+
+
+@pytest.mark.parametrize("answer,calls", [
+    ("Dạ, em đã lên đơn mới cho chị rồi ạ.", [_STATUS_LOOKUP]),
+    ("Dạ, em vừa tạo đơn cho chị ạ.", [_STATUS_LOOKUP]),
+    ("Dạ, đơn hàng chị đã đặt hôm 28/10 hiện đang chờ xử lý ạ.", []),
+])
+def test_new_order_claim_still_requires_order_create(answer, calls):
+    assert check_grounding(answer, calls) == "order_creation_unverified"

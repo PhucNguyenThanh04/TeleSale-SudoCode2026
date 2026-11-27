@@ -492,11 +492,21 @@ def _catalog_warranty_evidenced(candidate: str, successful: list[dict[str, Any]]
 
 def _order_creation_unverified(candidate: str, tool_calls: list[dict[str, Any]]) -> bool:
     claims_completion = False
+    existing_ids = {
+        order['order_id'] for call in tool_calls
+        if call.get('name') == 'order.status' and isinstance(call.get('result'), dict)
+        and not ('error' in call['result'] or call['result'].get('ok') is False
+                 or call['result'].get('success') is False)
+        for order in call['result'].get('orders', [])
+        if isinstance(order, dict) and isinstance(order.get('order_id'), str) and order['order_id'].strip()}
     for clause in re.findall(r'[^.!?;\n]+[.!?;\n]?', candidate):
         if clause.rstrip().endswith('?'):
             continue
         match = _ORDER.search(clause) or re.search(r'(?i)đã\s+ghi nhận\s+đơn hàng', clause)
         if match is None:
+            continue
+        if existing_ids and (any(order_id in clause for order_id in existing_ids) or not re.search(
+                r'(?i)\b(?:em\s+(?:đã|vừa)|vừa)\s+(?:được\s+)?(?:lên|tạo|đặt|chốt)\b', clause)):
             continue
         if _ORDER_STATUS.fullmatch(match.group().strip()) and any(
                 call.get('name') == 'order.status' and isinstance(call.get('result'), dict)
