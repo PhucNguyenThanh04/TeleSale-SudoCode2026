@@ -19,7 +19,9 @@ def test_build_context_excludes_local_data_and_preserves_runtime_files(tmp_path)
         'ai-services/app/main.py', 'ai-services/migrations/runtime.sql', 'config/requirements/ai.txt',
         'backend/app/voice_main.py', 'backend/migrations/0007_demo_users.sql',
         'frontend/index.html', 'config/policy-runtime.json', 'eval/run_eval.py',
-        'speech/__main__.py', 'scripts/btc_container.py',
+        'speech/__main__.py', 'speech/serving/app.py', 'speech/serving/vieneu_sidecar.py',
+        'speech/serving/requirements.txt', 'speech/serving/requirements-cuda13.txt',
+        'scripts/btc_container.py',
     ]
     if not shutil.which('docker'):
         pytest.skip('Docker CLI is required')

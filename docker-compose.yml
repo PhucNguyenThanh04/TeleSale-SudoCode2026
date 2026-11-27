@@ -8,6 +8,22 @@ x-backend: &backend
   image: telesale-btc-backend:${SUBMISSION_IMAGE_TAG:-local}
   pull_policy: never
 
+x-speech: &speech
+  image: telesale-btc-speech:${SUBMISSION_IMAGE_TAG:-local}
+  pull_policy: never
+  restart: unless-stopped
+  environment: &speech-env
+    SPEECH_MODEL_DIR: /models
+    HF_HOME: /root/.cache/huggingface
+    SPEECH_ASR_PROVIDER: cpu
+    SPEECH_VAD_PROVIDER: cpu
+    SPEECH_TTS_PROVIDER: cpu
+    OMP_NUM_THREADS: '4'
+    OPENBLAS_NUM_THREADS: '4'
+  volumes:
+    - speech-models:/models
+    - speech-huggingface:/root/.cache/huggingface
+
 x-db: &db
   APP_ENV: development
   MCP_DB_HOST: postgres
@@ -231,6 +247,39 @@ services:
       retries: 60
       start_period: 24h
 
+  vieneu:
+    <<: *speech
+    command: [python, -m, uvicorn, speech.serving.vieneu_sidecar:app, --host, 0.0.0.0, --port, '18111']
+    healthcheck:
+      test: [CMD, python, -c, 'import json, urllib.request; assert json.load(urllib.request.urlopen("http://127.0.0.1:18111/health", timeout=2))["status"] == "ready"']
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 10m
+
+  speech:
+    <<: *speech
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: speech
+    command: [python, -m, uvicorn, speech.serving.app:app, --host, 0.0.0.0, --port, '18110']
+    depends_on:
+      vieneu:
+        condition: service_healthy
+    environment:
+      <<: *speech-env
+      VIENEU_URL: http://vieneu:18111
+      WEB_URL: http://backend:8000
+    ports:
+      - "127.0.0.1:${SUBMISSION_SPEECH_PORT:-18110}:18110"
+    healthcheck:
+      test: [CMD, python, -c, 'import json, urllib.request; assert json.load(urllib.request.urlopen("http://127.0.0.1:18110/health", timeout=2))["status"] == "ready"']
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 10m
+
   backend:
     <<: *backend
     build:
@@ -245,12 +294,12 @@ services:
         condition: service_started
       knowledge-worker:
         condition: service_started
+      speech:
+        condition: service_healthy
     environment:
       <<: *demo-env
-      SPEECH_HTTP_URL: http://host.docker.internal:18110
-      SPEECH_LISTEN_URL: ws://host.docker.internal:18110/v1/speech/listen
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      SPEECH_HTTP_URL: http://speech:18110
+      SPEECH_LISTEN_URL: ws://speech:18110/v1/speech/listen
     secrets: [backend_password, ai_internal_token, demo_jwt_secret]
     ports:
       - "${DEMO_HOST:-127.0.0.1}:${DEMO_PORT:-8000}:8000"
@@ -266,6 +315,8 @@ volumes:
   postgres:
   qdrant:
   redis:
+  speech-models:
+  speech-huggingface:
 
 secrets:
   postgres_password:

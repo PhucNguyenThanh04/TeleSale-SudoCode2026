@@ -20,6 +20,20 @@ RUN chmod -R a+rX /workspace
 ENV PYTHONPATH=/workspace/ai-services:/workspace
 ENTRYPOINT ["python", "/workspace/container_start.py"]
 
+FROM base AS speech
+RUN apt-get update && apt-get install -y --no-install-recommends libsndfile1 libgomp1 libstdc++6 libasound2t64 && rm -rf /var/lib/apt/lists/*
+COPY speech/serving/requirements.txt /tmp/requirements.txt
+RUN python -m pip install --no-cache-dir -r /tmp/requirements.txt vieneu==3.8.3
+COPY speech ./speech
+ENV PYTHONPATH=/workspace
+RUN python -c "from speech.serving import app, vieneu_sidecar"
+
+FROM speech AS speech-gpu
+COPY speech/serving/requirements-cuda13.txt /tmp/requirements-cuda13.txt
+RUN python -m pip install --no-cache-dir -r /tmp/requirements-cuda13.txt && python -m pip uninstall -y onnxruntime && python -m pip install --no-cache-dir --force-reinstall --no-deps onnxruntime-gpu==1.28.0
+RUN python -c "from pathlib import Path; print('\n'.join(str(p) for p in Path('/usr/local/lib/python3.12/site-packages/nvidia').glob('*/lib')))" > /etc/ld.so.conf.d/speech-cuda.conf && ldconfig
+RUN python -c "from importlib.metadata import version; import sherpa_onnx, onnxruntime, torch; assert '+cuda' in version('sherpa-onnx'); assert 'CUDAExecutionProvider' in onnxruntime.get_available_providers(); assert torch.version.cuda.startswith('13.')"
+
 FROM base AS backend
 COPY config/requirements/backend.txt /tmp/requirements.txt
 RUN python -m pip install --no-cache-dir -r /tmp/requirements.txt
