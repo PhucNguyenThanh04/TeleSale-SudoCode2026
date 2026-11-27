@@ -66,6 +66,19 @@ def _run_one(config, scenarios, seed, run_id, out, *, btc_root, expected_databas
     return trace
 
 
+def _ram_bytes():
+    if hasattr(os, 'sysconf'):
+        return os.sysconf('SC_PAGE_SIZE')*os.sysconf('SC_PHYS_PAGES')
+    import ctypes
+    class MemoryStatus(ctypes.Structure):
+        _fields_=[('length',ctypes.c_ulong),('load',ctypes.c_ulong)]+[
+            (name,ctypes.c_ulonglong) for name in ('total_phys','avail_phys','total_page','avail_page',
+                                                    'total_virtual','avail_virtual','avail_extended')]
+    status=MemoryStatus(length=ctypes.sizeof(MemoryStatus))
+    ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status))
+    return status.total_phys
+
+
 def _dataset_digest(scenarios):
     return hashlib.sha256(json.dumps(scenarios,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
 
@@ -134,7 +147,7 @@ async def run_pair(*, scenarios: Path, btc_root: Path, seed: int,
                 'conversation_measurement': measurement, 'btc_contract': release_metadata(btc_root)},
             tool_mode='mcp',guardrails={'enabled':settings.agent_guardrails_enabled},database_identity=identity,
             hardware={'platform':platform.platform(),'machine':platform.machine(),'cpu_count':os.cpu_count(),
-                      'ram_bytes':os.sysconf('SC_PAGE_SIZE')*os.sysconf('SC_PHYS_PAGES')},
+                      'ram_bytes':_ram_bytes()},
             started_at_utc=started,expected_database=target,app_env=settings.app_env,knowledge_release=release)
         from app.mcp_servers.mcp_shared.decision_diagnostics import enabled as decision_enabled
         decision_ref = None

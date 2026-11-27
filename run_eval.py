@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from scripts.btc_host import configuration, verify_seed
+from scripts.btc_host import configuration, verify_seed, ensure_utf8_mode
 
 
 ROOT = Path(__file__).resolve().parent
@@ -71,4 +71,5 @@ def main():
 
 
 if __name__ == '__main__':
+    ensure_utf8_mode()
     main()

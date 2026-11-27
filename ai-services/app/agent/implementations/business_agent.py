@@ -6,11 +6,11 @@ import asyncio
 from copy import deepcopy
 import logging
 import time
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Callable, Literal
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from pydantic import AliasChoices, Field, StrictInt, create_model
 
@@ -136,7 +136,9 @@ _TOOL_DESCRIPTION = {
         "attribute_sources/attribute_conflicts giữ nguồn ưu tiên và giá trị đã giải quyết; "
         "không khẳng định thuộc tính có resolution=unresolved. "
         "thiếu thuộc tính là chưa biết, không bổ sung từ kiến thức có sẵn. "
-        "chỉ tìm lại khi khách đổi điều kiện hoặc cần loại sản phẩm khác."
+        "chỉ tìm lại khi khách đổi điều kiện hoặc cần loại sản phẩm khác. "
+        "Khi items chỉ có một sản phẩm không có biến thể, kết quả kèm current_quote (pricing.get_quote) "
+        "và current_stock (inventory.check) theo ngày cuộc gọi; dùng trực tiếp, không gọi lại hai công cụ này cho mẫu đó."
     ),
     "inventory.check": ("Kiểm tra tồn kho của SKU theo ngày cuộc gọi khi cần khẳng định còn hàng "
                         "hoặc xử lý mua; không cần chỉ để trả lời tính năng sản phẩm."),
@@ -208,6 +210,57 @@ def _write_receipt_valid(name, args, result):
             and (name != 'order.update' or result[field] == args['order_id']))
 
 
+_PAYMENT_LABEL = {'COD': 'thanh toán khi nhận hàng (COD)', 'bank': 'chuyển khoản ngân hàng',
+                  'momo': 'ví MoMo', 'zalopay': 'ví ZaloPay'}
+
+
+def order_confirmation(state: TurnState, messages: list[Any]) -> str | None:
+    last_ai = next((message for message in reversed(messages) if isinstance(message, AIMessage)), None)
+    if (last_ai is None or not messages or not isinstance(messages[-1], ToolMessage)
+            or [call.get('name') for call in last_ai.tool_calls] != [to_model_tool_name('order.create')]
+            or '?' in state.get('safe_text', '')):
+        return None
+    created = [call for call in state.get('tool_calls', []) if call.get('name') == 'order.create']
+    if not created:
+        return None
+    args, result = created[-1].get('args') or {}, created[-1].get('result') or {}
+    order_id, total = result.get('order_id'), result.get('total_vnd')
+    if (result.get('status') != 'created' or not isinstance(order_id, str) or not order_id.strip()
+            or type(total) is not int or args.get('lines') or not isinstance(args.get('sku'), str)
+            or type(args.get('qty', 1)) is not int or args.get('payment') not in _PAYMENT_LABEL):
+        return None
+    name, size = None, None
+    for call in [*state.get('prepared_tool_calls', []), *state.get('session_tool_calls', []),
+                 *state.get('tool_calls', [])]:
+        if call.get('name') not in {'catalog.search', 'catalog.get_details'}:
+            continue
+        for item in (call.get('result') or {}).get('items') or []:
+            if not isinstance(item, dict):
+                continue
+            if item.get('sku') == args['sku']:
+                name, size = item.get('name'), None
+            for variant in item.get('variants') or []:
+                if isinstance(variant, dict) and variant.get('variant_sku') == args['sku']:
+                    name, size = item.get('name'), variant.get('size')
+    if not isinstance(name, str) or not name.strip():
+        return None
+    honorific = state.get('honorific') if state.get('identity_status') == 'known' else None
+    address = honorific if honorific in {'anh', 'chị', 'cô', 'chú', 'bạn'} else 'anh/chị'
+    item = name.strip() + (f' size {size}' if isinstance(size, (str, int)) and str(size).strip() else '')
+    text = (f"Dạ {address}, em đã lên đơn {args.get('qty', 1)} {item} cho {address} rồi ạ. "
+            f"Mã đơn hàng là {order_id}, tổng thanh toán {f'{total:,}'.replace(',', '.')}đ, "
+            f"{_PAYMENT_LABEL[args['payment']]}.")
+    delivery = result.get('estimated_delivery')
+    if isinstance(delivery, str):
+        try:
+            text += f" Dự kiến đơn được giao vào ngày {date.fromisoformat(delivery):%d/%m/%Y}."
+        except ValueError:
+            return None
+    if result.get('needs_confirmation_call') is True:
+        text += f" Đơn cần một cuộc gọi xác nhận, {address} vui lòng để ý điện thoại giúp em ạ."
+    return text
+
+
 class BusinessOnlyMiddleware(AgentMiddleware):
 
     def __init__(self, business: "BusinessTools") -> None:
@@ -216,6 +269,10 @@ class BusinessOnlyMiddleware(AgentMiddleware):
 
     async def awrap_model_call(self, request: ModelRequest,
                                handler: Callable[[ModelRequest], Any]) -> ModelResponse:
+        confirmation = order_confirmation(self.business.state, getattr(request, 'messages', None) or [])
+        if confirmation is not None:
+            log_event(self.business.state, 'run_agent', 'order_confirmation_template')
+            return ModelResponse(result=[AIMessage(content=confirmation)])
         tools = ([tool for tool in request.tools
                   if (tool.get("function", {}).get("name") if isinstance(tool, dict)
                       else getattr(tool, "name", None)) in _MODEL_TOOLS]
@@ -276,7 +333,16 @@ class BusinessTools:
                     return payload
             result = await self._execute_gateway_read(name, payload)
             async with self.lock:
-                return self._finalize_read_locked(name, payload, result)
+                finalized = self._finalize_read_locked(name, payload, result)
+            items = finalized.get('items') if name == 'catalog.search' else None
+            if (isinstance(items, list) and len(items) == 1 and isinstance(items[0], dict)
+                    and isinstance(items[0].get('sku'), str) and not items[0].get('variants')
+                    and self.state.get('tool_count', 0) + 2 <= self.max_tool_calls):
+                quote, stock = await asyncio.gather(
+                    self.invoke('pricing.get_quote', {'sku': items[0]['sku']}),
+                    self.invoke('inventory.check', {'sku': items[0]['sku']}))
+                finalized = {**finalized, 'current_quote': quote, 'current_stock': stock}
+            return finalized
 
     def _prepare_read_locked(self, name: str, proposed: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         from app.agent.harness.streaming import active_stream

@@ -4,9 +4,19 @@ from pathlib import Path
 import sys
 from urllib.parse import quote
 
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 
 class ConfigurationError(ValueError):
     pass
+
+
+def ensure_utf8_mode():
+    if sys.platform == 'win32' and not sys.flags.utf8_mode:
+        import subprocess
+        raise SystemExit(subprocess.call([sys.executable, '-X', 'utf8', *sys.argv],
+                                         env={**os.environ, 'PYTHONUTF8': '1'}))
 
 
 def configuration(root, source=None):
