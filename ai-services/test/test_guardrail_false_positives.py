@@ -193,3 +193,18 @@ def test_order_status_lookup_evidences_existing_order(answer):
 ])
 def test_new_order_claim_still_requires_order_create(answer, calls):
     assert check_grounding(answer, calls) == "order_creation_unverified"
+
+
+def test_follow_up_turn_keeps_prior_order_status_evidence():
+    from types import SimpleNamespace
+    from app.mcp_servers.mcp_shared.commerce_evidence import build_commerce_evidence
+    state = {"request": SimpleNamespace(session_id="S1", on=date(2026, 10, 30)), "customer_id": "C001",
+             "tool_calls": [],
+             "session_tool_calls": [{**_STATUS_LOOKUP, "customer_id": "C001", "session_id": "S1"},
+                                    {**_STATUS_LOOKUP, "customer_id": "C002", "session_id": "S1"}]}
+    calls = build_commerce_evidence(state)
+    assert [call["customer_id"] for call in calls if call["name"] == "order.status"] == ["C001"]
+    answer = "Dạ, đơn hàng chị đã đặt hôm 28/10 hiện vẫn ở trạng thái đã tạo, chưa có thông tin bàn giao vận chuyển ạ."
+    assert check_grounding(answer, calls) is None
+    failed = {**_STATUS_LOOKUP, "customer_id": "C001", "session_id": "S1", "result": {"error": "not_found"}}
+    assert build_commerce_evidence({**state, "session_tool_calls": [failed]}) == []

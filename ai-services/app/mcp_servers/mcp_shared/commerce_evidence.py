@@ -108,6 +108,8 @@ def build_commerce_evidence(state: dict, *, args: dict | None = None) -> list[di
         if call['name'] in CATALOG_TOOLS and isinstance(call['result'].get('items'), list):
             call['result']['items'] = [item for item in call['result']['items']
                 if isinstance(item, dict) and catalog_barriers.get(item.get('sku'), index) <= index]
+    selected.extend((i, deepcopy(call)) for i, call in enumerate(prior)
+                    if call.get('name') == 'order.status' and successful(call))
     selected.extend((len(prior) + i, deepcopy(call)) for i, call in enumerate(current)
                     if isinstance(call, dict) and call.get('name') not in COMMERCIAL_TOOLS
                     and _bound(call, state))
