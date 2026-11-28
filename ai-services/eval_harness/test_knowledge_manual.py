@@ -6,6 +6,30 @@ import pytest
 from eval_harness.test_knowledge_auto_review import repo, row
 
 
+def test_unanswered_questions_enter_the_review_queue_without_commerce_drafts():
+    from eval_harness.knowledge_manual import propose, unanswered_feedback
+
+    async def run():
+        r = repo()
+        await r.put('permissions', 'human', {'permissions': ['knowledge_review']})
+        unanswered = row() | {'agent_text': 'Hiện em chưa có thông tin về điều kiện đổi size.', 'tool_calls': []}
+        commercial = unanswered | {'turn': 2, 'agent_text': 'Em chưa thể xác nhận giá ạ.'}
+        answered = unanswered | {'turn': 3, 'agent_text': 'Điều kiện là sản phẩm còn nguyên niêm phong.'}
+        baseline = unanswered | {'turn': 4, 'config': 'baseline_no_memory'}
+        diagnostics = [commercial | {'grounding': {'reason': 'price_without_quote'},
+                                     'recovery': {'status': 'fallback'}}]
+        rows = [unanswered, commercial, answered, baseline]
+        feedback = unanswered_feedback(rows, diagnostics, 'k0')
+        assert [item['event']['signal'] for item in feedback] == ['fallback', 'guardrail_rejection']
+        proposals = await propose(r, r, rows, feedback, actor='human', run_id='standalone',
+                                  release_id='k0', only_feedback=True)
+        assert len(proposals['proposed']) == 2
+        assert proposals['proposed'][1]['category'] == 'generation'
+        assert proposals['proposed'][1]['draft_revision_id'] is None
+        assert await r.rows('decisions') == []
+    asyncio.run(run())
+
+
 def test_manual_proposals_are_scoped_idempotent_drafts_never_approvals():
     from eval_harness.knowledge_manual import propose
     from app.knowledge.events.ingest import record_event

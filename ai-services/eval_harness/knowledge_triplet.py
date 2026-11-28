@@ -20,7 +20,7 @@ from app.mcp_servers.mcp_shared.config import database_url
 from eval_harness.knowledge_auto_review import (answer_passes, auto_review, check_review_sources,
                                                locator, retrieved_ids, validate_plan)
 from eval_harness.knowledge_automatic import MODE, review_proposals, source_catalog_digest
-from eval_harness.knowledge_manual import MODE as MANUAL_MODE, propose, collect_review
+from eval_harness.knowledge_manual import MODE as MANUAL_MODE, propose, collect_review, unanswered_feedback
 from eval_harness.evaluation_feedback import build_feedback
 from eval_harness.official_pipeline import atomic_json
 from eval_harness.extraction_report import write_extraction_sidecar, summarize_extraction
@@ -281,6 +281,11 @@ async def run_experiment(args, repo, worker_repo, settings):
                     active = (await tx.get('active', 'current') or {}).get('release_id')
                 if active != base: raise ExperimentError('Active release changed since K0')
                 feedback = build_feedback(k0, btc_root=btc_root)
+                full_trace = k0/run['traces']['full']
+                events = full_trace.with_suffix('.events.json')
+                if events.is_file():
+                    verify_report_turn_diagnostics(full_trace)
+                feedback = unanswered_feedback(full, read_json(events) if events.is_file() else [], base) + feedback
                 proposals = await propose(repo, worker_repo, full, feedback, actor=args.actor, run_id=out.name,
                     timeout=args.worker_timeout, score_sha256=sha(k0/'btc_score.json'), release_id=base)
                 atomic_json(out/'proposals.json', proposals)
@@ -297,8 +302,10 @@ async def run_experiment(args, repo, worker_repo, settings):
                     save(status='awaiting_review', phase='awaiting_review',
                         review_url=f'http://127.0.0.1:{port}/knowledge?run_id={out.name}')
                     print('[knowledge] Review/edit/reject proposals and publish K1: '+state['review_url'], flush=True)
+                    pin = getattr(settings, 'knowledge_release_id', None)
                     if separate:
-                        print('[knowledge] Run after publication: ' + shlex.join([
+                        prefix = '' if pin is None else 'KNOWLEDGE_RELEASE_ID='+shlex.quote(pin)+' '
+                        print('[knowledge] Run after publication: ' + prefix + shlex.join([
                             sys.executable, str(PROJECT/'run_knowledge_eval.py'),
                             '--base-run', str(k0.resolve())]), flush=True)
                         return out
@@ -307,7 +314,6 @@ async def run_experiment(args, repo, worker_repo, settings):
                     prefix = 'AGENT_GUARDRAILS_ENABLED=true KNOWLEDGE_ENABLED=true PYTHONPATH='+shlex.quote(str(PROJECT/'ai-services')+os.pathsep+str(PROJECT))
                     if state.get('system_boot_id'):
                         prefix += ' SYSTEM_BOOT_ID='+shlex.quote(state['system_boot_id'])
-                    pin = getattr(settings, 'knowledge_release_id', None)
                     if pin is not None:
                         prefix += ' KNOWLEDGE_RELEASE_ID='+shlex.quote(pin)
                     print('[knowledge] Resume in another terminal: '+prefix+' '+shlex.join(resume), flush=True)

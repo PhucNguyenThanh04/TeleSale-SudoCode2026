@@ -13,14 +13,14 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agent.harness.context import prompt_context, prompt_messages
 from app.agent.implementations import build_agent
-from app.agent.implementations.business_agent import BusinessTools
-from app.agent.implementations.business_agent import _write_receipt_valid
+from app.agent.implementations.business_agent import BusinessTools, _write_receipt_valid, receipt_confirmation
 from app.agent.prompts import SALES_PROMPT, text_prompt
 from app.agent.implementations.business_agent import _SYSTEM_PROMPT
 from app.agent.memory.episode_candidates import outcome_from_tool_calls
 from app.agent.memory.store import memory_error_code
 from app.agent.guardrails.checks import (check_answer, check_grounding,
-                                         mask_pii)
+                                         mask_pii, repair_delivery_estimate)
+from app.agent.guardrails.claims import assertion_text
 from app.agent.guardrails.diagnostics import rejected_draft
 from app.agent.guardrails.semantic_grounding import review_answer
 from app.agent.harness.session_nodes import SessionNodes
@@ -46,7 +46,7 @@ def _claim_focus(state):
     return next(iter(named)) if len(named) == 1 else None
 
 
-def _requested_write_missing(state):
+def _requested_write_missing(state, answer=''):
     from app.mcp_servers.mcp_shared.commerce_rules import _search_text
     if state.get('identity_status') != 'known' or state.get('tool_failed'):
         return False
@@ -65,6 +65,10 @@ def _requested_write_missing(state):
                 clause[:action.start()]):
             continue
         name = 'order.create' if action['create'] else 'order.update'
+        existing_id = state.get('existing_purchase_order_id')
+        if (name == 'order.create' and existing_id
+                and re.search(r'(?<![\w-])' + re.escape(existing_id) + r'(?![\w-])', answer)):
+            continue
         if not any(
                 call.get('name') == name and successful(call)
                 and (name != 'order.update' or call.get('args', {}).get('order_id'))
@@ -218,6 +222,7 @@ class AgentNodes(SessionNodes):
                 "tool_calls": state["tool_calls"],
                 "tool_count": state.get("tool_count", 0),
                 'tool_attempts': state.get('tool_attempts', 0),
+                'existing_purchase_order_id': state.get('existing_purchase_order_id'),
                 "policy_order_bindings": state.get("policy_order_bindings", {}),
                 "needs_handoff": state.get("needs_handoff", False),
                 "handoff_ticket_id": state.get("handoff_ticket_id")}
@@ -242,7 +247,7 @@ class AgentNodes(SessionNodes):
         calls = build_commerce_evidence(model_state)
         semantic_reviews = {}
 
-        async def validate(answer):
+        async def validate(answer, *, repaired=False):
             answer = mask_pii(answer.strip())
             if not answer.strip():
                 return '', 'empty_answer'
@@ -256,7 +261,8 @@ class AgentNodes(SessionNodes):
             else:
                 log_event(state, 'verify', 'answer_check_disabled', reason='configured_disabled')
                 reason = check_grounding(answer, calls)
-            if reason is None and self.semantic_review_enabled:
+            if (reason is None and self.semantic_review_enabled and answer != receipt_confirmation(model_state)
+                    and (repaired or assertion_text(answer).strip())):
                 context = prompt_context(model_state, self.prompt_history_turns)
                 review_key = (answer, json.dumps(context, sort_keys=True, ensure_ascii=False, default=str))
                 if review_key in semantic_reviews:
@@ -271,7 +277,7 @@ class AgentNodes(SessionNodes):
             return answer, reason
 
         answer, reason = await validate(draft)
-        if reason is None and callable(continuation) and _requested_write_missing(state):
+        if reason is None and callable(continuation) and _requested_write_missing(state, answer):
             reason = 'unanswered_request'
         if reason is None:
             return {'agent_continuation': None, "agent_text": answer, 'verified_answer': answer, 'reply_error': None}
@@ -279,6 +285,12 @@ class AgentNodes(SessionNodes):
         tool_updates = {}
         try:
             from langchain_core.messages import SystemMessage
+            if reason == 'delivery_unverified' and (corrected := repair_delivery_estimate(draft, calls, state['safe_text'])):
+                answer, correction_reason = await validate(corrected)
+                if correction_reason is None and not _requested_write_missing(state, answer):
+                    log_event(state, 'verify', 'recovery_succeeded', source='receipt_delivery_estimate')
+                    return {'agent_continuation': None, 'agent_text': answer, 'verified_answer': answer,
+                            'reply_error': None, 'verifier_events': rejected}
             if (callable(continuation) and not state.get('tool_failed')
                     and (reason in {'unanswered_request', 'unnecessary_clarification',
                                     'customer_constraint_violated', 'order_creation_unverified',
@@ -393,7 +405,7 @@ class AgentNodes(SessionNodes):
                 calls = build_commerce_evidence(model_state)
                 if draft and len(state.get('tool_calls', [])) > backfilled_from:
                     answer, backfill_reason = await validate(draft)
-                    if backfill_reason is None and not _requested_write_missing(state):
+                    if backfill_reason is None and not _requested_write_missing(state, answer):
                         log_event(state, 'verify', 'recovery_succeeded', source='evidence_backfill')
                         return {'agent_continuation': None, 'agent_text': answer, 'verified_answer': answer,
                                 'reply_error': None, 'verifier_events': rejected, **tool_updates}
@@ -448,11 +460,21 @@ class AgentNodes(SessionNodes):
                 }, ensure_ascii=False)))
                 log_event(state, 'verify', 'recovery_attempted', level=logging.DEBUG, reason=current_reason)
                 set_execution_phase('model_invocation', 'repair')
-                repair = await self.llm.ainvoke(messages)
+                try:
+                    repair = await self.llm.ainvoke(messages)
+                except Exception as exc:
+                    if isinstance(exc, TimeoutError) or type(exc).__name__ in {
+                        'APITimeoutError', 'ReadTimeout', 'ConnectTimeout', 'TimeoutException', 'APIConnectionError'
+                    }:
+                        execution_result(state, exc=exc)
+                        log_event(state, "verify", "repair_timeout", level=logging.WARNING,
+                                  error_type=type(exc).__name__)
+                        break
+                    raise
                 execution_result(state)
                 set_execution_phase('verification')
                 repaired = mask_pii(_answer_text(repair))
-                checked, repair_reason = await validate(repaired)
+                checked, repair_reason = await validate(repaired, repaired=True)
                 if repair_reason is None:
                     log_event(state, 'verify', 'recovery_succeeded', level=logging.DEBUG)
                     return {'agent_continuation': None, "agent_text": checked, 'verified_answer': checked,

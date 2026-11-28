@@ -45,7 +45,8 @@ async def run(args, runtime=None) -> int:
     if not target:
         raise ValueError('--expected-database is required')
     extraction_path = args.out.with_suffix('.extraction.jsonl')
-    if any(path.exists() for path in (args.out, args.out.with_suffix('.report.json'), extraction_path)):
+    if any(path.exists() for path in (args.out, args.out.with_suffix('.report.json'), extraction_path,
+                                     args.out.with_suffix('.knowledge-gaps.json'))):
         raise FileExistsError('output_exists_choose_new_path')
     from eval_harness.btc_release import prepare_btc_release
     btc_root = prepare_btc_release(btc_root, args.out.with_suffix('.btc-release'))
@@ -66,7 +67,6 @@ async def run(args, runtime=None) -> int:
         sidecars_complete = True
         if result['status'] != 'completed':
             raise RuntimeError('invalid: redaction_affects_scoring')
-        return len(rows)
     except (Exception, SystemExit) as exc:
         report_path=args.out.with_suffix('.report.json')
         report=json.loads(report_path.read_text()) if report_path.exists() else {}
@@ -76,6 +76,16 @@ async def run(args, runtime=None) -> int:
             if getattr(args,'report_out',None):
                 atomic_json(args.report_out,report)
         raise
+    if args.config == 'full':
+        from eval_harness.knowledge_followup import detect_after_full
+        try:
+            path, status = await detect_after_full(args.out, settings)
+        except Exception:
+            print(f"[knowledge] Proposal processing stopped. Resume with run_knowledge_eval.py --full-trace \"{args.out}\".",
+                  file=sys.stderr, flush=True)
+            raise
+        print(f'[knowledge] {status}: {path}', flush=True)
+    return len(rows)
 
 
 def main():

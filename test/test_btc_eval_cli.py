@@ -141,16 +141,18 @@ def test_failed_preflight_prints_report_location_and_service(tmp_path, monkeypat
     assert str(output.with_suffix('.report.json')) in error
 
 
-def test_knowledge_followup_runs_on_host_with_same_configuration(tmp_path, monkeypatch):
+@pytest.mark.parametrize('mode', ['--base-run', '--full-trace'])
+def test_knowledge_followup_runs_on_host_with_same_configuration(tmp_path, monkeypatch, mode):
     environment(tmp_path, monkeypatch)
     calls = []
     monkeypatch.setattr(run_knowledge_eval, 'verify_seed', lambda *args: None)
     monkeypatch.setattr(run_knowledge_eval.subprocess, 'run',
         lambda command, **options: calls.append((command, options)) or subprocess.CompletedProcess(command, 0))
     base = tmp_path / 'pair with spaces'
-    assert run_knowledge_eval.run(base, root=tmp_path) == 0
+    args = {'base_run': base} if mode == '--base-run' else {'full_trace': base}
+    assert run_knowledge_eval.run(root=tmp_path, **args) == 0
     command, options = calls[0]
-    assert command == [sys.executable, '-u', '-m', 'eval_harness.knowledge_followup', '--base-run', str(base)]
+    assert command == [sys.executable, '-u', '-m', 'eval_harness.knowledge_followup', mode, str(base)]
     assert options['env'] == {**os.environ, **btc_host.configuration(tmp_path)}
 
 

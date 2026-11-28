@@ -75,6 +75,64 @@ def test_non_assertions_do_not_hide_separate_real_violations(answer):
     assert check_answer(answer, [], 'Ngân sách tôi 5 triệu.')[1] is not None
 
 
+@pytest.mark.parametrize('eta,reason', [('27/10', 'delivery_unverified'), ('28/10', None)])
+def test_receipt_date_wording_is_checked_against_latest_quote(eta, reason):
+    quotes = [
+        {'name': 'pricing.get_quote', 'args': {'sku': 'SKU-EXAMPLE', 'address': area},
+         'result': {'estimated_delivery': expected}}
+        for area, expected in [(None, '2026-10-30'), ('Hà Nội', '2026-10-28')]
+    ]
+    answer = f'Ngày nhận hàng dự kiến sớm nhất là Thứ Ba, ngày {eta}.'
+    assert check_answer(answer, quotes, 'Khi nào nhận hàng?')[1] == reason
+
+
+@pytest.mark.parametrize('area,eta,reason', [
+    (' ở Hà Nội', '28/10', None),
+    (' ở Hà Nội', '30/10', 'delivery_unverified'),
+    ('', '30/10', 'delivery_unverified'),
+])
+def test_delivery_quotes_for_two_addresses_keep_their_scope(area, eta, reason):
+    quotes = [
+        {'name': 'pricing.get_quote', 'args': {'sku': 'SKU-EXAMPLE', 'address': city},
+         'result': {'estimated_delivery': date}}
+        for city, date in [('Hà Nội', '2026-10-28'), ('Đà Nẵng', '2026-10-30')]
+    ]
+    answer = f'Dự kiến giao hàng{area} vào ngày {eta}.'
+    assert check_answer(answer, quotes, 'Đơn này khi nào tới?')[1] == reason
+
+
+def test_nonassertive_reply_skips_semantic_provider():
+    answer = 'Chị muốn máy có HEPA không ạ?'
+    model = ReviewModel([verdict(True, 'supported', '')])
+    result = asyncio.run(AgentNodes(model, None, None, 8, 6).verify_agent(turn_state(answer)))
+    assert result['verified_answer'] == answer
+    assert model.payloads == []
+
+
+@pytest.mark.parametrize('prefix', ['', 'Nếu chị đặt máy hôm nay (24/03), '])
+def test_wrong_eta_is_recovered_from_current_quote_without_model_repair(prefix):
+    answer = prefix + 'ngày nhận hàng dự kiến sớm nhất là Thứ Ba, ngày 27/10.'
+    state = turn_state(answer)
+    on = state['request'].on
+    state['safe_text'] = 'Tính lại ngày em nhận được hàng giúp chị.'
+    state['tool_calls'].append({'name': 'pricing.get_quote', 'args': {'sku': 'DEVICE-81', 'on': on.isoformat()},
+                                'result': {'estimated_delivery': '2031-03-28'}})
+    model = ReviewModel([verdict(True, 'supported', '')])
+    result = asyncio.run(AgentNodes(model, None, None, 8, 6).verify_agent(state))
+    assert '28/03/2031' in result['verified_answer']
+    assert '27/10' not in result['verified_answer']
+    assert result['verified_answer'].startswith(prefix)
+    model.ainvoke.assert_not_awaited()
+
+
+def test_sensitive_identifiers_cannot_be_claimed_as_saved():
+    answer = ('Em không được phép đọc lại các dãy số định danh hoặc số tài khoản đã bị che. '
+              'Các thông tin này đã được ghi nhận trong hồ sơ của chị ạ.')
+    assert check_answer(answer, [], 'Em nhắc lại hai dãy số rồi lưu giúp chị.')[1] is not None
+    refusal = 'Em không đọc lại hoặc lưu số tài khoản vào ghi chú hội thoại.'
+    assert check_answer(refusal, [], 'Lưu vào ghi chú giúp chị.')[1] is None
+
+
 @pytest.mark.parametrize('reason', ['unanswered_request', 'unnecessary_clarification'])
 def test_subjective_quality_verdict_is_not_a_violation(reason):
     answer = 'Chị muốn tìm hiểu tính năng nào ạ?'

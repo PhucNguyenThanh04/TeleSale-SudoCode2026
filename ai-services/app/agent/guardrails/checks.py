@@ -49,7 +49,11 @@ _BOOLEAN_FEATURE_ALIASES = {
 _SUPERLATIVE = re.compile(r"(?i)\b(?:phù hợp nhất|tốt nhất|hiệu quả nhất)\b")
 _LEGACY_SKU_SIGNAL = re.compile(r"\bSKU-[A-Z0-9-]+\b")
 _PROMOTION = re.compile(r"(?i)\b(?:khuyến mãi|giảm giá|còn giảm|được giảm|mã giảm|freeship|miễn phí (?:ship|vận chuyển))\b")
-_DELIVERY = re.compile(r"(?i)\b(?:dự kiến giao|giao(?:\s+hàng)?\s+dự kiến|ngày giao|giao trong|giao vào|giao ngày|giao\s+\d)\b")
+_DELIVERY = re.compile(
+    r"(?i)\b(?:dự kiến (?:giao|nhận(?: được)? hàng)|giao(?:\s+hàng)?\s+dự kiến|ngày giao|"
+    r"giao trong|giao vào|giao ngày|giao\s+\d|ngày nhận hàng(?:\s+(?:dự kiến|sớm nhất))|"
+    r"nhận(?: được)? hàng\s+(?:vào|ngày)\s+(?:ngày\s+)?\d)\b")
+_DELIVERY_DATE = re.compile(r'\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}(?:/\d{4})?)\b')
 _POLICY = re.compile(r"(?i)\b(?:bảo hành|đổi trả|đổi size|hoàn tiền|chính sách)\b")
 _INTERNAL = re.compile(r"(?i)\b(?:giá nhập|giá sàn|nhà cung cấp)\b")
 _PII_KEY = re.compile(r"(?i)(?:phone|address|name|email|zalo|fb_id|cccd|bank|account|card|password|token|sdt|stk)")
@@ -106,6 +110,10 @@ def _fold_text(value: str) -> str:
 _ERASURE_ACTION = re.compile(r"\b(?:xoa|go|huy|loai bo)\b|\b(?:dung|khong)\s+(?:tiep tuc\s+)?(?:giu|luu)\b")
 _ERASURE_SUBJECT = re.compile(r"\b(?:du lieu|thong tin|ho so)\b")
 _ERASURE_DONE = re.compile(r"\bda\s+(?:duoc\s+)?(?:xoa|go|huy|loai bo|xu ly xong)\b|\b(?:xoa|go|huy)\s+(?:xong|het|hoan tat)\b|\bda\s+(?:xu ly|hoan thanh)\s+xong\s+yeu cau\s+xoa\b")
+_SENSITIVE_IDENTIFIER = re.compile(r'\b(?:cccd|can cuoc|so dinh danh|so tai khoan)\b')
+_IDENTIFIER_SAVED = re.compile(
+    r'\bda\s+(?:duoc\s+)?(?:luu|ghi nhan|ghi lai)\b[^.!?;]{0,100}'
+    r'\b(?:ho so|ghi chu|bo nho|cccd|can cuoc|so dinh danh|so tai khoan)\b')
 _HANDOFF_DONE = re.compile(
     r"\b(?:da|vua)\s+(?:ban giao|ket noi|noi may|chuyen may)\b"
     r"|\b(?:da|vua)\s+chuyen\b[^.!?]{0,60}\b(?:nhan vien|bo phan|tong dai|nguoi tu van)\b"
@@ -499,6 +507,15 @@ def _order_creation_unverified(candidate: str, tool_calls: list[dict[str, Any]])
                  or call['result'].get('success') is False)
         for order in call['result'].get('orders', [])
         if isinstance(order, dict) and isinstance(order.get('order_id'), str) and order['order_id'].strip()}
+    existing_ids.update(
+        call['result']['order_id'] for call in tool_calls
+        if call.get('name') == 'order.create' and call.get('_prior_session_receipt')
+        and isinstance(call.get('result'), dict)
+        and not ('error' in call['result'] or call['result'].get('ok') is False
+                 or call['result'].get('success') is False)
+        and call['result'].get('status') == 'created'
+        and isinstance(call['result'].get('order_id'), str) and call['result']['order_id'].strip()
+    )
     for clause in re.findall(r'[^.!?;\n]+[.!?;\n]?', candidate):
         if clause.rstrip().endswith('?'):
             continue
@@ -520,7 +537,8 @@ def _order_creation_unverified(candidate: str, tool_calls: list[dict[str, Any]])
             continue
         claims_completion = True
     return claims_completion and not any(
-        call.get('name') == 'order.create' and isinstance(call.get('result'), dict)
+        call.get('name') == 'order.create' and not call.get('_prior_session_receipt')
+        and isinstance(call.get('result'), dict)
         and not ('error' in call['result'] or call['result'].get('ok') is False
                  or call['result'].get('success') is False)
         and call['result'].get('status') == 'created'
@@ -560,6 +578,9 @@ def check_grounding(candidate: str, tool_calls: list[dict[str, Any]]) -> str | N
     successful = [call for call in tool_calls if "error" not in call.get("result", {})]
     if _customer_erasure_completion_claim(candidate):
         return "customer_erasure_unverified"
+    folded = _fold_text(candidate)
+    if _SENSITIVE_IDENTIFIER.search(folded) and _IDENTIFIER_SAVED.search(folded):
+        return 'unsupported_policy_or_internal_claim'
     if _HANDOFF_DONE.search(_fold_text(candidate)) and not any(
             call.get("name") == "handoff.transfer"
             and isinstance(call.get("result"), dict)
@@ -786,6 +807,53 @@ def _catalog_budget_repetition_evidenced(candidate: str, customer_text: str,
     return not _PRICE_CONTEXT.search(folded[clause_start:clause_end])
 
 
+def _delivery_quote_date(quotes, clause, customer_text=''):
+    if not quotes or len({c['args'].get('qty', 1) for c in quotes}) != 1:
+        return None
+    addresses = [_fold_text(c['args'].get('address') or '') for c in quotes]
+    for text in (clause, customer_text):
+        folded = _fold_text(text)
+        matched = {i for i, address in enumerate(addresses)
+                   if address and re.search(r'(?<!\w)' + re.escape(address) + r'(?!\w)', folded)}
+        if matched:
+            if len({addresses[i] for i in matched}) != 1:
+                return None
+            return quotes[max(matched)]['result']['estimated_delivery']
+    if len(set(filter(None, addresses))) > 1 and len({c['result']['estimated_delivery'] for c in quotes}) > 1:
+        return None
+    return quotes[-1]['result']['estimated_delivery']
+
+
+def repair_delivery_estimate(answer, calls, customer_text=''):
+    from app.mcp_servers.mcp_shared.commerce_entities import resolve_claim_skus
+    if any(call['name'] == 'order.create' and call['result'].get('status') == 'created' for call in calls):
+        return None
+    sentences = re.split(r'(?<=[.!?])\s+|\n', answer)
+    delivery = [i for i, text in enumerate(sentences) if _DELIVERY.search(text) and _DELIVERY_DATE.search(text)]
+    if len(delivery) != 1:
+        return None
+    index = delivery[0]
+    quote_calls = [c for c in calls if c['name'] == 'pricing.get_quote' and c['result'].get('estimated_delivery')]
+    skus = resolve_claim_skus(_promotion_subject(sentences[index]), calls)
+    quotes = [c for c in quote_calls if not skus or c['args'].get('sku') in skus]
+    targets = {(c['args'].get('sku'), c['args'].get('qty', 1)) for c in quotes}
+    if len(targets) != 1 or len(skus) > 1:
+        return None
+    sentence = sentences[index]
+    delivery_start = _DELIVERY.search(sentence).start()
+    clause = sentence[delivery_start:]
+    if len(_DELIVERY_DATE.findall(clause)) != 1:
+        return None
+    try:
+        eta = date.fromisoformat(_delivery_quote_date(quotes, clause, customer_text))
+    except (ValueError, TypeError):
+        return None
+    clause = re.sub(r'(?i)(?:thứ\s+(?:hai|ba|tư|năm|sáu|bảy|[2-7])|chủ nhật)\s*,?\s*'
+                    r'(?=(?:ngày\s+)?' + _DELIVERY_DATE.pattern + ')', '', clause)
+    sentences[index] = sentence[:delivery_start] + _DELIVERY_DATE.sub(f'{eta.day}/{eta.month:02d}/{eta.year}', clause)
+    return '\n'.join(sentences)
+
+
 def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
                  customer_text: str = "", *, focus_sku: str | None = None) -> tuple[str, str | None]:
     if not candidate.strip():
@@ -931,7 +999,7 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
     if _DELIVERY.search(candidate):
         def _parse_dates(text: str, expected_iso: str | None) -> list[str | None]:
             parsed = []
-            for literal in re.findall(r'\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}(?:/\d{4})?)\b', text):
+            for literal in _DELIVERY_DATE.findall(text):
                 try:
                     if '/' in literal:
                         parts = [int(part) for part in literal.split('/')]
@@ -970,13 +1038,12 @@ def check_answer(candidate: str, tool_calls: list[dict[str, Any]],
                 if not skus:
                     skus = answer_delivery_skus if len(answer_delivery_skus) == 1 else (
                         {focus_sku} if focus_sku else set())
-                if not skus and len(available_quotes) == 1 and available_quotes[0].get('args', {}).get('sku'):
-                    skus = {available_quotes[0]['args']['sku']}
+                if not skus and len(available_quote_skus) == 1:
+                    skus = available_quote_skus
                 quotes = [c for c in available_quotes if c.get('args', {}).get('sku') in skus
                           and c.get('result', {}).get('estimated_delivery')]
-                expected_dates = {c['result']['estimated_delivery'] for c in quotes}
-                expected = next(iter(expected_dates)) if len(expected_dates) == 1 else None
-                dates = _parse_dates(clause, expected)
+                expected = _delivery_quote_date(quotes, clause, customer_text)
+                dates = _parse_dates(clause[_DELIVERY.search(clause).start():], expected)
                 if (not re.search(r'\bdự kiến\b', clause, re.IGNORECASE)
                         or len(skus) != 1 or not expected or len(dates) != 1
                         or dates[0] != expected

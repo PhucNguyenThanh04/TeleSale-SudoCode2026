@@ -2,9 +2,9 @@
 
 Trợ lý telesale tiếng Việt qua chat và thoại, có bộ nhớ giữa các cuộc gọi.
 
-## 1. Cài đặt
+## Bước 1. Chuẩn bị môi trường
 
-Cần Python 3.12+, Docker Compose 2.20+ và gói dữ liệu BTC đã giải nén tại `../BTC-Data-Vong1-TEAMS`. Chạy các lệnh từ thư mục gốc repo.
+Cần Python 3.12+, Docker Compose 2.20+ và gói BTC đã giải nén tại `../BTC-Data-Vong1-TEAMS`. Chạy từ thư mục gốc repo. Chọn **một** nhóm lệnh để tạo và kích hoạt `.venv`.
 
 **Linux / macOS / WSL2**
 
@@ -22,7 +22,7 @@ py -3.12 -m venv .venv
 if (!(Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-Cài thư viện vào môi trường vừa kích hoạt:
+**Mọi hệ điều hành** dùng lệnh sau trong môi trường vừa kích hoạt.
 
 ```sh
 python -m pip install -r config/requirements/host.txt
@@ -30,82 +30,92 @@ python -m pip install -r config/requirements/host.txt
 
 Trong `.env`, điền `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` cho hội thoại và `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` cho tìm kiếm chính sách.
 
-## 2. Bật server và nạp dữ liệu BTC
+## Bước 2. Bật server
+
+Chọn lệnh theo hệ điều hành. Lần build đầu cần Internet để tải phụ thuộc.
+
+**Ubuntu / WSL2 chạy Docker Engine trong Ubuntu**
+
+```bash
+sudo docker compose up -d --build
+```
+
+**Windows / macOS / WSL2 dùng Docker Desktop**
+
+Mở Docker Desktop, rồi chạy lệnh sau từ thư mục gốc repo.
 
 ```sh
-python scripts/compose_up.py
+docker compose up -d --build
+```
+
+## Bước 3. Nạp dữ liệu BTC
+
+Lệnh này dùng chung trên mọi hệ điều hành.
+
+```sh
 python seed_btc.py --data-dir ../BTC-Data-Vong1-TEAMS
 ```
 
-Script tự chọn GPU hoặc CPU. Lần đầu cần Internet để tải model. Khi seed báo `ready`, mở [Chat](http://127.0.0.1:8000/chat) hoặc [Thoại](http://127.0.0.1:8000/). Đăng nhập bằng `demo1` và mật khẩu `DEMO_USER_1_PASSWORD` trong `.env`.
+Chờ seed báo các dịch vụ đã sẵn sàng. Nếu muốn thử trước khi eval, mở [Chat](http://127.0.0.1:8000/chat) hoặc [Thoại](http://127.0.0.1:8000/) và đăng nhập bằng `demo1` cùng mật khẩu `DEMO_USER_1_PASSWORD` trong `.env`.
 
-## 3. Chạy eval K0 với Full và Baseline
+Các lệnh Python ở những bước tiếp theo dùng chung cho Ubuntu, Windows và macOS. Giữ server chạy và dùng Python trong `.venv`.
 
-Giữ server đang chạy, dùng Python trong `.venv`. Full dùng bộ nhớ liên phiên. Baseline chỉ giữ lịch sử trong phiên. Eval gọi model thật và đặt lại dữ liệu runtime trước mỗi cấu hình, nên hãy kết thúc phiên demo trước khi chạy.
+## Bước 4. Xuất Baseline và Full K0
 
-**Chạy thử một kịch bản** trên cả hai cấu hình để kiểm tra toàn bộ luồng:
-
-```sh
-python run_eval.py --limit-scenarios 1
-```
-
-**Chạy toàn bộ bộ kịch bản của đội** (48 kịch bản):
+K0 là Knowledge trước khi bổ sung. Kết thúc phiên demo trước khi eval vì runner đặt lại dữ liệu runtime. Giữ nguyên bộ kịch bản, seed và model qua các lượt. Thay `btc-eval` trong các lệnh nếu thư mục kết quả đã được dùng.
 
 ```sh
-python run_eval.py --scenarios ./eval/scenario_final
+python run_eval.py --scenarios ./eval/scenario_final --config baseline_no_memory --out ./results-submission/btc-eval/baseline.jsonl
+python run_eval.py --scenarios ./eval/scenario_final --config full --out ./results-submission/btc-eval/full-k0.jsonl
 ```
 
-Để dùng bộ khác, thay `./eval/scenario_final` bằng thư mục kịch bản cần chấm. Nếu bỏ `--scenarios`, runner đọc `SCENARIOS_DIR` trong `.env`.
+**Kết quả** gồm `baseline.jsonl`, `full-k0.jsonl` và `full-k0.knowledge-gaps.json`. Xem hai file `.report.json` để xác nhận cả hai run đã hoàn tất và dùng cùng release K0.
 
-**Đọc kết quả.** Terminal in trạng thái và đường dẫn `run.json`. Mỗi lần chạy có thư mục riêng, mặc định là `results-submission/<run-id>/`.
+## Bước 5. Chấm K0 bằng scorer BTC
 
-| Tệp | Xem gì |
-|---|---|
-| `run.json` | Trạng thái, số kịch bản/lượt và đường dẫn hai trace. Nếu `failed`, xem `phase`, `error_code` và `service`. |
-| `btc_score.json` | Điểm Full/Baseline của lần chạy đã xác minh (`validated`). |
-| `full.diagnostics_full.jsonl`, `baseline.diagnostics_baseline.jsonl` | Lời khách, câu trả lời và công cụ đã gọi theo từng lượt. |
-| `m1_conversation_acceptance.json` | Kết quả đối chiếu các tiêu chí hội thoại M1. |
-
-Sau khi cặp K0 đạt `validated` và `healthy`, runner tìm knowledge gaps từ trace Full. Nếu terminal báo `proposals_ready`, mở link duyệt mà terminal in ra. Đề xuất nằm trong `results-submission/<run-id>.knowledge/proposals.json`. Nếu thấy `no_eligible_gaps`, chuyển đến bước 6 để chấm lại cặp K0.
-
-## 4. Duyệt và phát hành Knowledge K1
-
-1. Mở `http://127.0.0.1:8000/knowledge?run_id=<run-id>.knowledge` với `<run-id>` của bước 3. Trang Knowledge trên stack demo mở trực tiếp.
-2. Bấm **Duyệt và phát hành**. Xem **Nội dung đã lưu**, **Nguồn và hiệu lực** và **Regression test**, rồi tick **Chọn** ở các đề xuất đồng ý phát hành.
-3. Nhập **Lý do duyệt hàng loạt**, tick xác nhận đã đối chiếu nội dung, nguồn và test, rồi bấm **Duyệt và phát hành các mục đã chọn**.
-4. Khi thấy **Đã phát hành … · release …**, phiên bản K1 đã hoạt động.
-
-## 5. Chạy lại eval Full với K1
-
-Giữ nguyên stack, seed, cấu hình eval và các tệp của run K0. Truyền thư mục gốc của run ở bước 3 vào `--base-run`.
+Chấm hai trace vừa tạo bằng reference scorer của BTC.
 
 ```sh
-python run_knowledge_eval.py --base-run "results-submission/<run-id>"
+python ./results-submission/btc-eval/full-k0.btc-release/eval/reference_eval.py --scenarios ./eval/scenario_final --trace ./results-submission/btc-eval/full-k0.jsonl --baseline ./results-submission/btc-eval/baseline.jsonl --out ./results-submission/btc-eval/btc-k0.json
 ```
 
-Lệnh gọi model để tạo trace Full K1 trên đúng bộ kịch bản của K0 và dùng lại hai trace K0. Xem bảng so sánh **Baseline K0 / Full K0 / Full K1** trong `results-submission/<run-id>.knowledge/comparison.md` và kết quả theo từng gap trong `comparison.json` cùng thư mục.
+**Kết quả** nằm trong `btc-k0.json`. Xem điểm trước khi duyệt gap.
 
-## 6. Chấm lại bằng reference scorer của BTC
+## Bước 6. Duyệt gap và phát hành K1
 
-Sau khi eval K1 hoàn tất, chạy các lệnh dưới đây để kiểm tra lại điểm từ trace đã lưu. Các runner đã gọi scorer BTC khi tạo báo cáo. Bước này chạy scorer trực tiếp trên bản sao kịch bản của run K0 và dùng lại Baseline K0 cho cả hai lần chấm. Nếu bỏ qua K1 vì không có đề xuất, chỉ chạy lệnh chấm K0.
+1. Lấy `run_id` từ `full-k0.knowledge-gaps.json` và mở `http://127.0.0.1:8000/knowledge?run_id=<run-id>`.
+2. Chọn gap có nguồn đủ căn cứ, kiểm tra nội dung và test, rồi bấm **Duyệt và phát hành các mục đã chọn**.
+3. Ghi lại mã K1 mà giao diện báo. Nếu chưa có gap đủ căn cứ, dừng ở kết quả K0.
+
+## Bước 7. Xuất Full K1
+
+Sau khi K1 được phát hành, chạy lại Full trên cùng bộ kịch bản.
 
 ```sh
-cd "results-submission/<run-id>"
-python btc-release/eval/reference_eval.py --scenarios scenarios --trace full.diagnostics_full.jsonl --baseline baseline.diagnostics_baseline.jsonl --out "../<run-id>.cross-check-k0.json"
-python btc-release/eval/reference_eval.py --scenarios scenarios --trace "../<run-id>.knowledge/k1/full.diagnostics_full.jsonl" --baseline baseline.diagnostics_baseline.jsonl --out "../<run-id>.cross-check-k1.json"
-cd ../..
+python run_eval.py --scenarios ./eval/scenario_final --config full --out ./results-submission/btc-eval/full-k1.jsonl
 ```
 
-Hai tệp điểm được lưu ở `results-submission/`. Bản chấm K1 so sánh khác release vì dùng Full K1 với Baseline K0.
+**Kết quả** gồm `full-k1.jsonl` và `full-k1.knowledge-gaps.json`. Trước khi chấm, kiểm tra `full-k1.report.json` báo đã hoàn tất và dùng đúng mã release K1.
 
-## 7. Đánh giá bổ sung
+## Bước 8. Chấm riêng Full K1 và đối chiếu
 
-**Chỉ xuất trace cho một cấu hình.** Chọn một trong hai lệnh sau. Mỗi lần chạy lại cần tên tệp đầu ra mới.
+Dùng cùng reference scorer của BTC để chấm riêng Full K1.
 
 ```sh
-python run_eval.py --scenarios ./eval/scenario_final --config full --out ./results-submission/full.jsonl
-python run_eval.py --scenarios ./eval/scenario_final --config baseline_no_memory --out ./results-submission/baseline.jsonl
+python ./results-submission/btc-eval/full-k0.btc-release/eval/reference_eval.py --scenarios ./eval/scenario_final --trace ./results-submission/btc-eval/full-k1.jsonl --out ./results-submission/btc-eval/btc-k1.json
 ```
+
+**Kết quả** nằm trong `btc-k1.json`. So mục `system` trong hai file điểm để xem mức thay đổi toàn bộ bộ test. Để kiểm tra một gap cụ thể, xem cùng `scenario_id`, `call` và `turn` trong hai trace Full. K0 cần có câu bị bỏ sót, còn K1 cần trả lời đúng và có `tool_calls` cho thấy đã truy xuất mục vừa phát hành.
+
+## Tùy chọn và xử lý lỗi
+
+**Tiếp tục tạo đề xuất từ trace đã lưu.** Nếu worker bị gián đoạn hoặc file gap mới có trạng thái `exported`, kiểm tra cấu hình reviewer và worker rồi chạy lệnh dưới đây. Lệnh tiếp tục từ trace K0 mà không chạy lại hội thoại. Nếu Full lần hai vẫn báo release cũ, kiểm tra cấu hình ghim `KNOWLEDGE_RELEASE_ID` trước khi chạy lại.
+
+```sh
+python run_knowledge_eval.py --full-trace ./results-submission/btc-eval/full-k0.jsonl
+```
+
+**Chạy cặp tự động.** CLI cũng hỗ trợ `python run_eval.py --scenarios ./eval/scenario_final` để tạo một cặp K0 trong thư mục run riêng. Có thể dùng `--limit-scenarios 1` để chạy thử. Với kết quả từ luồng cặp, `python run_knowledge_eval.py --base-run "results-submission/<run-id>"` chạy Full K1 sau khi đã duyệt và publish, rồi ghi bảng so sánh vào thư mục `<run-id>.knowledge`.
 
 **ASR local.** Trong một môi trường Python riêng, thay `<dataset>` bằng thư mục chứa `audio/` và `ground_truth.json`. Lệnh đầu cài thư viện, hai lệnh sau chép lời và chấm WER/CER.
 
@@ -131,7 +141,17 @@ cd ..
 python -c "import json, sys; sys.path.insert(0, 'results-rag/e2e-02/btc/eval'); import reference_eval; print(json.dumps(reference_eval.rag_eval('results-rag/e2e-02/btc/rag/qa_labeled.json', 'results-rag/e2e-score-03/rag_results.json'), ensure_ascii=False, indent=2))"
 ```
 
-## 8. Dừng hệ thống
+## Dừng hệ thống
+
+Dùng cách gọi Docker ở bước 2.
+
+**Ubuntu / WSL2 chạy Docker Engine trong Ubuntu**
+
+```bash
+sudo docker compose down
+```
+
+**Windows / macOS / WSL2 dùng Docker Desktop**
 
 ```sh
 docker compose down

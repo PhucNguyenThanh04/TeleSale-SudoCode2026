@@ -43,6 +43,7 @@ class TurnState(TypedDict, total=False):
     tool_count: int
     tool_attempts: int
     tool_precondition_error: str
+    existing_purchase_order_id: str | None
     tool_failed: bool
     memory_failure: str
     memory_blocked: bool

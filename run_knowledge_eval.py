@@ -10,19 +10,22 @@ from scripts.btc_host import ConfigurationError, configuration, verify_seed, ens
 ROOT = Path(__file__).resolve().parent
 
 
-def run(base_run, *, root=ROOT):
+def run(base_run=None, *, full_trace=None, root=ROOT):
     values = configuration(root)
     verify_seed(root, values)
-    return subprocess.run([sys.executable, '-u', '-m', 'eval_harness.knowledge_followup',
-        '--base-run', str(base_run.resolve())], cwd=root, env={**os.environ, **values}).returncode
+    source = ['--full-trace', str(full_trace.resolve())] if full_trace is not None else ['--base-run', str(base_run.resolve())]
+    return subprocess.run([sys.executable, '-u', '-m', 'eval_harness.knowledge_followup', *source],
+                          cwd=root, env={**os.environ, **values}).returncode
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Evaluate published K1 on the host using the existing servers')
-    parser.add_argument('--base-run', required=True, type=Path)
+    parser = argparse.ArgumentParser(description='Resume knowledge proposals or evaluate a published K1 release')
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument('--base-run', type=Path, help='Evaluate a published K1 release from a prior pair')
+    source.add_argument('--full-trace', type=Path, help='Resume proposals from a saved Full trace without model calls')
     args = parser.parse_args()
     try:
-        result = run(args.base_run)
+        result = run(args.base_run, full_trace=args.full_trace)
     except ModuleNotFoundError:
         parser.exit(1, 'Install host dependencies: python -m pip install -r config/requirements/host.txt\n')
     except ConfigurationError as exc:

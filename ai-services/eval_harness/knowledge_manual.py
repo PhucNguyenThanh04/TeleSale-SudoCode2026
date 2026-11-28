@@ -1,7 +1,9 @@
 import asyncio
+import re
 import time
 
 from app.knowledge.events.analysis import analyze_event
+from app.knowledge.events.evidence import snapshot
 from app.knowledge.events.ingest import record_event
 from app.knowledge.events.worker import process_one
 from app.knowledge.schemas import KnowledgeError, digest
@@ -12,19 +14,66 @@ from eval_harness.knowledge_auto_review import locator, retrieved_ids
 
 MODE = 'manual_frontend_review'
 
+_UNANSWERED = re.compile(
+    r'(?i)\b(?:(?:chưa|không)\s+có\s+(?:đủ\s+)?thông tin|'
+    r'(?:chưa|không)\s+thể\s+(?:xác nhận|xác minh|trả lời)|'
+    r'chưa\s+xác minh\s+(?:được|đủ)|không có trong tài liệu)\b')
+_EXECUTION_REJECTIONS = frozenset({
+    'price_without_quote', 'delivery_unverified', 'order_creation_unverified', 'order_update_unverified',
+    'order_status_unverified', 'stock_sku_mismatch', 'stock_result_mismatch', 'stock_quantity_mismatch',
+    'promotion_quote_missing', 'promotion_unverified', 'promotion_code_mismatch', 'promotion_detail_unverified',
+    'unanswered_request',
+})
+
+
+def unanswered_feedback(rows, diagnostics, release_id):
+    events = {locator(event): event for event in diagnostics}
+    feedback = []
+    for row in rows:
+        if row.get('config') != 'full':
+            continue
+        key = locator(row)
+        event = events.get(key, {})
+        lookups = [call.get('result', {}) for call in row['tool_calls'] if call['name'] == 'policy.search']
+        statuses = {result.get('retrieval_status') for result in lookups}
+        answer = row['agent_text']
+        no_evidence = 'no_evidence' in statuses and 'ok' not in statuses
+        unanswered = event.get('recovery', {}).get('status') == 'fallback' or bool(_UNANSWERED.search(answer))
+        if not (unanswered or no_evidence):
+            continue
+        rejection = event.get('grounding', {}).get('reason')
+        if event.get('runtime_error') or statuses & {'unavailable', 'overloaded', 'timeout'}:
+            signal = 'mcp_unavailable'
+        elif no_evidence:
+            signal = 'no_evidence'
+        elif rejection in _EXECUTION_REJECTIONS:
+            signal = 'guardrail_rejection'
+        else:
+            signal = 'fallback'
+        feedback.append({'event': snapshot({
+            'source': 'runtime_signal', 'signal': signal,
+            'run_id': row['run_id'], 'scenario_id': key[0], 'call': key[1], 'turn': key[2],
+            'release_id': release_id, 'question': row.get('user_text') or row.get('customer_text', ''),
+            'answer': answer, 'tool_calls': row['tool_calls'], 'retrieved_ids': sorted(retrieved_ids(row)),
+            'reason': rejection if signal == 'guardrail_rejection' else
+                'Full K0 returned an incomplete answer or found no applicable policy evidence.',
+        })})
+    return feedback
+
 
 async def analyze(evidence, sources):
     result = await analyze_event(evidence, sources)
-    if evidence.get('signal') == 'evaluation_failure' and (
-            evidence.get('retrieved_ids') or not any(
-                t['name'] == 'policy.search' for t in evidence['tool_calls'])):
+    signal = evidence.get('signal')
+    if (signal == 'guardrail_rejection'
+            or signal in {'fallback', 'evaluation_failure'} and evidence.get('retrieved_ids')
+            or signal == 'evaluation_failure' and not any(t['name'] == 'policy.search' for t in evidence['tool_calls'])):
         result.update(category='generation', suggested_source_ids=[],
                       source_review='Review generation/tools before changing knowledge.')
     return result
 
 
 async def propose(repo, worker_repo, rows, feedback, *, actor, run_id, release_id,
-                  score_sha256, timeout=60):
+                  score_sha256=None, timeout=60, only_feedback=False):
     async with repo.transaction() as tx:
         await require_permission(tx, actor)
     failures = {}
@@ -36,7 +85,7 @@ async def propose(repo, worker_repo, rows, feedback, *, actor, run_id, release_i
         key = locator(row)
         lookups = [t.get('result', {}) for t in row.get('tool_calls', []) if t.get('name') == 'policy.search']
         failed = failures.get(key, [])
-        missing = any(r.get('retrieval_status') == 'no_evidence' for r in lookups)
+        missing = (not only_feedback and any(r.get('retrieval_status') == 'no_evidence' for r in lookups))
         if row.get('config') != 'full' or not (failed or missing):
             result['skipped'].append({'locator': list(key), 'reason': 'no_full_k0_failure_signal'})
             continue
@@ -48,9 +97,11 @@ async def propose(repo, worker_repo, rows, feedback, *, actor, run_id, release_i
             'answer': row.get('agent_text', ''), 'tool_calls': row.get('tool_calls', []),
             'reason': 'Full K0 policy search returned no evidence; reviewer must check the cause.'})
         event.update(actor_id=actor, run_id=run_id, release_id=release_id,
-            scenario_id=key[0], call=key[1], turn=key[2], score_sha256=score_sha256,
+            scenario_id=key[0], call=key[1], turn=key[2],
             retrieved_ids=sorted(retrieved_ids(row)), context=digest(row))
-        if missing:
+        if score_sha256 is not None:
+            event['score_sha256'] = score_sha256
+        if missing and event['signal'] not in {'mcp_unavailable', 'execution_unverified'}:
             event['signal'] = 'no_evidence'
         if failed:
             event['reason'] = '; '.join(e['reason'] for e in failed)[:2000]

@@ -178,3 +178,30 @@ def test_turn_diagnostics_records_recovery_fallback_event_and_status():
     assert any(e["step"] == "verify" and e["event"] == "recovery_fallback" for e in events)
     summary = _classify(events, result["verifier_events"])
     assert summary["recovery"] == {"status": "fallback", "attempts": 2}
+
+
+def test_repair_timeout_falls_back_to_safe_verification_fallback():
+    model = ReviewModel([])
+    model.ainvoke = AsyncMock(side_effect=TimeoutError("read_timeout"))
+    nodes = AgentNodes(model, None, None, 6, 6, max_repair_attempts=2, safe_fallback_on_rejection=True)
+    result = asyncio.run(nodes.verify_agent(make_state("Mẫu này giá 5.000.000đ ạ.")))
+    assert result["reply_error"] is None
+    assert result["agent_text"] == SAFE_VERIFICATION_FALLBACK
+    assert result["verified_answer"] == SAFE_VERIFICATION_FALLBACK
+    assert model.ainvoke.await_count == 1
+
+
+def test_prior_session_order_create_receipt_prevents_order_creation_unverified():
+    from app.mcp_servers.mcp_shared.commerce_evidence import build_commerce_evidence
+
+    state = make_state("", text="Em kiểm tra lại tồn và giá.")
+    state["session_tool_calls"] = [{
+        "name": "order.create",
+        "args": {"sku": "SKU-AP-PRO", "qty": 1, "price_vnd": 7690000, "payment": "COD"},
+        "result": {"order_id": "OD600036", "status": "created", "total_vnd": 7690000},
+    }]
+    evidence = build_commerce_evidence(state)
+    ok_text = "Đơn hàng OD600036 của chị đã được tạo thành công."
+    assert check_grounding(ok_text, evidence) is None
+    bad_text = "Em vừa tạo đơn hàng mới thành công cho chị ạ."
+    assert check_grounding(bad_text, evidence) == "order_creation_unverified"

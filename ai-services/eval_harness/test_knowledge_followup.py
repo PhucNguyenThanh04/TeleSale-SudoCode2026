@@ -35,6 +35,20 @@ def test_disabled_detection_needs_no_reviewer_database(tmp_path, monkeypatch):
     assert asyncio.run(mod.detect_after_pair(tmp_path)) is None
 
 
+def test_full_trace_cli_resumes_proposals_without_k1_evaluation(tmp_path, monkeypatch, capsys):
+    from eval_harness import knowledge_followup as mod
+    trace = tmp_path/'full.jsonl'
+    settings = SimpleNamespace()
+    detect = AsyncMock(return_value=(trace.with_suffix('.knowledge-gaps.json'), 'proposals_ready'))
+    monkeypatch.setattr('sys.argv', ['knowledge_followup', '--full-trace', str(trace)])
+    monkeypatch.setattr(mod, 'Settings', lambda: settings)
+    monkeypatch.setattr(mod, 'detect_after_full', detect)
+    monkeypatch.setattr(mod, 'KnowledgeRepo', lambda _: pytest.fail('K1 branch must not start'))
+    mod.main()
+    detect.assert_awaited_once_with(trace, settings)
+    assert 'proposals_ready' in capsys.readouterr().out
+
+
 def test_followup_refuses_missing_or_unpublished_proposals_without_running_models(tmp_path, monkeypatch):
     from eval_harness import knowledge_followup as mod
     from eval_harness import knowledge_triplet as core

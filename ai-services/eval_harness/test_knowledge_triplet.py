@@ -88,6 +88,8 @@ def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tm
             if manual:
                 value['tool_calls'][0]['result'].update(retrieval_status='ok' if mode == 'no_gaps' else 'no_evidence',
                     context={'knowledge_release_id': 'k0', 'on': '2026-11-13'})
+                if mode == 'no_gaps':
+                    value['agent_text'] = 'Chính sách áp dụng với sản phẩm còn nguyên niêm phong.'
             trace.write_text(json.dumps(value)+'\n')
             trace.with_suffix('.report.json').write_text(json.dumps({'run_id': value['run_id'], 'config': config,
                 'database_identity': metadata['database_identity'], 'knowledge_release_id': 'k0'}))

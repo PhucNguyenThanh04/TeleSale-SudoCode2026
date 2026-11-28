@@ -110,6 +110,11 @@ def build_commerce_evidence(state: dict, *, args: dict | None = None) -> list[di
                 if isinstance(item, dict) and catalog_barriers.get(item.get('sku'), index) <= index]
     selected.extend((i, deepcopy(call)) for i, call in enumerate(prior)
                     if call.get('name') == 'order.status' and successful(call))
+    selected.extend((i, {**deepcopy(call), '_prior_session_receipt': True}) for i, call in enumerate(prior)
+                    if call.get('name') == 'order.create' and successful(call)
+                    and call.get('result', {}).get('status') == 'created'
+                    and isinstance(call.get('result', {}).get('order_id'), str)
+                    and call['result']['order_id'].strip())
     selected.extend((len(prior) + i, deepcopy(call)) for i, call in enumerate(current)
                     if isinstance(call, dict) and call.get('name') not in COMMERCIAL_TOOLS
                     and _bound(call, state))
