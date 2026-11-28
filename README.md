@@ -45,7 +45,6 @@ Khi seed báo đã sẵn sàng lúc này đã có thể mở web chạy demo, d�
 
 <a name="bước-4-xuất-baseline-và-full-k0"></a>
 
-Sau khi nạp dữ liệu BTC, giữ server chạy và đóng phiên demo vì runner đặt lại dữ liệu runtime. Chạy từ thư mục gốc repo bằng Python trong `.venv`.
 
 ### Xuất trace Baseline và Full
 
