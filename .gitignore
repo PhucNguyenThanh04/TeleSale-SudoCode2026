@@ -56,7 +56,6 @@ coverage/
 
 /postgres_data/
 /.archify/
-/BTC-Data-Vong1-TEAMS/
 /storage/
 /traces/
 /trace-*.json

@@ -1,414 +1,474 @@
 <mxfile host="app.diagrams.net" agent="TeleSale Architecture" version="24.7.17">
   <diagram id="harness-loop" name="Vòng lặp Harness">
-    <mxGraphModel dx="1422" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1664" pageHeight="954" math="0" shadow="0">
+    <mxGraphModel dx="1422" dy="800" grid="0" gridSize="18" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="872" math="0" shadow="0" background="#edf2f9">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="background" value="" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#F4F8FB;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="24" y="24" width="1616" height="906" as="geometry" />
+        <mxCell parent="1" vertex="1" style="fillColor=#edf2f9;strokeColor=none;locked=1;pointerEvents=0;" id="page-bg" value="">
+          <mxGeometry x="0" y="0" width="1500" height="872" as="geometry" />
         </mxCell>
-        <mxCell id="header" value="&lt;b style=&quot;font-size:28px&quot;&gt;Agent Harness  /  Vòng lặp xử lý mỗi lượt&lt;/b&gt;&lt;br/&gt;&lt;span style=&quot;color:#D9EAF5&quot;&gt;TeleSale SudoCode 2026  ·  AI FastAPI tiếp nhận văn bản từ chat hoặc bản chép lời cuối của cuộc gọi&lt;/span&gt;" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=22;spacingRight=22;fontFamily=Helvetica;fontSize=15;fontColor=#FFFFFF;fillColor=#153450;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="48" y="44" width="1568" height="76" as="geometry" />
+        <mxCell parent="1" vertex="1" style="rounded=1;absoluteArcSize=1;arcSize=16;fillColor=#fbfcff;strokeColor=#ccd7e8;locked=1;pointerEvents=0;" id="canvas" value="">
+          <mxGeometry x="36" y="120" width="1428" height="720" as="geometry" />
         </mxCell>
-        <object id="jump-report" label="&lt;b&gt;Bảng báo cáo ↗&lt;/b&gt;" link="data:page/id,harness-report">
-          <mxCell style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=12;fontColor=#153450;fillColor=#EAF3F9;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-            <mxGeometry x="1228" y="67" width="175" height="31" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#355683;fontSize=14;fontStyle=1;align=left;spacing=0;pointerEvents=0;" id="project" value="TeleSale SudoCode 2026">
+          <mxGeometry x="36" y="28" width="520" height="23" as="geometry" />
+        </mxCell>
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#182b49;fontSize=39;fontStyle=1;align=left;spacing=0;pointerEvents=0;" id="title" value="Vòng lặp xử lý của Agent Harness">
+          <mxGeometry x="36" y="53" width="1060" height="54" as="geometry" />
+        </mxCell>
+        <object id="nav-0" label="&lt;b&gt;Bảng báo cáo&lt;/b&gt;" link="data:page/id,harness-report">
+          <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=8;fillColor=#ffffff;strokeColor=#bdcbe0;fontColor=#182b49;fontSize=13;">
+            <mxGeometry x="1115" y="65" width="173" height="37" as="geometry" />
           </mxCell>
         </object>
-        <object id="jump-loops" label="&lt;b&gt;Các luồng liên quan ↗&lt;/b&gt;" link="data:page/id,harness-related">
-          <mxCell style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=12;fontColor=#153450;fillColor=#EAF3F9;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-            <mxGeometry x="1414" y="67" width="175" height="31" as="geometry" />
+        <object id="nav-1" label="&lt;b&gt;Bộ nhớ và đánh giá&lt;/b&gt;" link="data:page/id,harness-related">
+          <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=8;fillColor=#ffffff;strokeColor=#bdcbe0;fontColor=#182b49;fontSize=13;">
+            <mxGeometry x="1291" y="65" width="173" height="37" as="geometry" />
           </mxCell>
         </object>
-        <mxCell id="s1" value="&lt;b style=&quot;font-size:18px;color:#153450&quot;&gt;Nhận lượt&lt;/b&gt;&lt;br/&gt;&lt;span style=&quot;font-size:12px;color:#153450&quot;&gt;API + AgentHarnessRuntime&lt;/span&gt;&lt;br/&gt;&lt;br/&gt;Xác thực backend, khóa theo phiên. Giới hạn mặc định 90 giây cho toàn lượt." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="64" y="155" width="318" height="124" as="geometry" />
+        <mxCell parent="1" vertex="1" style="shape=image;imageAspect=0;image=data:image/svg+xml,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNDI0IiBoZWlnaHQ9IjcxNiI+PGRlZnM+PHBhdHRlcm4gaWQ9ImQiIHdpZHRoPSIxOCIgaGVpZ2h0PSIxOCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PGNpcmNsZSBjeD0iOSIgY3k9IjkiIHI9IjAuOSIgZmlsbD0iI2QwZGRmMCIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgcng9IjE1IiBmaWxsPSJ1cmwoI2QpIi8+PC9zdmc+;locked=1;pointerEvents=0;" id="dots" value="">
+          <mxGeometry x="38" y="122" width="1424" height="716" as="geometry" />
         </mxCell>
-        <mxCell id="s2" value="&lt;b style=&quot;font-size:18px;color:#153450&quot;&gt;Định danh và replay&lt;/b&gt;&lt;br/&gt;&lt;span style=&quot;font-size:12px;color:#153450&quot;&gt;Runtime · CRM · Memory MCP&lt;/span&gt;&lt;br/&gt;&lt;br/&gt;Ràng buộc danh tính theo kênh. Đối chiếu yêu cầu gửi lại với cache hoặc lượt đã lưu." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="452" y="155" width="318" height="124" as="geometry" />
+        <mxCell parent="1" vertex="1" style="rounded=1;absoluteArcSize=1;arcSize=20;fillColor=#eaf2ff;fillOpacity=73;strokeColor=#aac1e4;strokeWidth=1.5;dashed=1;dashPattern=6 5;fixDash=1;locked=1;pointerEvents=0;" id="harness-zone" value="">
+          <mxGeometry x="245" y="178" width="1189" height="180" as="geometry" />
         </mxCell>
-        <mxCell id="s3" value="&lt;b style=&quot;font-size:18px;color:#153450&quot;&gt;Che thông tin cá nhân&lt;/b&gt;&lt;br/&gt;&lt;span style=&quot;font-size:12px;color:#153450&quot;&gt;LangGraph · accept&lt;/span&gt;&lt;br/&gt;&lt;br/&gt;Che PII trong lời khách và tách ngữ cảnh giao hàng riêng. Khởi tạo trạng thái lượt." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="840" y="155" width="318" height="124" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#285ea9;fontSize=14;fontStyle=1;align=left;spacing=0;pointerEvents=0;" id="harness-zone-title" value="Điều phối AI · AgentHarnessRuntime và LangGraph">
+          <mxGeometry x="263" y="188" width="1153" height="22" as="geometry" />
         </mxCell>
-        <mxCell id="s4" value="&lt;b style=&quot;font-size:18px;color:#153450&quot;&gt;Nạp ngữ cảnh&lt;/b&gt;&lt;br/&gt;&lt;span style=&quot;font-size:12px;color:#153450&quot;&gt;LangGraph · retrieve_context&lt;/span&gt;&lt;br/&gt;&lt;br/&gt;Đọc lịch sử, hồ sơ và các lần tư vấn. Dựng Call Brief khi có dữ liệu của khách quay lại." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="1228" y="155" width="318" height="124" as="geometry" />
+        <mxCell parent="1" vertex="1" style="rounded=1;absoluteArcSize=1;arcSize=20;fillColor=#f2edff;fillOpacity=73;strokeColor=#c5b5e5;strokeWidth=1.5;dashed=1;dashPattern=6 5;fixDash=1;locked=1;pointerEvents=0;" id="tools-zone" value="">
+          <mxGeometry x="605" y="418" width="472" height="197" as="geometry" />
         </mxCell>
-        <mxCell id="replay" value="&lt;b&gt;Replay hoặc dừng trước graph&lt;/b&gt;&lt;br/&gt;Khớp và có câu đã lưu → trả lại. Lệch → báo xung đột. Đã ghi nghiệp vụ mà thiếu câu → yêu cầu khôi phục." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=13;fontColor=#8C4A18;fillColor=#FFF2DE;strokeColor=#E2BD87;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="452" y="306" width="318" height="76" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#633db0;fontSize=14;fontStyle=1;align=left;spacing=0;pointerEvents=0;" id="tools-zone-title" value="Công cụ MCP">
+          <mxGeometry x="623" y="428" width="436" height="22" as="geometry" />
         </mxCell>
-        <mxCell id="s5" value="&lt;b style=&quot;font-size:18px;color:#153450&quot;&gt;Chọn bước tiếp theo&lt;/b&gt;&lt;br/&gt;&lt;span style=&quot;font-size:12px;color:#153450&quot;&gt;LangGraph · run_agent / Deep Agent&lt;/span&gt;&lt;br/&gt;&lt;br/&gt;Từ lời khách và bằng chứng, model đề xuất công cụ hoặc tạo bản nháp trả lời." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#EBF4FB;strokeColor=#A0BFD7;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="1228" y="410" width="318" height="124" as="geometry" />
+        <mxCell parent="1" vertex="1" style="rounded=1;absoluteArcSize=1;arcSize=20;fillColor=#fff3e4;fillOpacity=73;strokeColor=#dec0a0;strokeWidth=1.5;dashed=1;dashPattern=6 5;fixDash=1;locked=1;pointerEvents=0;" id="repair-zone" value="">
+          <mxGeometry x="1104" y="418" width="330" height="197" as="geometry" />
         </mxCell>
-        <mxCell id="s6" value="&lt;b style=&quot;font-size:18px;color:#153450&quot;&gt;Tiền kiểm công cụ&lt;/b&gt;&lt;br/&gt;&lt;span style=&quot;font-size:12px;color:#153450&quot;&gt;BusinessTools&lt;/span&gt;&lt;br/&gt;&lt;br/&gt;Kiểm tham số, sở hữu và hạn mức. Thao tác ghi cần đủ bằng chứng và quyền từ lượt hiện tại." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="840" y="410" width="318" height="124" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#8b4d16;fontSize=14;fontStyle=1;align=left;spacing=0;pointerEvents=0;" id="repair-zone-title" value="Khôi phục trong verify">
+          <mxGeometry x="1122" y="428" width="294" height="22" as="geometry" />
         </mxCell>
-        <mxCell id="s7" value="&lt;b style=&quot;font-size:18px;color:#153450&quot;&gt;Gọi công cụ MCP&lt;/b&gt;&lt;br/&gt;&lt;span style=&quot;font-size:12px;color:#153450&quot;&gt;Catalog · Order · Knowledge&lt;/span&gt;&lt;br/&gt;&lt;br/&gt;Trả dữ liệu, lỗi hoặc biên nhận. Order xác minh quyền ghi và khóa chống trùng trước giao dịch." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="452" y="410" width="318" height="124" as="geometry" />
+        <mxCell parent="1" vertex="1" style="rounded=1;absoluteArcSize=1;arcSize=20;fillColor=#e9f8f3;fillOpacity=73;strokeColor=#9eccbf;strokeWidth=1.5;dashed=1;dashPattern=6 5;fixDash=1;locked=1;pointerEvents=0;" id="delivery-zone" value="">
+          <mxGeometry x="605" y="653" width="472" height="157" as="geometry" />
         </mxCell>
-        <mxCell id="s8" value="&lt;b style=&quot;font-size:18px;color:#153450&quot;&gt;Kiểm tra bản nháp&lt;/b&gt;&lt;br/&gt;&lt;span style=&quot;font-size:12px;color:#153450&quot;&gt;LangGraph · verify&lt;/span&gt;&lt;br/&gt;&lt;br/&gt;Đối chiếu các khẳng định và kết quả nghiệp vụ với nguồn. Duyệt ngữ nghĩa theo cấu hình." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#EBF4FB;strokeColor=#A0BFD7;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="1228" y="660" width="318" height="124" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#106859;fontSize=14;fontStyle=1;align=left;spacing=0;pointerEvents=0;" id="delivery-zone-title" value="Giao câu trả lời và lưu lượt">
+          <mxGeometry x="623" y="663" width="436" height="22" as="geometry" />
         </mxCell>
-        <mxCell id="repair" value="&lt;b style=&quot;font-size:18px;color:#8C4A18&quot;&gt;Khôi phục có giới hạn&lt;/b&gt;&lt;br/&gt;&lt;span style=&quot;font-size:12px;color:#8C4A18&quot;&gt;Bên trong node verify&lt;/span&gt;&lt;br/&gt;&lt;br/&gt;Khi phù hợp, tiếp tục agent một lần hoặc tra bổ sung. Sửa lời tối đa một lần rồi kiểm lại." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFF2DE;strokeColor=#E2BD87;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="840" y="660" width="318" height="124" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;fontColor=#425675;fontSize=13;spacing=5;strokeWidth=1.55;fillColor=#ffffff;strokeColor=#aac1e4;" id="input" value="&lt;b style=&quot;font-size:16px;color:#182b49&quot;&gt;Lượt khách&lt;/b&gt;&lt;br/&gt;Tin nhắn chat&lt;br/&gt;hoặc bản chép lời">
+          <mxGeometry x="61" y="241" width="153" height="86" as="geometry" />
         </mxCell>
-        <mxCell id="deliver" value="&lt;b style=&quot;font-size:18px;color:#0F6E63&quot;&gt;Giao câu trả lời&lt;/b&gt;&lt;br/&gt;&lt;span style=&quot;font-size:12px;color:#0F6E63&quot;&gt;Runtime · Text / Voice&lt;/span&gt;&lt;br/&gt;&lt;br/&gt;Text phát câu đã duyệt. Voice gửi câu cho backend phát TTS và chờ số ký tự đã phát." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#E7F5F0;strokeColor=#9BCDBD;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="452" y="660" width="318" height="124" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;fontColor=#425675;fontSize=13;spacing=5;strokeWidth=1.55;fillColor=#eaf2ff;strokeColor=#4176ba;" id="intake" value="&lt;b style=&quot;font-size:16px;color:#182b49&quot;&gt;Nhận và định danh&lt;/b&gt;&lt;br/&gt;Khóa theo phiên&lt;br/&gt;CRM · kiểm replay">
+          <mxGeometry x="264" y="241" width="170" height="86" as="geometry" />
         </mxCell>
-        <mxCell id="persist" value="&lt;b style=&quot;font-size:18px;color:#0F6E63&quot;&gt;Lưu lượt&lt;/b&gt;&lt;br/&gt;&lt;span style=&quot;font-size:12px;color:#0F6E63&quot;&gt;Runtime · Memory MCP&lt;/span&gt;&lt;br/&gt;&lt;br/&gt;Lưu lời khách đã che, phần đã giao và bằng chứng vào PostgreSQL. Lượt sau đọc lại trạng thái." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#E7F5F0;strokeColor=#9BCDBD;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="64" y="660" width="318" height="124" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;fontColor=#425675;fontSize=13;spacing=5;strokeWidth=1.55;fillColor=#ffffff;strokeColor=#aac1e4;" id="accept" value="&lt;b style=&quot;font-size:16px;color:#182b49&quot;&gt;accept&lt;/b&gt;&lt;br/&gt;Che thông tin&lt;br/&gt;cá nhân">
+          <mxGeometry x="473" y="241" width="133" height="86" as="geometry" />
         </mxCell>
-        <mxCell id="failed" value="&lt;b&gt;Báo lỗi lượt&lt;/b&gt;&lt;br/&gt;Cố lưu bằng chứng và phần đã phát nếu có." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=13;fontColor=#9A3C47;fillColor=#FCEEF0;strokeColor=#D9A6AD;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="1228" y="836" width="318" height="54" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;fontColor=#425675;fontSize=13;spacing=5;strokeWidth=1.55;fillColor=#ffffff;strokeColor=#aac1e4;" id="retrieve" value="&lt;b style=&quot;font-size:16px;color:#182b49&quot;&gt;retrieve_context&lt;/b&gt;&lt;br/&gt;Lịch sử · hồ sơ&lt;br/&gt;Call Brief khi phù hợp">
+          <mxGeometry x="647" y="241" width="185" height="86" as="geometry" />
         </mxCell>
-        <mxCell id="notes" value="&lt;b&gt;Vòng công cụ&lt;/b&gt; ↺ mặc định 8 lượt gọi nghiệp vụ và 16 lần đề xuất/thử được tính vào ngân sách.&lt;br/&gt;&lt;b&gt;Nét đứt&lt;/b&gt; biểu thị nhánh từ chối, gửi lại, khôi phục có điều kiện hoặc lượt khách tiếp theo." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=16;spacingRight=16;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#E7EFF6;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="64" y="810" width="1094" height="80" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;fontColor=#425675;fontSize=13;spacing=5;strokeWidth=1.55;fillColor=#eaf2ff;strokeColor=#4176ba;" id="run" value="&lt;b style=&quot;font-size:16px;color:#182b49&quot;&gt;run_agent&lt;/b&gt;&lt;br/&gt;Deep Agent đề xuất tool&lt;br/&gt;hoặc soạn bản nháp">
+          <mxGeometry x="873" y="241" width="184" height="86" as="geometry" />
         </mxCell>
-        <mxCell id="intake-id" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#285476;endArrow=block;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="s1" target="s2">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;fontColor=#425675;fontSize=13;spacing=5;strokeWidth=1.55;fillColor=#eaf2ff;strokeColor=#4176ba;" id="verify" value="&lt;b style=&quot;font-size:16px;color:#182b49&quot;&gt;verify&lt;/b&gt;&lt;br/&gt;Kiểm câu trả lời với bằng chứng&lt;br/&gt;và biên nhận nghiệp vụ">
+          <mxGeometry x="1138" y="241" width="264" height="86" as="geometry" />
+        </mxCell>
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;fontColor=#425675;fontSize=13;spacing=5;strokeWidth=1.55;fillColor=#ffffff;strokeColor=#dec0a0;" id="replay" value="&lt;b style=&quot;font-size:16px;color:#182b49&quot;&gt;Phát lại hoặc dừng&lt;/b&gt;&lt;br/&gt;Khớp → trả câu đã lưu&lt;br/&gt;Lệch / thiếu câu → báo lỗi">
+          <mxGeometry x="264" y="446" width="170" height="86" as="geometry" />
+        </mxCell>
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;fontColor=#425675;fontSize=13;spacing=5;strokeWidth=1.55;fillColor=#ffffff;strokeColor=#c5b5e5;" id="mcp" value="&lt;b style=&quot;font-size:16px;color:#182b49&quot;&gt;MCPGateway&lt;/b&gt;&lt;br/&gt;Catalog · Order · Knowledge&lt;br/&gt;Bằng chứng · biên nhận">
+          <mxGeometry x="627" y="486" width="189" height="84" as="geometry" />
+        </mxCell>
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;fontColor=#425675;fontSize=13;spacing=5;strokeWidth=1.55;fillColor=#f2edff;strokeColor=#7958be;" id="gate" value="&lt;b style=&quot;font-size:16px;color:#182b49&quot;&gt;BusinessTools&lt;/b&gt;&lt;br/&gt;Kiểm tham số và phạm vi&lt;br/&gt;Kiểm bằng chứng và quyền ghi">
+          <mxGeometry x="852" y="486" width="205" height="84" as="geometry" />
+        </mxCell>
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;fontColor=#425675;fontSize=13;spacing=5;strokeWidth=1.55;fillColor=#ffffff;strokeColor=#dec0a0;" id="repair" value="&lt;b style=&quot;font-size:16px;color:#182b49&quot;&gt;Tra bổ sung hoặc sửa câu&lt;/b&gt;&lt;br/&gt;Tiếp tục agent khi phù hợp&lt;br/&gt;Tối đa một lần sửa chỉ sinh câu">
+          <mxGeometry x="1131" y="486" width="276" height="84" as="geometry" />
+        </mxCell>
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;shape=cylinder3;size=11;boundedLbl=1;fontColor=#425675;fontSize=13;spacing=5;strokeWidth=1.55;fillColor=#ffffff;strokeColor=#9eccbf;" id="commit" value="&lt;b style=&quot;font-size:16px;color:#182b49&quot;&gt;runtime.turns&lt;/b&gt;&lt;br/&gt;Memory MCP&lt;br/&gt;PostgreSQL">
+          <mxGeometry x="627" y="700" width="174" height="85" as="geometry" />
+        </mxCell>
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;fontColor=#425675;fontSize=13;spacing=5;strokeWidth=1.55;fillColor=#e9f8f3;strokeColor=#318778;" id="deliver" value="&lt;b style=&quot;font-size:16px;color:#182b49&quot;&gt;Text / Voice&lt;/b&gt;&lt;br/&gt;Phát câu đã kiểm&lt;br/&gt;Voice chờ xác nhận đã phát">
+          <mxGeometry x="844" y="709" width="213" height="76" as="geometry" />
+        </mxCell>
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;fontColor=#425675;fontSize=13;spacing=5;strokeWidth=1.55;fillColor=#ffffff;strokeColor=#dec0a0;" id="failed" value="&lt;b style=&quot;font-size:16px;color:#182b49&quot;&gt;Báo lỗi lượt&lt;/b&gt;&lt;br/&gt;Cố lưu bằng chứng&lt;br/&gt;và phần đã phát nếu có">
+          <mxGeometry x="1131" y="709" width="276" height="76" as="geometry" />
+        </mxCell>
+        <mxCell id="input-intake" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#4176ba;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="input" target="intake">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="id-accept" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#285476;endArrow=block;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="s2" target="s3">
+        <mxCell id="intake-accept" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#4176ba;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="intake" target="accept">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="id-replay" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#8C4A18;endArrow=block;endFill=1;endSize=7;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;dashed=1;dashPattern=5 4;" edge="1" parent="1" source="s2" target="replay">
+        <mxCell id="accept-retrieve" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#4176ba;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="accept" target="retrieve">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="accept-retrieve" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#285476;endArrow=block;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="s3" target="s4">
+        <mxCell id="retrieve-run" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#4176ba;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="retrieve" target="run">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="retrieve-run" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#285476;endArrow=block;endFill=1;endSize=7;exitX=0.66;exitY=1;entryX=0.66;entryY=0;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="s4" target="s5">
+        <mxCell id="run-verify" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#4176ba;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="run" target="verify">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="run-propose" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#285476;endArrow=block;endFill=1;endSize=7;exitX=0;exitY=0.68;entryX=1;entryY=0.68;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="s5" target="s6">
+        <mxCell id="intake-replay" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#a76730;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;dashed=1;dashPattern=5 4;" edge="1" parent="1" source="intake" target="replay">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="tool-act" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#285476;endArrow=block;endFill=1;endSize=7;exitX=0;exitY=0.68;entryX=1;entryY=0.68;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="s6" target="s7">
+        <mxCell id="proposal" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#7958be;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=0.565;exitY=1;entryX=0.61;entryY=0;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="run" target="gate">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="tool-denied" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#8C4A18;endArrow=block;endFill=1;endSize=7;exitX=1;exitY=0.3;entryX=0;entryY=0.3;exitPerimeter=0;entryPerimeter=0;dashed=1;dashPattern=5 4;" edge="1" parent="1" source="s6" target="s5">
+        <mxCell id="denied" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#7958be;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=0.898;exitY=0;entryX=0.886;entryY=1;exitPerimeter=0;entryPerimeter=0;dashed=1;dashPattern=5 4;" edge="1" parent="1" source="gate" target="run">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="tool-return" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#285476;endArrow=block;endFill=1;endSize=7;exitX=0.61;exitY=1;entryX=0.31;entryY=1;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="s7" target="s5">
+        <mxCell id="gate-mcp" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#7958be;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=0;exitY=0.5;entryX=1;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="gate" target="mcp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="mcp-result" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#7958be;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=0.5;exitY=0;entryX=0.16;entryY=1;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="mcp" target="run">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="646" y="568" />
-              <mxPoint x="1327" y="568" />
+              <mxPoint x="721.5" y="390" />
+              <mxPoint x="902.44" y="390" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="draft" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#285476;endArrow=block;endFill=1;endSize=7;exitX=0.78;exitY=1;entryX=0.78;entryY=0;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="s5" target="s8">
+        <mxCell id="verify-repair" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#a76730;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=0.57;exitY=1;entryX=0.571;entryY=0;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="verify" target="repair">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="verify-repair" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#8C4A18;endArrow=block;endFill=1;endSize=7;exitX=0;exitY=0.31;entryX=1;entryY=0.31;exitPerimeter=0;entryPerimeter=0;dashed=1;dashPattern=5 4;" edge="1" parent="1" source="s8" target="repair">
+        <mxCell id="repair-recheck" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#a76730;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=0.84;exitY=0;entryX=0.852;entryY=1;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="repair" target="verify">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="repair-verify" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#8C4A18;endArrow=block;endFill=1;endSize=7;exitX=1;exitY=0.74;entryX=0;entryY=0.74;exitPerimeter=0;entryPerimeter=0;dashed=1;dashPattern=5 4;" edge="1" parent="1" source="repair" target="s8">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="approved" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#0F6E63;endArrow=block;endFill=1;endSize=7;exitX=0.12;exitY=0;entryX=0.62;entryY=0;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="s8" target="deliver">
+        <mxCell id="pass" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#318778;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=0.056;exitY=1;entryX=1;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="verify" target="deliver">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="1266" y="620" />
-              <mxPoint x="649" y="620" />
+              <mxPoint x="1152.78" y="372" />
+              <mxPoint x="1092" y="372" />
+              <mxPoint x="1092" y="747" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="reject" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#9A3C47;endArrow=block;endFill=1;endSize=7;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="s8" target="failed">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="deliver-persist" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#0F6E63;endArrow=block;endFill=1;endSize=7;exitX=0;exitY=0.5;entryX=1;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="deliver" target="persist">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="next-turn" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#0F6E63;endArrow=block;endFill=1;endSize=7;exitX=0;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;dashed=1;dashPattern=5 4;" edge="1" parent="1" source="persist" target="s1">
+        <mxCell id="error" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#a76730;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=1;entryY=0.5;exitPerimeter=0;entryPerimeter=0;dashed=1;dashPattern=5 4;" edge="1" parent="1" source="verify" target="failed">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="41" y="722" />
-              <mxPoint x="41" y="217" />
+              <mxPoint x="1447" y="284" />
+              <mxPoint x="1447" y="747" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="tag-new" value="Lượt mới" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=2;spacingRight=2;fontFamily=Helvetica;fontSize=12;fontColor=#496578;fillColor=#F4F8FB;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="773" y="191" width="64" height="23" as="geometry" />
+        <mxCell id="deliver-commit" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#318778;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=0;exitY=0.5;entryX=1;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="deliver" target="commit">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="tag-denied" value="Từ chối" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=2;spacingRight=2;fontFamily=Helvetica;fontSize=12;fontColor=#8C4A18;fillColor=#F4F8FB;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="1160" y="422" width="66" height="23" as="geometry" />
+        <mxCell id="next-turn" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#318778;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=0.5;exitY=1;entryX=0.5;entryY=1;exitPerimeter=0;entryPerimeter=0;dashed=1;dashPattern=5 4;" edge="1" parent="1" source="commit" target="input">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="714" y="823" />
+              <mxPoint x="137.5" y="823" />
+            </Array>
+          </mxGeometry>
         </mxCell>
-        <mxCell id="tag-return" value="Kết quả / lỗi / biên nhận trả về model" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=2;spacingRight=2;fontFamily=Helvetica;fontSize=12;fontColor=#496578;fillColor=#F4F8FB;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="818" y="543" width="300" height="23" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#285ea9;fontSize=12;fontStyle=1;align=center;spacing=0;pointerEvents=0;" id="new-label" value="Lượt mới">
+          <mxGeometry x="425" y="212" width="62" height="22" as="geometry" />
         </mxCell>
-        <mxCell id="tag-draft" value="Bản nháp" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=2;spacingRight=2;fontFamily=Helvetica;fontSize=12;fontColor=#496578;fillColor=#F4F8FB;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="1479" y="565" width="64" height="23" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#285ea9;fontSize=13;fontStyle=1;align=center;spacing=0;pointerEvents=0;" id="draft-label" value="Bản nháp">
+          <mxGeometry x="1058" y="253" width="79" height="24" as="geometry" />
         </mxCell>
-        <mxCell id="tag-repair" value="Chưa đạt" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=2;spacingRight=2;fontFamily=Helvetica;fontSize=12;fontColor=#8C4A18;fillColor=#F4F8FB;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="1161" y="674" width="64" height="23" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=#fbfcff;fontColor=#8b4d16;fontSize=13;fontStyle=1;align=center;spacing=0;pointerEvents=0;" id="replay-label" value="Yêu cầu gửi lại">
+          <mxGeometry x="279" y="390" width="139" height="22" as="geometry" />
         </mxCell>
-        <mxCell id="tag-recheck" value="Kiểm lại" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=2;spacingRight=2;fontFamily=Helvetica;fontSize=12;fontColor=#8C4A18;fillColor=#F4F8FB;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="1161" y="720" width="64" height="23" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=#fbfcff;fontColor=#633db0;fontSize=12;fontStyle=1;align=center;spacing=0;pointerEvents=0;" id="tool-label" value="Đề xuất&lt;br/&gt;công cụ">
+          <mxGeometry x="931" y="372" width="67" height="33" as="geometry" />
         </mxCell>
-        <mxCell id="tag-approved" value="Đạt hoặc câu dự phòng qua kiểm tra" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=2;spacingRight=2;fontFamily=Helvetica;fontSize=12;fontColor=#0F6E63;fillColor=#F4F8FB;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="839" y="595" width="257" height="23" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=#fbfcff;fontColor=#633db0;fontSize=12;fontStyle=1;align=center;spacing=0;pointerEvents=0;" id="deny-label" value="Từ chối">
+          <mxGeometry x="998" y="374" width="74" height="29" as="geometry" />
         </mxCell>
-        <mxCell id="tag-reject" value="Hết đường phục hồi" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=2;spacingRight=2;fontFamily=Helvetica;fontSize=12;fontColor=#9A3C47;fillColor=#F4F8FB;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="1405" y="797" width="124" height="23" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#633db0;fontSize=13;fontStyle=1;align=center;spacing=0;pointerEvents=0;" id="result-label" value="Kết quả / lỗi">
+          <mxGeometry x="735" y="358" width="157" height="24" as="geometry" />
         </mxCell>
-        <mxCell id="tag-next" value="Lượt khách tiếp theo dùng dữ liệu đã lưu" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=2;spacingRight=2;fontFamily=Helvetica;fontSize=12;fontColor=#0F6E63;fillColor=#F4F8FB;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="64" y="548" width="244" height="23" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=#fbfcff;fontColor=#8b4d16;fontSize=13;fontStyle=1;align=center;spacing=0;pointerEvents=0;" id="repair-label" value="Chưa đạt">
+          <mxGeometry x="1239" y="389" width="100" height="22" as="geometry" />
+        </mxCell>
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=#fbfcff;fontColor=#8b4d16;fontSize=13;fontStyle=1;align=center;spacing=0;pointerEvents=0;" id="recheck-label" value="Kiểm lại">
+          <mxGeometry x="1335" y="389" width="59" height="22" as="geometry" />
+        </mxCell>
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#106859;fontSize=13;fontStyle=1;align=center;spacing=0;pointerEvents=0;" id="pass-label" value="Đạt">
+          <mxGeometry x="997" y="628" width="91" height="20" as="geometry" />
+        </mxCell>
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#8b4d16;fontSize=13;fontStyle=1;align=center;spacing=0;pointerEvents=0;" id="error-label" value="Hết đường phục hồi">
+          <mxGeometry x="1277" y="642" width="143" height="22" as="geometry" />
+        </mxCell>
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#106859;fontSize=13;fontStyle=1;align=center;spacing=0;pointerEvents=0;" id="next-label" value="Bộ nhớ được đọc ở lượt sau">
+          <mxGeometry x="268" y="795" width="284" height="23" as="geometry" />
+        </mxCell>
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#633db0;fontSize=13;fontStyle=0;align=center;spacing=0;pointerEvents=0;" id="budget-label" value="Mặc định 8 lần gọi nghiệp vụ · tối đa 16 lần thử">
+          <mxGeometry x="626" y="576" width="428" height="27" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
   </diagram>
   <diagram id="harness-report" name="Bảng báo cáo">
-    <mxGraphModel dx="1422" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1664" pageHeight="1152" math="0" shadow="0">
+    <mxGraphModel dx="1422" dy="800" grid="0" gridSize="18" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1664" pageHeight="1168" math="0" shadow="0" background="#edf2f9">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="background" value="" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#F4F8FB;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="24" y="24" width="1616" height="1104" as="geometry" />
+        <mxCell parent="1" vertex="1" style="fillColor=#edf2f9;strokeColor=none;locked=1;pointerEvents=0;" id="page-bg" value="">
+          <mxGeometry x="0" y="0" width="1664" height="1168" as="geometry" />
         </mxCell>
-        <mxCell id="header" value="&lt;b style=&quot;font-size:28px&quot;&gt;Bảng báo cáo  /  Kiểm soát theo bước&lt;/b&gt;&lt;br/&gt;&lt;span style=&quot;color:#D9EAF5&quot;&gt;Đối chiếu mã nguồn hiện tại  ·  Đường dẫn tính từ ai-services/  ·  Các hạn mức bên dưới là giá trị mặc định&lt;/span&gt;" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=22;spacingRight=22;fontFamily=Helvetica;fontSize=15;fontColor=#FFFFFF;fillColor=#153450;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="48" y="44" width="1568" height="76" as="geometry" />
+        <mxCell parent="1" vertex="1" style="rounded=1;absoluteArcSize=1;arcSize=16;fillColor=#fbfcff;strokeColor=#ccd7e8;locked=1;pointerEvents=0;" id="canvas" value="">
+          <mxGeometry x="36" y="120" width="1592" height="1016" as="geometry" />
         </mxCell>
-        <object id="jump-flow" label="&lt;b&gt;Vòng lặp Harness ↗&lt;/b&gt;" link="data:page/id,harness-loop">
-          <mxCell style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=12;fontColor=#153450;fillColor=#EAF3F9;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-            <mxGeometry x="1228" y="67" width="175" height="31" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#355683;fontSize=14;fontStyle=1;align=left;spacing=0;pointerEvents=0;" id="project" value="TeleSale SudoCode 2026">
+          <mxGeometry x="36" y="28" width="520" height="23" as="geometry" />
+        </mxCell>
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#182b49;fontSize=39;fontStyle=1;align=left;spacing=0;pointerEvents=0;" id="title" value="Bảng báo cáo harness">
+          <mxGeometry x="36" y="53" width="1224" height="54" as="geometry" />
+        </mxCell>
+        <object id="nav-0" label="&lt;b&gt;Vòng lặp Harness&lt;/b&gt;" link="data:page/id,harness-loop">
+          <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=8;fillColor=#ffffff;strokeColor=#bdcbe0;fontColor=#182b49;fontSize=13;">
+            <mxGeometry x="1279" y="65" width="173" height="37" as="geometry" />
           </mxCell>
         </object>
-        <object id="jump-loops" label="&lt;b&gt;Các luồng liên quan ↗&lt;/b&gt;" link="data:page/id,harness-related">
-          <mxCell style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=12;fontColor=#153450;fillColor=#EAF3F9;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-            <mxGeometry x="1414" y="67" width="175" height="31" as="geometry" />
+        <object id="nav-1" label="&lt;b&gt;Bộ nhớ và đánh giá&lt;/b&gt;" link="data:page/id,harness-related">
+          <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=8;fillColor=#ffffff;strokeColor=#bdcbe0;fontColor=#182b49;fontSize=13;">
+            <mxGeometry x="1455" y="65" width="173" height="37" as="geometry" />
           </mxCell>
         </object>
-        <mxCell id="col-0" value="&lt;b&gt;Bước và thành phần&lt;/b&gt;" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#FFFFFF;fillColor=#153450;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#eaf2ff;strokeColor=#d1ddee;fontColor=#285ea9;fontSize=14;" id="col-0" value="&lt;b&gt;Bước và thành phần&lt;/b&gt;">
           <mxGeometry x="60" y="145" width="235" height="42" as="geometry" />
         </mxCell>
-        <mxCell id="col-1" value="&lt;b&gt;Xử lý và đầu ra&lt;/b&gt;" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#FFFFFF;fillColor=#153450;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#eaf2ff;strokeColor=#d1ddee;fontColor=#285ea9;fontSize=14;" id="col-1" value="&lt;b&gt;Xử lý và đầu ra&lt;/b&gt;">
           <mxGeometry x="295" y="145" width="472" height="42" as="geometry" />
         </mxCell>
-        <mxCell id="col-2" value="&lt;b&gt;Điều kiện / nhánh lỗi&lt;/b&gt;" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#FFFFFF;fillColor=#153450;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#eaf2ff;strokeColor=#d1ddee;fontColor=#285ea9;fontSize=14;" id="col-2" value="&lt;b&gt;Điều kiện / nhánh lỗi&lt;/b&gt;">
           <mxGeometry x="767" y="145" width="414" height="42" as="geometry" />
         </mxCell>
-        <mxCell id="col-3" value="&lt;b&gt;Nguồn đối chiếu&lt;/b&gt;" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#FFFFFF;fillColor=#153450;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#eaf2ff;strokeColor=#d1ddee;fontColor=#285ea9;fontSize=14;" id="col-3" value="&lt;b&gt;Nguồn đối chiếu&lt;/b&gt;">
           <mxGeometry x="1181" y="145" width="423" height="42" as="geometry" />
         </mxCell>
-        <mxCell id="row-0-0" value="&lt;b&gt;Tiếp nhận và khóa phiên&lt;/b&gt;" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#153450;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#ffffff;strokeColor=#d1ddee;fontColor=#182b49;fontSize=14;" id="row-0-0" value="&lt;b&gt;Tiếp nhận và khóa phiên&lt;/b&gt;">
           <mxGeometry x="60" y="187" width="235" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-0-1" value="Backend gọi /v1/chat/turns hoặc /v1/chat/turns/stream. API xác thực nội bộ, runtime khóa theo session_id và đặt deadline 90 giây." style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#ffffff;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="row-0-1" value="Backend gọi /v1/chat/turns hoặc /v1/chat/turns/stream. API xác thực nội bộ, runtime khóa theo session_id và đặt deadline 90 giây.">
           <mxGeometry x="295" y="187" width="472" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-0-2" value="Dành tối đa 3 giây trong deadline để cố lưu bằng chứng khi timeout. Voice gửi bản chép lời từ backend." style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#ffffff;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="row-0-2" value="Dành tối đa 3 giây trong deadline để cố lưu bằng chứng khi timeout. Voice gửi bản chép lời từ backend.">
           <mxGeometry x="767" y="187" width="414" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-0-3" value="app/api/chat.py:44&lt;br/&gt;app/agent/harness/runtime.py:338" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=12;fontColor=#496578;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#ffffff;strokeColor=#d1ddee;fontColor=#425675;fontSize=12;" id="row-0-3" value="app/api/chat.py:44&lt;br/&gt;app/agent/harness/runtime.py:338">
           <mxGeometry x="1181" y="187" width="423" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-1-0" value="&lt;b&gt;Định danh / Replay&lt;/b&gt;" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#153450;fillColor=#EDF4F9;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#f3f7fd;strokeColor=#d1ddee;fontColor=#182b49;fontSize=14;" id="row-1-0" value="&lt;b&gt;Định danh / Replay&lt;/b&gt;">
           <mxGeometry x="60" y="272" width="235" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-1-1" value="Tra CRM theo định danh kênh hoặc đối chiếu thông tin đã xác minh. Trạng thái known, unknown hay ambiguous. Kiểm cặp session_id + client_msg_id và hash yêu cầu." style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#EDF4F9;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#f3f7fd;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="row-1-1" value="Tra CRM theo định danh kênh hoặc đối chiếu thông tin đã xác minh. Trạng thái known, unknown hay ambiguous. Kiểm cặp session_id + client_msg_id và hash yêu cầu.">
           <mxGeometry x="295" y="272" width="472" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-1-2" value="Khớp và có câu đã lưu → phát lại. Yêu cầu lệch → 409 ở HTTP. Có thao tác đã ghi mà thiếu câu → turn_recovery_required." style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#EDF4F9;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#f3f7fd;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="row-1-2" value="Khớp và có câu đã lưu → phát lại. Yêu cầu lệch → 409 ở HTTP. Có thao tác đã ghi mà thiếu câu → turn_recovery_required.">
           <mxGeometry x="767" y="272" width="414" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-1-3" value="app/agent/harness/session_identity.py:54&lt;br/&gt;app/agent/harness/runtime.py:380&lt;br/&gt;app/mcp_servers/mcp_memory/services/replay.py:4" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=12;fontColor=#496578;fillColor=#EDF4F9;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#f3f7fd;strokeColor=#d1ddee;fontColor=#425675;fontSize=12;" id="row-1-3" value="app/agent/harness/session_identity.py:54&lt;br/&gt;app/agent/harness/runtime.py:380&lt;br/&gt;app/mcp_servers/mcp_memory/services/replay.py:4">
           <mxGeometry x="1181" y="272" width="423" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-2-0" value="&lt;b&gt;accept / retrieve_context&lt;/b&gt;" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#153450;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#ffffff;strokeColor=#d1ddee;fontColor=#182b49;fontSize=14;" id="row-2-0" value="&lt;b&gt;accept / retrieve_context&lt;/b&gt;">
           <mxGeometry x="60" y="357" width="235" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-2-1" value="Che PII, tách ngữ cảnh giao hàng, đọc bộ nhớ đúng phạm vi. Mặc định tối đa 6 lượt gần nhất đưa vào prompt, tuổi hồ sơ 240 ngày." style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#ffffff;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="row-2-1" value="Che PII, tách ngữ cảnh giao hàng, đọc bộ nhớ đúng phạm vi. Mặc định tối đa 6 lượt gần nhất đưa vào prompt, tuổi hồ sơ 240 ngày.">
           <mxGeometry x="295" y="357" width="472" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-2-2" value="Có dữ liệu phù hợp mới dựng Call Brief. Có thể tra lại báo giá và tồn kho ở đầu phiên. Giới hạn ngữ cảnh 70.000 ký tự JSON." style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#ffffff;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="row-2-2" value="Có dữ liệu phù hợp mới dựng Call Brief. Có thể tra lại báo giá và tồn kho ở đầu phiên. Giới hạn ngữ cảnh 70.000 ký tự JSON.">
           <mxGeometry x="767" y="357" width="414" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-2-3" value="app/agent/graph.py:15&lt;br/&gt;app/agent/harness/session_nodes.py:28&lt;br/&gt;app/agent/harness/context.py:136" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=12;fontColor=#496578;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#ffffff;strokeColor=#d1ddee;fontColor=#425675;fontSize=12;" id="row-2-3" value="app/agent/graph.py:15&lt;br/&gt;app/agent/harness/session_nodes.py:28&lt;br/&gt;app/agent/harness/context.py:136">
           <mxGeometry x="1181" y="357" width="423" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-3-0" value="&lt;b&gt;run_agent / Deep Agent&lt;/b&gt;" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#153450;fillColor=#EDF4F9;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#f3f7fd;strokeColor=#d1ddee;fontColor=#182b49;fontSize=14;" id="row-3-0" value="&lt;b&gt;run_agent / Deep Agent&lt;/b&gt;">
           <mxGeometry x="60" y="442" width="235" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-3-1" value="Model nhận lời khách, bằng chứng và 12 công cụ nghiệp vụ. Kết quả, từ chối hoặc lỗi công cụ quay lại model trong cùng node." style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#EDF4F9;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#f3f7fd;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="row-3-1" value="Model nhận lời khách, bằng chứng và 12 công cụ nghiệp vụ. Kết quả, từ chối hoặc lỗi công cụ quay lại model trong cùng node.">
           <mxGeometry x="295" y="442" width="472" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-3-2" value="8 lần gọi nghiệp vụ và 16 lần thử mặc định. Đọc độc lập có thể chạy song song. Hai hạn mức này áp dụng cho BusinessTools." style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#EDF4F9;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#f3f7fd;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="row-3-2" value="8 lần gọi nghiệp vụ và 16 lần thử mặc định. Đọc độc lập có thể chạy song song. Hai hạn mức này áp dụng cho BusinessTools.">
           <mxGeometry x="767" y="442" width="414" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-3-3" value="app/agent/harness/agent_nodes.py:150&lt;br/&gt;app/agent/implementations/business_agent.py:326&lt;br/&gt;app/agent/implementations/tool_names.py" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=12;fontColor=#496578;fillColor=#EDF4F9;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#f3f7fd;strokeColor=#d1ddee;fontColor=#425675;fontSize=12;" id="row-3-3" value="app/agent/harness/agent_nodes.py:150&lt;br/&gt;app/agent/implementations/business_agent.py:326&lt;br/&gt;app/agent/implementations/tool_names.py">
           <mxGeometry x="1181" y="442" width="423" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-4-0" value="&lt;b&gt;Tiền kiểm thao tác ghi&lt;/b&gt;" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#153450;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#ffffff;strokeColor=#d1ddee;fontColor=#182b49;fontSize=14;" id="row-4-0" value="&lt;b&gt;Tiền kiểm thao tác ghi&lt;/b&gt;">
           <mxGeometry x="60" y="527" width="235" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-4-1" value="Kiểm ngữ cảnh đầy đủ, sở hữu và bằng chứng theo thao tác. Tạo đơn đơn giản đủ điều kiện có thể duyệt nhanh bằng quy tắc, còn lại dùng duyệt có cấu trúc." style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#ffffff;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="row-4-1" value="Kiểm ngữ cảnh đầy đủ, sở hữu và bằng chứng theo thao tác. Tạo đơn đơn giản đủ điều kiện có thể duyệt nhanh bằng quy tắc, còn lại dùng duyệt có cấu trúc.">
           <mxGeometry x="295" y="527" width="472" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-4-2" value="Thiếu quyền, thiếu nguồn hoặc bộ duyệt ghi lỗi → từ chối. Quyền ghi ràng theo yêu cầu hiện tại và tham số chuẩn hóa." style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#ffffff;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="row-4-2" value="Thiếu quyền, thiếu nguồn hoặc bộ duyệt ghi lỗi → từ chối. Quyền ghi ràng theo yêu cầu hiện tại và tham số chuẩn hóa.">
           <mxGeometry x="767" y="527" width="414" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-4-3" value="app/agent/harness/authorization.py:107&lt;br/&gt;app/agent/implementations/business_agent.py:474" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=12;fontColor=#496578;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#ffffff;strokeColor=#d1ddee;fontColor=#425675;fontSize=12;" id="row-4-3" value="app/agent/harness/authorization.py:107&lt;br/&gt;app/agent/implementations/business_agent.py:474">
           <mxGeometry x="1181" y="527" width="423" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-5-0" value="&lt;b&gt;MCP / Bằng chứng&lt;/b&gt;" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#153450;fillColor=#EDF4F9;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#f3f7fd;strokeColor=#d1ddee;fontColor=#182b49;fontSize=14;" id="row-5-0" value="&lt;b&gt;MCP / Bằng chứng&lt;/b&gt;">
           <mxGeometry x="60" y="612" width="235" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-5-1" value="Gateway đặt deadline 10 giây cho kết nối và gọi MCP. Ghi nghiệp vụ dùng khóa ổn định và ngữ cảnh đã ký. Tra chính sách dùng release đã ghim trong lượt." style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#EDF4F9;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#f3f7fd;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="row-5-1" value="Gateway đặt deadline 10 giây cho kết nối và gọi MCP. Ghi nghiệp vụ dùng khóa ổn định và ngữ cảnh đã ký. Tra chính sách dùng release đã ghim trong lượt.">
           <mxGeometry x="295" y="612" width="472" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-5-2" value="Order MCP xác minh quyền đã ký trước giao dịch. Quyền có hiệu lực 120 giây. Biên nhận hợp lệ xác nhận thao tác, còn preview đổi/trả là ước tính." style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#EDF4F9;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#f3f7fd;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="row-5-2" value="Order MCP xác minh quyền đã ký trước giao dịch. Quyền có hiệu lực 120 giây. Biên nhận hợp lệ xác nhận thao tác, còn preview đổi/trả là ước tính.">
           <mxGeometry x="767" y="612" width="414" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-5-3" value="app/agent/mcp/gateway.py:55&lt;br/&gt;app/mcp_servers/mcp_order/write_authorization.py:75&lt;br/&gt;app/mcp_servers/mcp_knowledge/services/knowledge.py:64" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=12;fontColor=#496578;fillColor=#EDF4F9;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#f3f7fd;strokeColor=#d1ddee;fontColor=#425675;fontSize=12;" id="row-5-3" value="app/agent/mcp/gateway.py:55&lt;br/&gt;app/mcp_servers/mcp_order/write_authorization.py:75&lt;br/&gt;app/mcp_servers/mcp_knowledge/services/knowledge.py:64">
           <mxGeometry x="1181" y="612" width="423" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-6-0" value="&lt;b&gt;verify / Kiểm trước khi phát&lt;/b&gt;" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#153450;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#ffffff;strokeColor=#d1ddee;fontColor=#182b49;fontSize=14;" id="row-6-0" value="&lt;b&gt;verify / Kiểm trước khi phát&lt;/b&gt;">
           <mxGeometry x="60" y="697" width="235" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-6-1" value="Mặc định kiểm bằng chứng về sản phẩm, giá, tồn kho, chính sách và biên nhận. Duyệt ngữ nghĩa được áp dụng theo cấu hình và loại câu." style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#ffffff;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="row-6-1" value="Mặc định kiểm bằng chứng về sản phẩm, giá, tồn kho, chính sách và biên nhận. Duyệt ngữ nghĩa được áp dụng theo cấu hình và loại câu.">
           <mxGeometry x="295" y="697" width="472" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-6-2" value="Khi review ngữ nghĩa không khả dụng, mã hiện tại có thể chấp nhận bản đã đạt kiểm tra bằng quy tắc. Từ chối ngữ nghĩa dẫn tới nhánh phục hồi." style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#ffffff;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="row-6-2" value="Khi review ngữ nghĩa không khả dụng, mã hiện tại có thể chấp nhận bản đã đạt kiểm tra bằng quy tắc. Từ chối ngữ nghĩa dẫn tới nhánh phục hồi.">
           <mxGeometry x="767" y="697" width="414" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-6-3" value="app/agent/harness/agent_nodes.py:232&lt;br/&gt;app/agent/guardrails/checks.py&lt;br/&gt;app/agent/guardrails/semantic_grounding.py" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=12;fontColor=#496578;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#ffffff;strokeColor=#d1ddee;fontColor=#425675;fontSize=12;" id="row-6-3" value="app/agent/harness/agent_nodes.py:232&lt;br/&gt;app/agent/guardrails/checks.py&lt;br/&gt;app/agent/guardrails/semantic_grounding.py">
           <mxGeometry x="1181" y="697" width="423" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-7-0" value="&lt;b&gt;Khôi phục trong verify&lt;/b&gt;" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#153450;fillColor=#EDF4F9;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#f3f7fd;strokeColor=#d1ddee;fontColor=#182b49;fontSize=14;" id="row-7-0" value="&lt;b&gt;Khôi phục trong verify&lt;/b&gt;">
           <mxGeometry x="60" y="782" width="235" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-7-1" value="Theo loại lỗi, chỉnh ngày giao từ bằng chứng, tiếp tục agent tối đa một lần khi còn ngân sách, hoặc tra bổ sung. Tối đa một lần sửa chỉ sinh câu." style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#EDF4F9;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#f3f7fd;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="row-7-1" value="Theo loại lỗi, chỉnh ngày giao từ bằng chứng, tiếp tục agent tối đa một lần khi còn ngân sách, hoặc tra bổ sung. Tối đa một lần sửa chỉ sinh câu.">
           <mxGeometry x="295" y="782" width="472" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-7-2" value="Kiểm lại sau phục hồi. Câu dự phòng cần qua kiểm tra và đủ điều kiện sử dụng. Hết đường phục hồi → reply_error." style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#EDF4F9;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#f3f7fd;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="row-7-2" value="Kiểm lại sau phục hồi. Câu dự phòng cần qua kiểm tra và đủ điều kiện sử dụng. Hết đường phục hồi → reply_error.">
           <mxGeometry x="767" y="782" width="414" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-7-3" value="app/agent/harness/agent_nodes.py:282&lt;br/&gt;app/agent/harness/agent_nodes.py:494&lt;br/&gt;app/agent/factory.py:24" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=12;fontColor=#496578;fillColor=#EDF4F9;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#f3f7fd;strokeColor=#d1ddee;fontColor=#425675;fontSize=12;" id="row-7-3" value="app/agent/harness/agent_nodes.py:282&lt;br/&gt;app/agent/harness/agent_nodes.py:494&lt;br/&gt;app/agent/factory.py:24">
           <mxGeometry x="1181" y="782" width="423" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-8-0" value="&lt;b&gt;Giao text / voice&lt;/b&gt;" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#153450;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#ffffff;strokeColor=#d1ddee;fontColor=#182b49;fontSize=14;" id="row-8-0" value="&lt;b&gt;Giao text / voice&lt;/b&gt;">
           <mxGeometry x="60" y="867" width="235" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-8-1" value="Text qua GuardedStream chỉ phát câu cuối đã duyệt. Voice chờ dấu nhận played_chars để commit đúng phần đã phát." style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#ffffff;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="row-8-1" value="Text qua GuardedStream chỉ phát câu cuối đã duyệt. Voice chờ dấu nhận played_chars để commit đúng phần đã phát.">
           <mxGeometry x="295" y="867" width="472" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-8-2" value="Voice quá 300 giây hoặc có lượt mới trước khi xác nhận → ghi 0 ký tự. Khi lỗi, runtime cố giữ bằng chứng và phần đã giao nếu có." style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#ffffff;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="row-8-2" value="Voice quá 300 giây hoặc có lượt mới trước khi xác nhận → ghi 0 ký tự. Khi lỗi, runtime cố giữ bằng chứng và phần đã giao nếu có.">
           <mxGeometry x="767" y="867" width="414" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-8-3" value="app/agent/harness/streaming.py:63&lt;br/&gt;app/agent/harness/runtime.py:129&lt;br/&gt;app/agent/harness/runtime.py:380" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=12;fontColor=#496578;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#ffffff;strokeColor=#d1ddee;fontColor=#425675;fontSize=12;" id="row-8-3" value="app/agent/harness/streaming.py:63&lt;br/&gt;app/agent/harness/runtime.py:129&lt;br/&gt;app/agent/harness/runtime.py:380">
           <mxGeometry x="1181" y="867" width="423" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-9-0" value="&lt;b&gt;Commit / dấu vết&lt;/b&gt;" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#153450;fillColor=#EDF4F9;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#f3f7fd;strokeColor=#d1ddee;fontColor=#182b49;fontSize=14;" id="row-9-0" value="&lt;b&gt;Commit / dấu vết&lt;/b&gt;">
           <mxGeometry x="60" y="952" width="235" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-9-1" value="Memory MCP ghi runtime.turns cùng nội dung đã giao, bằng chứng và kết quả nghiệp vụ. Log theo lượt và công cụ, có thể bật Langfuse." style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#EDF4F9;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#f3f7fd;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="row-9-1" value="Memory MCP ghi runtime.turns cùng nội dung đã giao, bằng chứng và kết quả nghiệp vụ. Log theo lượt và công cụ, có thể bật Langfuse.">
           <mxGeometry x="295" y="952" width="472" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-9-2" value="Chặn ghi khi bộ nhớ đang bị khóa do xóa dữ liệu. LangMem dành cho khách đã định danh. Tín hiệu Knowledge phụ thuộc cấu hình." style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#EDF4F9;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#f3f7fd;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="row-9-2" value="Chặn ghi khi bộ nhớ đang bị khóa do xóa dữ liệu. LangMem dành cho khách đã định danh. Tín hiệu Knowledge phụ thuộc cấu hình.">
           <mxGeometry x="767" y="952" width="414" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="row-9-3" value="app/agent/harness/agent_nodes.py:517&lt;br/&gt;app/mcp_servers/mcp_memory/services/memory.py:361&lt;br/&gt;app/agent/harness/tracing.py" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=13;spacingRight=13;fontFamily=Helvetica;fontSize=12;fontColor=#496578;fillColor=#EDF4F9;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#f3f7fd;strokeColor=#d1ddee;fontColor=#425675;fontSize=12;" id="row-9-3" value="app/agent/harness/agent_nodes.py:517&lt;br/&gt;app/mcp_servers/mcp_memory/services/memory.py:361&lt;br/&gt;app/agent/harness/tracing.py">
           <mxGeometry x="1181" y="952" width="423" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="report-foot" value="Tài liệu mô tả luồng theo cấu hình mặc định trong mã. Các cờ verify, authorizer và semantic review có thể thay đổi hành vi." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=15;spacingRight=15;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#E7EFF6;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;align=left;spacingLeft=13;spacingRight=13;fillColor=#eaf2ff;strokeColor=#d1ddee;fontColor=#425675;fontSize=14;" id="report-foot" value="Tài liệu mô tả luồng theo cấu hình mặc định trong mã. Các cờ verify, authorizer và semantic review có thể thay đổi hành vi.">
           <mxGeometry x="60" y="1057" width="1544" height="51" as="geometry" />
+        </mxCell>
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#425675;fontSize=13;fontStyle=0;align=left;spacing=0;pointerEvents=0;" id="sources-note" value="Đường dẫn nguồn tính từ ai-services/">
+          <mxGeometry x="60" y="1108" width="1544" height="22" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
   </diagram>
   <diagram id="harness-related" name="Bộ nhớ · Knowledge · Đánh giá">
-    <mxGraphModel dx="1422" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1664" pageHeight="912" math="0" shadow="0">
+    <mxGraphModel dx="1422" dy="800" grid="0" gridSize="18" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1664" pageHeight="928" math="0" shadow="0" background="#edf2f9">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="background" value="" style="rounded=0;absoluteArcSize=1;arcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#F4F8FB;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="24" y="24" width="1616" height="864" as="geometry" />
+        <mxCell parent="1" vertex="1" style="fillColor=#edf2f9;strokeColor=none;locked=1;pointerEvents=0;" id="page-bg" value="">
+          <mxGeometry x="0" y="0" width="1664" height="928" as="geometry" />
         </mxCell>
-        <mxCell id="header" value="&lt;b style=&quot;font-size:28px&quot;&gt;Các luồng liên quan  /  Dữ liệu quay lại hệ thống&lt;/b&gt;&lt;br/&gt;&lt;span style=&quot;color:#D9EAF5&quot;&gt;Lượt đã lưu nuôi bộ nhớ. Release đã duyệt cập nhật nguồn tra cứu. Runner dùng trace để chấm điểm.&lt;/span&gt;" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=22;spacingRight=22;fontFamily=Helvetica;fontSize=15;fontColor=#FFFFFF;fillColor=#153450;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="48" y="44" width="1568" height="76" as="geometry" />
+        <mxCell parent="1" vertex="1" style="rounded=1;absoluteArcSize=1;arcSize=16;fillColor=#fbfcff;strokeColor=#ccd7e8;locked=1;pointerEvents=0;" id="canvas" value="">
+          <mxGeometry x="36" y="120" width="1592" height="776" as="geometry" />
         </mxCell>
-        <object id="jump-flow" label="&lt;b&gt;Vòng lặp Harness ↗&lt;/b&gt;" link="data:page/id,harness-loop">
-          <mxCell style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=12;fontColor=#153450;fillColor=#EAF3F9;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-            <mxGeometry x="1228" y="67" width="175" height="31" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#355683;fontSize=14;fontStyle=1;align=left;spacing=0;pointerEvents=0;" id="project" value="TeleSale SudoCode 2026">
+          <mxGeometry x="36" y="28" width="520" height="23" as="geometry" />
+        </mxCell>
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#182b49;fontSize=39;fontStyle=1;align=left;spacing=0;pointerEvents=0;" id="title" value="Bộ nhớ, Knowledge và đánh giá">
+          <mxGeometry x="36" y="53" width="1224" height="54" as="geometry" />
+        </mxCell>
+        <object id="nav-0" label="&lt;b&gt;Vòng lặp Harness&lt;/b&gt;" link="data:page/id,harness-loop">
+          <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=8;fillColor=#ffffff;strokeColor=#bdcbe0;fontColor=#182b49;fontSize=13;">
+            <mxGeometry x="1279" y="65" width="173" height="37" as="geometry" />
           </mxCell>
         </object>
-        <object id="jump-report" label="&lt;b&gt;Bảng báo cáo ↗&lt;/b&gt;" link="data:page/id,harness-report">
-          <mxCell style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=12;fontColor=#153450;fillColor=#EAF3F9;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-            <mxGeometry x="1414" y="67" width="175" height="31" as="geometry" />
+        <object id="nav-1" label="&lt;b&gt;Bảng báo cáo&lt;/b&gt;" link="data:page/id,harness-report">
+          <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=8;fillColor=#ffffff;strokeColor=#bdcbe0;fontColor=#182b49;fontSize=13;">
+            <mxGeometry x="1455" y="65" width="173" height="37" as="geometry" />
           </mxCell>
         </object>
-        <mxCell id="lane-0" value="" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="60" y="147" width="1544" height="202" as="geometry" />
+        <mxCell parent="1" vertex="1" style="rounded=1;absoluteArcSize=1;arcSize=20;fillColor=#e9f8f3;fillOpacity=73;strokeColor=#9eccbf;strokeWidth=1.5;dashed=1;dashPattern=6 5;fixDash=1;locked=1;pointerEvents=0;" id="zone-0" value="">
+          <mxGeometry x="60" y="143" width="1544" height="191" as="geometry" />
         </mxCell>
-        <mxCell id="lane-title-0" value="&lt;b&gt;Bộ nhớ khách hàng&lt;/b&gt;" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=17;fontColor=#0F6E63;fillColor=#E7F5F0;strokeColor=#9BCDBD;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="78" y="165" width="218" height="112" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#106859;fontSize=14;fontStyle=1;align=left;spacing=0;pointerEvents=0;" id="zone-0-title" value="Bộ nhớ khách hàng">
+          <mxGeometry x="78" y="153" width="1508" height="22" as="geometry" />
         </mxCell>
-        <mxCell id="lane-0-0" value="&lt;b style=&quot;font-size:16px;color:#0F6E63&quot;&gt;runtime.turns&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;Commit lượt và bằng chứng. Hội thoại đã ghi có thể đọc lại khi worker đang chờ." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#E7F5F0;strokeColor=#9BCDBD;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="320" y="165" width="400" height="112" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;spacing=11;fontColor=#425675;fontSize=14;fillColor=#ffffff;strokeColor=#9eccbf;strokeWidth=1.55;" id="lane-0-0" value="&lt;b style=&quot;font-size:16px;color:#0F6E63&quot;&gt;runtime.turns&lt;/b&gt;&lt;br/&gt;Commit lượt và bằng chứng. Hội thoại đã ghi có thể đọc lại khi worker đang chờ.">
+          <mxGeometry x="80" y="193" width="464" height="79" as="geometry" />
         </mxCell>
-        <mxCell id="lane-0-1" value="&lt;b style=&quot;font-size:16px;color:#0F6E63&quot;&gt;Worker LangMem&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;Xếp việc cho khách đã định danh. Kiểm lượt nguồn, chủ sở hữu, phiên bản và dấu xóa." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#E7F5F0;strokeColor=#9BCDBD;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="748" y="165" width="400" height="112" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;spacing=11;fontColor=#425675;fontSize=14;fillColor=#ffffff;strokeColor=#9eccbf;strokeWidth=1.55;" id="lane-0-1" value="&lt;b style=&quot;font-size:16px;color:#0F6E63&quot;&gt;Worker LangMem&lt;/b&gt;&lt;br/&gt;Xếp việc cho khách đã định danh. Kiểm lượt nguồn, chủ sở hữu, phiên bản và dấu xóa.">
+          <mxGeometry x="600" y="193" width="464" height="79" as="geometry" />
         </mxCell>
-        <mxCell id="lane-0-2" value="&lt;b style=&quot;font-size:16px;color:#0F6E63&quot;&gt;Facts và episodes&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;Ghi vào LangMem/PostgreSQL. Lượt sau nạp hồ sơ đúng phạm vi và dựng Call Brief khi phù hợp." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#E7F5F0;strokeColor=#9BCDBD;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="1176" y="165" width="400" height="112" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;spacing=11;fontColor=#425675;fontSize=14;fillColor=#ffffff;strokeColor=#9eccbf;strokeWidth=1.55;" id="lane-0-2" value="&lt;b style=&quot;font-size:16px;color:#0F6E63&quot;&gt;Facts và episodes&lt;/b&gt;&lt;br/&gt;Ghi vào LangMem/PostgreSQL. Lượt sau nạp hồ sơ đúng phạm vi và dựng Call Brief khi phù hợp.">
+          <mxGeometry x="1120" y="193" width="464" height="79" as="geometry" />
         </mxCell>
-        <mxCell id="lane-edge-0-0" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#0F6E63;endArrow=block;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="lane-0-0" target="lane-0-1">
+        <mxCell id="lane-0-edge-0" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#318778;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="lane-0-0" target="lane-0-1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="lane-edge-0-1" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#0F6E63;endArrow=block;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="lane-0-1" target="lane-0-2">
+        <mxCell id="lane-0-edge-1" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#318778;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="lane-0-1" target="lane-0-2">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="lane-sources-0" value="app/mcp_servers/mcp_memory/services/memory.py:361  ·  app/mcp_servers/mcp_memory/distiller_worker.py:111  ·  app/agent/harness/context.py:433" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=8;spacingRight=8;fontFamily=Helvetica;fontSize=12;fontColor=#496578;fillColor=none;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="79" y="291" width="1496" height="38" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#425675;fontSize=12;fontStyle=0;align=left;spacing=0;pointerEvents=0;" id="lane-0-source" value="app/mcp_servers/mcp_memory/services/memory.py:361  ·  app/mcp_servers/mcp_memory/distiller_worker.py:111  ·  app/agent/harness/context.py:433">
+          <mxGeometry x="80" y="282" width="1500" height="31" as="geometry" />
         </mxCell>
-        <mxCell id="lane-1" value="" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="60" y="367" width="1544" height="202" as="geometry" />
+        <mxCell parent="1" vertex="1" style="rounded=1;absoluteArcSize=1;arcSize=20;fillColor=#fff3e4;fillOpacity=73;strokeColor=#dec0a0;strokeWidth=1.5;dashed=1;dashPattern=6 5;fixDash=1;locked=1;pointerEvents=0;" id="zone-1" value="">
+          <mxGeometry x="60" y="362" width="1544" height="191" as="geometry" />
         </mxCell>
-        <mxCell id="lane-title-1" value="&lt;b&gt;Knowledge Gap Loop&lt;/b&gt;" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=17;fontColor=#8C4A18;fillColor=#FFF2DE;strokeColor=#E2BD87;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="78" y="385" width="218" height="112" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#8b4d16;fontSize=14;fontStyle=1;align=left;spacing=0;pointerEvents=0;" id="zone-1-title" value="Knowledge Gap Loop">
+          <mxGeometry x="78" y="372" width="1508" height="22" as="geometry" />
         </mxCell>
-        <mxCell id="lane-1-0" value="&lt;b style=&quot;font-size:16px;color:#8C4A18&quot;&gt;Tín hiệu được bật&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;Lượt thiếu bằng chứng, phản hồi và kết quả đánh giá có thể tạo tín hiệu từ runtime hoặc runner." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFF2DE;strokeColor=#E2BD87;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="320" y="385" width="400" height="112" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;spacing=11;fontColor=#425675;fontSize=14;fillColor=#ffffff;strokeColor=#dec0a0;strokeWidth=1.55;" id="lane-1-0" value="&lt;b style=&quot;font-size:16px;color:#8C4A18&quot;&gt;Tín hiệu được bật&lt;/b&gt;&lt;br/&gt;Lượt thiếu bằng chứng, phản hồi và kết quả đánh giá có thể tạo tín hiệu từ runtime hoặc runner.">
+          <mxGeometry x="80" y="412" width="464" height="79" as="geometry" />
         </mxCell>
-        <mxCell id="lane-1-1" value="&lt;b style=&quot;font-size:16px;color:#8C4A18&quot;&gt;Worker + người duyệt&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;Phân loại gap, đề xuất bản nháp có nguồn. Duyệt nội dung và kiểm tra trước phát hành." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFF2DE;strokeColor=#E2BD87;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="748" y="385" width="400" height="112" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;spacing=11;fontColor=#425675;fontSize=14;fillColor=#ffffff;strokeColor=#dec0a0;strokeWidth=1.55;" id="lane-1-1" value="&lt;b style=&quot;font-size:16px;color:#8C4A18&quot;&gt;Worker + người duyệt&lt;/b&gt;&lt;br/&gt;Phân loại gap, đề xuất bản nháp có nguồn. Duyệt nội dung và kiểm tra trước phát hành.">
+          <mxGeometry x="600" y="412" width="464" height="79" as="geometry" />
         </mxCell>
-        <mxCell id="lane-1-2" value="&lt;b style=&quot;font-size:16px;color:#8C4A18&quot;&gt;Release chính sách&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;Kích hoạt release để policy.search tra bằng chỉ mục Qdrant và nguồn PostgreSQL. Ghim release trong lượt." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFF2DE;strokeColor=#E2BD87;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="1176" y="385" width="400" height="112" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;spacing=11;fontColor=#425675;fontSize=14;fillColor=#ffffff;strokeColor=#dec0a0;strokeWidth=1.55;" id="lane-1-2" value="&lt;b style=&quot;font-size:16px;color:#8C4A18&quot;&gt;Release chính sách&lt;/b&gt;&lt;br/&gt;Kích hoạt release để policy.search tra bằng chỉ mục Qdrant và nguồn PostgreSQL. Ghim release trong lượt.">
+          <mxGeometry x="1120" y="412" width="464" height="79" as="geometry" />
         </mxCell>
-        <mxCell id="lane-edge-1-0" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#8C4A18;endArrow=block;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="lane-1-0" target="lane-1-1">
+        <mxCell id="lane-1-edge-0" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#a76730;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="lane-1-0" target="lane-1-1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="lane-edge-1-1" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#8C4A18;endArrow=block;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="lane-1-1" target="lane-1-2">
+        <mxCell id="lane-1-edge-1" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#a76730;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="lane-1-1" target="lane-1-2">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="lane-sources-1" value="app/knowledge/events/worker.py:26  ·  app/knowledge/services/publish.py:67  ·  app/knowledge/services/releases.py:47" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=8;spacingRight=8;fontFamily=Helvetica;fontSize=12;fontColor=#496578;fillColor=none;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="79" y="511" width="1496" height="38" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#425675;fontSize=12;fontStyle=0;align=left;spacing=0;pointerEvents=0;" id="lane-1-source" value="app/knowledge/events/worker.py:26  ·  app/knowledge/services/publish.py:67  ·  app/knowledge/services/releases.py:47">
+          <mxGeometry x="80" y="501" width="1500" height="31" as="geometry" />
         </mxCell>
-        <mxCell id="lane-2" value="" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#FFFFFF;strokeColor=#C6D6E2;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="60" y="587" width="1544" height="202" as="geometry" />
+        <mxCell parent="1" vertex="1" style="rounded=1;absoluteArcSize=1;arcSize=20;fillColor=#eaf2ff;fillOpacity=73;strokeColor=#aac1e4;strokeWidth=1.5;dashed=1;dashPattern=6 5;fixDash=1;locked=1;pointerEvents=0;" id="zone-2" value="">
+          <mxGeometry x="60" y="581" width="1544" height="191" as="geometry" />
         </mxCell>
-        <mxCell id="lane-title-2" value="&lt;b&gt;Harness đánh giá&lt;/b&gt;" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=17;fontColor=#285476;fillColor=#EBF4FB;strokeColor=#A0BFD7;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="78" y="605" width="218" height="112" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#285ea9;fontSize=14;fontStyle=1;align=left;spacing=0;pointerEvents=0;" id="zone-2-title" value="Harness đánh giá">
+          <mxGeometry x="78" y="591" width="1508" height="22" as="geometry" />
         </mxCell>
-        <mxCell id="lane-2-0" value="&lt;b style=&quot;font-size:16px;color:#285476&quot;&gt;Kịch bản và preflight&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;Nạp kịch bản cùng điều kiện chạy. Cặp Full / Baseline có cùng dữ liệu đầu vào và release." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#EBF4FB;strokeColor=#A0BFD7;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="320" y="605" width="400" height="112" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;spacing=11;fontColor=#425675;fontSize=14;fillColor=#ffffff;strokeColor=#aac1e4;strokeWidth=1.55;" id="lane-2-0" value="&lt;b style=&quot;font-size:16px;color:#285476&quot;&gt;Kịch bản và preflight&lt;/b&gt;&lt;br/&gt;Nạp kịch bản cùng điều kiện chạy. Cặp Full / Baseline có cùng dữ liệu đầu vào và release.">
+          <mxGeometry x="80" y="631" width="464" height="79" as="geometry" />
         </mxCell>
-        <mxCell id="lane-2-1" value="&lt;b style=&quot;font-size:16px;color:#285476&quot;&gt;Cùng runtime&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;Runner chạy hội thoại nhiều lượt và thu trace. Baseline bỏ bộ nhớ từ phiên trước." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#EBF4FB;strokeColor=#A0BFD7;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="748" y="605" width="400" height="112" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;spacing=11;fontColor=#425675;fontSize=14;fillColor=#ffffff;strokeColor=#aac1e4;strokeWidth=1.55;" id="lane-2-1" value="&lt;b style=&quot;font-size:16px;color:#285476&quot;&gt;Cùng runtime&lt;/b&gt;&lt;br/&gt;Runner chạy hội thoại nhiều lượt và thu trace. Baseline bỏ bộ nhớ từ phiên trước.">
+          <mxGeometry x="600" y="631" width="464" height="79" as="geometry" />
         </mxCell>
-        <mxCell id="lane-2-2" value="&lt;b style=&quot;font-size:16px;color:#285476&quot;&gt;Trích xuất và chấm&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;Trace → câu hỏi, mệnh đề và kết quả → scorer hoặc bộ chấm BTC. rag_eval đánh giá riêng việc truy xuất và sinh câu trả lời." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=14;spacingRight=14;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#EBF4FB;strokeColor=#A0BFD7;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="1176" y="605" width="400" height="112" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=13;spacing=11;fontColor=#425675;fontSize=14;fillColor=#ffffff;strokeColor=#aac1e4;strokeWidth=1.55;" id="lane-2-2" value="&lt;b style=&quot;font-size:16px;color:#285476&quot;&gt;Trích xuất và chấm&lt;/b&gt;&lt;br/&gt;Trace → câu hỏi, mệnh đề và kết quả → scorer hoặc bộ chấm BTC. rag_eval đánh giá riêng việc truy xuất và sinh câu trả lời.">
+          <mxGeometry x="1120" y="631" width="464" height="79" as="geometry" />
         </mxCell>
-        <mxCell id="lane-edge-2-0" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#285476;endArrow=block;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="lane-2-0" target="lane-2-1">
+        <mxCell id="lane-2-edge-0" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#4176ba;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="lane-2-0" target="lane-2-1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="lane-edge-2-1" value="" style="edgeStyle=none;rounded=1;html=1;strokeWidth=2;strokeColor=#285476;endArrow=block;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="lane-2-1" target="lane-2-2">
+        <mxCell id="lane-2-edge-1" value="" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#4176ba;strokeWidth=1.75;endArrow=classic;endFill=1;endSize=7;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="lane-2-1" target="lane-2-2">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="lane-sources-2" value="eval_harness/benchmark_runner.py:574  ·  eval_harness/run_official.py:88  ·  eval_harness/extractor.py  ·  rag_eval/scoring.py:108" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=8;spacingRight=8;fontFamily=Helvetica;fontSize=12;fontColor=#496578;fillColor=none;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="79" y="731" width="1496" height="38" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;strokeColor=none;fillColor=none;fontColor=#425675;fontSize=12;fontStyle=0;align=left;spacing=0;pointerEvents=0;" id="lane-2-source" value="eval_harness/benchmark_runner.py:574  ·  eval_harness/run_official.py:88  ·  eval_harness/extractor.py  ·  rag_eval/scoring.py:108">
+          <mxGeometry x="80" y="720" width="1500" height="31" as="geometry" />
         </mxCell>
-        <mxCell id="scope" value="&lt;b&gt;Phạm vi đối chiếu&lt;/b&gt; · app, tài liệu hợp đồng, migrations, scripts, eval_harness, rag_eval và test. Báo cáo mô tả cấu trúc và hành vi trong mã nguồn." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=0;spacingLeft=15;spacingRight=15;fontFamily=Helvetica;fontSize=14;fontColor=#233E54;fillColor=#E7EFF6;strokeColor=none;strokeWidth=1.2;" vertex="1" parent="1">
-          <mxGeometry x="60" y="811" width="1544" height="59" as="geometry" />
+        <mxCell parent="1" vertex="1" style="whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontFamily=Segoe UI,Helvetica;rounded=1;absoluteArcSize=1;arcSize=8;fillColor=#eaf2ff;strokeColor=#aac1e4;fontColor=#425675;align=left;spacingLeft=15;fontSize=14;" id="scope" value="&lt;b&gt;Phạm vi đối chiếu&lt;/b&gt; · app, tài liệu hợp đồng, migrations, scripts, eval_harness, rag_eval và test. Báo cáo mô tả cấu trúc và hành vi trong mã nguồn.">
+          <mxGeometry x="60" y="814" width="1544" height="52" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
