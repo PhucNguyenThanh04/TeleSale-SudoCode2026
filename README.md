@@ -28,10 +28,10 @@ if (!(Test-Path .env)) { Copy-Item .env.example .env }
 python -m pip install -r config/requirements/host.txt
 ```
 
-Sau khi copy `.env.example` sang `.env`, các trường khác đã được điền sẵn; **trường bắt buộc duy nhất cần điền** trong `.env` là:
+Sau khi sao chép `.env.example` thành `.env`, mở [tệp chứa token Cloudflare trên Google Drive](https://drive.google.com/file/d/1Gt_0syi-ib1h3paOf-UdjRgNXSUCuRlD/view?usp=sharing) và dán token vào giữa hai dấu nháy của `CLOUDFLARE_API_TOKEN` trong `.env`. Đây là biến bắt buộc duy nhất cần điền.
 
 ```dotenv
-CLOUDFLARE_API_TOKEN='cfut_mkmVZLqTCF6ISKs9QTAXhNaUzizADrinW3FdOtUj8a7fd043'
+CLOUDFLARE_API_TOKEN=''
 ```
 
 *(Khuyến nghị đổi `LLM_TIMEOUT_SECONDS='90'` khi chạy bộ kịch bản lớn. Các trường trống khác như `ELEVENLABS_API_KEY`, `LANGMEM_MODEL`, `SUBMISSION_RUN_AS` không bắt buộc cho M1.)*
@@ -54,9 +54,9 @@ Mở Docker Desktop, rồi chạy lệnh sau từ thư mục gốc repo.
 docker compose up -d --build
 ```
 
-## Bước 3. Nạp dữ liệu BTC
+## Bước 3. Khởi tạo dữ liệu BTC
 
-Lệnh này dùng chung trên mọi hệ điều hành.
+Dùng script [seed_btc.py](seed_btc.py) để nạp dữ liệu BTC sau khi bật hệ thống. Lệnh này dùng chung trên mọi hệ điều hành.
 
 ```sh
 python seed_btc.py --data-dir ../BTC-Data-Vong1-TEAMS
@@ -163,4 +163,12 @@ sudo docker compose down
 docker compose down
 ```
 
-[Kiến trúc](docs/tai-lieu-kien-truc.md) · [Đánh giá M1 · 48 kịch bản](docs/btc-m1-evaluation-report.md) · [Đối chiếu Knowledge Gap Loop · 48 kịch bản](docs/bao-cao-danh-gia.md) · [Bộ kịch bản](eval/scenario_final/README.md) · [Bộ dữ liệu ASR](dataset/M1-CORPUS.md)
+## Tài liệu nộp cho BTC
+
+| Hạng mục | Liên kết | Nội dung |
+|---|---|---|
+| **Dataset** | [Bộ dữ liệu 48 kịch bản](eval/scenario_final/) · [Mô tả bộ kịch bản](eval/scenario_final/README.md) · [Mô tả corpus M1 và dữ liệu ASR](dataset/M1-CORPUS.md) | Cách sinh dữ liệu, phân bố kịch bản và hội thoại, hạn chế, cách xử lý thông tin cá nhân. Hai gói audio ASR được lưu riêng ngoài Git. |
+| **Tài liệu kiến trúc** | [Tài liệu kiến trúc](docs/tai-lieu-kien-truc.md) · [Xem sơ đồ có chuyển động khi server đang chạy](http://127.0.0.1:8000/assets/so-do-he-thong.html) · [File HTML](frontend/so-do-he-thong.html) · [File draw.io](docs/so-do-he-thong.drawio) · [Sơ đồ vòng lặp harness](docs/vong-lap-harness.drawio) | Thiết kế bộ nhớ, danh sách công cụ và quyền sử dụng, các quyết định thiết kế và lý do lựa chọn. |
+| **Báo cáo đánh giá** | [Báo cáo đánh giá tổng hợp](docs/bao-cao-danh-gia.md) · [Báo cáo đánh giá M1](docs/btc-m1-evaluation-report.md) | Bảng chỉ số, đối chứng với baseline không bộ nhớ, so sánh trước và sau cải tiến Knowledge Gap Loop, phân tích 10 ca sai trong báo cáo tổng hợp và 14 ca sai trong báo cáo M1. |
+
+Để xem sơ đồ ngoại tuyến, mở file HTML trong trình duyệt. Nếu máy chủ đang chạy từ bản cũ, chạy lại lệnh ở Bước 2 để cập nhật liên kết sơ đồ.
