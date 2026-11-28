@@ -118,7 +118,7 @@ Từ thư mục gốc repo, chạy `docker compose down`. Thêm `sudo` nếu Doc
 | Nội dung | Vị trí |
 |---|---|
 | Bộ kịch bản harness | `dataset/dataset_harness_texttotext/`. Mô tả nằm trong `README.md` của bộ dữ liệu. |
-| Dataset âm thanh | [Tải trên Google Drive](https://drive.google.com/drive/folders/1165N54haGdVxfJV6RGBnJhJPDA0sJjAL) · `dataset/dataset_ASR/` |
+| Dataset âm thanh | [Tải trên Google Drive](https://drive.google.com/drive/folders/1165N54haGdVxfJV6RGBnJhJPDA0sJjAL) |
 | [Kiến trúc hệ thống](https://raw.githack.com/PhucNguyenThanh04/TeleSale-SudoCode2026/phuc/docs/so-do-he-thong.html) | Sơ đồ HTML |
 | [Vòng lặp harness](https://raw.githack.com/PhucNguyenThanh04/TeleSale-SudoCode2026/phuc/docs/vong-lap-harness.html) | Sơ đồ HTML |
 | [Tài liệu kiến trúc](docs/tai-lieu-kien-truc.md) | Markdown |
