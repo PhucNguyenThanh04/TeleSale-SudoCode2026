@@ -22,7 +22,9 @@ py -3.12 -m venv .venv
 if (!(Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-Trong `.env` ở gốc repo, điền `CLOUDFLARE_API_TOKEN` của tài khoản `CLOUDFLARE_ACCOUNT_ID` và kiểm tra bộ `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY` khớp với dịch vụ model dùng để chạy. [Tệp token Cloudflare do nhóm cung cấp](https://drive.google.com/file/d/1Gt_0syi-ib1h3paOf-UdjRgNXSUCuRlD/view?usp=sharing)
+Trong `.env` ở gốc repo, điền `CLOUDFLARE_API_TOKEN`. [Tệp token Cloudflare do nhóm cung cấp](https://drive.google.com/file/d/1Gt_0syi-ib1h3paOf-UdjRgNXSUCuRlD/view?usp=sharing)
+
+Các trường khác đã được nhóm điền sẳn trong .env.example rồi nên chỉ cần điền key CLOUDFLARE_API_TOKEN
 
 Khởi động Docker trước khi chạy các lệnh dưới đây. Nếu Docker Engine yêu cầu quyền quản trị, thêm `sudo` trước lệnh `docker compose`. Lần khởi động đầu cần Internet để tải image, thư viện và model thoại.
 
@@ -32,7 +34,11 @@ docker compose up -d --build
 python seed_btc.py --data-dir ./BTC-Data-Vong1-TEAMS
 ```
 
-Khi seed báo đã sẵn sàng, đăng nhập bằng `demo1` và mật khẩu `DEMO_USER_1_PASSWORD` trong `.env`. [Chat](http://127.0.0.1:8000/chat) · [Thoại](http://127.0.0.1:8000/)
+Khi seed báo đã sẵn sàng, dùng tài khoản demo mặc định để đăng nhập. <http://127.0.0.1:8000/chat> · [Thoại](http://127.0.0.1:8000/)
+
+| Tên đăng nhập | Mật khẩu |
+|---|---|
+| `demo1` | `demo1-btc-2026` |
 
 ## 2. Đối chiếu Baseline và Full
 
