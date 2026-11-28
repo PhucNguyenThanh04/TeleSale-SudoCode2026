@@ -39,6 +39,7 @@ Khi seed báo đã sẵn sàng, dùng tài khoản demo mặc định để đă
 | Tên đăng nhập | Mật khẩu |
 |---|---|
 | `demo1` | `demo1-btc-2026` |
+| `demo2` | `demo2-btc-2026` |
 
 ## 2. Đối chiếu Baseline và Full
 
