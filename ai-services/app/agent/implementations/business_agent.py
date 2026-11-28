@@ -3,8 +3,10 @@ from app.mcp_servers.mcp_shared.decision_diagnostics import (tool_boundary, emit
 
 
 import asyncio
+from collections import Counter
 from copy import deepcopy
 import logging
+import re
 import time
 from datetime import date, datetime
 from typing import Any, Callable, Literal
@@ -25,7 +27,8 @@ from app.agent.mcp.gateway import ToolGateway
 from app.mcp_servers.mcp_catalog.schemas import AttributeFilters, QuoteLine
 from app.mcp_servers.mcp_order.schemas import OrderLine
 from app.mcp_servers.mcp_order.write_authorization import WRITE_TOOLS, write_digest, write_operation_key
-from app.mcp_servers.mcp_shared.commerce_evidence import successful
+from app.mcp_servers.mcp_shared.commerce_evidence import build_commerce_evidence, successful
+from app.mcp_servers.mcp_shared.commerce_rules import _search_text
 from app.schemas.brief import HandoffBrief
 
 
@@ -155,6 +158,7 @@ _TOOL_DESCRIPTION = {
         "gọi catalog.get_details theo mã đó trước khi nói tên quà. Không suy tên hay giá trị quà từ mã."
     ),
     "order.create": (
+        'Nếu đã có đơn cùng giỏ trong phiên, xác nhận mã đơn cũ. Chỉ tạo thêm khi khách yêu cầu rõ một đơn riêng. '
         'Khi tách đơn theo yêu cầu khách, basket_skus giữ các SKU còn lại của giỏ đã đồng ý '
         'để tính đúng ưu đãi; mỗi đơn cần được cấp quyền riêng và dùng báo giá cùng ngữ cảnh giỏ. '
         "Tạo đơn ngay khi khách đồng ý mua/chốt/lên đơn (mặc định qty=1, payment='COD' "
@@ -180,6 +184,7 @@ _TOOL_DESCRIPTION = {
         "product_advised/price_quoted_vnd chỉ điền khi có nguồn. Harness gắn danh tính đã xác minh."),
     "policy.search": ("Tra chính sách công khai theo ngày cuộc gọi cho mọi câu hỏi về bảo hành, đổi/trả hàng, "
                       "đổi size, quy trình thu hồi, điều kiện sản phẩm, hoàn tiền, phí ship hoặc thời gian xử lý; "
+                      "câu hỏi nối tiếp như 'kênh nào', 'biểu mẫu nào' giữ đúng chủ đề chính sách vừa hỏi. "
                       "với đơn cũ, truyền order_id đã xác minh. "
                       "Truyền product_sku từ catalog hoặc dòng của đơn đã xác minh để tra đúng sản phẩm; "
                       "đơn có nhiều sản phẩm phải chọn sản phẩm cần tra. Vẫn phải đọc phạm vi và điều kiện của chính sách."),
@@ -210,6 +215,22 @@ def _write_receipt_valid(name, args, result):
             and (name != 'order.update' or result[field] == args['order_id']))
 
 
+def _order_items(args):
+    items = Counter()
+    for line in args.get('lines') or [args]:
+        if line.get('sku') and type(line.get('qty', 1)) is int:
+            items[line['sku']] += line.get('qty', 1)
+    return items
+
+
+def _prior_purchase_receipts(state):
+    if re.search(r'\b(?:them (?:mot |1 )?don|don (?:hang )?(?:rieng|thu (?:hai|ba|tu|\d+))|'
+                 r'(?:mua|dat) (?:them )?(?:mot |1 )?(?:don|chiec|cai|bo|doi) nua)\b',
+                 _search_text(state.get('safe_text', ''))):
+        return []
+    return [call for call in build_commerce_evidence(state) if call.get('_prior_session_receipt')]
+
+
 _PAYMENT_LABEL = {'COD': 'thanh toán khi nhận hàng (COD)', 'bank': 'chuyển khoản ngân hàng',
                   'momo': 'ví MoMo', 'zalopay': 'ví ZaloPay'}
 
@@ -220,12 +241,17 @@ def order_confirmation(state: TurnState, messages: list[Any]) -> str | None:
             or [call.get('name') for call in last_ai.tool_calls] != [to_model_tool_name('order.create')]
             or '?' in state.get('safe_text', '')):
         return None
+    return receipt_confirmation(state)
+
+
+def receipt_confirmation(state: TurnState) -> str | None:
     created = [call for call in state.get('tool_calls', []) if call.get('name') == 'order.create']
     if not created:
         return None
     args, result = created[-1].get('args') or {}, created[-1].get('result') or {}
     order_id, total = result.get('order_id'), result.get('total_vnd')
-    if (result.get('status') != 'created' or not isinstance(order_id, str) or not order_id.strip()
+    if (not successful(created[-1]) or result.get('status') != 'created'
+            or not isinstance(order_id, str) or not order_id.strip()
             or type(total) is not int or args.get('lines') or not isinstance(args.get('sku'), str)
             or type(args.get('qty', 1)) is not int or args.get('payment') not in _PAYMENT_LABEL):
         return None
@@ -463,6 +489,14 @@ class BusinessTools:
             raw['max_price_vnd'] = raw.pop('max_list_price_vnd')
         if name == 'order.create' and self.state.get('identity_status') != 'known':
             return {'error': 'identity_required'}
+        if name == 'order.create' and (receipts := _prior_purchase_receipts(self.state)):
+            selection = raw if raw.get('lines') else {**raw, 'sku': catalog_variant(self.state, raw)}
+            items = _order_items(selection)
+            for call in reversed(receipts):
+                if items and _order_items(call.get('args', {})) == items:
+                    self.state['existing_purchase_order_id'] = call['result']['order_id']
+                    return {'status': 'already_created', 'order_id': call['result']['order_id'],
+                            'next_action': 'Confirm the existing order. Do not create another order.'}
         args = {key: value for key, value in raw.items() if value is not None}
         self.state["decision"] = Decision(action="tool", tool_name=name, tool_args=args)
         prepared = prepare_tool_call(self.state, self.clock)
@@ -647,5 +681,6 @@ Bạn là trợ lý telesale tiếng Việt. Hiểu yêu cầu hiện tại củ
 - Trường hợp cần người có thẩm quyền hoặc khách yêu cầu gặp người, dùng handoff.transfer với brief có nguồn. Không tự chuyển máy vì chưa tìm đủ dữ kiện tư vấn. Không có công cụ xóa toàn bộ dữ liệu khách; yêu cầu này cần xác minh và chuyển bộ phận phụ trách, chưa được coi là đã xóa.
 - Memory giúp nối lại hội thoại, không thay thế thông tin hiện tại. Giữ từng sản phẩm/phòng/chủ thể riêng. Lời khách mới được ưu tiên khi sửa thông tin cũ. Đừng hỏi lại dữ kiện đã rõ; xác nhận phần hết hạn hoặc mâu thuẫn. Câu hỏi và rào cản chỉ được coi là giải quyết khi có bằng chứng phù hợp.
 - Trả lời tự nhiên, ngắn gọn, đúng ý khách. Dùng cách xưng hô đã biết hoặc khách yêu cầu. Không đọc nguyên context/brief, JSON, mã lỗi nội bộ, thông tin hạn chế hay dữ liệu cá nhân. Không tự nhận là người thật, không khẳng định giá đối thủ và không đưa cam kết thiếu nguồn.
+- Không đọc lại, lưu hoặc nói đã lưu số CCCD, số định danh hay số tài khoản vào hồ sơ hoặc ghi chú hội thoại. Nếu khách hỏi nơi nhập để hoàn tiền, tra đúng quy trình hoàn tiền và nêu chính xác tên kênh hoặc biểu mẫu trong nguồn. Khi tài liệu thiếu thông số, nói rõ hiện chưa có thông tin xác minh về thông số đó.
 - Kết thúc lượt bằng câu trả lời, câu hỏi làm rõ hoặc kết quả thao tác đã xác nhận. Không thay việc xử lý bằng lời hứa suông. LangMem trưng cất sau khi lưu; bạn không ghi fact bằng câu trả lời.
 """.strip()

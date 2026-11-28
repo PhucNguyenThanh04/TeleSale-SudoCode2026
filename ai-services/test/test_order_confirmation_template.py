@@ -1,6 +1,12 @@
+import asyncio
+from datetime import date
+from types import SimpleNamespace
+from unittest.mock import Mock
+
 from langchain_core.messages import AIMessage, ToolMessage
 
 from app.agent.guardrails.checks import check_answer, check_grounding
+from app.agent.harness.agent_nodes import AgentNodes
 from app.agent.implementations.business_agent import order_confirmation
 
 _CATALOG = {"name": "catalog.search", "args": {"query": "Xiaomi Smart 4 Pro"},
@@ -50,3 +56,13 @@ def test_template_is_skipped_when_the_model_must_answer():
     unknown = _created()
     unknown["args"] = {**unknown["args"], "sku": "SKU-UNKNOWN"}
     assert order_confirmation(_state(unknown), _messages()) is None
+
+
+def test_exact_receipt_confirmation_does_not_call_semantic_model():
+    state = _state(_created())
+    draft = order_confirmation(state, _messages())
+    state.update(request=SimpleNamespace(on=date(2026, 10, 20), input_mode='clean'), agent_draft=draft)
+    model = SimpleNamespace(with_structured_output=Mock())
+    result = asyncio.run(AgentNodes(model, None, None, 8, 6).verify_agent(state))
+    assert result['verified_answer'] == draft
+    model.with_structured_output.assert_not_called()

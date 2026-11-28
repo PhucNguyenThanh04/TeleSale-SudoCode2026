@@ -114,6 +114,73 @@ class EvalRunnerTest(unittest.TestCase):
                 self.assertGreater(turns, 0)
             self.assertEqual(len(list(Path(folder).glob('*.extraction.jsonl'))), 2)
 
+    def test_full_exports_unanswered_questions_for_knowledge_review(self):
+        class Runtime(_Runtime):
+            async def run(self, request):
+                response = await super().run(request)
+                return response.model_copy(update={'agent_text': 'Hiện em chưa có thông tin về sản phẩm này.'})
+
+        root = Path(__file__).resolve().parents[2] / 'BTC-Data-Vong1-TEAMS'
+        with tempfile.TemporaryDirectory() as folder:
+            for config in ('full', 'baseline_no_memory'):
+                out = Path(folder) / f'{config}.jsonl'
+                count = asyncio.run(run(SimpleNamespace(btc_root=root, config=config, out=out,
+                    scenarios=root / 'test_set' / 'public_sample', isolated_db=True), Runtime()))
+                gaps = out.with_suffix('.knowledge-gaps.json')
+                if config == 'full':
+                    result = json.loads(gaps.read_text())
+                    self.assertEqual(len(result['candidates']), count)
+                    self.assertEqual(result['candidates'][0]['event']['signal'], 'fallback')
+                    self.assertTrue(result['candidates'][0]['event']['question'])
+                else:
+                    self.assertFalse(gaps.exists())
+
+    def test_interrupted_knowledge_review_resumes_from_saved_full(self):
+        from app.agent.harness.observability import log_event
+        from eval_harness import knowledge_followup as followup
+
+        class Runtime(_Runtime):
+            async def run(self, request):
+                result = await super().run(request)
+                log_event(request, 'execution', 'phase_result', phase='model_invocation',
+                          invocation='initial', status='succeeded', version=1)
+                log_event(request, 'execution', 'phase_result', phase='postprocess', status='succeeded', version=1)
+                return result.model_copy(update={'agent_text': 'Hiện em chưa có thông tin.'})
+
+        class Transaction:
+            async def __aenter__(self):
+                return SimpleNamespace(get=AsyncMock(return_value={'release_id': 'btc-only'}))
+
+            async def __aexit__(self, *args):
+                return None
+
+        settings = Settings(_env_file=None, app_env='test', llm_api_key='offline', llm_model='offline',
+                            knowledge_enabled=True, database_url='postgresql://offline@127.0.0.1/telesale_eval')
+        database = {'database': 'telesale_eval', 'host': 'eval-postgres', 'port': 5432,
+                    'server_started_at': 'start'}
+        repo = SimpleNamespace(database_identity=AsyncMock(return_value=database),
+                               transaction=Transaction, close=AsyncMock())
+        proposal = AsyncMock(side_effect=[RuntimeError('worker interrupted'), {'proposed': ['existing-job']}])
+        root = Path(__file__).resolve().parents[2] / 'BTC-Data-Vong1-TEAMS'
+        with tempfile.TemporaryDirectory() as folder, \
+             patch('eval.run_eval.get_settings', return_value=settings), \
+             patch.object(followup, 'configured_url', return_value='configured'), \
+             patch.object(followup, 'KnowledgeRepo', return_value=repo), \
+             patch.object(followup, 'propose', proposal):
+            out = Path(folder) / 'full.jsonl'
+            args = SimpleNamespace(btc_root=root, config='full', out=out,
+                scenarios=root / 'test_set' / 'public_sample', isolated_db=True)
+            with self.assertRaisesRegex(RuntimeError, 'worker interrupted'):
+                asyncio.run(run(args, Runtime()))
+            before = out.read_bytes()
+            gaps = out.with_suffix('.knowledge-gaps.json')
+            self.assertEqual(json.loads(gaps.read_text())['status'], 'proposal_failed')
+            self.assertEqual(asyncio.run(followup.detect_after_full(out, settings)), (gaps, 'proposals_ready'))
+            self.assertEqual(json.loads(gaps.read_text())['proposals'], {'proposed': ['existing-job']})
+            self.assertEqual(asyncio.run(followup.detect_after_full(out, settings)), (gaps, 'proposals_ready'))
+            self.assertEqual(proposal.await_count, 2)
+            self.assertEqual(out.read_bytes(), before)
+
     def test_price_claim_keeps_thousands_separators(self):
         claims = [{k:v for k,v in c.items() if k != "source"} for c in _claims("Giá hôm nay là 4.890.000đ. Em kiểm tra tiếp ạ.", [])]
         self.assertIn({"field": "price_vnd", "value": 4890000,

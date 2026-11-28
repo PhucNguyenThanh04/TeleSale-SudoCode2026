@@ -344,6 +344,53 @@ def test_semantic_denial_never_reaches_gateway_or_domain(name):
     asyncio.run(run())
 
 
+@pytest.mark.parametrize('text,expected_writes', [
+    ('Xác nhận một chiếc thiết bị đỏ, em tạo đơn giúp tôi.', 1),
+    ('Tạo thêm một đơn riêng cho một chiếc thiết bị đỏ.', 2),
+])
+def test_same_session_purchase_confirmation_cannot_create_duplicate(text, expected_writes):
+    async def run():
+        state, repo = current(), OrderRepo()
+        purchase_evidence(state)
+        reviewer = AsyncMock(return_value=True)
+        first = await business(state, repo, reviewer).invoke('order.create', proposal('order.create'))
+        assert first['status'] == 'created'
+        previous = state['tool_calls'][-1]
+        next_request = state['request'].model_copy(update={'client_msg_id': uuid4(), 'text': text})
+        state.update(request=next_request, safe_text=text, session_tool_calls=[previous], tool_count=0)
+        repo.product['list_price_vnd'] = 101000
+        purchase_evidence(state)
+        state['tool_calls'][-1]['result']['final_price_vnd'] = 101000
+        args = proposal('order.create') | {'price_vnd': 101000}
+        result = await business(state, repo, reviewer).invoke('order.create', args)
+        assert len(repo.writes) == reviewer.await_count == expected_writes
+        if expected_writes == 1:
+            assert result['order_id'] == first['order_id']
+            assert not any(call['name'] == 'order.create' for call in state['tool_calls'])
+        else:
+            assert result['status'] == 'created'
+    asyncio.run(run())
+
+
+def test_reconfirmation_resolves_parent_sku_before_matching_prior_receipt():
+    async def run():
+        state, repo = current('Tôi xác nhận lấy chiếc size L màu đỏ, em tạo đơn nhé.'), OrderRepo()
+        state['session_tool_calls'] = [{'name': 'order.create', 'args': {'sku': 'DEVICE-L-RED', 'qty': 1},
+            'result': {'status': 'created', 'order_id': 'ORDER-FIRST'}}]
+        state['tool_calls'] = [{'name': 'catalog.search', 'args': {'sku': 'DEVICE'},
+            'result': {'items': [{'sku': 'DEVICE', 'variants': [
+                {'variant_sku': 'DEVICE-L-RED', 'size': 'L', 'color': 'Đỏ'},
+                {'variant_sku': 'DEVICE-M-RED', 'size': 'M', 'color': 'Đỏ'}]}]}}]
+        reviewer = AsyncMock(return_value=True)
+        result = await business(state, repo, reviewer).invoke('order.create',
+            {'sku': 'DEVICE', 'qty': 1, 'size': 'L', 'color': 'đỏ', 'price_vnd': 97000})
+        assert result['status'] == 'already_created'
+        assert result['order_id'] == 'ORDER-FIRST'
+        assert not repo.writes and not repo.transactions
+        reviewer.assert_not_awaited()
+    asyncio.run(run())
+
+
 def test_unbound_state_receipt_cannot_bypass_current_authorization():
     async def run():
         state, repo = current('Tôi không muốn đặt lịch gọi.'), OrderRepo()
