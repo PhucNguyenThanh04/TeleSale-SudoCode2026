@@ -1,0 +1,142 @@
+{
+  "scenario_id": "TEAM-04",
+  "level": "M1",
+  "persona": "khach_so_gia",
+  "hard_case": "hoi_khuyen_mai_chua_bat_dau",
+  "customer_phone": "0981933190",
+  "customer_name": "Lan",
+  "honorific": "chị",
+  "notes": "Nguồn speech T04. Tại ngày gọi ưu đãi 11-11 chưa bắt đầu. Không cam kết trước. Định danh đối chiếu CRM BTC gốc: C003 (Lan); không dùng CRM bổ sung.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-28",
+      "customer_goal": "Hỏi ưu đãi và mua nồi chiên Philips 6.2L",
+      "customer_turns": [
+        "Hello em, chị đang xem nồi chiên không dầu Philips 6.2L, mẫu này giá bao nhiêu, hiện còn hàng không và có ưu đãi gì không em?",
+        "Nghe nói sắp tới ngày 11 tháng 11 có flash sale giảm sâu, hiện trên hệ thống đã có chương trình ngày 11 tháng 11 chưa và chế độ bảo hành nồi này bao lâu em?",
+        "Ok vậy chị không chờ nữa, em lên đơn cho chị 1 chiếc nồi chiên không dầu Philips 6.2L thanh toán COD nhé."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-AF-6L",
+        "payment": "COD",
+        "order_id": "generated_by_order.create"
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-AF-6L",
+          "payment": "COD",
+          "qty": 1,
+          "price_vnd": 3990000
+        },
+        "forbidden_claims": [
+          {
+            "field": "promo_11-11_active",
+            "value": true
+          }
+        ]
+      },
+      "ground_truth_facts": {
+        "price_vnd": 3990000,
+        "in_stock": true,
+        "promo_11-11_active": false
+      },
+      "channel_identity": "0981933190",
+      "expected_outcome": "chot_don",
+      "days_later": 0,
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Trả lời đúng, đủ các câu hỏi của khách trong phiên; giá/tồn kho từ tool đúng SKU và ngày; chính sách đúng điều kiện và không khẳng định thao tác chưa thành công.",
+          "source_sections": [
+            "KM-02",
+            "BH-01",
+            "SP-AF-01",
+            "VC-06"
+          ]
+        },
+        {
+          "id": "business_2",
+          "requirement": "Tiếp nối đúng phiên trước khi có lịch sử; không gán nhu cầu của người khác, không nhắc lại rào cản đã giải quyết và không xin quyền lợi đơn cũ cho đơn mới.",
+          "source_sections": [
+            "KM-02",
+            "BH-01",
+            "SP-AF-01",
+            "VC-06"
+          ]
+        }
+      ],
+      "supplemental_checks": {
+        "order_count": 1,
+        "order_lines": [
+          {
+            "sku": "SKU-AF-6L",
+            "qty": 1,
+            "price_vnd": 3990000
+          }
+        ]
+      },
+      "judge_criteria": [
+        "J02_no_fabrication",
+        "J06_tone_vietnamese",
+        "J07_closing_summary",
+        "J08_over_confirmation"
+      ]
+    },
+    "call_2": {
+      "channel": "zalo_oa",
+      "channel_identity": "zalo_lan79",
+      "call_date": "2026-10-30",
+      "customer_turns": [
+        "Em ơi chị hỏi tình trạng đơn hàng nồi chiên không dầu mình đặt bên em lần trước hiện tới đâu rồi, em tra giúp chị nhé.",
+        "Đơn đó đã xuất kho giao cho đơn vị vận chuyển chưa em?"
+      ],
+      "must_carry_over": [
+        "order_id",
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "order_id",
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "order.status",
+        "args_match": {
+          "order_id": "generated_by_order.create"
+        }
+      },
+      "ground_truth_facts": {},
+      "days_later": 2,
+      "customer_goal": "Em ơi chị hỏi tình trạng đơn hàng nồi chiên không dầu mình đặt bên em lần trước hiện tới đâu rồi, em tra giúp chị nhé.",
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Trả lời đúng, đủ các câu hỏi của khách trong phiên; giá/tồn kho từ tool đúng SKU và ngày; chính sách đúng điều kiện và không khẳng định thao tác chưa thành công.",
+          "source_sections": [
+            "KM-02",
+            "BH-01",
+            "SP-AF-01",
+            "VC-06"
+          ]
+        },
+        {
+          "id": "business_2",
+          "requirement": "Tiếp nối đúng phiên trước khi có lịch sử; không gán nhu cầu của người khác, không nhắc lại rào cản đã giải quyết và không xin quyền lợi đơn cũ cho đơn mới.",
+          "source_sections": [
+            "KM-02",
+            "BH-01",
+            "SP-AF-01",
+            "VC-06"
+          ]
+        }
+      ],
+      "judge_criteria": [
+        "J01_opening_continuity",
+        "J02_no_fabrication",
+        "J06_tone_vietnamese",
+        "J08_over_confirmation"
+      ]
+    }
+  }
+}

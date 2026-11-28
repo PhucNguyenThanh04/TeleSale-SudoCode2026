@@ -78,8 +78,7 @@ ai-services/rag_eval/results/
 outputs/
 artifacts/
 
-/dataset/*
-!/dataset/README.md
+
 !/dataset/M1-CORPUS.md
 
 speech/data/

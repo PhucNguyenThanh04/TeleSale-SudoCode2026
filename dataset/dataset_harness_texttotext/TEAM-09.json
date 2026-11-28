@@ -1,0 +1,220 @@
+{
+  "scenario_id": "TEAM-09",
+  "level": "M1",
+  "persona": "khach_hoi_nhieu_khong_mua",
+  "hard_case": "ton_kho_thay_doi",
+  "customer_phone": "0929486628",
+  "customer_name": "Nam",
+  "honorific": "anh",
+  "notes": "Nguồn speech T09. AirPure Pro hết hàng phiên đầu, có lại phiên sau. Khách xác nhận ngày giờ hẹn cụ thể ở phiên 2. Call 3 follows T09-S03 when this scenario has a justified third contact; see speech dialogue source. Định danh đối chiếu CRM BTC gốc: C006 (Nam); không dùng CRM bổ sung.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-19",
+      "customer_goal": "Hỏi AirPure Pro hết hàng và xin báo khi có hàng",
+      "customer_turns": [
+        "Chào em, anh đang xem máy lọc không khí AirPure Pro cho phòng khách 35 mét vuông, mẫu này giá bao nhiêu và hiện còn hàng không em?",
+        "Nhà anh có trẻ nhỏ nên muốn hỏi thêm mẫu AirPure Pro này có khóa trẻ em và điều khiển qua app không, và khi nào có hàng lại?",
+        "Ok để vài hôm nữa anh liên hệ lại kiểm tra nhé, cảm ơn em."
+      ],
+      "facts_established": {
+        "room_area_m2": 35,
+        "has_children": true,
+        "product_advised": "SKU-AP-PRO"
+      },
+      "success_if": {
+        "tool_called": "inventory.check",
+        "args_match": {
+          "sku": "SKU-AP-PRO"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {
+        "price_vnd": 7690000,
+        "in_stock": false
+      },
+      "channel_identity": "0929486628",
+      "expected_outcome": "hen_goi_lai",
+      "days_later": 0,
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Trả lời đúng, đủ các câu hỏi của khách trong phiên; giá/tồn kho từ tool đúng SKU và ngày; chính sách đúng điều kiện và không khẳng định thao tác chưa thành công.",
+          "source_sections": [
+            "FAQ-02",
+            "SP-AIR-01",
+            "NB-02",
+            "FAQ-17",
+            "LN-01",
+            "LN-02",
+            "KM-01"
+          ]
+        },
+        {
+          "id": "business_2",
+          "requirement": "Tiếp nối đúng phiên trước khi có lịch sử; không gán nhu cầu của người khác, không nhắc lại rào cản đã giải quyết và không xin quyền lợi đơn cũ cho đơn mới.",
+          "source_sections": [
+            "FAQ-02",
+            "SP-AIR-01",
+            "NB-02",
+            "FAQ-17",
+            "LN-01",
+            "LN-02",
+            "KM-01"
+          ]
+        }
+      ],
+      "judge_criteria": [
+        "J02_no_fabrication",
+        "J06_tone_vietnamese",
+        "J08_over_confirmation",
+        "J12_out_of_stock"
+      ]
+    },
+    "call_2": {
+      "channel": "hotline",
+      "channel_identity": "0929486628",
+      "call_date": "2026-10-21",
+      "customer_turns": [
+        "Anh gọi lại vụ máy lọc không khí cho phòng khách hôm trước, em xem mẫu đó hôm nay đã có hàng lại chưa?",
+        "Hiện anh đang bận họp nên chưa trao đổi kỹ được, em đặt lịch hẹn gọi lại cho anh vào 10 giờ sáng ngày mai 22/10/2026 nhé."
+      ],
+      "must_carry_over": [
+        "room_area_m2",
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "room_area_m2",
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "schedule.callback",
+        "args_match": {
+          "callback_at": "2026-10-22T10:00"
+        },
+        "must_not_call_tools": [
+          "order.create"
+        ]
+      },
+      "ground_truth_facts": {
+        "price_vnd": 7690000,
+        "in_stock": true
+      },
+      "expected_outcome": "hen_goi_lai",
+      "days_later": 2,
+      "customer_goal": "Anh gọi lại vụ máy lọc không khí cho phòng khách hôm trước, em xem mẫu đó hôm nay đã có hàng lại chưa?",
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Trả lời đúng, đủ các câu hỏi của khách trong phiên; giá/tồn kho từ tool đúng SKU và ngày; chính sách đúng điều kiện và không khẳng định thao tác chưa thành công.",
+          "source_sections": [
+            "FAQ-02",
+            "SP-AIR-01",
+            "NB-02",
+            "FAQ-17",
+            "LN-01",
+            "LN-02",
+            "KM-01"
+          ]
+        },
+        {
+          "id": "business_2",
+          "requirement": "Tiếp nối đúng phiên trước khi có lịch sử; không gán nhu cầu của người khác, không nhắc lại rào cản đã giải quyết và không xin quyền lợi đơn cũ cho đơn mới.",
+          "source_sections": [
+            "FAQ-02",
+            "SP-AIR-01",
+            "NB-02",
+            "FAQ-17",
+            "LN-01",
+            "LN-02",
+            "KM-01"
+          ]
+        }
+      ],
+      "judge_criteria": [
+        "J01_opening_continuity",
+        "J02_no_fabrication",
+        "J03_conflict_handling",
+        "J06_tone_vietnamese",
+        "J08_over_confirmation"
+      ]
+    },
+    "call_3": {
+      "channel": "hotline",
+      "channel_identity": "0929486628",
+      "call_date": "2026-10-22",
+      "customer_goal": "Nhận cuộc gọi đã hẹn, kiểm tra tồn và giá AirPure Pro tại thời điểm gọi lại, chưa đặt hàng.",
+      "customer_turns": [
+        "Alo em, anh nghe cuộc gọi theo lịch hẹn sáng nay về mẫu máy lọc không khí AirPure Pro hôm trước, em kiểm tra báo giá hiện tại và chương trình giảm giá tháng 10 giúp anh nhé.",
+        "Anh nắm được mức giá ưu đãi và tồn kho rồi, để anh bàn lại với bà xã tối nay rồi mới quyết định chứ hiện tại chưa tạo đơn nhé."
+      ],
+      "must_carry_over": [
+        "room_area_m2",
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "room_area_m2",
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "pricing.get_quote",
+        "args_match": {
+          "sku": "SKU-AP-PRO"
+        },
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ]
+      },
+      "ground_truth_facts": {
+        "in_stock": true,
+        "price_vnd": 7690000,
+        "promo_AIR-OCT_active": true
+      },
+      "speech_dialogue_ref": "T09-S03",
+      "days_later": 1,
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Trả lời đúng, đủ các câu hỏi của khách trong phiên; giá/tồn kho từ tool đúng SKU và ngày; chính sách đúng điều kiện và không khẳng định thao tác chưa thành công.",
+          "source_sections": [
+            "FAQ-02",
+            "SP-AIR-01",
+            "NB-02",
+            "FAQ-17",
+            "LN-01",
+            "LN-02",
+            "KM-01"
+          ]
+        },
+        {
+          "id": "business_2",
+          "requirement": "Tiếp nối đúng phiên trước khi có lịch sử; không gán nhu cầu của người khác, không nhắc lại rào cản đã giải quyết và không xin quyền lợi đơn cũ cho đơn mới.",
+          "source_sections": [
+            "FAQ-02",
+            "SP-AIR-01",
+            "NB-02",
+            "FAQ-17",
+            "LN-01",
+            "LN-02",
+            "KM-01"
+          ]
+        }
+      ],
+      "judge_criteria": [
+        "J01_opening_continuity",
+        "J02_no_fabrication",
+        "J03_conflict_handling",
+        "J06_tone_vietnamese",
+        "J08_over_confirmation"
+      ]
+    }
+  }
+}
