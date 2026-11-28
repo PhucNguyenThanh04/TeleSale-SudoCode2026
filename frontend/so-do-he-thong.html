@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sơ đồ kiến trúc hệ thống · TeleSale SudoCode 2026</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: #172843;
+      background: #edf2f9;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+
+    main {
+      max-width: 1660px;
+      margin: auto;
+      padding: clamp(16px, 3vw, 40px);
+    }
+
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: end;
+      gap: 16px;
+      margin-block-end: 20px;
+    }
+
+    .project {
+      margin: 0 0 5px;
+      color: #355683;
+      font-size: .86rem;
+      font-weight: 700;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.6rem, 3.4vw, 2.7rem);
+      letter-spacing: -.04em;
+      line-height: 1.1;
+    }
+
+    button {
+      border: 1px solid #bdcbe0;
+      border-radius: 8px;
+      padding: 9px 13px;
+      background: #fff;
+      color: inherit;
+      font: inherit;
+      font-size: .88rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    button:hover { background: #f1f6ff; }
+    :focus-visible { outline: 3px solid #2366c7; outline-offset: 3px; }
+
+    .viewport {
+      overflow: auto;
+      border: 1px solid #ccd7e8;
+      border-radius: 16px;
+      background: #fbfcff radial-gradient(#dbe4f1 1px, transparent 1px) 0 0 / 18px 18px;
+      box-shadow: 0 12px 36px #243d6410;
+    }
+
+    .hint {
+      margin: 10px 0 0;
+      color: #405671;
+      font-size: .85rem;
+    }
+
+    @media (min-width: 1300px) {
+      .hint { display: none; }
+    }
+
+    svg {
+      width: 100%;
+      min-width: 1200px;
+      height: auto;
+      display: block;
+    }
+
+    .harness { --ink: #285ea9; --edge: #4176ba; --line: #aac1e4; --tint: #eaf2ff; }
+    .tools { --ink: #633db0; --edge: #7958be; --line: #c5b5e5; --tint: #f2edff; }
+    .workers { --ink: #8b4d16; --edge: #a76730; --line: #dec0a0; --tint: #fff3e4; }
+    .storage { --ink: #106859; --edge: #318778; --line: #9eccbf; --tint: #e9f8f3; }
+
+    .zone {
+      fill: var(--tint);
+      fill-opacity: .73;
+      stroke: var(--line);
+      stroke-width: 1.5;
+      stroke-dasharray: 6 5;
+    }
+
+    .zone-title {
+      fill: var(--ink);
+      font-size: 14px;
+      font-weight: 750;
+    }
+
+    .node rect, .node ellipse, .node path {
+      fill: #fff;
+      stroke: var(--line, #b5c6df);
+      stroke-width: 1.6;
+    }
+
+    .node .key { fill: var(--tint, #eef4fe); stroke: var(--edge, #b5c6df); }
+    .node .rim { fill: var(--tint); }
+    .node text { fill: #425675; font-size: 13px; text-anchor: middle; }
+    .node .name { fill: #182b49; font-size: 16px; font-weight: 750; }
+
+    .routes path, .signals path {
+      fill: none;
+      stroke: var(--edge, #4677b6);
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .routes path {
+      stroke-width: 1.75;
+      marker-end: url(#arrow);
+    }
+
+    .routes .both { marker-start: url(#arrow); }
+
+    .signals { pointer-events: none; }
+
+    .signals path {
+      stroke: color-mix(in srgb, var(--edge, #4677b6) 76%, white);
+      stroke-width: 3.4;
+      stroke-dasharray: 6 35;
+      animation: flow 1.45s linear infinite;
+    }
+
+    .signals .both { animation-direction: alternate; }
+    .signals .workers { animation-delay: -.7s; }
+    .signals .tools { animation-delay: -.45s; }
+    .signals .storage { animation-delay: -1s; }
+
+    @keyframes flow {
+      from { stroke-dashoffset: 41; }
+      to { stroke-dashoffset: 0; }
+    }
+
+    .paused .signals path { animation-play-state: paused; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .signals { display: none; }
+    }
+
+    .edge-label {
+      fill: #324c70;
+      font-size: 13px;
+      font-weight: 700;
+      text-anchor: middle;
+    }
+
+    .edge-label-inline {
+      paint-order: stroke;
+      stroke: #fbfcff;
+      stroke-width: 7;
+      stroke-linejoin: round;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="project">TeleSale SudoCode 2026</p>
+        <h1>Sơ đồ kiến trúc hệ thống</h1>
+      </div>
+      <button type="button" hidden>Tạm dừng chuyển động</button>
+    </header>
+
+    <div class="viewport" tabindex="0" role="region" aria-label="Khung sơ đồ có thể cuộn ngang">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 730" role="img" aria-labelledby="diagram-title diagram-desc">
+        <title id="diagram-title">Kiến trúc hệ thống TeleSale SudoCode 2026</title>
+        <desc id="diagram-desc">Khách hàng trao đổi với FastAPI qua chat và thoại. FastAPI nối với Speech và cung cấp văn bản cho Harness. Runner đánh giá gọi Harness trực tiếp. Harness trao đổi với LLM và gọi Memory, Order, Catalog và Knowledge qua MCP Client. Các MCP truy cập PostgreSQL. Knowledge MCP còn trao đổi với Qdrant và gọi Cloudflare để tạo embedding. Memory MCP kích hoạt LangMem. Hai worker trao đổi với PostgreSQL và gọi LLM.</desc>
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 L2 5 Z" fill="#385778"/>
+          </marker>
+        </defs>
+
+        <g class="harness">
+          <rect class="zone" x="265" y="222" width="396" height="187" rx="20"/>
+          <text class="zone-title" x="285" y="248">Điều phối AI (Harness)</text>
+        </g>
+        <g class="tools">
+          <rect class="zone" x="683" y="222" width="484" height="447" rx="20"/>
+          <text class="zone-title" x="706" y="248">Dịch vụ công cụ (MCP — Model Context Protocol)</text>
+        </g>
+        <g class="workers">
+          <rect class="zone" x="846" y="40" width="624" height="138" rx="20"/>
+          <text class="zone-title" x="871" y="67">Workers nền (Background Workers)</text>
+        </g>
+        <g class="storage">
+          <rect class="zone" x="1207" y="222" width="263" height="487" rx="20"/>
+          <text class="zone-title" x="1230" y="248">Lưu trữ &amp; Dịch vụ</text>
+        </g>
+
+        <g class="routes">
+          <path class="both" d="M128 153 V277"/>
+          <path class="both" d="M128 363 V457"/>
+          <path class="harness both" d="M220 320 H285"/>
+          <path class="harness" d="M415 320 H427"/>
+          <path class="harness both" d="M542 273 V153"/>
+          <path class="harness" d="M542 458 V367"/>
+          <path class="harness" d="M657 320 H705"/>
+          <path class="tools" d="M821 320 H830 Q839 320 839 310 Q839 305 849 305 H866"/>
+          <path class="tools" d="M821 320 H828 Q839 320 839 331 V395 Q839 406 850 406 H866"/>
+          <path class="tools" d="M821 320 H828 Q839 320 839 331 V497 Q839 508 850 508 H866"/>
+          <path class="tools" d="M821 320 H828 Q839 320 839 331 V597 Q839 608 850 608 H866"/>
+          <path class="workers" d="M871 117 H657"/>
+          <path class="workers" d="M1316 82 V26 Q1316 16 1306 16 H590 Q580 16 580 26 V74"/>
+          <path class="workers" d="M996 267 V153"/>
+          <path class="workers both" d="M1031 153 V191 Q1031 202 1042 202 H1365 Q1376 202 1376 213 V299"/>
+          <path class="workers both" d="M1420 153 V303"/>
+          <path class="storage" d="M1141 305 H1179 Q1190 305 1190 316 V338 Q1190 349 1201 349 H1245"/>
+          <path class="storage" d="M1141 406 H1245"/>
+          <path class="storage" d="M1141 508 H1187 Q1198 508 1198 497 V426 Q1198 415 1209 415 H1245"/>
+          <path class="storage" d="M1141 585 H1209 Q1220 585 1220 574 V435 Q1220 424 1231 424 H1245"/>
+          <path class="storage both" d="M1142 609 H1245"/>
+          <path class="storage" d="M1141 632 H1170 Q1181 632 1181 643 V655 Q1181 666 1192 666 H1245"/>
+        </g>
+        <g class="signals" aria-hidden="true"></g>
+        <text class="edge-label edge-label-inline" x="128" y="415">Audio</text>
+        <rect x="223" y="289" width="60" height="22" rx="5" fill="#fbfcff"/>
+        <text class="edge-label" x="253" y="305">Văn bản</text>
+
+        <g class="node">
+          <rect x="36" y="75" width="184" height="77" rx="13"/>
+          <text x="128" y="110" class="name">Khách hàng</text>
+          <text x="128" y="131">Chat và thoại</text>
+
+          <rect class="key" x="36" y="278" width="184" height="84" rx="13"/>
+          <text x="128" y="303" class="name">Backend FastAPI</text>
+          <text x="128" y="325">Xác thực · WebSocket</text>
+          <text x="128" y="344">Điều phối thoại &amp; ngắt lời</text>
+
+          <rect x="36" y="458" width="184" height="76" rx="13"/>
+          <text x="128" y="491" class="name">Speech</text>
+          <text x="128" y="513">STT, VAD, TTS</text>
+        </g>
+
+        <g class="node harness">
+          <rect x="428" y="75" width="228" height="77" rx="13"/>
+          <text x="542" y="110" class="name">LLM</text>
+          <text x="542" y="131">Suy luận · Trích xuất · Phân tích</text>
+
+          <rect x="286" y="278" width="129" height="84" rx="13"/>
+          <text x="350.5" y="315" class="name">AI SERVICE</text>
+          <text x="350.5" y="336">(api text to text)</text>
+
+          <rect class="key" x="428" y="274" width="228" height="92" rx="13"/>
+          <text x="542" y="302" class="name">AgentHarnessRuntime</text>
+          <text x="542" y="324">Khóa phiên · LangGraph</text>
+          <text x="542" y="344" style="font-size: 12px">accept → context → agent → guardrails</text>
+
+          <rect x="442" y="458" width="200" height="76" rx="13"/>
+          <text x="542" y="483" class="name">Runner đánh giá</text>
+          <text x="542" y="503">Dựng harness trực tiếp</text>
+          <text x="542" y="520">gọi cùng các MCP</text>
+        </g>
+
+        <g class="node workers">
+          <rect x="871" y="82" width="250" height="70" rx="13"/>
+          <text x="996" y="105" class="name">Worker LangMem</text>
+          <text x="996" y="124">Cập nhật hồ sơ &amp; lần tư vấn</text>
+          <text x="996" y="141">(trích xuất nền theo khách)</text>
+
+          <rect x="1187" y="82" width="258" height="70" rx="13"/>
+          <text x="1316" y="105" class="name">Worker Knowledge</text>
+          <text x="1316" y="124">Phân tích phản hồi &amp; lỗ hổng</text>
+          <text x="1316" y="141">(tạo bản nháp tri thức có duyệt)</text>
+        </g>
+
+        <g class="node tools">
+          <rect class="key" x="706" y="278" width="115" height="84" rx="13"/>
+          <text x="763.5" y="325" class="name">MCP Client</text>
+
+          <rect x="867" y="267" width="274" height="76" rx="13"/>
+          <text x="1004" y="292" class="name">Memory MCP</text>
+          <text x="1004" y="312">Hội thoại, lần tư vấn, hồ sơ</text>
+          <text x="1004" y="329">working · episodic · profile</text>
+
+          <rect x="867" y="369" width="274" height="75" rx="13"/>
+          <text x="1004" y="393" class="name">Order MCP</text>
+          <text x="1004" y="413">Giao dịch, hẹn gọi, chuyển nhân viên</text>
+          <text x="1004" y="430">Quyền: Đọc &amp; Ghi</text>
+
+          <rect x="867" y="470" width="274" height="76" rx="13"/>
+          <text x="1004" y="495" class="name">Catalog MCP</text>
+          <text x="1004" y="515">CRM, hàng hóa, tồn kho, giá</text>
+          <text x="1004" y="532">Quyền: Đọc</text>
+
+          <rect x="867" y="570" width="274" height="76" rx="13"/>
+          <text x="1004" y="595" class="name">Knowledge MCP</text>
+          <text x="1004" y="615">Chính sách &amp; phiên bản nguồn</text>
+          <text x="1004" y="632">Hybrid: BGE-M3 + BM25</text>
+        </g>
+
+        <g class="node storage">
+          <path d="M1246 312 H1445 V430 C1445 447 1246 447 1246 430 Z"/>
+          <ellipse class="rim" cx="1345.5" cy="312" rx="99.5" ry="12"/>
+          <text x="1345.5" y="356" class="name">PostgreSQL</text>
+          <text x="1345.5" y="377">Nghiệp vụ · runtime.turns</text>
+          <text x="1345.5" y="396">LangMem (episodes / facts)</text>
+          <text x="1345.5" y="415">Nguồn chính sách &amp; mã băm</text>
+
+          <path d="M1246 540 H1445 V608 C1445 625 1246 625 1246 608 Z"/>
+          <ellipse class="rim" cx="1345.5" cy="540" rx="99.5" ry="11"/>
+          <text x="1345.5" y="568" class="name">Qdrant</text>
+          <text x="1345.5" y="587">Chỉ mục chính sách</text>
+          <text x="1345.5" y="604">(BGE-M3 + BM25)</text>
+
+          <rect x="1246" y="639" width="199" height="54" rx="13"/>
+          <text x="1345.5" y="662" class="name">Cloudflare</text>
+          <text x="1345.5" y="681">Embedding model</text>
+        </g>
+      </svg>
+    </div>
+    <p class="hint">Cuộn ngang để xem toàn bộ sơ đồ.</p>
+  </main>
+
+  <script>
+    const viewport = document.querySelector('.viewport');
+    const signals = document.querySelector('.signals');
+    const motionButton = document.querySelector('button');
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+    for (const route of document.querySelectorAll('.routes path')) {
+      signals.append(route.cloneNode());
+    }
+
+    function updateMotionControl() {
+      const paused = viewport.classList.contains('paused');
+      motionButton.hidden = reduceMotion.matches;
+      motionButton.textContent = paused ? 'Tiếp tục chuyển động' : 'Tạm dừng chuyển động';
+    }
+
+    motionButton.addEventListener('click', () => {
+      viewport.classList.toggle('paused');
+      updateMotionControl();
+    });
+    reduceMotion.addEventListener('change', updateMotionControl);
+    updateMotionControl();
+  </script>
+</body>
+</html>
