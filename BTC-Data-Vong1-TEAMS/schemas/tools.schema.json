@@ -1,0 +1,187 @@
+{
+  "description": "Schema chuẩn cho các tool mock. Nhóm PHẢI giữ đúng tên tool và tên tham số bắt buộc để script chấm của BTC đối chiếu được success_if (args_match). Được thêm tham số tùy chọn. Tool đánh dấu M2 không bắt buộc ở M1. Logic tham chiếu (giá sau KM, điều kiện KM, tồn kho theo ngày, giới hạn COD, dời lịch ngày nghỉ) nằm trong eval/mock_tools.py — kết quả của nhóm phải khớp trên cùng đầu vào. Mọi tool nhận thêm `on` (YYYY-MM-DD, ngày của cuộc gọi). Cập nhật 11/2026: thêm pricing.quote_order và order.create(lines, basket_skus) cho đơn nhiều máy.",
+  "tools": [
+    {
+      "name": "crm.get_customer",
+      "level": "M1",
+      "description": "Tra khách theo SĐT hoặc định danh kênh. Trả về customer + danh sách session/order trước.",
+      "input": {
+        "phone": "string?",
+        "zalo_id": "string?",
+        "fb_id": "string?"
+      },
+      "output": {
+        "found": "boolean",
+        "customer_id": "string?",
+        "name": "string?",
+        "honorific": "string?",
+        "phone": "string?",
+        "identities": "object",
+        "orders": "array",
+        "ambiguous": "boolean — true khi SĐT thuộc ≥2 hồ sơ, kèm candidates[]",
+        "sessions": "array (phiên cũ, có date để xét TTL)"
+      }
+    },
+    {
+      "name": "catalog.search",
+      "level": "M1",
+      "description": "Tìm sản phẩm trong catalog/products.json.",
+      "input": {
+        "query": "string?",
+        "category": "string?",
+        "sku": "string?",
+        "max_price_vnd": "int?",
+        "min_room_area_m2": "int?"
+      },
+      "output": {
+        "items": [
+          {
+            "sku": "string",
+            "name": "string",
+            "list_price_vnd": "int",
+            "attributes": "object",
+            "variants": "array"
+          }
+        ]
+      }
+    },
+    {
+      "name": "inventory.check",
+      "level": "M1",
+      "description": "Kiểm tra tồn kho của SKU hoặc variant_sku.",
+      "input": {
+        "sku": "string",
+        "on": "date?"
+      },
+      "output": {
+        "sku": "string",
+        "in_stock": "boolean",
+        "qty": "int",
+        "restock_expected": "date? (khi hết hàng và có lịch về)",
+        "discontinued": "boolean?",
+        "successor_sku": "string?"
+      }
+    },
+    {
+      "name": "order.create",
+      "level": "M1",
+      "description": "Tạo MỘT đơn. Hai cách: (1) đơn 1 sản phẩm: sku + qty + price_vnd (như cũ); (2) đơn nhiều dòng (bổ sung 11/2026): lines = [{sku, qty, price_vnd}], price_vnd là giá MỘT máy sau KM lấy từ pricing.quote_order — khi các máy cùng SKU có giá khác nhau (VD một máy được AIR-2ND-50) thì mỗi máy một dòng qty=1. args_match trong kịch bản đối chiếu sku và price_vnd với TỪNG DÒNG; also_ordered và total_match_vnd tính trên mọi dòng của các lệnh order.create thành công. basket_skus chỉ dùng khi tách đơn (QT-01).",
+      "input": {
+        "customer_phone": "string",
+        "sku": "string? (bắt buộc nếu không dùng lines)",
+        "qty": "int?",
+        "price_vnd": "int? (giá MỘT đơn vị sau KM)",
+        "lines": "array? [{sku: string, qty: int, price_vnd: int}] — đơn nhiều dòng",
+        "basket_skus": "array? — các máy lọc không khí ở đơn TÁCH cùng ngày cùng SĐT (xét AIR-2ND-50)",
+        "promo_code": "string?",
+        "payment": "COD|bank|momo|zalopay",
+        "address": "string?"
+      },
+      "output": {
+        "order_id": "string",
+        "status": "created",
+        "total_vnd": "int",
+        "error": "out_of_stock | price_mismatch (kèm expected_units) | cod_limit_exceeded",
+        "estimated_delivery": "date (đã trừ CN + ngày nghỉ)"
+      }
+    },
+    {
+      "name": "pricing.get_quote",
+      "level": "M1 (khuyến nghị) / M2",
+      "description": "Giá cuối của MỘT đơn vị kèm KM còn hiệu lực tại ngày `on`. Đơn từ 2 máy lọc không khí trở lên → dùng pricing.quote_order (get_quote không phân định được máy nào nhận AIR-2ND-50 khi hai máy bằng giá).",
+      "input": {
+        "sku": "string",
+        "on": "date?",
+        "qty": "int?",
+        "customer_phone": "string? (xét once_per_customer, requires_owned_sku)",
+        "address": "string? (xét region)",
+        "basket_skus": "array? (chỉ cho trường hợp máy này rẻ hơn hẳn các máy kia)"
+      },
+      "output": {
+        "list_price_vnd": "int",
+        "final_price_vnd": "int",
+        "applied_promos": "array",
+        "expired_promos": "array",
+        "ineligible_promos": "array [{promo_code, reason}]",
+        "not_applied_exclusive": "array",
+        "freeship": "boolean"
+      }
+    },
+    {
+      "name": "pricing.quote_order",
+      "level": "M1 (khuyến nghị cho đơn nhiều máy) / M2",
+      "description": "Bổ sung 11/2026. Báo giá TỪNG MÁY cho một đơn nhiều dòng theo luật: AIR-2ND-50 chỉ một máy/đơn (máy rẻ nhất, bằng giá thì máy sau), mỗi máy tối đa một KM không cộng dồn, TRADE-IN-AP tối đa một máy/đơn.",
+      "input": {
+        "lines": "array [{sku: string, qty: int}]",
+        "on": "date?",
+        "customer_phone": "string?",
+        "address": "string?"
+      },
+      "output": {
+        "units": "array [{unit, line, sku, list_price_vnd, final_price_vnd, applied_promos}]",
+        "lines": "array [{sku, qty, unit_prices_vnd, line_total_vnd}]",
+        "total_vnd": "int",
+        "order_promos": "array",
+        "freeship": "boolean"
+      }
+    },
+    {
+      "name": "order.status",
+      "level": "M2",
+      "input": {
+        "order_id": "string?",
+        "customer_phone": "string?"
+      },
+      "output": {
+        "orders": "array"
+      }
+    },
+    {
+      "name": "order.update",
+      "level": "M1 (bắt buộc với persona đổi size) / M2",
+      "description": "Đổi size/sản phẩm hoặc trả hàng theo chính sách DT-03/DT-07.",
+      "input": {
+        "order_id": "string",
+        "action": "exchange_size|exchange_product|return|update_address",
+        "new_variant_sku": "string?",
+        "reason": "string?"
+      },
+      "output": {
+        "order_id": "string",
+        "status": "string",
+        "fee_vnd": "int"
+      }
+    },
+    {
+      "name": "schedule.callback",
+      "level": "M1",
+      "description": "Đặt lịch gọi lại theo thời điểm khách nêu.",
+      "input": {
+        "customer_phone": "string",
+        "callback_at": "datetime",
+        "note": "string?"
+      },
+      "output": {
+        "callback_id": "string",
+        "moved_from": "datetime? — khi lịch rơi vào ngày nghỉ/ngoài giờ, mock tự dời và agent PHẢI báo khách"
+      }
+    },
+    {
+      "name": "handoff.transfer",
+      "level": "M1",
+      "description": "Chuyển máy cho người thật kèm HandoffBrief đúng schemas/handoff_brief.schema.json. Không cần routing thật; mock trả về ticket_id.",
+      "input": {
+        "brief": "HandoffBrief"
+      },
+      "output": {
+        "ticket_id": "string",
+        "status": "queued"
+      }
+    },
+    {
+      "name": "memory.read / memory.write",
+      "level": "M1 (qua mcp-memory)",
+      "description": "Đọc/ghi các tầng bộ nhớ. Không quy định schema; nhóm tự thiết kế nhưng phải log được provenance (fact đến từ session nào)."
+    }
+  ]
+}
