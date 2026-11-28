@@ -34,7 +34,7 @@ docker compose up -d --build
 python seed_btc.py --data-dir ./BTC-Data-Vong1-TEAMS
 ```
 
-Khi seed báo đã sẵn sàng, dùng tài khoản demo mặc định để đăng nhập. <http://127.0.0.1:8000/chat> · [Thoại](http://127.0.0.1:8000/)
+Khi seed báo đã sẵn sàng lúc này đã có thể mở web chạy demo, dùng tài khoản demo mặc định để đăng nhập. <http://127.0.0.1:8000/chat> · [Thoại](http://127.0.0.1:8000/)
 
 | Tên đăng nhập | Mật khẩu |
 |---|---|
