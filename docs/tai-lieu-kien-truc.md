@@ -1,253 +1,133 @@
-# Tài liệu kiến trúc TeleSale SudoCode 2026
+# Kiến trúc trợ lý telesale đa phiên
 
-Ngày rà soát: **27/11/2026**. Mốc Git: `a4a816732987f69b805f76d47b12491bce73e8fb`, cộng thay đổi chưa commit đang có trong `claims.py` và ba file test guardrail/review. Tài liệu mô tả implementation trong checkout; kết quả thực nghiệm nằm ở [Báo cáo đánh giá](bao-cao-danh-gia.md).
+TeleSale SudoCode 2026 dùng chung một bộ điều phối hội thoại (*harness*) cho chat, thoại và đánh giá. Khi khách quay lại, hệ thống dùng bộ nhớ để tiếp tục đúng nhu cầu. Trước khi báo giá hoặc ghi đơn, agent phải lấy bằng chứng thương mại theo ngày giao dịch và kiểm tra yêu cầu hiện tại của khách. [Báo cáo đánh giá](bao-cao-danh-gia.md)
 
-## 1. Phạm vi và bản đồ mã nguồn
-
-Hệ thống là trợ lý telesale tiếng Việt đa phiên, đa kênh, hỗ trợ tư vấn, báo giá, đặt/đổi/trả hàng, hẹn gọi lại và chuyển nhân viên. Chat, voice và runner đánh giá dùng chung runtime nghiệp vụ. Bộ nhớ cá nhân của khách và kho chính sách cửa hàng là hai luồng dữ liệu riêng.
-
-| Khu vực | Trách nhiệm và điểm đọc chính |
-|---|---|
-| `frontend/` | HTML/CSS/JavaScript thuần; chat WebSocket, Call Brief, trạng thái memory, timeline; thu/phát audio và xác nhận phần đã nghe; UI review knowledge |
-| `backend/app/` | FastAPI gateway, đăng nhập và ràng buộc tài khoản/kênh, chuyển tiếp chat/voice/knowledge; entrypoint Compose là [`voice_main.py`](../backend/app/voice_main.py), khác app backend tổng quát ở `main.py` |
-| `ai-services/app/agent/` | Runtime, StateGraph, ngữ cảnh, LLM agent, BusinessTools, authorization, kiểm câu trả lời, commit lượt |
-| `ai-services/app/mcp_servers/` | Bốn server Catalog, Order, Memory, Knowledge; schemas, service, repository; `mcp_shared/` giữ identity, PII, commerce rules/evidence và lịch nghiệp vụ |
-| `ai-services/app/knowledge/` | Event → gap → revision → review/test → release; nguồn, quyền truy cập, audit và rollback |
-| `ai-services/app/bootstrap/` | Schema SQL, role/grant, bootstrap dữ liệu và policy; kiểm boot readiness |
-| `speech/` | ASR/chuẩn hóa tiếng Việt, tạo/kiểm corpus, replay có provenance, WER/CER; `serving/` cung cấp ASR/VAD/TTS realtime và VieNeu sidecar |
-| `dataloader_offline/`, `seed_btc.py` | Kiểm nguồn BTC, nhập PostgreSQL, chuẩn bị hybrid policy index, đối chiếu dữ liệu sau nhập |
-| `ai-services/eval_harness/`, `eval/` | Runner Full/baseline, extractor/scorer adapter, bằng chứng stage/trace, semantic/tool/RAG evaluation, ablation, simulator và kiểm khả năng so sánh |
-| `scripts/`, `config/`, `Dockerfile`, `docker-compose.yml` | Khởi động CPU/GPU, chờ seed, cấu hình service, tokenizer, đóng gói và dependencies |
-| Các thư mục `test/`, `fixtures/`, `eval/scenario_final/` | Kiểm thử offline và hợp đồng dữ liệu; fixture/scenario không phải logic trả lời riêng theo scenario ID |
-
-Phạm vi rà soát bao phủ các khối mã nguồn trên và đường nối giữa chúng. Model weights, audio, cache, virtualenv và kết quả sinh sẵn được xem là tài sản/dữ liệu, không phải mã ứng dụng. Tài liệu không khẳng định toàn bộ suite đã được chạy.
-
-## 2. Sơ đồ hệ thống
+## 1. Sơ đồ hệ thống
 
 ```mermaid
-flowchart TB
-    U[Khách / người vận hành] --> UI[Frontend: chat, voice, knowledge]
-    UI --> GW[Backend FastAPI :8000\nAuth + WebSocket gateway]
-    GW -->|HTTP nội bộ / NDJSON| AI[AI FastAPI :8001\nAgentHarnessRuntime]
-    UI -->|PCM qua gateway| SP[Speech :18110\nVAD + ASR + TTS]
-    GW <--> SP
-    SP <--> VN[VieNeu sidecar :18111]
-    AI <--> LLM[LLM API tương thích OpenAI\nAgent / authorizer / reviewer]
-    AI --> MCP[MCPGateway + context có chữ ký]
-    MCP --> CA[Catalog MCP :8011\nCRM / catalog / stock / quote]
-    MCP --> OR[Order MCP :8012\nOrder / callback / handoff]
-    MCP --> ME[Memory MCP :8013\nRead / commit / replay / timeline]
-    MCP --> KN[Knowledge MCP :8014\nPolicy search]
-    CA --> PG[(PostgreSQL 16\nNguồn BTC + runtime + knowledge)]
-    OR --> PG
-    ME --> PG
-    KN --> PG
-    KN <--> QD[(Qdrant\nDense + sparse policy index)]
-    KN --> CF[Cloudflare bge-m3 embedding]
-    PG --> MW[LangMem worker\nAdmission + projection]
-    MW --> PG
+flowchart LR
+    UI["Khách · chat và thoại"] --> GW["Backend FastAPI"]
+    GW <-->|Audio| SP["Speech · VAD, ASR, TTS"]
+    SP <--> VN["VieNeu"]
+    GW -->|Văn bản| API["AI FastAPI"]
+    API --> RT["AgentHarnessRuntime"]
+    EV["Runner đánh giá"] --> RT
+    RT <--> LLM["LLM"]
+    RT --> G["MCPGateway"]
+    G --> C["Catalog · CRM, hàng hóa, giá"]
+    G --> O["Order · giao dịch, chuyển nhân viên"]
+    G --> M["Memory · hội thoại, hồ sơ"]
+    G --> K["Knowledge · chính sách"]
+    C --> DB[(PostgreSQL)]
+    O --> DB
+    M --> DB
+    K --> DB
+    K <--> Q[(Qdrant)]
+    K --> E["Cloudflare · embedding"]
+    MW["Worker LangMem · cập nhật hồ sơ"] <--> DB
+    KW["Worker Knowledge · phân tích phản hồi"] <--> DB
     MW --> LLM
-    PG --> KW[Knowledge worker\nPhân tích event / gap]
-    KW --> PG
     KW --> LLM
-    GW --> RV[Knowledge review API]
-    RV --> PG
-    EV[Host eval runner] --> AI
-    SE[Host seed / dataloader] --> PG
-    SE --> QD
 ```
 
-Sơ đồ biểu diễn phụ thuộc logic. Runner chuẩn dựng runtime cùng code trực tiếp trong tiến trình host và gọi các MCP; không bắt buộc đi qua HTTP AI/backend. Voice dùng gateway để điều phối speech; sơ đồ không có nghĩa trình duyệt giữ token nội bộ hay tự gọi MCP.
+Backend xác thực người dùng và giữ kết nối với trình duyệt. Với chat, backend nhận WebSocket, chuẩn bị phiên rồi chuyển tiếp dòng sự kiện từ AI. Với thoại, backend gửi âm thanh tới Speech, chuyển bản chép lời cuối cùng cho cùng harness, rồi gửi câu trả lời sang TTS. Khi khách ngắt lời, backend dừng phát và xác nhận đoạn đã phát cho AI. Runner đánh giá dựng harness trực tiếp và gọi cùng các MCP. [Chat](../backend/app/api/text.py) · [Thoại](../backend/app/services/voice_call.py) · [Runner](../ai-services/eval_harness/benchmark_runner.py)
 
-Compose có PostgreSQL, Qdrant, Redis, bốn MCP, hai worker, AI, backend, speech và VieNeu. Redis được cấp trong stack, có helper ở backend tổng quát; runtime hội thoại trong `voice_main.py` dùng bộ nhớ tiến trình và PostgreSQL, không dùng Redis làm nguồn bộ nhớ cá nhân. Port trên hình là port service; host mapping mặc định nằm trong [Compose](../docker-compose.yml), ví dụ PostgreSQL `15432`, Qdrant `16333`, AI `18001`, MCP `18011`–`18014`.
+**Hệ thống chọn MCP (Model Context Protocol).** Catalog, Order, Memory và Knowledge là bốn dịch vụ có hợp đồng và quyền truy cập dữ liệu riêng. PostgreSQL giữ dữ liệu nghiệp vụ, lịch sử và nguồn chính sách. Qdrant lập chỉ mục phục vụ tìm kiếm chính sách. Worker LangMem cập nhật trí nhớ của từng khách. Worker Knowledge phân tích phản hồi để người duyệt cải tiến tri thức dùng chung. [Cấu hình triển khai](../docker-compose.yml) · [Định tuyến công cụ](../ai-services/app/agent/mcp/gateway.py)
 
-## 3. Vòng lặp harness
-
-Graph thực tế chỉ có bốn node: **accept → retrieve_context → run_agent → verify**. Persist do runtime gọi sau khi xử lý ranh giới phát câu trả lời; không phải node thứ năm trong StateGraph. Vòng lặp model/tool nằm bên trong `run_agent`; recovery hữu hạn nằm trong `verify`.
+## 2. Vòng lặp harness
 
 ```mermaid
 flowchart TD
-    R[Request: session_id, client_msg_id, channel, on] --> ID[Khóa session + kiểm identity / retry]
-    ID --> RE{Có lượt đã commit?}
-    RE -->|Có và hash khớp| RP[Replay câu trả lời và receipt đã lưu]
-    RE -->|Chưa| A[accept: che PII / nhận lượt]
-    A --> C[retrieve_context: memory mới + Call Brief]
-    C --> P[LLM lập hành động]
-    P --> T{Gọi tool?}
-    T -->|Có| B[BusinessTools: schema, budget, precondition]
-    B --> W{Tool ghi?}
-    W -->|Có| AU[Authorization + context có chữ ký]
-    W -->|Không| MCP[MCP thực thi]
-    AU --> MCP
-    MCP --> O[Observation / receipt được lọc]
-    O --> P
-    T -->|Câu trả lời| V[Grounding + answer checks + semantic review]
-    V --> OK{Chấp nhận?}
-    OK -->|Có| PUB[Phát câu trả lời đã kiểm]
-    OK -->|Không| REC[Continuation tối đa một lần\nhoặc bổ sung read + sửa câu trả lời]
-    REC --> V2[Kiểm lại]
-    V2 -->|Đạt| PUB
-    V2 -->|Không đạt| F[Fallback đã kiểm hoặc reply error]
-    F --> PUB
-    PUB --> D{Delivery mode}
-    D -->|Text| COM[Commit turn + enqueue distill]
-    D -->|Voice| PLAY[Playback receipt: played_chars]
-    PLAY --> COM
-    COM --> NEXT[Lượt sau đọc bằng chứng đã commit]
+    I["Nhận lượt · kiểm danh tính và yêu cầu gửi lại"] -->|Lượt mới| A["accept · che thông tin cá nhân"]
+    I -->|Đã lưu và khớp yêu cầu| RP["Trả câu đã lưu"]
+    A --> C["retrieve_context · nạp lịch sử và Call Brief"]
+    C --> R["run_agent · đọc lời khách và bằng chứng"]
+    R -->|Đề xuất công cụ| T{"Đọc hay ghi?"}
+    T -->|Đọc| M["Gọi MCP"]
+    T -->|Ghi| W{"Đủ bằng chứng và quyền ghi?"}
+    W -->|Có| M
+    W -->|Thiếu| R
+    M -->|Kết quả hoặc lỗi| R
+    R -->|Bản nháp| V["verify · kiểm câu trả lời"]
+    V -->|Đạt| P["Phát câu đã kiểm"]
+    V -->|Chưa đạt| S["Tra bổ sung hoặc sửa câu trong giới hạn"]
+    S -->|Kiểm lại đạt| P
+    S -->|Hết lượt sửa| F{"Có câu dự phòng qua kiểm tra?"}
+    F -->|Có| P
+    F -->|Không| E["Báo lỗi lượt"]
+    P -->|Text| D["Lưu lượt"]
+    P -->|Voice| B["Nhận số ký tự đã phát"]
+    B --> D
 ```
 
-1. **Chuẩn bị phiên:** gateway gắn kênh với tài khoản, tạo UUID; runtime tra CRM và dựng brief. `known`, `unknown`, `ambiguous` là ba trạng thái khác nhau. `verified_customer_id` và `verified_phone` phải là cặp tin cậy từ tầng gọi, được đối chiếu CRM. ID Facebook/Zalo không tự được chuyển thành SĐT.
-2. **Nhận lượt và ngữ cảnh:** khóa theo `session_id`; `(session_id, client_msg_id)` nhận diện retry. Request hash gồm nội dung request và chế độ Full/baseline. Memory mới thay thế view cũ; read lỗi không cho dùng tiếp profile cache cũ. Ngày nghiệp vụ lấy từ `request.on`.
-3. **Suy luận và công cụ:** mặc định dùng Deep Agent; ReAct có builder dùng chung BusinessTools. Middleware chỉ công bố 12 business tools, loại tool hệ thống của Deep Agent ngoài allowlist. Model đề xuất args; harness bổ sung identity/ngày/operation key và kiểm sản phẩm/biến thể trước thực thi.
-4. **Quyền ghi:** tạo/sửa đơn, callback, handoff phải được kiểm riêng. Fast path chỉ nhận dạng một nhóm yêu cầu tạo đơn tường minh, khớp sản phẩm, số lượng, payment và bằng chứng hiện tại; các trường hợp khác qua LLM authorizer. Thiếu context đầy đủ hoặc authorization unavailable thì không ghi. Gateway ký binding tool/args/actor; Order MCP kiểm lại.
-5. **Xác minh:** kiểm giá, KM, tồn kho, giao hàng, thông số/chính sách và receipt thao tác; sau đó semantic reviewer đối chiếu ngữ nghĩa. Reviewer lỗi/timeout hiện trả `grounding_review_unavailable`; verifier vẫn cho qua nếu lớp deterministic đã đạt. Đây là giới hạn thực tế: bật semantic review không đồng nghĩa mọi câu luôn được review thành công.
-6. **Recovery:** một continuation có tools dùng lại BusinessTools, budgets và receipt cache; các read bổ sung vẫn tính budget. Sau đó có tối đa một vòng viết lại mặc định từ factory, không được tự thực hiện giao dịch trong lời sửa. Fallback phải có nguồn cho sản phẩm được nhắc; không được chọn quà làm sản phẩm chính. Recovery không bảo đảm task đã hoàn tất.
-7. **Công bố và lưu:** `GuardedStream.feed()` hiện chỉ nhận state, chưa phát draft; `finish()` phát câu đã khớp `verified_answer`. Text commit trước terminal response; voice chỉ commit prefix được xác nhận đã phát. Voice hết hạn 300 giây mà không có receipt thì ghi phần nghe là 0. Enrichment chạy nền; `turn_saved=True` khác `status=completed` của distillation.
+Bốn node của LangGraph là `accept → retrieve_context → run_agent → verify`. Vòng gọi công cụ nằm trong `run_agent`. Phần sửa câu thuộc `verify`. Runtime bao ngoài graph quản lý khóa phiên, phát lại câu đã lưu và ghi nhận nội dung đã gửi. [Graph](../ai-services/app/agent/graph.py) · [Runtime](../ai-services/app/agent/harness/runtime.py)
 
-Nguồn: [`graph.py`](../ai-services/app/agent/graph.py), [`runtime.py`](../ai-services/app/agent/harness/runtime.py), [`agent_nodes.py`](../ai-services/app/agent/harness/agent_nodes.py), [`business_agent.py`](../ai-services/app/agent/implementations/business_agent.py), [`streaming.py`](../ai-services/app/agent/harness/streaming.py), [`authorization.py`](../ai-services/app/agent/harness/authorization.py).
+1. **Nhận diện và chống ghi trùng.** Runtime khóa theo phiên, tra CRM bằng số hotline hoặc định danh Facebook/Zalo trên đúng kênh. Khi kết quả chưa rõ hoặc có nhiều khách trùng khớp, agent chỉ dùng ngữ cảnh được phép. Nếu nhận lại cùng `session_id` và `client_msg_id`, runtime đối chiếu dấu vân tay của yêu cầu. Yêu cầu khớp có thể nhận lại câu đã lưu. Nếu sổ giao dịch đã ghi thao tác mà thiếu câu trả lời, runtime báo cần khôi phục. [Định danh](../ai-services/app/agent/harness/session_identity.py) · [Phục hồi lượt](../ai-services/app/mcp_servers/mcp_memory/services/replay.py)
+2. **Dựng prompt.** Agent nhận lời khách hiện tại, mặc định 6 lượt lịch sử gần nhất, hồ sơ đúng phạm vi, các lần tư vấn liên quan, Call Brief và kết quả công cụ. Lời khách và lời agent giữ vai trò riêng. Khi ngữ cảnh dài, harness giới hạn từng nhóm dữ liệu, ưu tiên phần tử gần nhất trong danh sách, ghi lại trường đã lược và giữ tổng ngữ cảnh trong khoảng 70.000 ký tự JSON. Bộ duyệt từ chối thao tác ghi nếu thiếu nguồn. [Dựng ngữ cảnh](../ai-services/app/agent/harness/context.py) · [Duyệt quyền ghi](../ai-services/app/agent/harness/authorization.py)
+3. **Quyết định và thực thi.** Deep Agent có thể trả lời ngay khi đã đủ bằng chứng. Cần báo giá mới, xác nhận tồn kho hay tra điều kiện đổi trả thì agent đề xuất đúng công cụ ở mục 4. Mặc định mỗi lượt có ngân sách 8 lần gọi nghiệp vụ. Với thao tác ghi, harness kiểm yêu cầu hiện tại và các điều kiện của thao tác. Trường hợp tạo đơn tường minh, đủ điều kiện có thể được duyệt bằng quy tắc. Với các đề xuất còn lại, bộ duyệt đối chiếu thao tác với lời khách và bằng chứng của lượt hiện tại. Gateway ký ngữ cảnh, Order MCP kiểm lại trước khi ghi. [Công cụ của agent](../ai-services/app/agent/implementations/business_agent.py) · [Kiểm chữ ký](../ai-services/app/mcp_servers/mcp_order/write_authorization.py)
+4. **Kiểm tra và xử lý lỗi.** Bộ kiểm đối chiếu lời agent với thông số, giá, ưu đãi, điều kiện chính sách và biên nhận. Khi thiếu bằng chứng, agent có tối đa một lần tiếp tục dùng công cụ và mặc định một lần sửa lời. Nếu vẫn sai, runtime dùng câu dự phòng đã kiểm hoặc trả lỗi. Chẳng hạn, khi tra chính sách bị timeout, công cụ trả trạng thái nguồn chưa sẵn sàng và danh sách bằng chứng rỗng. Agent chưa thể xác nhận quyền lợi từ lượt tra đó. Riêng khi bộ duyệt ngữ nghĩa không khả dụng, câu đã qua kiểm tra bằng quy tắc vẫn có thể được phát. [Xác minh và sửa câu](../ai-services/app/agent/harness/agent_nodes.py) · [Tra chính sách](../ai-services/app/agent/mcp/gateway.py)
+5. **Giao câu trả lời.** Chat chữ giữ bản nháp đến khi duyệt xong. Với thoại, backend bỏ qua bản chép lời rỗng và báo lỗi nhận dạng nếu Speech trả lỗi. Khi câu trả lời đã phát được một phần, runtime lưu đúng phần đầu theo `played_chars`. Nếu hết 300 giây vẫn chưa có xác nhận phát, số ký tự ghi nhận là 0. [Phát text](../ai-services/app/agent/harness/streaming.py) · [Nhận transcript và ngắt lời](../backend/app/services/voice_call.py) · [Ghi nhận playback](../ai-services/app/agent/harness/runtime.py)
 
-### Ngân sách và kiểm soát chạy
+**Khi chuyển nhân viên.** Nếu khách yêu cầu gặp người hoặc hỏi vấn đề y tế cần người có chuyên môn, agent đề xuất `handoff.transfer`. Bản bàn giao có lý do, tóm tắt cuộc trao đổi, sản phẩm và giá đã tư vấn nếu xác minh được, câu hỏi còn mở và hành động tiếp theo. Runtime gắn danh tính từ phiên. Chỉ khi công cụ trả trạng thái `queued` cùng mã phiếu thì hệ thống mới báo yêu cầu đã vào hàng đợi. [Hợp đồng bàn giao](../ai-services/app/schemas/brief.py) · [Dựng brief có nguồn](../ai-services/app/agent/harness/handoff_brief.py)
 
-| Tham số mặc định | Giá trị / tác dụng |
-|---|---|
-| Business tool calls | 8/lượt; settings cho phép 3–20 |
-| Tool attempts / model tool exposure | Giới hạn liên quan bằng 2 lần tool budget; recursion limit của agent ít nhất 12 |
-| Lịch sử đưa vào prompt | 6 lượt; settings cho phép 1–12 |
-| Episode truy hồi | 5; settings cho phép 0–20 |
-| Timeout | Turn 90 giây; LLM 30 giây; review authorization/semantic 5 giây; MCP gateway 10 giây |
-| Context | Bound theo từng trường, tổng khoảng 70.000 ký tự JSON; ghi nhận `omitted_fields` và chặn authorization khi thiếu nguồn |
-| Cache runtime | Process-local, tối đa 128 session; prune theo tuổi/truy cập; cache không thay thế durable replay |
+## 3. Bộ nhớ và tính liên tục giữa các phiên
 
-Các giới hạn là giá trị code mặc định, có thể khác cấu hình triển khai. Policy service có deadline riêng 60 giây nhưng caller MCP timeout 10 giây; deadline hiệu dụng của một request phụ thuộc cả hai tầng.
-
-## 4. Thiết kế bộ nhớ
-
-### Ba tầng, cùng khóa chủ sở hữu
-
-| Tầng | Nội dung | Nơi lưu / cách dùng |
+| Tầng | Khóa và nơi lưu | Dữ liệu được dùng ở lượt sau |
 |---|---|---|
-| Working | Lượt hội thoại và tool observations đã commit; context view, sản phẩm đang trao đổi, private delivery | `runtime.turns` trong PostgreSQL; `SessionState` là view/cache; khôi phục từ bằng chứng khi tiến trình restart |
-| Episodic | Mục tiêu, tư vấn, next step, blocker/câu hỏi còn mở, outcome, resolved items theo phiên/chủ đề | LangGraph `AsyncPostgresStore` qua `LangMemProjection`, namespace `customers/{customer_id}/episodes`; scope topic global/product/room |
-| Profile | Fact bền vững: nhu cầu, ngân sách, diện tích, sở thích; facts lịch sử về tư vấn/giá/đơn được phân loại riêng | Namespace `customers/{customer_id}/facts`; key logic gồm scope, scope_id, slot và revision |
+| Hội thoại (*working*) | PostgreSQL, bảng `runtime.turns`. Khóa chính gồm `session_id` và `turn_no`. Cặp `session_id`, `client_msg_id` nhận diện lượt gửi lại. | Lời khách, phần trả lời đã phát, kết quả công cụ và kết quả nghiệp vụ. Runtime dựng lại lịch sử từ các lượt đã ghi. |
+| Lần tư vấn (*episodic*) | LangMem lưu tại `customers/{customer_id}/episodes` trong PostgreSQL, có tham chiếu phiên. | Sản phẩm đã tư vấn, trở ngại, câu hỏi còn mở, kết quả và hành động tiếp theo. Dùng để chọn phiên liên quan khi khách quay lại. |
+| Hồ sơ (*profile*) | LangMem lưu tại `customers/{customer_id}/facts` trong PostgreSQL. Mỗi dữ kiện có phạm vi (chung, phòng hoặc sản phẩm), khóa thông tin và phiên bản. | Nhu cầu, ngân sách, diện tích, sở thích. Lượt nguồn, trích dẫn bằng chứng, ngày ghi nhận và thời hạn giúp đánh giá dữ kiện còn dùng được hay không. |
 
-Memory cá nhân dùng PostgreSQL; `LangMemProjection` mở store với `index=None`. Qdrant phục vụ policy retrieval, không phải vector database mặc định cho profile khách. Episode được xếp hạng theo SKU trong query, giao từ khóa, blocker đang mở và ngày.
+**Từ lời thoại đến hồ sơ.** Memory MCP lưu lượt trong PostgreSQL. Với khách đã xác định, nó đưa việc trích xuất vào hàng đợi trong cùng giao dịch. Worker nhận việc, đề xuất dữ kiện và đối chiếu với lượt nguồn trước khi công bố phiên bản. Lời khách có thể chứng minh ngân sách. Báo giá chỉ chứng minh giá đã tra, còn việc mua hàng cần biên nhận tạo đơn. Nếu worker chưa xong, lượt kế tiếp vẫn đọc được hội thoại đã ghi. [Schema lưu trữ](../ai-services/app/bootstrap/schema.sql) · [Ghi và đọc lượt](../ai-services/app/mcp_servers/mcp_memory/services/memory.py) · [Worker LangMem](../ai-services/app/mcp_servers/mcp_memory/distiller_worker.py)
 
-Một fact giữ `schema_version`, `key`, `value`, `scope_type`, `scope_id`, `source_kind`, `source_tool`, `source_turn_id`, `session_id`, `evidence_quote`, `on`, `valid_until`, `revision`, `write_op`, `status`. Các trường này dùng để truy nguồn, kiểm kiểu, hiệu lực và chọn phiên bản; không chỉ lưu cặp key/value.
+**Khi khách đổi ý hoặc dữ kiện hết hạn.** Trong cùng phạm vi, giá trị mới đã được duyệt thay thế phiên bản cũ. Dữ kiện của hai phòng hoặc hai sản phẩm khác nhau giữ khóa riêng. Dấu xóa ngăn tác vụ cũ khôi phục giá trị đã xóa. Khi đọc, hệ thống lọc theo ngày nghiệp vụ, thời hạn riêng và tuổi tối đa của dữ kiện hồ sơ (mặc định 240 ngày). Runtime che thông tin cá nhân trước khi đưa vào prompt và giữ địa chỉ giao hàng trong ngữ cảnh riêng cho thao tác đã được phép. [Lưu phiên bản](../ai-services/app/mcp_servers/mcp_memory/repos/langmem_projection.py) · [Lọc và che dữ liệu](../ai-services/app/agent/harness/context.py)
 
-### Luồng ghi và độ nhất quán
+**Ví dụ minh họa hai cuộc gọi.** Ở cuộc đầu, khách cho biết phòng 25 m², đã xem một mẫu máy lọc và còn chờ hỏi ý gia đình. Diện tích được ghi vào hồ sơ theo phòng. Mẫu đã tư vấn và việc còn chờ được ghi vào bản tóm tắt lần tư vấn. Ở cuộc sau, khi nhận diện đúng khách, runtime dựng Call Brief với sản phẩm cũ, giá từng báo, trở ngại còn mở, thông tin đã biết và câu mở đầu gợi ý. Agent có thể xác nhận “Chị gọi lại về mẫu cho phòng 25 m² hôm trước ạ?” rồi tra lại giá và tồn kho theo ngày hiện tại. Nếu khách đổi sang một mẫu khác, agent phải xác định lại SKU và báo giá của mẫu mới trước khi nhận yêu cầu đặt hàng. [Cấu trúc Call Brief](../ai-services/app/schemas/brief.py) · [Nạp và làm mới brief](../ai-services/app/agent/harness/context.py)
 
-```mermaid
-sequenceDiagram
-    participant RT as Runtime
-    participant MM as Memory MCP
-    participant DB as PostgreSQL
-    participant WK as LangMem worker
-    participant LM as Extraction / review LLM
-    RT->>MM: memory.write(commit_turn, operation_key)
-    MM->>DB: Transaction: turn + observations + job + order links
-    DB-->>RT: turn_no; lượt đã lưu, enrichment pending
-    WK->>DB: Claim job có lease / kiểm attempt / erasure
-    WK->>LM: Đề xuất facts và episode từ lượt nguồn
-    LM-->>WK: Structured candidates
-    WK->>WK: Admission + fact/episode review + deterministic receipts
-    WK->>DB: Lưu accepted proposals; publish revision
-    WK->>DB: Đánh dấu job completed
-    RT->>MM: memory.read ở lượt sau
-    MM->>DB: Completed revisions + read view từ turns đã commit
-    DB-->>RT: Working + profile + episodes có provenance
-```
+## 4. Danh sách công cụ và quyền sử dụng
 
-Commit turn và enqueue job nằm cùng transaction. Operation key và args hash tránh retry ghi trùng hoặc dùng lại key với nội dung khác. Worker xử lý thứ tự theo khách, có lease/attempt và kiểm claim còn hiệu lực trước publish. Proposals đã chấp nhận được lưu để retry không tự sinh một bộ trích xuất mới. Reader chỉ công bố revision hoàn tất, kết hợp operational read view từ các lượt đã commit khi worker chưa kịp chạy.
+Model đề xuất **12 công cụ nghiệp vụ** qua `BusinessTools`. Bảng dùng tên chuẩn xuất hiện trong trace. Các tham số dưới đây là đầu vào nghiệp vụ chính. Danh tính tin cậy, ngày giao dịch và khóa chống ghi trùng do harness bổ sung khi công cụ yêu cầu. [Ánh xạ tên công cụ](../ai-services/app/agent/implementations/tool_names.py) · [Gateway MCP](../ai-services/app/agent/mcp/gateway.py)
 
-**Admission:** LLM chỉ đề xuất; kiểm nguồn turn đúng khách/phiên, loại slot và quote. Facts khách cần phát ngôn khách có evidence; giá/đơn/khuyến mãi phải có tool evidence thích hợp. Kết quả search/quote không tự chứng minh khách đã chọn/mua; quà được tra giá/kho không tự thành `product_advised`. Chỉ receipt tạo đơn hợp lệ mới tạo bằng chứng mua tương ứng.
-
-**Cập nhật:** `set`, `supersede`, `delete`; cùng giá trị và `valid_until` có thể bỏ ghi revision trùng. Giá trị cũ bị thay thế có liên kết revision mới; delete là tombstone. Khi compact phải giữ barrier phiên bản để job cũ không hồi sinh dữ liệu đã xóa. Không nhắc lại fact không có nghĩa khách đã yêu cầu xóa.
-
-**Hiệu lực:** TTL fact mặc định 240 ngày theo ngày nghiệp vụ, bỏ fact tương lai/hết hạn; `valid_until` kiểm riêng. Giá/KM cũ vẫn là lịch sử, không phải báo giá hiện hành. Quote/stock dùng cho mua phải đúng SKU/variant, số lượng, ngày và ngữ cảnh giỏ/địa điểm.
-
-**Định danh và riêng tư:** session ownership ngăn đọc chéo khách. Danh tính mơ hồ không mở profile. PII được che trước đưa vào LLM và proposal; địa chỉ thực có private delivery context riêng để thực thi khi có quyền. Điều này không có nghĩa PostgreSQL không chứa dữ liệu riêng tư. Erasure có barrier chặn read/write, purge memory/knowledge evidence và vô hiệu cache runtime; agent không có tool tự xóa dữ liệu tùy ý.
-
-Nguồn: [`store.py`](../ai-services/app/agent/memory/store.py), [`memory.py`](../ai-services/app/mcp_servers/mcp_memory/services/memory.py), [`distiller_worker.py`](../ai-services/app/mcp_servers/mcp_memory/distiller_worker.py), [`langmem_admission.py`](../ai-services/app/mcp_servers/mcp_memory/services/langmem_admission.py), [`langmem_projection.py`](../ai-services/app/mcp_servers/mcp_memory/repos/langmem_projection.py), [`schema.sql`](../ai-services/app/bootstrap/schema.sql).
-
-### Truy hồi và Call Brief
-
-`load_context()` đọc mới theo owner; tách customer facts khỏi sales history; lọc TTL/scope; nạp history, current episode, episode trước và đơn thuộc khách. Call Brief tổng hợp nhu cầu, tư vấn trước, blocker, điểm cần hỏi và dữ kiện không nên hỏi lại. Brief không cấp consent và không xác nhận đơn mới.
-
-Khi cần hiểu “mẫu hôm trước”, runtime có thể refresh catalog/quote/stock từ advice có nguồn, nhưng nhiều sản phẩm còn mơ hồ thì vẫn cần làm rõ. Render brief không phải mỗi lần lại gọi tool thương mại. Read lỗi loại bỏ view cũ; retry cache cũng kiểm memory để tôn trọng xóa dữ liệu và lỗi nguồn.
-
-## 5. Danh sách tools và quyền sử dụng
-
-### 12 business tools cho model
-
-Tên canonical dùng trong trace/MCP; alias dấu gạch dưới dùng trong function calling. Model không tự truyền verified identity hay operation key.
-
-| Tool canonical → alias | MCP | Đầu vào nghiệp vụ chính | Kết quả / ràng buộc |
+| MCP | Công cụ | Quyền | Đầu vào chính → kết quả dùng được |
 |---|---|---|---|
-| `catalog.search` → `catalog_search` | Catalog | Query/category/SKU, bộ lọc thuộc tính/diện tích/giá niêm yết | Ứng viên và variants; thiếu thông số nghĩa là chưa biết; giá niêm yết không phải giá sau KM |
-| `catalog.get_details` → `catalog_get_details` | Catalog | SKU/variant | Chi tiết, technical evidence, nguồn/conflict; không dùng thông số mẫu khác |
-| `inventory.check` → `inventory_check` | Catalog | SKU, ngày do harness gắn | `in_stock`, `qty`; mua cần đủ lượng cộng gộp |
-| `pricing.get_quote` → `pricing_get_quote` | Catalog | SKU, qty, địa điểm, ngữ cảnh giỏ | Giá cuối, applied promos, freeship, ngày giao dự kiến; khuyến nghị cho 1 đơn vị |
-| `pricing.quote_order` → `pricing_quote_order` | Catalog | `lines`, địa điểm | Giá theo từng `unit`, tổng và ưu đãi đơn; dùng cho nhiều món/đơn vị |
-| `order.status` → `order_status` | Order | Order ID hoặc lookup khách đã xác minh | Chỉ đơn thuộc owner; có thể tra danh sách mà không hỏi lại SĐT |
-| `order.preview_update` → `order_preview_update` | Order | Đơn, action, dòng/qty, variant mới | Phương án và số tiền dự kiến; không tạo phiếu |
-| `order.create` → `order_create` | Order | SKU/giá hoặc `lines`, payment, địa điểm | Tool ghi; cần identity, authorization, quote/stock; receipt `created` và order ID |
-| `order.update` → `order_update` | Order | Đơn, action, dòng/qty, variant/địa chỉ mới | Tool ghi; ownership/authorization; `review_pending` chỉ là chờ duyệt |
-| `schedule.callback` → `schedule_callback` | Order | Thời điểm, ghi chú | Tool ghi; chuẩn hóa lịch làm việc; receipt giữ thời điểm thực tế và việc dời |
-| `handoff.transfer` → `handoff_transfer` | Order | Brief lý do, tóm tắt, câu hỏi mở, next action | Tool ghi; harness gắn identity; thành công cần ticket và `queued` |
-| `policy.search` → `policy_search` | Knowledge | Query, order/product đã xác minh, ngày khách tự khai nếu có | Evidence, applicability, dependencies, release; nội dung public theo ngày và đối tượng |
+| Catalog | `catalog.search` | Đọc | Tên, loại hoặc bộ lọc → danh sách mẫu và biến thể phù hợp. |
+| Catalog | `catalog.get_details` | Đọc | SKU hoặc mã biến thể → thông số và nguồn kỹ thuật của đúng mẫu. |
+| Catalog | `inventory.check` | Đọc | SKU và ngày → trạng thái, số lượng còn trong kho. |
+| Catalog | `pricing.get_quote` | Đọc | SKU, ngày, địa điểm nếu cần → giá cuối, ưu đãi và điều kiện giao hàng cho sản phẩm. |
+| Catalog | `pricing.quote_order` | Đọc | Các dòng hàng và số lượng → giá từng đơn vị, tổng tiền và ưu đãi của giỏ. |
+| Order | `order.status` | Đọc | Định danh khách, mã đơn nếu có → trạng thái đơn thuộc khách. |
+| Order | `order.preview_update` | Đọc | Đơn, phương án đổi/trả, dòng hàng → phương án và số tiền dự kiến. |
+| Order | `order.create` | Ghi | Sản phẩm hoặc giỏ đã xác nhận, giá và phương thức thanh toán → mã đơn khi tạo thành công. |
+| Order | `order.update` | Ghi | Đơn thuộc khách và yêu cầu thay đổi → biên nhận, trạng thái xử lý. Với `review_pending`, agent chỉ báo đã gửi yêu cầu chờ duyệt. |
+| Order | `schedule.callback` | Ghi | Thời điểm khách hẹn và ghi chú → thời điểm gọi lại thực tế theo lịch làm việc. |
+| Order | `handoff.transfer` | Ghi | Bản bàn giao có nguồn → mã phiếu và trạng thái vào hàng đợi. |
+| Knowledge | `policy.search` | Đọc | Câu hỏi, ngày và ngữ cảnh đơn/sản phẩm nếu có → đoạn nguồn, điều kiện áp dụng, ngoại lệ và phiên bản chính sách. |
 
-### Tools nội bộ do harness/runner gọi
+**Công cụ nội bộ.** Harness và runner có quyền riêng để tra danh tính, quản lý bộ nhớ và kiểm tra môi trường đánh giá.
 
-| Tool | Người gọi / mục đích |
+| MCP | Công cụ nội bộ | Ai gọi và để làm gì |
+|---|---|---|
+| Catalog | `crm.get_customer` | Harness tra khách theo điện thoại, Facebook hoặc Zalo và phát hiện trường hợp trùng định danh. |
+| Memory | `memory.read`, `memory.timeline` | Runtime nạp ngữ cảnh hoặc đọc lịch sử phân trang theo khách đã xác minh. |
+| Memory | `memory.write`, `memory.turn_status` | Runtime ghi lượt qua thao tác `commit_turn` và kiểm tra trạng thái cập nhật bộ nhớ. |
+| Memory | `memory.replay` | Runtime kiểm tra yêu cầu gửi lại và lấy câu đã lưu. |
+| Cả bốn MCP | `eval.database_identity` | Runner kiểm tra cơ sở dữ liệu mà từng MCP đang sử dụng. |
+| Knowledge | `eval.knowledge_release` | Gateway hoặc runner lấy mã phiên bản và mã băm của bộ chính sách được dùng. |
+
+Có thể đối chiếu tên và tham số trong hợp đồng của từng server. [Catalog](../ai-services/app/mcp_servers/mcp_catalog/tools/handlers.py) · [Order](../ai-services/app/mcp_servers/mcp_order/tools/handlers.py) · [Memory](../ai-services/app/mcp_servers/mcp_memory/tools/handlers.py) · [Knowledge](../ai-services/app/mcp_servers/mcp_knowledge/tools/handlers.py)
+
+## 5. Quyết định thiết kế và đánh đổi
+
+| Quyết định | Lý do lựa chọn và đánh đổi |
 |---|---|
-| `crm.get_customer` | Identity bootstrap; lookup phone/FB/Zalo, phát hiện ambiguous; không nằm trong 12 tools model |
-| `memory.read` | Runtime lấy working/profile/episodes; `include_prior` điều khiển bộ nhớ liên phiên |
-| `memory.write` | Runtime commit turn; chỉ `action=commit_turn`, không nhận facts/episode tùy ý từ caller |
-| `memory.turn_status` | UI/runner xem enrichment pending/completed/failed và public changes |
-| `memory.replay` | Khôi phục lượt đã commit, kiểm request hash |
-| `memory.timeline` | Lịch sử phân trang đúng owner/ngày; không áp dụng khi baseline/không xác minh |
-| `eval.database_identity` | Có ở cả bốn MCP; preflight xác nhận cùng DB trước reset/eval |
-| `eval.knowledge_release` | Knowledge MCP; pin release ID/hash cho phép so sánh |
+| Dùng một harness cho chat, thoại và đánh giá | Cùng yêu cầu mua hàng phải đi qua cùng kiểm tra dù đến từ văn bản hay bản chép lời. Độ trễ của runner chỉ bao phủ một phần đường đi thực tế của thoại. |
+| Tách bốn miền nghiệp vụ bằng MCP | Agent dùng hợp đồng có kiểu dữ liệu. Catalog có quyền đọc, còn Order kiểm quyền ghi tại chính nơi thực hiện giao dịch. Đổi lại, hệ thống phải xử lý timeout giữa các dịch vụ. |
+| Lưu bộ nhớ cá nhân ở PostgreSQL, dùng Qdrant cho chính sách | Lịch sử khách cần giao dịch nguyên tử, chủ sở hữu và phiên bản. Tra chính sách cần tìm theo cả nghĩa và từ khóa, sau đó kiểm điều kiện trên văn bản nguồn. Chỉ mục phải khớp với phiên bản nguồn được phát hành. |
+| Lưu bằng chứng và quyền ghi tách biệt | Agent có thể nhớ sản phẩm khách từng hỏi. Đặt hàng vẫn cần sự đồng ý cho giao dịch hiện tại. Kiểm thêm bước này có thể tăng độ trễ hoặc dẫn đến hỏi lại. |
+| Trích xuất bộ nhớ ở nền | Khách nhận trả lời trước khi hồ sơ cập nhật xong. Worker phải bảo đảm thứ tự theo khách, kiểm phiên bản và xử lý được việc chạy lại. |
+| Duyệt toàn câu trước khi phát | Tránh phát giá sai rồi nối thêm câu đính chính. Đổi lại, khách phải đợi đến khi có câu trả lời hoàn chỉnh. |
+| Khóa phiên trong tiến trình, lưu lượt bền vững | Một tiến trình tuần tự hóa các lượt cùng phiên. Cần kiểm chứng điều phối phiên và biên nhận thoại khi triển khai nhiều worker AI. |
 
-Nguồn hợp đồng: [`tool_names.py`](../ai-services/app/agent/implementations/tool_names.py), [`BusinessTools`](../ai-services/app/agent/implementations/business_agent.py), các `mcp_*/tools/handlers.py` và [`gateway.py`](../ai-services/app/agent/mcp/gateway.py). Đây là tools của dự án, không phải tools của trợ lý viết báo cáo.
+**Kho chính sách.** Knowledge MCP tìm các đoạn chính sách trong Qdrant bằng độ gần về nghĩa của vector BGE-M3 và độ khớp từ khóa theo BM25. PostgreSQL giữ văn bản nguồn và mã băm. Khi trả kết quả, Knowledge MCP kiểm phiên bản, ngày áp dụng, quyền công khai và các điều khoản liên quan. Nếu thiếu điều khoản bắt buộc, kết quả chỉ còn giá trị có điều kiện. [Truy hồi chính sách](../ai-services/app/mcp_servers/mcp_knowledge/services/knowledge.py) · [Cấu hình](../config/policy-runtime.json)
 
-## 6. Kho chính sách và vòng cải tiến tri thức
-
-Policy source được parse theo chunk ID, quyền public/restricted, hiệu lực và date basis. Dense embedding Cloudflare `@cf/baai/bge-m3` 1024 chiều kết hợp sparse BM25; Qdrant hybrid query, PostgreSQL giữ source snapshot/hash. Cấu hình hiện tại lấy 30 dense và 30 sparse candidates; `top_k` thường 5, hard limit 20 có thể chứa thêm dependencies.
-
-Search kiểm release/config/model fingerprint, hash nguồn và ngày/sản phẩm có chữ ký. Các mục phụ thuộc được duyệt bắc cầu, có chống vòng lặp/giới hạn; thiếu mục bắt buộc hạ applicability thành conditional thay vì cho phép kết luận chắc chắn. Kết quả phân biệt `ok`, `no_evidence`, `unavailable`, `timeout`, `overloaded`. Cấu hình `relevance_verified=false` là giới hạn hiệu chuẩn retrieval hiện có.
-
-Vòng knowledge: sự kiện fallback/guardrail/no-evidence hoặc evaluation → worker phân tích gap → draft có nguồn → reviewer duyệt nội dung và regression case → chuẩn bị index/release có manifest hash → activate theo expected active ID → đánh giá lại hoặc rollback. Release mới là thay đổi kho tri thức, không phải huấn luyện lại model. Nguồn không đủ hoặc lỗi thực thi không tự trở thành chính sách mới.
-
-Nguồn: [`knowledge.py`](../ai-services/app/mcp_servers/mcp_knowledge/services/knowledge.py), [`policy-runtime.json`](../config/policy-runtime.json), [`releases.py`](../ai-services/app/knowledge/services/releases.py), [`publish.py`](../ai-services/app/knowledge/services/publish.py), [`lifecycle.py`](../ai-services/app/knowledge/services/lifecycle.py).
-
-## 7. Các quyết định thiết kế và lý do
-
-Các lý do dưới đây được diễn giải từ ràng buộc và cách code thực thi, trừ khi đã có tài liệu lịch sử ghi rõ; không giả định đây là biên bản quyết định của tác giả.
-
-| Quyết định hiện có | Lý do và đánh đổi |
-|---|---|
-| Một runtime cho chat/voice/eval | Giảm lệch logic giữa demo và đánh giá; latency runner vẫn không bao gồm toàn bộ gateway/audio |
-| Graph nhỏ, LLM quyết định trong vòng tools | Dễ tách lifecycle khỏi suy luận; vẫn phụ thuộc khả năng gọi tool và hiểu ngữ nghĩa của model |
-| Bốn MCP và DB roles riêng | Tách hợp đồng/quyền nghiệp vụ, kiểm chéo identity; thêm network calls và vận hành nhiều service |
-| PostgreSQL làm canonical memory | Transaction, ownership, provenance, retry và erasure có cùng nền dữ liệu; đọc/review nhiều phiên vẫn có chi phí |
-| Distillation nền và operational read view | Trả lời không phải đợi LLM trích xuất; lượt kế tiếp vẫn có dữ kiện đã commit; phải xử lý revision/barrier/lease |
-| Scope global/room/product | Tránh trộn ngân sách/phòng/sản phẩm; model và admission phải giải đúng phạm vi |
-| Tách advice, selection và consent | Không biến catalog hoặc lịch sử thành đơn hàng; có thể giảm TSR nếu agent hỏi lại hoặc authorizer từ chối nhầm |
-| Kiểm ghi ở harness và MCP | Prompt không đủ làm biên quyền; chữ ký ràng buộc đúng actor/args; thêm chi phí review |
-| Deterministic checks + semantic review | Kết hợp kiểm số/receipt với điều kiện ngôn ngữ; reviewer cũng có thể sai hoặc unavailable |
-| Buffer toàn câu trước phát | Tránh phát draft sai rồi chắp fallback/sửa câu; TTFT có thể gần Total, số streaming cũ không đại diện bản hiện tại |
-| Hybrid retrieval + version/dependency checks | Tìm cả nghĩa và từ khóa, giữ ngoại lệ/ngày áp dụng; hit một chunk chưa đủ trả lời multi-hop |
-| Baseline tắt prior memory, giữ memory trong phiên | Đo phần đóng góp liên phiên trên cùng harness; không có nghĩa baseline không lưu bất cứ dữ liệu nào |
-| Release có hash, review, rollback | Theo dõi nguồn gây thay đổi và ngăn ghi đè phát hành cạnh tranh; test offline không chứng minh chất lượng live |
-| ASR/ITN/TTS tách service | Tái sử dụng text harness, CPU/GPU riêng; thêm model startup, audio latency và playback accounting |
-
-## 8. Giới hạn triển khai và khả năng quan sát
-
-Lock/cache đang process-local; chưa có bằng chứng điều phối session giữa nhiều AI workers. Durable replay và idempotency bảo vệ các trường hợp retry đã hỗ trợ, không tự chứng minh hệ thống đạt exactly-once cho mọi lỗi phân tán.
-
-Logs/events ghi node timing, model phase, tool failure, rejection/recovery và memory status; Langfuse tracing/managed prompts là tùy chọn. Trace chấm giữ các args thực thi theo hợp đồng BTC, còn prompt/log bên ngoài phải đi qua che PII; không nên coi mọi artifact có cùng mức redaction.
-
-Luồng seed kiểm fingerprint và bản ghi nguồn trước dùng lại DB; ứng dụng có boot/seed readiness. Bản sửa agent và worker phải cùng phiên bản khi triển khai để tránh runtime đã sửa nhưng projection còn hành vi cũ. Cấu hình managed prompt cũng cần được ghi nhận riêng.
-
-Báo cáo đánh giá đi kèm ghi rõ những chỉ số đã có, các ca sai và các mục còn thiếu phép đo. Thiết kế hỗ trợ an toàn/khôi phục không phải bằng chứng hệ thống đã đạt KPI hoặc mọi trường hợp sai đã được giải quyết trên model thật.
+**Cải tiến có kiểm soát.** Worker phân tích các lượt thiếu bằng chứng hoặc phản hồi đánh giá, ghi nhận lỗ hổng và tạo bản nháp gắn nguồn. Người duyệt kiểm nội dung và ca hồi quy trước khi phát hành. Mỗi bản phát hành có mã băm và có thể quay lại bản trước để đối chiếu kết quả. [Vòng đời tri thức](../ai-services/app/knowledge/services/lifecycle.py)
