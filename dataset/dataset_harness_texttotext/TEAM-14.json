@@ -1,0 +1,131 @@
+{
+  "scenario_id": "TEAM-14",
+  "level": "M1",
+  "persona": "khach_so_gia",
+  "hard_case": null,
+  "customer_phone": "0964252477",
+  "customer_name": "Trang",
+  "honorific": "chị",
+  "notes": "Nguồn speech T14. Phiên 2 hỏi tiếp về đơn vừa tạo. ID đơn do tool sinh trong phiên 1. Định danh đối chiếu CRM BTC gốc: C013 (Trang); không dùng CRM bổ sung. Call 1 so sánh hai sản phẩm có giá khác nhau nên không có một ground_truth_facts.price_vnd chung cho cả cuộc gọi. Giá đơn Panasonic vẫn được kiểm tra bằng success_if.args_match.price_vnd; giá tư vấn từng SKU cần đối chiếu quote riêng, không tính vào HR giá của call này.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-21",
+      "customer_goal": "So sánh quạt rồi mua Panasonic F-409",
+      "customer_turns": [
+        "Em ơi chị đang phân vân giữa quạt đứng Senko TS16 và quạt đứng Panasonic F-409 để dùng cho phòng ngủ có em bé, em so sánh thông số và báo giá kèm tồn kho hai mẫu này giúp chị nhé.",
+        "Mẫu quạt đứng Panasonic F-409 có động cơ DC inverter và điều khiển từ xa tiện hơn nhỉ, em xác nhận lại giá bán và tồn kho của mẫu Panasonic F-409 giúp chị nhé.",
+        "Ok em lên đơn cho chị 1 chiếc quạt đứng Panasonic F-409 thanh toán COD nhé."
+      ],
+      "facts_established": {
+        "has_children": true,
+        "product_advised": "SKU-FAN-DC1",
+        "payment": "COD",
+        "order_id": "generated_by_order.create"
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "args_match": {
+          "sku": "SKU-FAN-DC1",
+          "payment": "COD",
+          "qty": 1,
+          "price_vnd": 2450000
+        }
+      },
+      "ground_truth_facts": {
+        "in_stock": true
+      },
+      "channel_identity": "0964252477",
+      "expected_outcome": "chot_don",
+      "days_later": 0,
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Trả lời đúng, đủ các câu hỏi của khách trong phiên; giá/tồn kho từ tool đúng SKU và ngày; chính sách đúng điều kiện và không khẳng định thao tác chưa thành công.",
+          "source_sections": [
+            "FAQ-08",
+            "SP-FAN-01",
+            "VC-06"
+          ]
+        },
+        {
+          "id": "business_2",
+          "requirement": "Tiếp nối đúng phiên trước khi có lịch sử; không gán nhu cầu của người khác, không nhắc lại rào cản đã giải quyết và không xin quyền lợi đơn cũ cho đơn mới.",
+          "source_sections": [
+            "FAQ-08",
+            "SP-FAN-01",
+            "VC-06"
+          ]
+        }
+      ],
+      "supplemental_checks": {
+        "order_count": 1,
+        "order_lines": [
+          {
+            "sku": "SKU-FAN-DC1",
+            "qty": 1,
+            "price_vnd": 2450000
+          }
+        ]
+      },
+      "judge_criteria": [
+        "J02_no_fabrication",
+        "J06_tone_vietnamese",
+        "J07_closing_summary",
+        "J08_over_confirmation"
+      ]
+    },
+    "call_2": {
+      "channel": "zalo_oa",
+      "channel_identity": "zalo_trang63",
+      "call_date": "2026-10-23",
+      "customer_turns": [
+        "Em ơi chị hỏi tình trạng đơn hàng quạt đứng mình đặt bên em lần trước hiện tới đâu rồi, em tra giúp chị nhé.",
+        "Đơn đó đã được tiếp nhận và bàn giao vận chuyển chưa em?"
+      ],
+      "must_carry_over": [
+        "order_id",
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "order_id",
+        "product_advised"
+      ],
+      "success_if": {
+        "tool_called": "order.status",
+        "args_match": {
+          "order_id": "generated_by_order.create"
+        }
+      },
+      "ground_truth_facts": {},
+      "days_later": 2,
+      "customer_goal": "Em ơi chị hỏi tình trạng đơn hàng quạt đứng mình đặt bên em lần trước hiện tới đâu rồi, em tra giúp chị nhé.",
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Trả lời đúng, đủ các câu hỏi của khách trong phiên; giá/tồn kho từ tool đúng SKU và ngày; chính sách đúng điều kiện và không khẳng định thao tác chưa thành công.",
+          "source_sections": [
+            "FAQ-08",
+            "SP-FAN-01",
+            "VC-06"
+          ]
+        },
+        {
+          "id": "business_2",
+          "requirement": "Tiếp nối đúng phiên trước khi có lịch sử; không gán nhu cầu của người khác, không nhắc lại rào cản đã giải quyết và không xin quyền lợi đơn cũ cho đơn mới.",
+          "source_sections": [
+            "FAQ-08",
+            "SP-FAN-01",
+            "VC-06"
+          ]
+        }
+      ],
+      "judge_criteria": [
+        "J01_opening_continuity",
+        "J02_no_fabrication",
+        "J06_tone_vietnamese",
+        "J08_over_confirmation"
+      ]
+    }
+  }
+}

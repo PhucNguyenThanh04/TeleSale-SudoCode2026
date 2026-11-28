@@ -4,12 +4,12 @@ Trợ lý telesale tiếng Việt qua chat và thoại, có bộ nhớ giữa c�
 
 ## 1. Cài đặt và chạy
 
-Cần Python 3.12+ và Docker Compose 2.20+. Chạy từ thư mục gốc repo, nơi đã có [gói dữ liệu BTC](BTC-Data-Vong1-TEAMS/README.md).
+Dùng Python 3.12 và Docker Compose 2.20 trở lên. Chạy từ thư mục gốc repo, nơi đã có [gói dữ liệu BTC](BTC-Data-Vong1-TEAMS/README.md).
 
 **Linux / macOS / WSL2**
 
 ```bash
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 cp -n .env.example .env
 ```
@@ -22,7 +22,9 @@ py -3.12 -m venv .venv
 if (!(Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-Trong `.env`, điền `CLOUDFLARE_API_TOKEN` từ [tệp Google Drive](https://drive.google.com/file/d/1Gt_0syi-ib1h3paOf-UdjRgNXSUCuRlD/view?usp=sharing). Sau đó cài thư viện, bật Docker và nạp dữ liệu.
+Trong `.env` ở gốc repo, điền `CLOUDFLARE_API_TOKEN` của tài khoản `CLOUDFLARE_ACCOUNT_ID` và kiểm tra bộ `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY` khớp với dịch vụ model dùng để chạy. [Tệp token Cloudflare do nhóm cung cấp](https://drive.google.com/file/d/1Gt_0syi-ib1h3paOf-UdjRgNXSUCuRlD/view?usp=sharing)
+
+Khởi động Docker trước khi chạy các lệnh dưới đây. Nếu Docker Engine yêu cầu quyền quản trị, thêm `sudo` trước lệnh `docker compose`. Lần khởi động đầu cần Internet để tải image, thư viện và model thoại.
 
 ```sh
 python -m pip install -r config/requirements/host.txt
@@ -30,77 +32,48 @@ docker compose up -d --build
 python seed_btc.py --data-dir ./BTC-Data-Vong1-TEAMS
 ```
 
-Nếu dùng Docker Desktop, mở ứng dụng trước. Nếu Docker Engine yêu cầu quyền quản trị, thêm `sudo` trước lệnh `docker compose`. Lần build đầu cần Internet.
-
 Khi seed báo đã sẵn sàng, đăng nhập bằng `demo1` và mật khẩu `DEMO_USER_1_PASSWORD` trong `.env`. [Chat](http://127.0.0.1:8000/chat) · [Thoại](http://127.0.0.1:8000/)
 
-## 2. Đánh giá harness
-
-Đặt 48 tệp `TEAM-*.json`, `_manifest.json` và `_source_map.json` của đội trực tiếp trong `dataset/dataset_harness_texttotext/`. Với checkout mới, chép bộ kịch bản vào đường dẫn này vì Git đang bỏ qua thư mục dataset. Có thể đặt `SCENARIOS_DIR='./dataset/dataset_harness_texttotext'` trong `.env` để dùng runner mà không cần truyền `--scenarios`.
-
-Giữ server chạy, dùng Python trong `.venv` và đóng phiên demo trước khi chấm vì runner đặt lại dữ liệu runtime. Giữ nguyên bộ kịch bản, seed và model. Đổi tên `btc-eval` nếu đã dùng thư mục kết quả này.
+## 2. Đối chiếu Baseline và Full
 
 <a name="bước-4-xuất-baseline-và-full-k0"></a>
 
-### Xuất Baseline và Full K0
-
-K0 là bản tri thức trước khi bổ sung. Xuất hai trace, kiểm tra hai tệp `.report.json` đều báo hoàn tất và cùng release K0, rồi chấm bằng scorer trong snapshot BTC của lượt Full.
+Sau khi nạp dữ liệu BTC, giữ server chạy và đóng phiên demo vì runner đặt lại dữ liệu runtime. Từ thư mục gốc repo, dùng Python trong `.venv` để chạy Baseline và Full trên bộ 48 kịch bản của đội.
 
 ```sh
-python run_eval.py --scenarios ./dataset/dataset_harness_texttotext --config baseline_no_memory --out ./results-submission/btc-eval/baseline.jsonl
-python run_eval.py --scenarios ./dataset/dataset_harness_texttotext --config full --out ./results-submission/btc-eval/full-k0.jsonl
+python run_eval.py --scenarios ./dataset/dataset_harness_texttotext --out ./results-submission
 ```
 
-```sh
-python ./results-submission/btc-eval/full-k0.btc-release/eval/reference_eval.py --scenarios ./dataset/dataset_harness_texttotext --trace ./results-submission/btc-eval/full-k0.jsonl --baseline ./results-submission/btc-eval/baseline.jsonl --out ./results-submission/btc-eval/btc-k0.json
-```
+Để chạy thử trên 7 kịch bản mẫu BTC, đổi `--scenarios` thành `./BTC-Data-Vong1-TEAMS/test_set/public_sample`.
 
-### Duyệt và chấm K1
-
-1. Lấy `run_id` từ `results-submission/btc-eval/full-k0.knowledge-gaps.json` và mở `http://127.0.0.1:8000/knowledge?run_id=<run-id>`.
-2. Kiểm tra nguồn, nội dung và ca kiểm thử của đề xuất, rồi bấm **Duyệt và phát hành các mục đã chọn**. Nếu chưa có đề xuất đủ căn cứ, dừng ở K0.
-3. Ghi lại mã release K1, chạy lại Full, rồi kiểm tra `full-k1.report.json` báo hoàn tất và đúng mã K1 trước khi chấm.
-
-```sh
-python run_eval.py --scenarios ./dataset/dataset_harness_texttotext --config full --out ./results-submission/btc-eval/full-k1.jsonl
-```
-
-```sh
-python ./results-submission/btc-eval/full-k0.btc-release/eval/reference_eval.py --scenarios ./dataset/dataset_harness_texttotext --trace ./results-submission/btc-eval/full-k1.jsonl --out ./results-submission/btc-eval/btc-k1.json
-```
-
-So mục `system` trong `btc-k0.json` và `btc-k1.json`. Để kiểm chứng từng gap, đối chiếu cùng `scenario_id`, `call` và `turn` trong hai trace Full rồi xem `tool_calls` của K1 có truy xuất mục vừa phát hành hay không.
-
-### Chạy cặp hoặc tiếp tục từ trace
-
-- Chạy cặp Baseline và Full K0 bằng `python run_eval.py --scenarios ./dataset/dataset_harness_texttotext`. Thêm `--limit-scenarios 1` để chạy thử một kịch bản.
-- Tiếp tục tạo đề xuất từ trace đã lưu bằng `python run_knowledge_eval.py --full-trace ./results-submission/btc-eval/full-k0.jsonl`.
-- Sau khi phát hành K1 từ một lượt chạy cặp, dùng `python run_knowledge_eval.py --base-run "results-submission/<run-id>"` để chấm và xuất bảng so sánh.
-
-Nếu Full K1 vẫn báo release cũ, kiểm tra `KNOWLEDGE_RELEASE_ID`. Nếu lượt chạy hết thời gian gọi model, có thể tăng `LLM_TIMEOUT_SECONDS` trong `.env`.
+Runner chấm Baseline không có bộ nhớ liên phiên và Full có bộ nhớ liên phiên trên cùng bộ kịch bản, model, seed và phiên bản tri thức. Xem bảng đối chiếu trong terminal hoặc mở `results-submission/<run-id>/btc_score.json` để xem điểm chi tiết.
 
 ## 3. Đánh giá ASR và RAG
 
 ### ASR
 
-Tải `audio-vieneu-120-cuoc.zip` từ bảng cuối README và giải nén vào `dataset/dataset_ASR/`. Hai lệnh dưới dùng thư mục chứa cả `audio/` và `ground_truth.json`. Nếu gói giải nén tạo thêm một thư mục con, dùng đường dẫn thư mục con đó. Chạy trong môi trường Python riêng.
+Tải `audio-vieneu-120-cuoc.zip` từ bảng cuối README và giải nén vào `dataset/dataset_ASR/`. Ví dụ dưới dùng bộ `goi-audio/team-new-vieneu`, nơi chứa `audio/` và `ground_truth.json`. Tạo và kích hoạt môi trường ASR riêng theo mục 1 với tên `.venv-asr`, rồi chạy từ thư mục gốc repo.
 
 ```sh
 python -m pip install -r config/requirements/asr.txt
-python -m speech --data-dir ./BTC-Data-Vong1-TEAMS transcribe --audio ./dataset/dataset_ASR/audio --out ./results-submission/asr-team
-python -m speech --data-dir ./BTC-Data-Vong1-TEAMS eval --dataset ./dataset/dataset_ASR --runs ./results-submission/asr-team
+python -m speech --data-dir ./BTC-Data-Vong1-TEAMS transcribe --audio ./dataset/dataset_ASR/goi-audio/team-new-vieneu/audio --out ./results-submission/asr-team-new
+python -m speech --data-dir ./BTC-Data-Vong1-TEAMS eval --dataset ./dataset/dataset_ASR/goi-audio/team-new-vieneu --runs ./results-submission/asr-team-new
 ```
+
+Model ASR được tải ở lần nhận dạng đầu tiên. Khi chạy bộ khác trong `goi-audio/`, đổi đường dẫn dữ liệu và thư mục kết quả trong cả hai lệnh.
 
 ### RAG
 
-Chấm lại trace và nhãn đã lưu. Đổi `rag-replay` nếu thư mục đầu ra đã tồn tại. [Báo cáo RAG](results-rag/e2e-score-03/report.md)
+Quay lại `.venv` ở mục 1 để chấm lại trace và nhãn đã lưu. Kết quả nằm ở `results-submission/rag-replay/report.md`. Đổi `rag-replay` nếu thư mục đầu ra đã tồn tại. [Báo cáo RAG đã lưu](results-rag/e2e-score-03/report.md)
 
 ```sh
 cd ai-services
 python -m rag_eval score --run ../results-rag/e2e-02 --judgments ../results-rag/e2e-judge-02 --human-labels ../results-rag/human_labels-e2e-02.json --out ../results-submission/rag-replay
 ```
 
-Để tạo trace RAG mới, chạy từ `ai-services/` với các thư mục đầu ra chưa tồn tại. Hai lệnh `run` và `judge` gọi dịch vụ model.
+Để chạy RAG mới, giữ các dịch vụ ở mục 1 đang chạy. Trong `ai-services/.env`, đặt `MCP_KNOWLEDGE_URL=http://127.0.0.1:18014/mcp` theo cổng MCP Knowledge trên máy, sao chép `MCP_INTERNAL_TOKEN` từ `.env` gốc và điền `RAG_EVAL_JUDGE_MODEL`, `RAG_EVAL_JUDGE_API_KEY` cho model chấm. Đặt thêm `RAG_EVAL_JUDGE_BASE_URL` nếu dùng endpoint chấm riêng. Model sinh câu trả lời lấy cấu hình `LLM_*` từ `.env` gốc.
+
+Chạy tiếp từ `ai-services/` với các thư mục đầu ra chưa tồn tại. Hai lệnh `run` và `judge` gọi dịch vụ model.
 
 ```sh
 python -m pip install -r rag_eval/requirements.txt
@@ -117,7 +90,7 @@ Từ thư mục gốc repo, chạy `docker compose down`. Thêm `sudo` nếu Doc
 
 | Nội dung | Vị trí |
 |---|---|
-| Bộ kịch bản harness | `dataset/dataset_harness_texttotext/`. Mô tả nằm trong `README.md` của bộ dữ liệu. |
+| Bộ kịch bản harness | [48 kịch bản của đội](dataset/dataset_harness_texttotext/) · [7 kịch bản mẫu BTC](BTC-Data-Vong1-TEAMS/test_set/public_sample/) |
 | Dataset âm thanh | [Tải trên Google Drive](https://drive.google.com/drive/folders/1165N54haGdVxfJV6RGBnJhJPDA0sJjAL) |
 | Kiến trúc hệ thống | [Xem sơ đồ HTML](https://htmlpreview.github.io/?https://github.com/PhucNguyenThanh04/TeleSale-SudoCode2026/blob/phuc/docs/so-do-he-thong.html) |
 | Vòng lặp harness | [Xem sơ đồ HTML](https://htmlpreview.github.io/?https://github.com/PhucNguyenThanh04/TeleSale-SudoCode2026/blob/phuc/docs/vong-lap-harness.html) |

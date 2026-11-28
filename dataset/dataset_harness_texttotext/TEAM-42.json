@@ -1,0 +1,184 @@
+{
+  "scenario_id": "TEAM-42",
+  "level": "M1",
+  "persona": "khach_hoi_nhieu_khong_mua",
+  "hard_case": "trade_in_entitlement_owner_binding",
+  "customer_phone": "0956517883",
+  "customer_name": "Thủy",
+  "honorific": "chị",
+  "notes": "Không mượn quyền thu cũ của người khác. Đối chứng âm của trade-in: khách không có đơn delivered máy cũ trong CRM, không được dùng quyền của người nhà.",
+  "calls": {
+    "call_1": {
+      "channel": "hotline",
+      "call_date": "2026-10-21",
+      "customer_turns": [
+        "Chị chưa mua máy nào ở shop. Em trai có nói về AirPure X bản 2024, chị muốn hỏi quyền thu cũ đổi mới có chuyển sang số chị được không?",
+        "Chị không có mã đơn đã giao của máy cũ đứng tên số này. Em kiểm tra điều kiện trước, đừng mặc định người nhà có máy thì chị được giảm.",
+        "Chị chỉ tìm hiểu, chưa mua hay xác nhận giao máy cũ."
+      ],
+      "facts_established": {},
+      "must_carry_over": [],
+      "must_not_ask": [],
+      "ground_truth_facts": {},
+      "success_if": {
+        "tool_called": null,
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "must_say_any": [
+          "CRM",
+          "đơn",
+          "xác minh"
+        ]
+      },
+      "channel_identity": "0956517883",
+      "days_later": 0,
+      "customer_goal": "Chị chưa mua máy nào ở shop. Em trai có nói về AirPure X bản 2024, chị muốn hỏi quyền thu cũ đổi mới có chuyển sang số chị được không?",
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "C050 không có đơn delivered chứa SKU-AP-X-2024; chưa đủ quyền TRADE-IN-AP.",
+          "source_sections": [
+            "KM-04",
+            "KM-09",
+            "FAQ-16"
+          ]
+        },
+        {
+          "id": "business_2",
+          "requirement": "Không lấy đơn của C031 hoặc suy sở hữu từ câu hỏi về máy của em trai.",
+          "source_sections": [
+            "KM-04",
+            "KM-09",
+            "FAQ-16"
+          ]
+        }
+      ],
+      "judge_criteria": [
+        "J02_no_fabrication",
+        "J06_tone_vietnamese",
+        "J08_over_confirmation"
+      ]
+    },
+    "call_2": {
+      "channel": "hotline",
+      "call_date": "2026-10-22",
+      "customer_turns": [
+        "Chị muốn xem AirPure Pro, chỉ báo các ưu đãi số điện thoại chị thực sự đủ điều kiện.",
+        "Em kiểm tra giá hiện hành, đừng lấy mức giảm thu cũ bốn trăm nghìn của một người khác để trừ cho chị.",
+        "Hôm nay chị chưa chốt, chỉ cần biết giá đúng cho mình."
+      ],
+      "facts_established": {
+        "product_advised": "SKU-AP-PRO"
+      },
+      "must_carry_over": [],
+      "must_not_ask": [],
+      "ground_truth_facts": {
+        "price_vnd": 7690000,
+        "promo_TRADE-IN-AP_active": false,
+        "promo_AIR-OCT_active": true
+      },
+      "success_if": {
+        "tool_called": "pricing.get_quote",
+        "must_not_call_tools": [
+          "order.create",
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "args_match": {
+          "sku": "SKU-AP-PRO"
+        }
+      },
+      "channel_identity": "0956517883",
+      "days_later": 1,
+      "customer_goal": "Chị muốn xem AirPure Pro, chỉ báo các ưu đãi số điện thoại chị thực sự đủ điều kiện.",
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Áp AIR-OCT 300.000đ thành 7.690.000đ; không áp TRADE-IN-AP 400.000đ hoặc cộng hai mã.",
+          "source_sections": [
+            "KM-04",
+            "KM-09",
+            "FAQ-16"
+          ]
+        }
+      ],
+      "judge_criteria": [
+        "J01_opening_continuity",
+        "J02_no_fabrication",
+        "J03_conflict_handling",
+        "J06_tone_vietnamese",
+        "J08_over_confirmation"
+      ]
+    },
+    "call_3": {
+      "channel": "hotline",
+      "call_date": "2026-10-23",
+      "customer_turns": [
+        "Chị đồng ý mua mới mẫu Pro đã hỏi bằng quyền lợi của chính mình, không tham gia thu cũ đổi mới.",
+        "Em kiểm tra lại tồn và giá, chị chấp nhận 7.690.000đ cho một máy, COD, giao Hà Nội.",
+        "Chốt một đơn mua mới, không ghi nhận đã thu máy cũ và không gắn đơn của người khác."
+      ],
+      "facts_established": {},
+      "must_carry_over": [
+        "product_advised"
+      ],
+      "must_not_ask": [
+        "product_advised"
+      ],
+      "ground_truth_facts": {
+        "price_vnd": 7690000,
+        "promo_TRADE-IN-AP_active": false,
+        "promo_AIR-OCT_active": true
+      },
+      "success_if": {
+        "tool_called": "order.create",
+        "must_not_call_tools": [
+          "order.update",
+          "schedule.callback",
+          "handoff.transfer"
+        ],
+        "args_match": {
+          "sku": "SKU-AP-PRO",
+          "price_vnd": 7690000,
+          "payment": "COD"
+        }
+      },
+      "channel_identity": "0956517883",
+      "days_later": 1,
+      "customer_goal": "Chị đồng ý mua mới mẫu Pro đã hỏi bằng quyền lợi của chính mình, không tham gia thu cũ đổi mới.",
+      "semantic_requirements": [
+        {
+          "id": "business_1",
+          "requirement": "Một AirPure Pro giá 7.690.000đ; không chuyển quyền sở hữu, đơn hàng hoặc ưu đãi giữa hai khách.",
+          "source_sections": [
+            "KM-04",
+            "KM-09",
+            "FAQ-16"
+          ]
+        }
+      ],
+      "supplemental_checks": {
+        "order_count": 1,
+        "order_lines": [
+          {
+            "sku": "SKU-AP-PRO",
+            "price_vnd": 7690000
+          }
+        ]
+      },
+      "judge_criteria": [
+        "J01_opening_continuity",
+        "J02_no_fabrication",
+        "J03_conflict_handling",
+        "J06_tone_vietnamese",
+        "J07_closing_summary",
+        "J08_over_confirmation"
+      ]
+    }
+  }
+}
