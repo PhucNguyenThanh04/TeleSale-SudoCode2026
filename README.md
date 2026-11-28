@@ -119,8 +119,8 @@ Từ thư mục gốc repo, chạy `docker compose down`. Thêm `sudo` nếu Doc
 |---|---|
 | Bộ kịch bản harness | `dataset/dataset_harness_texttotext/`. Mô tả nằm trong `README.md` của bộ dữ liệu. |
 | Dataset âm thanh | [Tải trên Google Drive](https://drive.google.com/drive/folders/1165N54haGdVxfJV6RGBnJhJPDA0sJjAL) |
-| [Kiến trúc hệ thống](https://raw.githack.com/PhucNguyenThanh04/TeleSale-SudoCode2026/phuc/docs/so-do-he-thong.html) | Sơ đồ HTML |
-| [Vòng lặp harness](https://raw.githack.com/PhucNguyenThanh04/TeleSale-SudoCode2026/phuc/docs/vong-lap-harness.html) | Sơ đồ HTML |
+| [Kiến trúc hệ thống](https://htmlpreview.github.io/?https://github.com/PhucNguyenThanh04/TeleSale-SudoCode2026/blob/phuc/docs/so-do-he-thong.html) | Sơ đồ HTML |
+| [Vòng lặp harness](https://htmlpreview.github.io/?https://github.com/PhucNguyenThanh04/TeleSale-SudoCode2026/blob/phuc/docs/vong-lap-harness.html) | Sơ đồ HTML |
 | [Tài liệu kiến trúc](docs/tai-lieu-kien-truc.md) | Markdown |
 | Công cụ và quyết định thiết kế | [Danh sách công cụ](docs/tai-lieu-kien-truc.md#4-danh-sách-công-cụ) · [Quyết định thiết kế](docs/tai-lieu-kien-truc.md#5-quyết-định-thiết-kế-và-lý-do-lựa-chọn) |
 | [Báo cáo đánh giá](docs/bao-cao-danh-gia.md) | Markdown |
