@@ -6,18 +6,24 @@ from unittest.mock import AsyncMock
 import pytest
 
 
-@pytest.mark.parametrize('failure', [False, True])
+@pytest.mark.parametrize('failure', [None, RuntimeError, SystemExit])
 def test_normal_cli_detects_after_pair_and_does_not_wait_or_run_c(tmp_path, monkeypatch, failure):
     from eval_harness import run_official as mod
     from eval_harness import knowledge_followup as followup
     (tmp_path/'run.json').write_text(json.dumps({'status': 'validated'}))
     monkeypatch.setattr('sys.argv', ['run_official', '--btc-root', str(tmp_path)])
     pair = AsyncMock(return_value=tmp_path)
-    detect = AsyncMock(side_effect=RuntimeError('offline detection failure')) if failure else AsyncMock(return_value=tmp_path/'review')
+    detect = AsyncMock(side_effect=failure(0)) if failure else AsyncMock(return_value=tmp_path/'review')
     monkeypatch.setattr(mod, 'run_pair', pair)
     monkeypatch.setattr(followup, 'detect_after_pair', detect)
     monkeypatch.setattr('eval_harness.report_metrics.render_run', lambda _: 'metrics')
-    mod.main()
+    if failure:
+        with pytest.raises(SystemExit) as stopped:
+            mod.main()
+        assert stopped.value.code == 1
+    else:
+        mod.main()
+    assert json.loads((tmp_path/'run.json').read_text())['status'] == 'validated'
     pair.assert_awaited_once()
     detect.assert_awaited_once_with(tmp_path)
 

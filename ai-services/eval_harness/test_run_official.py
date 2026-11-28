@@ -271,6 +271,19 @@ def test_malformed_child_report_keeps_safe_runner_failure(tmp_path, payload):
     assert 'private-secret' not in str(caught.value.__dict__)
 
 
+@pytest.mark.parametrize('status', [None, 'running', 'failed', 'invalid'])
+def test_success_exit_does_not_accept_an_incomplete_child_trace(tmp_path, status):
+    from eval_harness.run_official import _run_one
+    trace = tmp_path/'full.diagnostics_full.jsonl'
+    trace.write_text('{}\n')
+    if status is not None:
+        trace.with_suffix('.report.json').write_text(json.dumps({'status': status}))
+    with patch('eval_harness.run_official.subprocess.run', return_value=SimpleNamespace(returncode=0)):
+        with pytest.raises(RuntimeError, match='configuration_execution_failed'):
+            _run_one('full', tmp_path, 7, 'r', tmp_path, btc_root=tmp_path,
+                     expected_database='telesale', release={'release_id': 'r'})
+
+
 def test_relative_child_paths_are_resolved_before_changing_working_directory(tmp_path, monkeypatch):
     from pathlib import Path
     from eval_harness.run_official import _run_one, SERVICE

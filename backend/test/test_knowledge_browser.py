@@ -11,7 +11,7 @@ import httpx
 import pytest
 import uvicorn
 from app.configs import VoiceSettings
-from gateway_fixture import create_app
+from app.voice_main import create_app
 from test_voice_browser import browser
 
 

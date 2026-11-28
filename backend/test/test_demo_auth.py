@@ -86,9 +86,8 @@ def test_invalid_token_or_disabled_account_is_rejected(kind):
         assert client.get('/api/auth/me').status_code == 401
 
 
-def test_cookie_writes_require_same_origin_and_knowledge_requires_login():
+def test_cookie_writes_require_same_origin():
     with gateway() as (client, _):
-        assert client.get('/api/knowledge/gaps').status_code == 401
         assert client.post('/api/auth/login', headers={'origin': 'https://evil.example'},
                            json={'username': 'one', 'password': 'password-one'}).status_code == 403
         login(client)

@@ -101,7 +101,7 @@ def main():
             await repo.close(); await worker.close()
     try:
         asyncio.run(run())
-    except Exception as exc:
+    except (Exception, SystemExit) as exc:
         message = str(exc) if isinstance(exc, core.ExperimentError) else type(exc).__name__
         parser.exit(1, f'Knowledge evaluation stopped: {message}\n')
 

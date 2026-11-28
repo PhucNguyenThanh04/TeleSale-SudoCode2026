@@ -1,6 +1,3 @@
-import { loadProfile } from './auth.js';
-await loadProfile();
-
 const $ = id => document.getElementById(id);
 const categories = {content:'Thiếu nội dung', retrieval:'Truy xuất chưa đúng', source_conflict:'Nguồn mâu thuẫn', generation:'Lỗi sinh câu trả lời', technical:'Lỗi kỹ thuật', correct_refusal:'Từ chối đúng', insufficient_evidence:'Chưa đủ bằng chứng'};
 const statuses = {new:'Mới phát hiện', triaged:'Đã phân loại', waiting_for_source:'Chờ nguồn', technical_followup:'Xử lý kỹ thuật', closed_correct_refusal:'Từ chối đúng', awaiting_verification:'Chờ kiểm chứng', resolved:'Đã giải quyết', draft:'Bản nháp', approved:'Đã duyệt', rejected:'Đã từ chối', ready:'Sẵn sàng'};

@@ -357,16 +357,23 @@ async def run_experiment(args, repo, worker_repo, settings):
         async with repo.transaction() as tx:
             active = (await tx.get('active', 'current') or {}).get('release_id')
         if active != release['release_id']: raise ExperimentError('K1 is no longer active')
-        k1 = out/'k1'; k1.mkdir(exist_ok=True)
-        if 'k1_started_at' not in state:
-            save(k1_started_at=datetime.now(timezone.utc).isoformat())
+        k1 = out/'k1'
         trace = k1/'full.diagnostics_full.jsonl'
-        if not trace.exists():
+        runner_path = trace.with_suffix('.report.json')
+        runner = read_json(runner_path) if runner_path.is_file() else None
+        if k1.is_dir() and any(k1.iterdir()) and (runner is None or runner.get('status') == 'failed'):
+            archived = out/f'k1-incomplete-{uuid4().hex}'
+            k1.rename(archived)
+            print(f'[knowledge] Archived incomplete K1 attempt: {archived}', flush=True)
+            runner = None
+        if runner is None:
+            k1.mkdir(exist_ok=True)
+            save(status='running', k1_started_at=datetime.now(timezone.utc).isoformat())
             print('[knowledge] C: full memory with published K1 (no fourth baseline)', flush=True)
             trace = _run_one('full', k0/'scenarios', args.seed, out.name+'-k1', k1,
                 btc_root=btc_root, expected_database=args.expected_database, release=release)
-        runner = read_json(trace.with_suffix('.report.json'))
-        if (runner.get('status') != 'completed' or runner.get('safety_issues')
+            runner = read_json(trace.with_suffix('.report.json'))
+        if (not trace.is_file() or runner.get('status') != 'completed' or runner.get('safety_issues')
                 or runner.get('database_identity') != metadata['database_identity']
                 or runner.get('knowledge_release_id') != release['release_id']):
             raise ExperimentError('K1 execution invalid; refusing partial or mismatched evidence')
@@ -410,11 +417,14 @@ async def run_experiment(args, repo, worker_repo, settings):
                 'k0': run.get('extraction_status', 'needs_review'), 'k1': extraction['extraction_status']}}
         atomic_json(out/'comparison.json', comparison)
         (out/'comparison.md').write_text(render_report(comparison), encoding='utf-8')
+        state.pop('error_type', None)
         save(status='complete', phase='compared', comparison_digest=sha(out/'comparison.json'), k1_digest=tree_hash(k1))
         return out
-    except Exception as exc:
+    except (Exception, SystemExit) as exc:
         save(status='failed', error_type=type(exc).__name__)
         print(f'[knowledge] stopped ({type(exc).__name__}); checkpoint: {out}/experiment.json', flush=True)
+        if isinstance(exc, SystemExit):
+            raise ExperimentError('Unexpected process exit during knowledge evaluation') from None
         raise
     finally:
         lock.close()

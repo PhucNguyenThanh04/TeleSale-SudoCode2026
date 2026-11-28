@@ -31,7 +31,8 @@ def test_changed_artifact_is_rejected_before_resume(tmp_path):
 
 
 @pytest.mark.parametrize('mode', ['complete', 'interrupted_publication', 'interrupted_review', 'no_gaps',
-    'changed_k0', 'changed_k1', 'changed_review', 'changed_catalog', 'real_scoring', 'boot_replaced'])
+    'changed_k0', 'changed_k1', 'changed_review', 'changed_catalog', 'real_scoring', 'boot_replaced',
+    'interrupted_k1', 'failed_k1'])
 @pytest.mark.parametrize('automatic', [False, True])
 def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tmp_path, monkeypatch, mode, automatic, release_pin='', external_snapshot=False):
     from eval_harness import knowledge_triplet as mod
@@ -143,7 +144,15 @@ def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tm
         assert config == 'full' and kwargs['release']['release_id'] == 'k1'
         if external_snapshot:
             assert kwargs['btc_root'] == tmp_path / 'reused-btc-release'
-        calls.append('full_k1'); path=out/'full.diagnostics_full.jsonl'
+        path = out/'full.diagnostics_full.jsonl'
+        if mode in {'interrupted_k1', 'failed_k1'} and 'incomplete_k1' not in calls:
+            calls.append('incomplete_k1')
+            path.write_text('{}\n')
+            if mode == 'failed_k1':
+                path.with_suffix('.report.json').write_text(json.dumps({'status': 'failed'}))
+            raise RuntimeError('configuration_execution_failed')
+        assert not path.exists()
+        calls.append('full_k1')
         value = row('Cần giữ nguyên hộp.') | {'questions': [], 'claims': [],
             'customer_text': row()['user_text'], 'latency': {'total_ms': 10, 'ttft_ms': 10}}
         path.write_text(json.dumps(value)+'\n')
@@ -188,6 +197,10 @@ def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tm
         with pytest.raises(RuntimeError): asyncio.run(mod.run_experiment(args, r, r, settings))
         args.resume = next(args.out_root.iterdir())
         assert calls == ['baseline', 'full_k0']
+    if mode in {'interrupted_k1', 'failed_k1'}:
+        with pytest.raises(RuntimeError, match='configuration_execution_failed'):
+            asyncio.run(mod.run_experiment(args, r, r, settings))
+        args.resume = next(args.out_root.iterdir())
     if separate:
         from eval_harness import knowledge_followup as followup
         k0_run = asyncio.run(pair(out_root=args.out_root/'normal-eval', baseline_first=True))
@@ -248,6 +261,13 @@ def test_orchestration_runs_pair_then_only_full_k1_and_resumes_without_models(tm
     if mode == 'no_gaps':
         assert calls == ['baseline', 'full_k0']
         assert json.loads((out/'experiment.json').read_text())['status'] == 'no_eligible_gaps'
+        return
+    if mode in {'interrupted_k1', 'failed_k1'}:
+        assert calls == ['baseline', 'full_k0', 'incomplete_k1', 'full_k1']
+        checkpoint = json.loads((out/'experiment.json').read_text())
+        assert checkpoint['status'] == 'complete' and 'error_type' not in checkpoint
+        archived, = out.glob('k1-incomplete-*/full.diagnostics_full.jsonl')
+        assert archived.read_text() == '{}\n'
         return
     assert calls == ['baseline', 'full_k0', 'full_k1']
     assert json.loads((out/'experiment.json').read_text())['status'] == 'complete'
