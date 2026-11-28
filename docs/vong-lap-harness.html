@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vòng lặp xử lý của Agent Harness · TeleSale SudoCode 2026</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: #172843;
+      background: #edf2f9;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+
+    main {
+      max-width: 1660px;
+      margin: auto;
+      padding: clamp(16px, 2.4vw, 40px);
+    }
+
+    .project {
+      margin: 0 0 7px;
+      color: #355683;
+      font-size: .9rem;
+      font-weight: 700;
+    }
+
+    h1 {
+      margin: 0 0 16px;
+      font-size: clamp(1.6rem, 3.1vw, 2.55rem);
+      letter-spacing: -.025em;
+      line-height: 1.15;
+    }
+
+    .viewport {
+      overflow: auto;
+      border: 1px solid #ccd7e8;
+      border-radius: 10px;
+      background: #fbfcff radial-gradient(#dbe4f1 1px, transparent 1px) 0 0 / 18px 18px;
+    }
+
+    .viewport:focus-visible { outline: 3px solid #2366c7; outline-offset: 3px; }
+
+    .hint {
+      margin: 10px 0 0;
+      color: #405671;
+      font-size: .85rem;
+    }
+
+    @media (min-width: 1280px) {
+      .hint { display: none; }
+    }
+
+    svg { display: block; width: 100%; min-width: 1200px; height: auto; }
+
+    .harness { --ink: #285ea9; --edge: #3871ba; --border: #a5bee7; --tint: #eaf2ff; }
+    .tools { --ink: #633db0; --edge: #7958be; --border: #c5b5e5; --tint: #f2edff; }
+    .repair { --ink: #8b4d16; --edge: #a76730; --border: #dec0a0; --tint: #fff3e4; }
+    .delivery { --ink: #106859; --edge: #318778; --border: #9eccbf; --tint: #e9f8f3; }
+
+    .zone {
+      fill: var(--tint);
+      fill-opacity: .74;
+      stroke: var(--border);
+      stroke-width: 1.5;
+      stroke-dasharray: 6 5;
+    }
+
+    .zone-title { fill: var(--ink); font-size: 14px; font-weight: 750; }
+
+    .routes path {
+      fill: none;
+      stroke: var(--edge);
+      stroke-width: 1.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      marker-end: url(#arrow);
+    }
+
+    .routes .return { stroke-dasharray: 8 8; }
+
+    .node rect, .node path, .node ellipse {
+      fill: #fff;
+      stroke: var(--border);
+      stroke-width: 1.6;
+    }
+
+    .node .key { fill: var(--tint); stroke: var(--edge); }
+    .node text { fill: #425675; font-size: 13px; text-anchor: middle; }
+    .node .name { fill: #182b49; font-size: 16px; font-weight: 750; }
+
+    .label { fill: var(--ink); font-size: 13px; font-weight: 700; text-anchor: middle; }
+    .label-bg { fill: #fbfcff; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="project">TeleSale SudoCode 2026</p>
+    <h1>Vòng lặp xử lý của Agent Harness</h1>
+
+    <div class="viewport" tabindex="0" role="region" aria-label="Khung sơ đồ có thể cuộn ngang">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="36 120 1428 720" role="img" aria-labelledby="diagram-title diagram-desc">
+        <title id="diagram-title">Vòng lặp xử lý của Agent Harness</title>
+        <desc id="diagram-desc">Harness nhận và định danh lượt khách, che thông tin cá nhân, lấy ngữ cảnh, rồi chạy agent. BusinessTools kiểm tra đề xuất công cụ và gọi MCPGateway hoặc trả từ chối cho agent. Kết quả hoặc lỗi từ MCPGateway quay về agent. Verify kiểm bản nháp với bằng chứng và biên nhận. Nếu chưa đạt, Harness tra bổ sung hoặc sửa câu rồi kiểm lại. Nếu hết đường phục hồi, Harness báo lỗi lượt. Nếu đạt, Harness trả lời khách, ghi runtime.turns và đọc bộ nhớ ở lượt sau.</desc>
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0 0 L10 5 L0 10 L2.5 5 Z" fill="context-stroke"/>
+          </marker>
+        </defs>
+
+        <g class="harness">
+          <rect class="zone" x="245" y="178" width="1189" height="180" rx="12"/>
+          <text class="zone-title" x="263" y="205">Điều phối AI · AgentHarnessRuntime và LangGraph</text>
+        </g>
+        <g class="tools">
+          <rect class="zone" x="605" y="418" width="472" height="197" rx="12"/>
+          <text class="zone-title" x="623" y="445">Công cụ MCP</text>
+        </g>
+        <g class="repair">
+          <rect class="zone" x="1104" y="418" width="330" height="197" rx="12"/>
+          <text class="zone-title" x="1122" y="445">Khôi phục trong verify</text>
+        </g>
+        <g class="delivery">
+          <rect class="zone" x="605" y="653" width="472" height="157" rx="12"/>
+          <text class="zone-title" x="623" y="680">Giao câu trả lời và lưu lượt</text>
+        </g>
+
+        <g class="routes">
+          <g class="harness">
+            <path d="M214 284 H263"/>
+            <path d="M434 284 H472"/>
+            <path d="M606 284 H646"/>
+            <path d="M832 284 H872"/>
+            <path d="M1057 284 H1137"/>
+          </g>
+          <g class="tools">
+            <path d="M977 327 V485"/>
+            <path class="return" d="M1036 486 V328"/>
+            <path d="M852 528 H817"/>
+            <path d="M721 486 V397 Q721 390 728 390 H895 Q902 390 902 383 V328"/>
+          </g>
+          <g class="repair">
+            <path d="M1288 327 V485"/>
+            <path d="M1363 486 V328"/>
+            <path class="return" d="M1402 284 H1440 Q1447 284 1447 291 V740 Q1447 747 1440 747 H1408"/>
+          </g>
+          <g class="delivery">
+            <path d="M1153 327 V365 Q1153 372 1146 372 H1099 Q1092 372 1092 379 V740 Q1092 747 1085 747 H1058"/>
+            <path d="M844 747 H802"/>
+            <path class="return" d="M714 785 V816 Q714 823 707 823 H144 Q137 823 137 816 V328"/>
+          </g>
+        </g>
+
+        <g class="harness">
+          <text class="label" x="455" y="228">Lượt mới</text>
+          <text class="label" x="1097" y="271">Bản nháp</text>
+        </g>
+        <g class="tools">
+          <text class="label" x="814" y="376">Kết quả / lỗi</text>
+          <rect class="label-bg" x="934" y="372" width="61" height="33" rx="5"/>
+          <text class="label" x="964" y="387"><tspan x="964">Đề xuất</tspan><tspan x="964" dy="14">công cụ</tspan></text>
+          <rect class="label-bg" x="1006" y="379" width="60" height="21" rx="5"/>
+          <text class="label" x="1036" y="394">Từ chối</text>
+        </g>
+        <g class="repair">
+          <rect class="label-bg" x="1252" y="390" width="72" height="22" rx="5"/>
+          <text class="label" x="1288" y="406">Chưa đạt</text>
+          <rect class="label-bg" x="1331" y="390" width="64" height="22" rx="5"/>
+          <text class="label" x="1363" y="406">Kiểm lại</text>
+          <text class="label" x="1348" y="659">Hết đường phục hồi</text>
+        </g>
+        <g class="delivery">
+          <text class="label" x="1042" y="644">Đạt</text>
+          <text class="label" x="410" y="813">Bộ nhớ được đọc ở lượt sau</text>
+        </g>
+
+        <g class="node harness">
+          <g transform="translate(61 241)">
+            <rect width="153" height="86" rx="7"/>
+            <text x="76.5" y="34" class="name">Lượt khách</text>
+            <text x="76.5" y="50">Tin nhắn chat</text>
+            <text x="76.5" y="66">hoặc bản chép lời</text>
+          </g>
+          <g transform="translate(264 241)">
+            <rect class="key" width="170" height="86" rx="7"/>
+            <text x="85" y="34" class="name">Nhận và định danh</text>
+            <text x="85" y="50">Khóa theo phiên</text>
+            <text x="85" y="66">CRM · kiểm replay</text>
+          </g>
+          <g transform="translate(473 241)">
+            <rect width="133" height="86" rx="7"/>
+            <text x="66.5" y="34" class="name">accept</text>
+            <text x="66.5" y="50">Che thông tin</text>
+            <text x="66.5" y="66">cá nhân</text>
+          </g>
+          <g transform="translate(647 241)">
+            <rect width="185" height="86" rx="7"/>
+            <text x="92.5" y="34" class="name">retrieve_context</text>
+            <text x="92.5" y="50">Lịch sử · hồ sơ</text>
+            <text x="92.5" y="66">Call Brief khi phù hợp</text>
+          </g>
+          <g transform="translate(873 241)">
+            <rect class="key" width="184" height="86" rx="7"/>
+            <text x="92" y="34" class="name">run_agent</text>
+            <text x="92" y="50">Deep Agent đề xuất tool</text>
+            <text x="92" y="66">hoặc soạn bản nháp</text>
+          </g>
+          <g transform="translate(1138 241)">
+            <rect class="key" width="264" height="86" rx="7"/>
+            <text x="132" y="34" class="name">verify</text>
+            <text x="132" y="50">Kiểm câu trả lời với bằng chứng</text>
+            <text x="132" y="66">và biên nhận nghiệp vụ</text>
+          </g>
+        </g>
+
+        <g class="node tools">
+          <g transform="translate(627 486)">
+            <rect width="189" height="84" rx="7"/>
+            <text x="94.5" y="33" class="name">MCPGateway</text>
+            <text x="94.5" y="49">Catalog · Order · Knowledge</text>
+            <text x="94.5" y="65">Bằng chứng · biên nhận</text>
+          </g>
+          <g transform="translate(852 486)">
+            <rect class="key" width="205" height="84" rx="7"/>
+            <text x="102.5" y="33" class="name">BusinessTools</text>
+            <text x="102.5" y="49">Kiểm tham số và phạm vi</text>
+            <text x="102.5" y="65">Kiểm bằng chứng và quyền ghi</text>
+          </g>
+        </g>
+
+        <g class="node repair">
+          <g transform="translate(1131 486)">
+            <rect width="276" height="84" rx="7"/>
+            <text x="138" y="33" class="name">Tra bổ sung hoặc sửa câu</text>
+            <text x="138" y="49">Tiếp tục agent khi phù hợp</text>
+            <text x="138" y="65">Tối đa một lần sửa chỉ sinh câu</text>
+          </g>
+          <g transform="translate(1131 709)">
+            <rect width="276" height="76" rx="7"/>
+            <text x="138" y="29" class="name">Báo lỗi lượt</text>
+            <text x="138" y="45">Cố lưu bằng chứng</text>
+            <text x="138" y="61">và phần đã phát nếu có</text>
+          </g>
+        </g>
+
+        <g class="node delivery">
+          <g transform="translate(627 700)">
+            <path d="M0 11 H174 V74 C174 89 0 89 0 74 Z"/>
+            <ellipse cx="87" cy="11" rx="87" ry="11"/>
+            <text x="87" y="43" class="name">runtime.turns</text>
+            <text x="87" y="59">Memory MCP</text>
+            <text x="87" y="75">PostgreSQL</text>
+          </g>
+          <g transform="translate(844 709)">
+            <rect class="key" width="213" height="76" rx="7"/>
+            <text x="106.5" y="45" class="name">Trả về câu trả lời</text>
+          </g>
+        </g>
+      </svg>
+    </div>
+    <p class="hint">Cuộn ngang để xem toàn bộ sơ đồ.</p>
+  </main>
+</body>
+</html>
