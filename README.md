@@ -2,9 +2,9 @@
 
 Trợ lý telesale tiếng Việt qua chat và thoại, có bộ nhớ giữa các cuộc gọi.
 
-## Bước 1. Chuẩn bị môi trường
+## 1. Cài đặt và chạy
 
-Cần Python 3.12+, Docker Compose 2.20+ và gói BTC đã giải nén tại `../BTC-Data-Vong1-TEAMS`. Chạy từ thư mục gốc repo. Chọn **một** nhóm lệnh để tạo và kích hoạt `.venv`.
+Cần Python 3.12+ và Docker Compose 2.20+. Chạy từ thư mục gốc repo, nơi đã có [gói dữ liệu BTC](BTC-Data-Vong1-TEAMS/README.md).
 
 **Linux / macOS / WSL2**
 
@@ -22,153 +22,105 @@ py -3.12 -m venv .venv
 if (!(Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-**Mọi hệ điều hành** dùng lệnh sau trong môi trường vừa kích hoạt.
+Trong `.env`, điền `CLOUDFLARE_API_TOKEN` từ [tệp Google Drive](https://drive.google.com/file/d/1Gt_0syi-ib1h3paOf-UdjRgNXSUCuRlD/view?usp=sharing). Sau đó cài thư viện, bật Docker và nạp dữ liệu.
 
 ```sh
 python -m pip install -r config/requirements/host.txt
-```
-
-Sau khi sao chép `.env.example` thành `.env`, mở [tệp chứa token Cloudflare trên Google Drive](https://drive.google.com/file/d/1Gt_0syi-ib1h3paOf-UdjRgNXSUCuRlD/view?usp=sharing) và dán token vào giữa hai dấu nháy của `CLOUDFLARE_API_TOKEN` trong `.env`. Đây là biến bắt buộc duy nhất cần điền.
-
-```dotenv
-CLOUDFLARE_API_TOKEN=''
-```
-
-*(Khuyến nghị đổi `LLM_TIMEOUT_SECONDS='90'` khi chạy bộ kịch bản lớn. Các trường trống khác như `ELEVENLABS_API_KEY`, `LANGMEM_MODEL`, `SUBMISSION_RUN_AS` không bắt buộc cho M1.)*
-
-## Bước 2. Bật server
-
-Chọn lệnh theo hệ điều hành. Lần build đầu cần Internet để tải phụ thuộc.
-
-**Ubuntu / WSL2 chạy Docker Engine trong Ubuntu**
-
-```bash
-sudo docker compose up -d --build
-```
-
-**Windows / macOS / WSL2 dùng Docker Desktop**
-
-Mở Docker Desktop, rồi chạy lệnh sau từ thư mục gốc repo.
-
-```sh
 docker compose up -d --build
+python seed_btc.py --data-dir ./BTC-Data-Vong1-TEAMS
 ```
 
-## Bước 3. Khởi tạo dữ liệu BTC
+Nếu dùng Docker Desktop, mở ứng dụng trước. Nếu Docker Engine yêu cầu quyền quản trị, thêm `sudo` trước lệnh `docker compose`. Lần build đầu cần Internet.
 
-Dùng script [seed_btc.py](seed_btc.py) để nạp dữ liệu BTC sau khi bật hệ thống. Lệnh này dùng chung trên mọi hệ điều hành.
+Khi seed báo đã sẵn sàng, đăng nhập bằng `demo1` và mật khẩu `DEMO_USER_1_PASSWORD` trong `.env`. [Chat](http://127.0.0.1:8000/chat) · [Thoại](http://127.0.0.1:8000/)
+
+## 2. Đánh giá harness
+
+Đặt 48 tệp `TEAM-*.json`, `_manifest.json` và `_source_map.json` của đội trực tiếp trong `dataset/dataset_harness_texttotext/`. Với checkout mới, chép bộ kịch bản vào đường dẫn này vì Git đang bỏ qua thư mục dataset. Có thể đặt `SCENARIOS_DIR='./dataset/dataset_harness_texttotext'` trong `.env` để dùng runner mà không cần truyền `--scenarios`.
+
+Giữ server chạy, dùng Python trong `.venv` và đóng phiên demo trước khi chấm vì runner đặt lại dữ liệu runtime. Giữ nguyên bộ kịch bản, seed và model. Đổi tên `btc-eval` nếu đã dùng thư mục kết quả này.
+
+<a name="bước-4-xuất-baseline-và-full-k0"></a>
+
+### Xuất Baseline và Full K0
+
+K0 là bản tri thức trước khi bổ sung. Xuất hai trace, kiểm tra hai tệp `.report.json` đều báo hoàn tất và cùng release K0, rồi chấm bằng scorer trong snapshot BTC của lượt Full.
 
 ```sh
-python seed_btc.py --data-dir ../BTC-Data-Vong1-TEAMS
+python run_eval.py --scenarios ./dataset/dataset_harness_texttotext --config baseline_no_memory --out ./results-submission/btc-eval/baseline.jsonl
+python run_eval.py --scenarios ./dataset/dataset_harness_texttotext --config full --out ./results-submission/btc-eval/full-k0.jsonl
 ```
-
-Chờ seed báo các dịch vụ đã sẵn sàng. Nếu muốn thử trước khi eval, mở [Chat](http://127.0.0.1:8000/chat) hoặc [Thoại](http://127.0.0.1:8000/) và đăng nhập bằng `demo1` cùng mật khẩu `DEMO_USER_1_PASSWORD` trong `.env`.
-
-Các lệnh Python ở những bước tiếp theo dùng chung cho Ubuntu, Windows và macOS. Giữ server chạy và dùng Python trong `.venv`.
-
-## Bước 4. Xuất Baseline và Full K0
-
-K0 là Knowledge trước khi bổ sung. Kết thúc phiên demo trước khi eval vì runner đặt lại dữ liệu runtime. Giữ nguyên bộ kịch bản, seed và model qua các lượt. Thay `btc-eval` trong các lệnh nếu thư mục kết quả đã được dùng.
 
 ```sh
-python run_eval.py --scenarios ./eval/scenario_final --config baseline_no_memory --out ./results-submission/btc-eval/baseline.jsonl
-python run_eval.py --scenarios ./eval/scenario_final --config full --out ./results-submission/btc-eval/full-k0.jsonl
+python ./results-submission/btc-eval/full-k0.btc-release/eval/reference_eval.py --scenarios ./dataset/dataset_harness_texttotext --trace ./results-submission/btc-eval/full-k0.jsonl --baseline ./results-submission/btc-eval/baseline.jsonl --out ./results-submission/btc-eval/btc-k0.json
 ```
 
-**Kết quả** gồm `baseline.jsonl`, `full-k0.jsonl` và `full-k0.knowledge-gaps.json`. Xem hai file `.report.json` để xác nhận cả hai run đã hoàn tất và dùng cùng release K0.
+### Duyệt và chấm K1
 
-## Bước 5. Chấm K0 bằng scorer BTC
-
-Chấm hai trace vừa tạo bằng reference scorer của BTC.
+1. Lấy `run_id` từ `results-submission/btc-eval/full-k0.knowledge-gaps.json` và mở `http://127.0.0.1:8000/knowledge?run_id=<run-id>`.
+2. Kiểm tra nguồn, nội dung và ca kiểm thử của đề xuất, rồi bấm **Duyệt và phát hành các mục đã chọn**. Nếu chưa có đề xuất đủ căn cứ, dừng ở K0.
+3. Ghi lại mã release K1, chạy lại Full, rồi kiểm tra `full-k1.report.json` báo hoàn tất và đúng mã K1 trước khi chấm.
 
 ```sh
-python ./results-submission/btc-eval/full-k0.btc-release/eval/reference_eval.py --scenarios ./eval/scenario_final --trace ./results-submission/btc-eval/full-k0.jsonl --baseline ./results-submission/btc-eval/baseline.jsonl --out ./results-submission/btc-eval/btc-k0.json
+python run_eval.py --scenarios ./dataset/dataset_harness_texttotext --config full --out ./results-submission/btc-eval/full-k1.jsonl
 ```
-
-**Kết quả** nằm trong `btc-k0.json`. Xem điểm trước khi duyệt gap.
-
-## Bước 6. Duyệt gap và phát hành K1
-
-1. Lấy `run_id` từ `full-k0.knowledge-gaps.json` và mở `http://127.0.0.1:8000/knowledge?run_id=<run-id>`.
-2. Chọn gap có nguồn đủ căn cứ, kiểm tra nội dung và test, rồi bấm **Duyệt và phát hành các mục đã chọn**.
-3. Ghi lại mã K1 mà giao diện báo. Nếu chưa có gap đủ căn cứ, dừng ở kết quả K0.
-
-## Bước 7. Xuất Full K1
-
-Sau khi K1 được phát hành, chạy lại Full trên cùng bộ kịch bản.
 
 ```sh
-python run_eval.py --scenarios ./eval/scenario_final --config full --out ./results-submission/btc-eval/full-k1.jsonl
+python ./results-submission/btc-eval/full-k0.btc-release/eval/reference_eval.py --scenarios ./dataset/dataset_harness_texttotext --trace ./results-submission/btc-eval/full-k1.jsonl --out ./results-submission/btc-eval/btc-k1.json
 ```
 
-**Kết quả** gồm `full-k1.jsonl` và `full-k1.knowledge-gaps.json`. Trước khi chấm, kiểm tra `full-k1.report.json` báo đã hoàn tất và dùng đúng mã release K1.
+So mục `system` trong `btc-k0.json` và `btc-k1.json`. Để kiểm chứng từng gap, đối chiếu cùng `scenario_id`, `call` và `turn` trong hai trace Full rồi xem `tool_calls` của K1 có truy xuất mục vừa phát hành hay không.
 
-## Bước 8. Chấm riêng Full K1 và đối chiếu
+### Chạy cặp hoặc tiếp tục từ trace
 
-Dùng cùng reference scorer của BTC để chấm riêng Full K1.
+- Chạy cặp Baseline và Full K0 bằng `python run_eval.py --scenarios ./dataset/dataset_harness_texttotext`. Thêm `--limit-scenarios 1` để chạy thử một kịch bản.
+- Tiếp tục tạo đề xuất từ trace đã lưu bằng `python run_knowledge_eval.py --full-trace ./results-submission/btc-eval/full-k0.jsonl`.
+- Sau khi phát hành K1 từ một lượt chạy cặp, dùng `python run_knowledge_eval.py --base-run "results-submission/<run-id>"` để chấm và xuất bảng so sánh.
 
-```sh
-python ./results-submission/btc-eval/full-k0.btc-release/eval/reference_eval.py --scenarios ./eval/scenario_final --trace ./results-submission/btc-eval/full-k1.jsonl --out ./results-submission/btc-eval/btc-k1.json
-```
+Nếu Full K1 vẫn báo release cũ, kiểm tra `KNOWLEDGE_RELEASE_ID`. Nếu lượt chạy hết thời gian gọi model, có thể tăng `LLM_TIMEOUT_SECONDS` trong `.env`.
 
-**Kết quả** nằm trong `btc-k1.json`. So mục `system` trong hai file điểm để xem mức thay đổi toàn bộ bộ test. Để kiểm tra một gap cụ thể, xem cùng `scenario_id`, `call` và `turn` trong hai trace Full. K0 cần có câu bị bỏ sót, còn K1 cần trả lời đúng và có `tool_calls` cho thấy đã truy xuất mục vừa phát hành.
+## 3. Đánh giá ASR và RAG
 
-## Tùy chọn và xử lý lỗi
+### ASR
 
-**Tiếp tục tạo đề xuất từ trace đã lưu.** Nếu worker bị gián đoạn hoặc file gap mới có trạng thái `exported`, kiểm tra cấu hình reviewer và worker rồi chạy lệnh dưới đây. Lệnh tiếp tục từ trace K0 mà không chạy lại hội thoại. Nếu Full lần hai vẫn báo release cũ, kiểm tra cấu hình ghim `KNOWLEDGE_RELEASE_ID` trước khi chạy lại.
-
-```sh
-python run_knowledge_eval.py --full-trace ./results-submission/btc-eval/full-k0.jsonl
-```
-
-**Chạy cặp tự động.** CLI cũng hỗ trợ `python run_eval.py --scenarios ./eval/scenario_final` để tạo một cặp K0 trong thư mục run riêng. Có thể dùng `--limit-scenarios 1` để chạy thử. Với kết quả từ luồng cặp, `python run_knowledge_eval.py --base-run "results-submission/<run-id>"` chạy Full K1 sau khi đã duyệt và publish, rồi ghi bảng so sánh vào thư mục `<run-id>.knowledge`.
-
-**ASR local.** Trong một môi trường Python riêng, thay `<dataset>` bằng thư mục chứa `audio/` và `ground_truth.json`. Lệnh đầu cài thư viện, hai lệnh sau chép lời và chấm WER/CER.
+Tải `audio-vieneu-120-cuoc.zip` từ bảng cuối README và giải nén vào `dataset/dataset_ASR/`. Hai lệnh dưới dùng thư mục chứa cả `audio/` và `ground_truth.json`. Nếu gói giải nén tạo thêm một thư mục con, dùng đường dẫn thư mục con đó. Chạy trong môi trường Python riêng.
 
 ```sh
 python -m pip install -r config/requirements/asr.txt
-python -m speech transcribe --audio "<dataset>/audio" --out ./results-submission/asr-team
-python -m speech eval --dataset "<dataset>" --runs ./results-submission/asr-team
+python -m speech --data-dir ./BTC-Data-Vong1-TEAMS transcribe --audio ./dataset/dataset_ASR/audio --out ./results-submission/asr-team
+python -m speech --data-dir ./BTC-Data-Vong1-TEAMS eval --dataset ./dataset/dataset_ASR --runs ./results-submission/asr-team
 ```
 
-**Đánh giá RAG độc lập (M2, `qa_labeled.json` 60 câu).** Chạy từ `ai-services/` trong môi trường có `rag_eval/requirements.txt` (`ragas==0.4.4`):
+### RAG
+
+Chấm lại trace và nhãn đã lưu. Đổi `rag-replay` nếu thư mục đầu ra đã tồn tại. [Báo cáo RAG](results-rag/e2e-score-03/report.md)
 
 ```sh
 cd ai-services
-python -m rag_eval run --btc-root ../../BTC-Data-Vong1-TEAMS --mode end-to-end --out ../results-rag/e2e-new --allow-live
-python -m rag_eval judge --run ../results-rag/e2e-02 --out ../results-rag/e2e-judge-02 --allow-live
-python -m rag_eval score --run ../results-rag/e2e-02 --judgments ../results-rag/e2e-judge-02 --human-labels ../results-rag/human_labels-e2e-02.json --out ../results-rag/e2e-score-03
-cd ..
+python -m rag_eval score --run ../results-rag/e2e-02 --judgments ../results-rag/e2e-judge-02 --human-labels ../results-rag/human_labels-e2e-02.json --out ../results-submission/rag-replay
 ```
 
-Để đối chiếu chéo trực tiếp bằng scorer tham chiếu của BTC trên `rag_results.json`:
+Để tạo trace RAG mới, chạy từ `ai-services/` với các thư mục đầu ra chưa tồn tại. Hai lệnh `run` và `judge` gọi dịch vụ model.
 
 ```sh
-python -c "import json, sys; sys.path.insert(0, 'results-rag/e2e-02/btc/eval'); import reference_eval; print(json.dumps(reference_eval.rag_eval('results-rag/e2e-02/btc/rag/qa_labeled.json', 'results-rag/e2e-score-03/rag_results.json'), ensure_ascii=False, indent=2))"
+python -m pip install -r rag_eval/requirements.txt
+python -m rag_eval run --btc-root ../BTC-Data-Vong1-TEAMS --mode end-to-end --out ../results-submission/rag-run --allow-live
+python -m rag_eval judge --run ../results-submission/rag-run --out ../results-submission/rag-judge --allow-live
+python -m rag_eval score --run ../results-submission/rag-run --judgments ../results-submission/rag-judge --out ../results-submission/rag-score
 ```
 
 ## Dừng hệ thống
 
-Dùng cách gọi Docker ở bước 2.
-
-**Ubuntu / WSL2 chạy Docker Engine trong Ubuntu**
-
-```bash
-sudo docker compose down
-```
-
-**Windows / macOS / WSL2 dùng Docker Desktop**
-
-```sh
-docker compose down
-```
+Từ thư mục gốc repo, chạy `docker compose down`. Thêm `sudo` nếu Docker Engine yêu cầu quyền quản trị.
 
 ## Tài liệu nộp cho BTC
 
-| Hạng mục | Liên kết | Nội dung |
-|---|---|---|
-| **Dataset** | [Bộ dữ liệu 48 kịch bản](eval/scenario_final/) · [Mô tả bộ kịch bản](eval/scenario_final/README.md) · [Mô tả corpus M1 và dữ liệu ASR](dataset/M1-CORPUS.md) | Cách sinh dữ liệu, phân bố kịch bản và hội thoại, hạn chế, cách xử lý thông tin cá nhân. Hai gói audio ASR được lưu riêng ngoài Git. |
-| **Tài liệu kiến trúc** | [Tài liệu kiến trúc](docs/tai-lieu-kien-truc.md) · [Xem sơ đồ có chuyển động khi server đang chạy](http://127.0.0.1:8000/assets/so-do-he-thong.html) · [File HTML](frontend/so-do-he-thong.html) · [File draw.io](docs/so-do-he-thong.drawio) · [Sơ đồ vòng lặp harness](docs/vong-lap-harness.drawio) | Thiết kế bộ nhớ, danh sách công cụ và quyền sử dụng, các quyết định thiết kế và lý do lựa chọn. |
-| **Báo cáo đánh giá** | [Báo cáo đánh giá tổng hợp](docs/bao-cao-danh-gia.md) · [Báo cáo đánh giá M1](docs/btc-m1-evaluation-report.md) | Bảng chỉ số, đối chứng với baseline không bộ nhớ, so sánh trước và sau cải tiến Knowledge Gap Loop, phân tích 10 ca sai trong báo cáo tổng hợp và 14 ca sai trong báo cáo M1. |
-
-Để xem sơ đồ ngoại tuyến, mở file HTML trong trình duyệt. Nếu máy chủ đang chạy từ bản cũ, chạy lại lệnh ở Bước 2 để cập nhật liên kết sơ đồ.
+| Nội dung | Vị trí |
+|---|---|
+| Bộ kịch bản harness | `dataset/dataset_harness_texttotext/`. Mô tả nằm trong `README.md` của bộ dữ liệu. |
+| Dataset âm thanh | [Tải trên Google Drive](https://drive.google.com/drive/folders/1165N54haGdVxfJV6RGBnJhJPDA0sJjAL) · `dataset/dataset_ASR/` |
+| [Kiến trúc hệ thống](https://raw.githack.com/PhucNguyenThanh04/TeleSale-SudoCode2026/phuc/docs/so-do-he-thong.html) | Sơ đồ HTML |
+| [Vòng lặp harness](https://raw.githack.com/PhucNguyenThanh04/TeleSale-SudoCode2026/phuc/docs/vong-lap-harness.html) | Sơ đồ HTML |
+| [Tài liệu kiến trúc](docs/tai-lieu-kien-truc.md) | Markdown |
+| Công cụ và quyết định thiết kế | [Danh sách công cụ](docs/tai-lieu-kien-truc.md#4-danh-sách-công-cụ) · [Quyết định thiết kế](docs/tai-lieu-kien-truc.md#5-quyết-định-thiết-kế-và-lý-do-lựa-chọn) |
+| [Báo cáo đánh giá](docs/bao-cao-danh-gia.md) | Markdown |
