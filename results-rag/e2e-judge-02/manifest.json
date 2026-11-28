@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "kind": "judgments",
+  "status": "complete",
+  "trace_sha256": "07f8993da9e3c4a441d9b1cc81e4316576399dfd50e5a3bb3448dcf78a771f08",
+  "judge": {
+    "model": "gemma4:31b",
+    "temperature": 0,
+    "max_tokens": 2048,
+    "ragas_version": "0.4.4",
+    "business_prompt_sha256": "c59510127e0aed131033d7a65d3bbb4d1f1ff893a4837ab1b9b02d156ec69c66",
+    "ragas_metrics": [
+      "Faithfulness",
+      "FactualCorrectness:f1"
+    ],
+    "instructor_version": "1.18.0",
+    "openai_version": "3.41.0",
+    "effective_model_args": {
+      "temperature": 0,
+      "top_p": 0.1,
+      "max_tokens": 2048,
+      "max_retries": 1
+    },
+    "endpoint_sha256": "96d2d482b397d6b68edb29e1133023c2c0d827b7b219efff7e9bfdf09736f719"
+  },
+  "files": {
+    "business_judge_prompt.txt": "32ca9ca2b4bc637faa763ab61c41a9d1ee180558f9e6defb249e32e04716cce2",
+    "judgments.jsonl": "d9562f76c3a15982cc6873b1601b261a03d89ac6cbacb5ea487bb4da06b10022",
+    "scores/human_labels.template.json": "9cb1787ebff80bb8c0373d04d011d64765088839a4540ae7f5963e11f2f5e64f",
+    "scores/judgments.json": "ba622d8dcdef1f1c329e05ef6c32a63708b3c42f5282ad72a9e68cd34023f9b2",
+    "scores/manifest.json": "561e7374b320b9e6f69eabed3ca46add123dda3fc9a2cc2d68c371211863f5ca",
+    "scores/rag_results.json": "207d6fb8759c462279e55ac3163ee9c3437ed235c4691a16116960c47786b5ef",
+    "scores/report.json": "0755282a109e5b3a43fc0d0b4904a469b179784619a2ab5753a37cbc14515be5",
+    "scores/report.md": "74a84b156b882fe693cd6d071cc56e382acfd8dbe04de67321e6c7a09121a5ae"
+  }
+}

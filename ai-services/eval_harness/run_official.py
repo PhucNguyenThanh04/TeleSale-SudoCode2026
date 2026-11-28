@@ -54,7 +54,9 @@ def _run_one(config, scenarios, seed, run_id, out, *, btc_root, expected_databas
     if not isinstance(details, dict):
         details={}
     status=details.get('status')
-    if (completed.returncode and status!='invalid') or not trace.is_file():
+    finished = completed.returncode == 0 and status == 'completed'
+    invalid_for_scoring = status == 'invalid' and bool(details.get('safety_issues'))
+    if not trace.is_file() or not (finished or invalid_for_scoring):
         failure=RuntimeError('configuration_execution_failed')
         failure.safety_issues=details.get('safety_issues',[])
         failure.error_code=details.get('error_code','configuration_execution_failed')
@@ -191,10 +193,11 @@ async def run_pair(*, scenarios: Path, btc_root: Path, seed: int,
             coverage=dataset_coverage(inputs),subset=limit_scenarios is not None,
             latency_scale_sufficient=dataset_coverage(inputs)['turns']>=100,
             safety_issues=safety_issues)
-    except Exception as exc:
+    except (Exception, SystemExit) as exc:
         safety_issues.extend(getattr(exc,'safety_issues',[]))
         summary.update(status='failed',error_type=type(exc).__name__,
-            error_code=getattr(exc,'error_code','pair_failed'),
+            error_code=getattr(exc,'error_code',
+                'unexpected_process_exit' if isinstance(exc, SystemExit) else 'pair_failed'),
             phase=getattr(exc,'phase','coordinator'),service=getattr(exc,'service',None),
             **safe_failure_details(exc),
             safety_issues=safety_issues)
@@ -245,8 +248,9 @@ def main():
     from eval_harness.knowledge_followup import detect_after_pair
     try:
         asyncio.run(detect_after_pair(out))
-    except Exception as exc:
+    except (Exception, SystemExit) as exc:
         print(f'[knowledge] Detection failed ({type(exc).__name__}); paired metrics are complete. Inspect {out}.knowledge/experiment.json.', flush=True)
+        raise SystemExit(1) from None
 
 
 if __name__=='__main__':

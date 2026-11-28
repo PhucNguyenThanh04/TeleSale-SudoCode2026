@@ -64,6 +64,18 @@ class EvalRunnerTest(unittest.TestCase):
                 main()
                 self.assertFalse(hasattr(execute.call_args.args[0], 'delivery_mode'))
 
+    def test_unexpected_exit_is_not_success_for_single_configuration(self):
+        from eval.run_eval import main
+
+        with patch('eval.run_eval.capture_release', AsyncMock(side_effect=SystemExit(0))), \
+             patch('eval_harness.btc_release.prepare_btc_release', return_value=Path('unused')), \
+             patch('eval.run_eval.load_scenarios', return_value={}), \
+             patch('sys.argv', ['run_eval.py', '--scenarios', 'unused', '--btc-root', 'unused',
+                                '--config', 'full', '--out', 'unused.jsonl', '--isolated-db']):
+            with self.assertRaises(SystemExit) as stopped:
+                main()
+        self.assertEqual(stopped.exception.code, 1)
+
     def setUp(self):
         settings = Settings(_env_file=None, app_env='test', llm_api_key='offline', llm_model='offline',
                             database_url='postgresql://offline@127.0.0.1/telesale_eval')

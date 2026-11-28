@@ -58,6 +58,27 @@ def test_warmup_failure_stops_before_reset_and_scored_turns(tmp_path):
     assert not (tmp_path/'btc_score.json').exists()
 
 
+def test_unexpected_success_exit_writes_a_failed_configuration_report(tmp_path, monkeypatch):
+    import json
+    from app.configs import Settings
+    from eval_harness import benchmark_runner as runner
+
+    runtime = SimpleNamespace(memory=SimpleNamespace(), tools=object())
+    monkeypatch.setattr(runner, 'preflight_runtime', AsyncMock())
+    monkeypatch.setattr(runner, 'build_runtime', lambda *args, **kwargs: runtime)
+    monkeypatch.setattr(runner, 'warm_up_configuration', AsyncMock(side_effect=SystemExit(0)))
+    with pytest.raises(RuntimeError, match='configuration_failed'):
+        asyncio.run(runner.execute_configuration(
+            settings=Settings(_env_file=None, llm_api_key='offline', llm_model='offline'),
+            scenarios={}, config='full', run_id='offline', out=tmp_path/'trace.jsonl',
+            btc_root=tmp_path, expected_database='offline', release={'release_id': 'k0'},
+            runtime=runtime))
+    report = json.loads((tmp_path/'trace.report.json').read_text())
+    assert report['status'] == 'failed'
+    assert report['phase'] == 'warmup'
+    assert report['error_code'] == 'unexpected_process_exit'
+
+
 def test_warmup_preserves_verifier_rejections_and_redacted_drafts():
     from langchain_core.messages import AIMessage
     from app.agent.harness.runtime import AgentHarnessRuntime

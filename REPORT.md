@@ -31,7 +31,7 @@ Artifacts đánh giá được lưu tại:
 
 ## 2. Kết quả Ablation (P3)
 
-Chạy bằng `eval/run_ablation.py` trên 5 cấu hình (`eval_results/ablation/summary.md`, `summary.json`):
+Chạy bằng `eval/run_ablation.py` trên 5 cấu hình ([kết quả ablation](eval_results/ablation/summary.json)):
 
 | Config | RQR (%) | CCR (%) | TSR (%) | Hard TSR (%) | HR Price&Promo (%) | Guardrail Viol. | TTFT p50/p95 (ms) | Total p50/p95 (ms) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |

@@ -2,7 +2,7 @@ import json
 import httpx
 from fastapi.testclient import TestClient
 from app.configs import VoiceSettings
-from gateway_fixture import create_app
+from app.voice_main import create_app
 
 
 def app_config(**changes):

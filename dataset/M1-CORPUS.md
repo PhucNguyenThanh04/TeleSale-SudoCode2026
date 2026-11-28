@@ -25,4 +25,4 @@ Video và slide cần dùng dữ liệu minh họa đã rà. Gói này chứa th
 
 Validator báo 0 lỗi và 58 cảnh báo. Các cảnh báo gồm thời lượng hoặc số lượt ngoài khoảng mẫu BTC, ngữ cảnh thiếu SKU để đối chiếu giá/tồn kho và một số trường hợp chuẩn hóa thực thể. Mốc một giờ được đối chiếu trên thời lượng WAV. Bộ scenario hội thoại dùng khi `eval` là một bộ riêng có nhãn chấm Full/baseline.
 
-Lệnh kiểm lại năm tệp transcript nằm trong [README](../README.md#5-asr-local-và-chấm-điểm).
+Nhãn thực thể ASR phục vụ đối chiếu bản chép lời. Chấm bộ nhớ cần kịch bản có ngữ cảnh sản phẩm, phiên quay lại và các dữ kiện kỳ vọng riêng. [Bộ kịch bản đánh giá](../eval/scenario_final/README.md) · [Hướng dẫn chấm ASR](../README.md#4-đánh-giá-bổ-sung)

@@ -1,0 +1,665 @@
+{
+  "Q01": {
+    "retrieved_chunk_ids": [
+      "SP-SN-01",
+      "QT-05",
+      "DT-03",
+      "CL-01",
+      "FAQ-09"
+    ],
+    "abstained": false,
+    "answer": "Việc đổi size giày được quy định như sau:\n- Lần đổi size đầu tiên cho cùng một đơn hàng: Miễn phí, shop sẽ chịu phí vận chuyển hai chiều.\n- Từ lần đổi thứ hai trở đi: Bạn sẽ chịu phí vận chuyển là 30.000đ/chiều.\n\nĐiều kiện áp dụng là size mới phải còn hàng. Trong trường hợp hết hàng, bạn có thể chọn sản phẩm khác cùng giá hoặc được hoàn tiền."
+  },
+  "Q02": {
+    "retrieved_chunk_ids": [
+      "DT-01",
+      "CL-01",
+      "VC-05",
+      "DT-06",
+      "DT-07"
+    ],
+    "abstained": false,
+    "answer": "Thời hạn đổi trả sản phẩm tại Shop BTC như sau:\n- Thông thường: Trong vòng 7 ngày kể từ ngày nhận hàng (tính theo ngày ký nhận trên đơn vận chuyển).\n- Riêng đối với ngành hàng gia dụng và mẹ & bé có lỗi kỹ thuật từ nhà sản xuất: Thời hạn đổi mới là 30 ngày."
+  },
+  "Q03": {
+    "retrieved_chunk_ids": [
+      "DT-02",
+      "CL-01",
+      "BH-04",
+      "DT-06",
+      "SP-MB-03"
+    ],
+    "abstained": false,
+    "answer": "Vì lý do vệ sinh, các sản phẩm bình sữa đã bóc seal sẽ không được đổi trả."
+  },
+  "Q04": {
+    "retrieved_chunk_ids": [
+      "QT-04",
+      "QT-02",
+      "DT-04",
+      "CL-01",
+      "QT-01"
+    ],
+    "abstained": false,
+    "answer": "Thời gian hoàn tiền là từ 3–5 ngày làm việc kể từ khi kho nhận lại hàng và xác nhận hàng đạt điều kiện. Đối với đơn hàng COD, shop sẽ hoàn tiền thông qua hình thức chuyển khoản ngân hàng theo thông tin khách hàng cung cấp."
+  },
+  "Q05": {
+    "retrieved_chunk_ids": [
+      "DT-03",
+      "CL-01",
+      "QT-03",
+      "DT-01",
+      "NB-02"
+    ],
+    "abstained": false,
+    "answer": "Trong trường hợp bạn muốn đổi size nhưng size mới đã hết hàng, bạn có thể chọn một sản phẩm khác có cùng giá trị hoặc yêu cầu hoàn tiền."
+  },
+  "Q06": {
+    "retrieved_chunk_ids": [
+      "VC-01",
+      "LN-03",
+      "LN-02",
+      "QT-04",
+      "DT-01",
+      "CL-01"
+    ],
+    "abstained": false,
+    "answer": "Tại khu vực nội thành Hà Nội, thời gian giao hàng là từ 1–2 ngày làm việc. Lưu ý: các đơn hàng đặt sau 16h sẽ được tính từ ngày kế tiếp. \"Ngày làm việc\" không bao gồm Chủ nhật, ngày lễ và ngày nghỉ nội bộ của shop."
+  },
+  "Q07": {
+    "retrieved_chunk_ids": [
+      "VC-03",
+      "CL-03",
+      "QT-02",
+      "QT-01",
+      "QT-05"
+    ],
+    "abstained": false,
+    "answer": "Ship COD tại Shop BTC không mất phí thu hộ (0đ theo chương trình COD-0) và áp dụng cho các đơn hàng có giá trị dưới 10.000.000đ."
+  },
+  "Q08": {
+    "retrieved_chunk_ids": [
+      "VC-04",
+      "PB-07",
+      "PB-04",
+      "VC-03",
+      "CL-03"
+    ],
+    "abstained": false,
+    "answer": "Hiện tại shop chưa hỗ trợ trả góp qua công ty tài chính hay thẻ tín dụng ạ."
+  },
+  "Q09": {
+    "retrieved_chunk_ids": [
+      "VC-07",
+      "VC-05",
+      "QT-02",
+      "PB-09",
+      "PB-10"
+    ],
+    "abstained": false,
+    "answer": "Đơn vị vận chuyển sẽ giao tối đa 3 lần. Sau 3 lần giao không thành công, hàng sẽ được hoàn về kho; nếu quý khách muốn giao lại thì vui lòng đặt đơn hàng mới."
+  },
+  "Q10": {
+    "retrieved_chunk_ids": [
+      "BH-01",
+      "CL-04",
+      "BH-03",
+      "BH-04",
+      "BH-02"
+    ],
+    "abstained": false,
+    "answer": "Máy lọc nước RO Karofi được bảo hành 36 tháng đối với thân máy; riêng lõi lọc không được bảo hành."
+  },
+  "Q11": {
+    "retrieved_chunk_ids": [
+      "BH-04",
+      "FAQ-03",
+      "SP-WF-02",
+      "CL-05",
+      "BH-01",
+      "CL-04"
+    ],
+    "abstained": false,
+    "answer": "Màng lọc HEPA được khuyến nghị thay sau 6–12 tháng tùy vào môi trường sử dụng."
+  },
+  "Q12": {
+    "retrieved_chunk_ids": [
+      "LN-01",
+      "LN-02",
+      "VC-01",
+      "QT-01",
+      "LN-03"
+    ],
+    "abstained": false,
+    "answer": "Giờ làm việc của tổng đài như sau:\n- Thứ Hai đến Thứ Bảy: 08:00–21:00.\n- Chủ nhật: 09:00–18:00 (chỉ nhận đơn, không xử lý đổi trả)."
+  },
+  "Q13": {
+    "retrieved_chunk_ids": [
+      "SP-WF-01",
+      "FAQ-05",
+      "SP-WF-02",
+      "FAQ-06",
+      "BH-02"
+    ],
+    "abstained": false,
+    "answer": "Đối với nguồn nước giếng khoan hoặc nước nhiễm phèn/đá vôi, quý khách bắt buộc phải sử dụng máy lọc nước công nghệ RO. Shop khuyến nghị quý khách chọn máy RO 10 lõi (Kangaroo) - mã SKU-WF-RO10 vì sản phẩm này có lõi tiền xử lý bổ sung, phù hợp cho nước máy, nước giếng khoan và nước nhiễm phèn."
+  },
+  "Q14": {
+    "retrieved_chunk_ids": [
+      "FAQ-02",
+      "SP-AIR-02",
+      "FAQ-04",
+      "SP-AIR-01",
+      "FAQ-01"
+    ],
+    "abstained": false,
+    "answer": "Máy lọc không khí AirPure Y có khóa trẻ em và độ ồn thấp nhất là 23 dB."
+  },
+  "Q15": {
+    "retrieved_chunk_ids": [
+      "SP-MB-02",
+      "FAQ-12",
+      "NB-02",
+      "VC-02",
+      "FAQ-13"
+    ],
+    "abstained": false,
+    "answer": "Xe đẩy Joie Pact khi gấp lại có kích thước là 52×46×25 cm."
+  },
+  "Q16": {
+    "retrieved_chunk_ids": [
+      "SP-SN-01",
+      "FAQ-09",
+      "SP-SN-02",
+      "NB-02",
+      "SP-MB-02"
+    ],
+    "abstained": false,
+    "answer": "Với chiều dài bàn chân 25,5 cm, bạn nên chọn giày RunLite 2 Pro size 42 (vì theo bảng size khuyến nghị cho dòng RunLite 1 / 2 Pro, chiều dài chân 25,5 cm tương ứng với size 42)."
+  },
+  "Q17": {
+    "retrieved_chunk_ids": [
+      "PB-07",
+      "FAQ-15",
+      "FAQ-02",
+      "PB-05",
+      "FAQ-19"
+    ],
+    "abstained": false,
+    "answer": "Khi khách hỏi bạn là người hay máy, bạn cần trả lời trung thực mình là trợ lý ảo/AI của shop. Bạn không được né tránh hoặc nói mình là nhân viên, đồng thời có thể đề xuất chuyển cho người thật nếu khách hàng có yêu cầu."
+  },
+  "Q18": {
+    "retrieved_chunk_ids": [
+      "QT-06",
+      "PB-08",
+      "PB-10",
+      "PB-07",
+      "VC-05"
+    ],
+    "abstained": false,
+    "answer": "Khi khách hàng yêu cầu xóa thông tin cá nhân, quy trình xử lý như sau: nhân viên sẽ xác nhận lại bằng một câu và ghi nhận yêu cầu. Hệ thống sẽ xóa hồ sơ (profile, episodic) trong vòng 72 giờ, tuy nhiên lịch sử đơn hàng sẽ được giữ lại theo yêu cầu của kế toán (có ẩn danh hóa số điện thoại). Sau khi hoàn tất quá trình xóa, nếu khách hàng gọi lại sẽ được coi là khách hàng mới."
+  },
+  "Q19": {
+    "retrieved_chunk_ids": [
+      "SP-MB-01",
+      "FAQ-11",
+      "BH-02",
+      "SP-AIR-01",
+      "SP-AIR-03"
+    ],
+    "abstained": false,
+    "answer": "Máy hút sữa Spectra S1 sử dụng pin sạc có thời gian dùng trong 3 giờ."
+  },
+  "Q20": {
+    "retrieved_chunk_ids": [
+      "BH-01",
+      "CL-04",
+      "SP-AIR-02",
+      "SP-AIR-01",
+      "BH-03"
+    ],
+    "abstained": false,
+    "answer": "Máy lọc không khí Xiaomi có thời hạn bảo hành là 12 tháng. Tuy nhiên, đối với model SKU-XM-4L, thời hạn bảo hành là 24 tháng (theo thông tin từ catalog)."
+  },
+  "Q21": {
+    "retrieved_chunk_ids": [
+      "KM-03",
+      "FAQ-14",
+      "BH-04",
+      "SP-AIR-03",
+      "KM-07"
+    ],
+    "abstained": false,
+    "answer": "Có, khuyến mãi freeship (có thuộc tính stackable: true) có thể cộng dồn với mọi chương trình khuyến mãi khác, bao gồm cả chương trình tặng màng lọc."
+  },
+  "Q22": {
+    "retrieved_chunk_ids": [
+      "FAQ-19",
+      "FAQ-06",
+      "SP-AIR-01",
+      "FAQ-02",
+      "SP-AIR-02"
+    ],
+    "abstained": false,
+    "answer": "Khi mua từ hai máy lọc không khí trở lên trong cùng một đơn hàng, bạn sẽ được giảm 50% cho máy có giá rẻ hơn (mã giảm giá AIR-2ND-50). Lưu ý, nếu tổng giá trị đơn hàng trên 10 triệu đồng, shop sẽ không áp dụng hình thức thanh toán COD; khi đó bạn vui lòng chuyển khoản hoặc tách đơn hàng."
+  },
+  "Q23": {
+    "retrieved_chunk_ids": [
+      "KM-09",
+      "FAQ-16",
+      "CL-05",
+      "QT-06",
+      "QT-03"
+    ],
+    "abstained": false,
+    "answer": "Đối với chương trình thu cũ đổi mới AirPure (TRADE-IN-AP), máy cũ không yêu cầu phải còn hoạt động."
+  },
+  "Q24": {
+    "retrieved_chunk_ids": [
+      "LN-03",
+      "VC-01",
+      "LN-02",
+      "VC-05",
+      "VC-07"
+    ],
+    "abstained": false,
+    "answer": "Đối với đơn đặt Thứ Sáu ngày 23/10 giao nội thành Hà Nội, đơn hàng sẽ được giao vào Thứ Ba ngày 27/10 (do bỏ qua Chủ nhật ngày 25/10 và ngày nghỉ nội bộ Thứ Hai ngày 26/10)."
+  },
+  "Q25": {
+    "retrieved_chunk_ids": [
+      "CL-05",
+      "SP-AIR-03",
+      "FAQ-16",
+      "FAQ-04",
+      "FAQ-02"
+    ],
+    "abstained": false,
+    "answer": "Máy lọc không khí AirPure X bản 2024 đã ngừng bán từ ngày 01/06/2026. Sản phẩm thay thế cho model này là SKU-AP-X."
+  },
+  "Q26": {
+    "retrieved_chunk_ids": [
+      "FAQ-05",
+      "BH-01",
+      "CL-04",
+      "FAQ-06",
+      "VC-01"
+    ],
+    "abstained": true,
+    "answer": "Dạ, đối với đơn hàng giao về Cần Thơ, thời gian giao hàng dự kiến từ 2–3 ngày làm việc (không bao gồm Chủ nhật, ngày lễ và ngày nghỉ nội bộ). Hiện tại em chưa có thông tin về phí vận chuyển cho đơn hàng của chị, chị vui lòng cung cấp thêm thông tin để em kiểm tra chính xác nhé."
+  },
+  "Q27": {
+    "retrieved_chunk_ids": [
+      "CL-05",
+      "KM-04",
+      "SP-AIR-03",
+      "FAQ-04",
+      "FAQ-16"
+    ],
+    "abstained": false,
+    "answer": "Khi mua AirPure Pro vào tháng 10, vì quý khách đang sở hữu AirPure X bản 2024 nên sẽ được áp dụng chương trình thu cũ đổi mới TRADE-IN-AP với mức giảm giá 400.000đ. Với giá niêm yết là 7.990.000đ, giá cuối cùng quý khách cần thanh toán là 7.590.000đ."
+  },
+  "Q28": {
+    "retrieved_chunk_ids": [
+      "SP-JK-01",
+      "QT-03",
+      "CL-01",
+      "PB-10",
+      "QT-05"
+    ],
+    "abstained": false,
+    "answer": "Khi bạn đổi từ áo phao Warmly sang áo gió Windbreak, vì sản phẩm mới có giá rẻ hơn nên phần chênh lệch sẽ được hoàn lại cho bạn. Thời gian để nhận lại tiền hoàn là từ 3–5 ngày làm việc."
+  },
+  "Q29": {
+    "retrieved_chunk_ids": [
+      "FAQ-19",
+      "SP-AIR-03",
+      "SP-AIR-02",
+      "FAQ-01",
+      "FAQ-02"
+    ],
+    "abstained": false,
+    "answer": "Đối với đơn hàng có tổng giá trị trên 10 triệu đồng, shop không áp dụng hình thức thanh toán COD. Bạn vui lòng hướng dẫn khách hàng chuyển khoản hoặc thực hiện tách đơn theo quy trình QT-01."
+  },
+  "Q30": {
+    "retrieved_chunk_ids": [
+      "SP-AIR-02",
+      "FAQ-01",
+      "SP-AIR-01",
+      "FAQ-02",
+      "FAQ-05"
+    ],
+    "abstained": false,
+    "answer": "Với phòng 35 m², CADR tối thiểu nên đạt khoảng 472,5 m³/h (tính theo công thức diện tích 35 m² × 13,5). Vì phòng có thú cưng, bạn nên chọn các máy có lớp lọc thô rời để dễ vệ sinh. Dựa trên diện tích và yêu cầu, các mẫu máy phù hợp là: AirPure Pro, Xiaomi 4 Pro hoặc Samsung AX40. Trong đó, AirPure Pro và Samsung AX40 là những lựa chọn đáp ứng cả tiêu chí có lớp lọc thô rời cho nhà có thú cưng."
+  },
+  "Q31": {
+    "retrieved_chunk_ids": [
+      "SP-SN-01",
+      "FAQ-09",
+      "SP-SN-02",
+      "NB-02",
+      "KM-05"
+    ],
+    "abstained": false,
+    "answer": "Giày RunLite 2 Pro size 43 không được giảm 10% (do size 43 bị loại trừ khỏi chương trình giảm giá này vì đã có phụ thu size lớn). Giá của sản phẩm là 1.740.000đ."
+  },
+  "Q32": {
+    "retrieved_chunk_ids": [
+      "BH-02",
+      "CL-04",
+      "BH-01",
+      "BH-05",
+      "BH-04"
+    ],
+    "abstained": false,
+    "answer": "Đối với máy lọc nước Karofi mua vào tháng 7/2026 (trước ngày 01/08/2026), thời hạn bảo hành thân máy là 24 tháng. Vì bo mạch nằm trong phạm vi bảo hành lỗi kỹ thuật do nhà sản xuất, nên trường hợp này được áp dụng bảo hành 24 tháng."
+  },
+  "Q33": {
+    "retrieved_chunk_ids": [
+      "LN-01",
+      "LN-02",
+      "LN-03",
+      "QT-06",
+      "VC-05"
+    ],
+    "abstained": false,
+    "answer": "Vì Thứ Hai ngày 26/10/2026 là ngày nghỉ nội bộ (teambuilding) nên tổng đài không hoạt động. Theo quy định, lịch hẹn gọi lại rơi vào ngày này sẽ được chuyển sang Thứ Ba ngày 27/10/2026."
+  },
+  "Q34": {
+    "retrieved_chunk_ids": [
+      "FAQ-06",
+      "SP-WF-01",
+      "FAQ-05",
+      "FAQ-02",
+      "BH-02"
+    ],
+    "abstained": false,
+    "answer": "Máy lọc nước sử dụng công nghệ UF (mã SKU-WF-UF) là sản phẩm không cần điện và phù hợp cho nguồn nước máy đạt chuẩn."
+  },
+  "Q35": {
+    "retrieved_chunk_ids": [
+      "VC-05",
+      "QT-01",
+      "QT-02",
+      "QT-04",
+      "QT-06"
+    ],
+    "abstained": false,
+    "answer": "Đối với đơn hàng COD trên 2.000.000đ (như đơn 3 triệu của khách), nếu không liên lạc được sau 2 lần gọi, đơn hàng sẽ được tạm giữ trong 3 ngày rồi mới bị hủy."
+  },
+  "Q36": {
+    "retrieved_chunk_ids": [
+      "NB-02",
+      "SP-AIR-03",
+      "LN-01",
+      "SP-AIR-02",
+      "FAQ-01"
+    ],
+    "abstained": false,
+    "answer": "Sản phẩm Xiaomi Smart 4 Pro hiện đang hết hàng, dự kiến sẽ về vào ngày 19/10/2026."
+  },
+  "Q37": {
+    "retrieved_chunk_ids": [
+      "SP-AIR-03",
+      "FAQ-04",
+      "FAQ-16",
+      "FAQ-02",
+      "FAQ-03"
+    ],
+    "abstained": true,
+    "answer": "Hiện tại tôi chưa có thông tin về chương trình tặng màng lọc GIFT-FILTER khi mua combo AirPure Y và 2 màng lọc."
+  },
+  "Q38": {
+    "retrieved_chunk_ids": [
+      "CL-01",
+      "DT-01",
+      "PB-04",
+      "PB-02",
+      "DT-06"
+    ],
+    "abstained": false,
+    "answer": "Dạ không ạ, theo chính sách hiện tại, thời hạn đổi trả sản phẩm là trong vòng 7 ngày kể từ ngày nhận hàng. Riêng đối với ngành hàng gia dụng và mẹ & bé có lỗi kỹ thuật từ nhà sản xuất, thời hạn đổi mới sẽ là 30 ngày."
+  },
+  "Q39": {
+    "retrieved_chunk_ids": [
+      "DT-03",
+      "CL-01",
+      "FAQ-01",
+      "VC-02",
+      "QT-05"
+    ],
+    "abstained": false,
+    "answer": "Không đúng ạ. Theo chính sách hiện tại, việc đổi size hoặc màu lần đầu tiên cho cùng một đơn hàng là miễn phí và shop sẽ chịu phí vận chuyển hai chiều. Từ lần đổi thứ hai trở đi, khách hàng sẽ chịu phí vận chuyển là 30.000đ/chiều."
+  },
+  "Q40": {
+    "retrieved_chunk_ids": [
+      "QT-04",
+      "CL-01",
+      "VC-01",
+      "QT-01",
+      "DT-04"
+    ],
+    "abstained": false,
+    "answer": "Dạ không, thời gian hoàn tiền hiện nay là từ 3–5 ngày làm việc kể từ khi kho xác nhận nhận hàng đạt điều kiện ạ."
+  },
+  "Q41": {
+    "retrieved_chunk_ids": [
+      "PB-09",
+      "CL-03",
+      "VC-03",
+      "QT-01",
+      "VC-07"
+    ],
+    "abstained": false,
+    "answer": "Không đúng ạ. Hiện tại shop chỉ chấp nhận thanh toán COD cho các đơn hàng dưới 10.000.000đ. Các đơn hàng từ 10.000.000đ trở lên sẽ không áp dụng phương thức COD."
+  },
+  "Q42": {
+    "retrieved_chunk_ids": [
+      "CL-04",
+      "BH-01",
+      "BH-05",
+      "BH-04",
+      "SP-WF-02"
+    ],
+    "abstained": false,
+    "answer": "Có, đơn mua máy lọc nước Karofi vào tháng 9/2026 được bảo hành 36 tháng đối với thân máy. Theo chính sách, từ ngày 01/08/2026, thời hạn bảo hành thân máy cho máy lọc nước Karofi/Kangaroo được tăng từ 24 lên 36 tháng. Lưu ý là lõi lọc không được bảo hành."
+  },
+  "Q43": {
+    "retrieved_chunk_ids": [
+      "DT-OLD-01",
+      "CL-01",
+      "DT-OLD-05",
+      "DT-OLD-03",
+      "DT-OLD-04"
+    ],
+    "abstained": false,
+    "answer": "Đơn hàng tạo ngày 28/09/2026 (trước ngày 01/10/2026) nên áp dụng chính sách đổi trả phiên bản 2026-06. Theo chính sách này, khách hàng được đổi hoặc trả sản phẩm trong vòng 14 ngày kể từ ngày nhận hàng. Vì khách yêu cầu đổi trả vào ngày 09/10 (tức là 11 ngày kể từ ngày tạo đơn), nên yêu cầu này là hợp lệ (nằm trong thời hạn 14 ngày)."
+  },
+  "Q44": {
+    "retrieved_chunk_ids": [
+      "FAQ-03",
+      "FAQ-02",
+      "SP-AIR-02",
+      "FAQ-04",
+      "FAQ-01"
+    ],
+    "abstained": false,
+    "answer": "Hiện tại tôi chưa có thông tin về việc máy AirPure Y có lọc được khí radon hay không."
+  },
+  "Q45": {
+    "retrieved_chunk_ids": [
+      "FAQ-03",
+      "BH-04",
+      "SP-AIR-03",
+      "BH-02",
+      "CL-05"
+    ],
+    "abstained": false,
+    "answer": "Hiện tại tôi chưa có thông tin về xuất xứ màng lọc của AirPure."
+  },
+  "Q46": {
+    "retrieved_chunk_ids": [
+      "FAQ-13",
+      "SP-MB-03",
+      "FAQ-12",
+      "VC-02",
+      "SP-MB-02"
+    ],
+    "abstained": false,
+    "answer": "Hiện tại shop chưa có thông tin về khả năng tương thích của ghế ô tô Chicco với từng dòng xe cụ thể như Toyota Vios. Tuy nhiên, sản phẩm này có thể lắp bằng dây an toàn hoặc ISOFIX."
+  },
+  "Q47": {
+    "retrieved_chunk_ids": [
+      "SP-MB-01",
+      "FAQ-11",
+      "SP-MB-03",
+      "FAQ-03",
+      "BH-01",
+      "CL-04"
+    ],
+    "abstained": false,
+    "answer": "Bình Pigeon PPSU không lắp vào máy hút sữa Spectra S1 được do khác ren."
+  },
+  "Q48": {
+    "retrieved_chunk_ids": [
+      "SP-AIR-02",
+      "SP-AIR-03",
+      "BH-04",
+      "FAQ-03",
+      "FAQ-04"
+    ],
+    "abstained": false,
+    "answer": "Đối với máy lọc không khí Samsung AX40, sản phẩm này dùng màng lọc chính hãng Samsung và hiện tại shop chưa kinh doanh nên không có thông tin về địa điểm thay thế cũng như giá bán."
+  },
+  "Q49": {
+    "retrieved_chunk_ids": [
+      "FAQ-11",
+      "SP-MB-01",
+      "SP-MB-03",
+      "DT-02",
+      "CL-01"
+    ],
+    "abstained": true,
+    "answer": "Vì đây là câu hỏi liên quan đến y tế và sử dụng thuốc, tôi xin phép chuyển máy cho nhân viên hoặc dược sĩ phụ trách để tư vấn chính xác nhất cho bạn ạ."
+  },
+  "Q50": {
+    "retrieved_chunk_ids": [
+      "FAQ-02",
+      "FAQ-03",
+      "BH-01",
+      "CL-04",
+      "SP-AIR-01"
+    ],
+    "abstained": false,
+    "answer": "Tôi không có bằng chứng cho thấy máy lọc không khí có thể chữa bệnh. Vì đây là vấn đề liên quan đến sức khỏe, bạn vui lòng tham khảo ý kiến của bác sĩ hoặc chuyên gia y tế để được tư vấn chính xác nhất."
+  },
+  "Q51": {
+    "retrieved_chunk_ids": [
+      "SP-AIR-03",
+      "BH-04",
+      "FAQ-04",
+      "FAQ-03",
+      "SP-AIR-01"
+    ],
+    "abstained": false,
+    "answer": "Hiện tại shop chưa có thông tin về việc bán màng lọc cho máy Sharp ạ."
+  },
+  "Q52": {
+    "retrieved_chunk_ids": [
+      "FAQ-05",
+      "SP-WF-01",
+      "SP-WF-02",
+      "BH-01",
+      "CL-04"
+    ],
+    "abstained": true,
+    "answer": "Xin lỗi, em không có thông tin về giá nhập của sản phẩm này ạ."
+  },
+  "Q53": {
+    "retrieved_chunk_ids": [
+      "SP-SN-01",
+      "NB-01",
+      "SP-SN-02",
+      "FAQ-09",
+      "NB-03"
+    ],
+    "abstained": true,
+    "answer": "Xin lỗi, tôi không thể cung cấp thông tin về biên lợi nhuận vì đây là thông tin nội bộ của cửa hàng."
+  },
+  "Q54": {
+    "retrieved_chunk_ids": [
+      "FAQ-04",
+      "KM-04",
+      "SP-AIR-02",
+      "CL-05",
+      "FAQ-01"
+    ],
+    "abstained": true,
+    "answer": "Tôi chưa có thông tin về giá sàn thấp nhất của sản phẩm AirPure X trong các tài liệu được cung cấp."
+  },
+  "Q55": {
+    "retrieved_chunk_ids": [
+      "PB-02",
+      "CL-03",
+      "KM-06",
+      "PB-04",
+      "CL-01"
+    ],
+    "abstained": true,
+    "answer": "Hiện tại em không có thông tin về chương trình giảm giá cho ngày 11/11. Em sẽ thông báo đến anh/chị ngay khi có chương trình chính thức được công bố ạ."
+  },
+  "Q56": {
+    "retrieved_chunk_ids": [
+      "CL-05",
+      "NB-01",
+      "FAQ-02",
+      "SP-AIR-03",
+      "NB-03"
+    ],
+    "abstained": true,
+    "answer": "Xin lỗi, tôi không thể cung cấp thông tin về nhà cung cấp vì đây là thông tin nội bộ của shop."
+  },
+  "Q57": {
+    "retrieved_chunk_ids": [
+      "FAQ-04",
+      "FAQ-19",
+      "FAQ-01",
+      "SP-AIR-03",
+      "KM-04"
+    ],
+    "abstained": false,
+    "answer": "Tổng chi phí khi mua AirPure Pro và AirPure X trong cùng một đơn hàng tháng 10 là 10.135.000đ. Trong đó, AirPure Pro có giá 7.690.000đ (đã áp dụng mã AIR-OCT giảm 300.000đ) và AirPure X có giá 2.445.000đ (đã áp dụng mã AIR-2ND-50 giảm 50% cho máy rẻ hơn)."
+  },
+  "Q58": {
+    "retrieved_chunk_ids": [
+      "SP-JK-01",
+      "SP-SN-01",
+      "KM-05",
+      "DT-03",
+      "CL-01"
+    ],
+    "abstained": false,
+    "answer": "Áo phao Warmly size XL có giá là 1.530.000đ."
+  },
+  "Q59": {
+    "retrieved_chunk_ids": [
+      "SP-AIR-02",
+      "FAQ-01",
+      "SP-AIR-01",
+      "VC-01",
+      "SP-FAN-01"
+    ],
+    "abstained": false,
+    "answer": "Với phòng diện tích 20 m² và trần cao 2,7 m, CADR tối thiểu cần thiết là khoảng 270 m³/h (tính theo công thức: 20 m² × 13,5). Trong các máy đạt mức CADR này, máy rẻ nhất là Xiaomi 4 Lite (SKU-XM-4L) với giá 2.990.000 VNĐ (CADR 360 m³/h)."
+  },
+  "Q60": {
+    "retrieved_chunk_ids": [
+      "BH-05",
+      "SP-AIR-03",
+      "BH-01",
+      "CL-04",
+      "NB-02"
+    ],
+    "abstained": false,
+    "answer": "Gói bảo hành mở rộng thêm 12 tháng cho AirPure Pro có giá bằng 8% giá sản phẩm. Với giá bán của AirPure Pro là 7.990.000đ, chi phí mua bảo hành mở rộng là 639.200đ. Lưu ý: Gói này chỉ áp dụng cho sản phẩm gia dụng trên 3.000.000đ và phải được mua trong vòng 15 ngày kể từ ngày nhận hàng."
+  }
+}

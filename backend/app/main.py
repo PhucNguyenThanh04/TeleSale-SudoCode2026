@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -12,6 +12,7 @@ from app.api.calls import router as calls_router
 from app.api.health import router as health_router
 from app.api.operator_session import router as operator_session_router
 from app.api.reference import router as reference_router
+from app.auth import current_user
 from app.configs import get_settings
 from app.database.pg_session import check_postgres, create_pg_engine, create_pg_sessionmaker
 from app.database.redis_session import check_redis, create_redis_client
@@ -71,7 +72,7 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(chat_router)
-app.include_router(knowledge_router)
+app.include_router(knowledge_router, dependencies=[Depends(current_user)])
 app.include_router(operator_session_router)
 app.include_router(calls_router)
 app.include_router(reference_router)

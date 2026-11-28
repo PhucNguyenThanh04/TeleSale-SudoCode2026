@@ -754,7 +754,7 @@ async def execute_configuration(*, settings, scenarios, config, run_id, out,
                 wait_for_jobs=lambda source: wait_for_distillation(database_url(settings), source, worker_wait_seconds),
                 capture_writes=lambda ids: read_distillation_writes(database_url(settings), ids), on_turn=on_turn,
                 safety_issues=issues, delivery_mode=delivery_mode, extraction_path=extraction_path)
-    except Exception as exc:
+    except (Exception, SystemExit) as exc:
         from eval_harness.turn_diagnostics import verify_turn_diagnostics
         diagnostic_refs = {}
         try:
@@ -764,7 +764,8 @@ async def execute_configuration(*, settings, scenarios, config, run_id, out,
         atomic_json(Path(out).with_suffix(".report.json"), {"status":"failed", "run_id":run_id,
             **({'turn_diagnostics':diagnostic_refs} if diagnostic_refs else {}),
             "config":config,"error_type":type(exc).__name__,
-            "error_code":getattr(exc,"error_code",phase + "_failed"),
+            "error_code":getattr(exc,"error_code",
+                "unexpected_process_exit" if isinstance(exc, SystemExit) else phase + "_failed"),
             "phase":phase,"service":getattr(exc,"service",None),"safety_issues":issues,
             **safe_failure_details(exc)})
         raise RuntimeError("configuration_failed; inspect safe runner report") from None
@@ -833,7 +834,7 @@ async def main() -> None:
                 worker_wait_seconds=args.worker_wait_seconds)
             if result["status"] != "completed":
                 raise RuntimeError("redaction_affects_scoring")
-        except Exception as exc:
+        except (Exception, SystemExit) as exc:
             if not trace.with_suffix(".report.json").exists():
                 atomic_json(trace.with_suffix(".report.json"), {"status":"failed", "error_type":type(exc).__name__})
             raise RuntimeError("configuration_failed; inspect safe runner report") from None

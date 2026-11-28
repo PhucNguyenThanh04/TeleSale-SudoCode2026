@@ -67,7 +67,7 @@ async def run(args, runtime=None) -> int:
         if result['status'] != 'completed':
             raise RuntimeError('invalid: redaction_affects_scoring')
         return len(rows)
-    except Exception as exc:
+    except (Exception, SystemExit) as exc:
         report_path=args.out.with_suffix('.report.json')
         report=json.loads(report_path.read_text()) if report_path.exists() else {}
         if not (sidecars_complete and report.get('status')=='invalid'):
@@ -93,7 +93,7 @@ def main():
         count=asyncio.run(run(args))
     except FileExistsError:
         parser.exit(1,"Output already exists; choose a new --out path.\n")
-    except Exception as exc:
+    except (Exception, SystemExit) as exc:
         parser.exit(1,f'Run failed ({type(exc).__name__}); inspect safe report.\n')
     print(f'Wrote {count} real turns to {args.out}')
 
