@@ -28,7 +28,13 @@ if (!(Test-Path .env)) { Copy-Item .env.example .env }
 python -m pip install -r config/requirements/host.txt
 ```
 
-Trong `.env`, điền `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` cho hội thoại và `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` cho tìm kiếm chính sách.
+Sau khi copy `.env.example` sang `.env`, các trường khác đã được điền sẵn; **trường bắt buộc duy nhất cần điền** trong `.env` là:
+
+```dotenv
+CLOUDFLARE_API_TOKEN='cfut_mkmVZLqTCF6ISKs9QTAXhNaUzizADrinW3FdOtUj8a7fd043'
+```
+
+*(Khuyến nghị đổi `LLM_TIMEOUT_SECONDS='90'` khi chạy bộ kịch bản lớn. Các trường trống khác như `ELEVENLABS_API_KEY`, `LANGMEM_MODEL`, `SUBMISSION_RUN_AS` không bắt buộc cho M1.)*
 
 ## Bước 2. Bật server
 
@@ -157,4 +163,4 @@ sudo docker compose down
 docker compose down
 ```
 
-[Kiến trúc](docs/tai-lieu-kien-truc.md) · [Đánh giá M1 · 48 kịch bản](docs/btc-m1-evaluation-report.md) · [Đối chiếu BTC · 7 kịch bản mẫu](docs/bao-cao-danh-gia.md) · [Bộ kịch bản](eval/scenario_final/README.md) · [Bộ dữ liệu ASR](dataset/M1-CORPUS.md)
+[Kiến trúc](docs/tai-lieu-kien-truc.md) · [Đánh giá M1 · 48 kịch bản](docs/btc-m1-evaluation-report.md) · [Đối chiếu Knowledge Gap Loop · 48 kịch bản](docs/bao-cao-danh-gia.md) · [Bộ kịch bản](eval/scenario_final/README.md) · [Bộ dữ liệu ASR](dataset/M1-CORPUS.md)

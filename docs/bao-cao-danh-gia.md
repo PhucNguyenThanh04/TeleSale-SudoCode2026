@@ -1,136 +1,90 @@
-# Báo cáo đánh giá trợ lý telesale đa phiên
+# Báo cáo đánh giá TeleSale
 
-## 1. Kết quả chấm hội thoại
+Phép đo hội thoại dùng bộ test riêng của đội gồm **48 kịch bản**, trong đó có **38 ca khó**. Mỗi lượt Full có 118 cuộc gọi và 323 lượt khách. Full K0 và Full K1 đều bật bộ nhớ liên phiên. K1 dùng release tri thức sau khi duyệt và phát hành các đề xuất từ vòng Knowledge Gap Loop.
 
-Kết quả dưới đây là số liệu chính thức từ run `20261127T113656Z-0cb1b876` (nhánh `khoi_fix_ttft`, commit `323dd6e`) trên bộ 48 kịch bản `eval/scenario_final` (118 cuộc gọi, 323 lượt mỗi cấu hình), chấm bằng `reference_eval.py` của gói BTC v2 (28/28 tệp khớp hash manifest).
+## 1. Bảng điểm ba cấu hình
 
-| Chỉ số (scorer BTC) | Baseline không bộ nhớ | Hệ thống (Full) | Chênh lệch | Ngưỡng M1 | Trạng thái |
-|---|---:|---:|---:|---|---|
-| Repeat-Question Rate (RQR) ↓ | 26,6% (21/79) | 3,0% (2/66) | giảm 88,7% tương đối | Giảm ≥ 40% | Đạt |
-| Context Carryover Rate (CCR) ↑ | 13,5% (13/96) | 65,6% (63/96) | +52,1 điểm % | — | — |
-| Task Success Rate (TSR) ↑ | 62,5% (30/48) | 81,2% (39/48) | +18,7 điểm % | ≥ 70% | Đạt |
-| TSR riêng ca khó (38 ca) ↑ | 55,3% | 78,9% | +23,6 điểm % | — | — |
-| Hallucination Rate (HR) ↓ | 0,0% (0/71) | 3,8% (4/105) | +3,8 điểm % | — | — |
-| Hallucination Rate giá & KM ↓ | 0,0% (0/49) | 0,0% (0/75) | 0 | ≤ 5% | Đạt |
-| Vi phạm guardrail (số ca) ↓ | 0 | 0 | 0 | — | — |
-| Số lượt TB / cuộc gọi | 2,74 | 2,74 | 0 | — | — |
-| Calls-to-Close | 1,93 | 1,94 | +0,01 | — | — |
-| TTFT p50 / p95 (ms) | 3.380 / 6.405 | 3.355 / 6.399 | — | p95 ≤ 3.000 ms | **Chưa đạt** |
-| Total latency p50 / p95 (ms) | 3.380 / 6.405 | 3.355 / 6.399 | — | p95 ≤ 8.000 ms | Đạt |
-| Call Brief p50 / p95 (ms) | Không áp dụng | 182 / 287 (69 phiên quay lại) | — | ≤ 5.000 ms | Đạt |
-
-**Đối chiếu ngưỡng BTC.** Full đạt 5/6 tiêu chí M1: RQR giảm 88,7% tương đối so với Baseline (vượt ngưỡng giảm ≥ 40%), TSR đạt 81,2% (39/48 kịch bản, vượt ngưỡng 70%), HR giá/khuyến mãi đạt 0,0% (0/75 phát ngôn, dưới ngưỡng 5%), Call Brief p95 đạt 287 ms (dưới ngưỡng 5 s) và Total latency p95 đạt 6,4 s (dưới ngưỡng 8 s). Chỉ tiêu duy nhất chưa đạt là TTFT p95 (6,4 s so với ngưỡng ≤ 3 s). Mẫu A.6 trong đề dùng đơn vị lượt/kịch bản (323/48 = 6,73 cho cả hai cấu hình), còn bảng trên ghi lượt/cuộc gọi (323/118 = 2,74).
-
-## 2. Phạm vi và cơ sở chấm
-
-| | Full | Baseline không bộ nhớ |
-|---|---|---|
-| Dữ liệu agent được dùng | Lịch sử trong phiên, công cụ nghiệp vụ và bộ nhớ đa phiên (profile + episodic) | Lịch sử trong phiên và cùng bộ công cụ; tắt profile và episodic của các phiên trước |
-| Model & tham số | `gemma4:31b` qua Ollama Cloud, temperature 0,2, seed 7, thinking tắt | Cùng model, tham số, seed, kịch bản và knowledge release |
-| Máy & trạng thái run | Windows 11, 16 luồng CPU, 15,6 GB RAM, RTX 3050 Laptop 4 GB, Docker Desktop (WSL2); `validated`, execution `healthy`, chạy độc lập trên stack | Cùng máy và cùng cặp run `20261127T113656Z-0cb1b876` |
-| Mẫu hội thoại | 48 kịch bản, gồm 38 ca khó · 118 cuộc gọi · 323 lượt | Cùng 48 kịch bản, 118 cuộc gọi, 323 lượt |
-
-**Phạm vi kết luận.** BTC yêu cầu bảng A.6 trên bộ test riêng của đội với tối thiểu 20 kịch bản đa phiên và ít nhất 5 ca khó. Bộ riêng của đội (`eval/scenario_final`) có 48 kịch bản, 118 cuộc gọi, 323 lượt và 38 ca khó. Điểm xếp hạng chính thức do BTC chấm trên bộ ẩn. Chi tiết đối chiếu và bản bàn giao kỹ thuật nằm ở [báo cáo đánh giá M1](btc-m1-evaluation-report.md) và [tài liệu bàn giao `khoi_fix_ttft`](BAN-GIAO-khoi_fix_ttft-20261127.md). [Bộ riêng của đội](../eval/scenario_final/_manifest.json)
-
-Căn cứ chấm gồm mục C.4, C.5, F và phụ lục A của đề, bản điều chỉnh Vòng 1 và văn bản giải đáp tháng 11. Bảng hội thoại dùng script tham chiếu trong gói BTC v2. Mục 7 ghi cách tái lập. [Đề dự án](<../../SUDO CODE 2026 - Đề Bài Dự Án Cuối Kì.pdf>) · [Điều chỉnh đề](../../BTC-Data-Vong1-TEAMS/DIEU-CHINH-DE.md) · [Giải đáp tháng 11](../../BTC-tra-loi-thac-mac-11-2026.docx) · [Script chấm BTC](../../BTC-Data-Vong1-TEAMS/eval/reference_eval.py)
-
-**Lưu ý về HR và extraction.** Toàn bộ 4 claim sai của Full (HR tổng 3,8%, 4/105) là lỗi nói "miễn phí giao hàng" ở `TEAM-33` (model báo giá theo địa chỉ cũ "Cần Thơ" trong bộ nhớ sau khi khách đổi sang "Hà Nội"); HR giá/khuyến mãi là 0,0% (0/75). HR tổng phụ thuộc lần chạy (run `084346Z` trên cùng code nền đạt HR tổng 0,9%). Dữ liệu `questions` và `claims` do extractor của đội sinh, còn cần người duyệt (`extraction_review`); BTC đối chiếu thủ công trên mẫu trace.
-
-**Cách tạo dữ liệu chấm.** Từ lời agent, bộ trích xuất nhận diện câu hỏi, gán trường thông tin được hỏi và phân biệt hỏi mới với xác nhận (`questions`). Với dữ kiện thương mại, bộ trích xuất tách mệnh đề và gán cặp trường–giá trị (`claims`). Khi tính RQR, script chỉ xét các cuộc gọi có danh sách trường không được hỏi lại (`must_not_ask`). Hỏi xác nhận lần đầu được miễn, xác nhận lại cùng trường trong cùng phiên bị tính thừa. CCR đối chiếu các dữ kiện phải mang sang với `facts_used` và tham số công cụ. HR chỉ đếm phát ngôn có đáp án trong `ground_truth_facts`. TSR xét điều kiện của từng kịch bản, kể cả chuyển nhân viên kèm bản bàn giao hợp lệ khi đó là kết quả được yêu cầu. [Bộ trích xuất](../ai-services/eval_harness/extractor.py) · [Quy tắc chấm BTC](../../BTC-Data-Vong1-TEAMS/eval/reference_eval.py)
-
-## 3. Nhận dạng tiếng nói — chỉ số M1 theo phụ lục A.5
-
-Full và Baseline khác nhau ở bộ nhớ hội thoại; ASR được đo riêng trên âm thanh đầu vào và không tính vào TTFT. Bảng dưới dùng kết quả Whisper-turbo chạy local CPU `int8` (cấu hình B2, có bộ từ vựng sản phẩm và chuẩn hóa văn bản) trên 120 tệp audio của đội (134 phút, giọng Bắc và Nam tạo bằng VieNeu-TTS, gồm 31 tệp trộn nhiễu) và 4 hội thoại mẫu BTC đọc bằng VieNeu. BTC dùng audio riêng để xếp hạng. [Báo cáo ASR trước đó ngày 10/11](../speech/asr-benchmark-report.html) · [Giải đáp của BTC](../../BTC-tra-loi-thac-mac-11-2026.docx)
-
-| Chỉ số | Bộ audio của đội · 120 file (134 phút) | 4 hội thoại BTC đọc bằng VieNeu |
-|---|---:|---:|
-| WER · Tỷ lệ lỗi theo từ | 8,4% | 10,7% |
-| CER · Tỷ lệ lỗi theo ký tự | 5,2% | 5,8% |
-| Độ chính xác thực thể, gộp các loại | 78,1% | 75,9% |
-| Độ chính xác **riêng số tiền** | Chưa tách riêng trong bảng tổng hợp | Chưa tách riêng |
-| Độ chính xác **riêng số điện thoại** | Chưa tách riêng trong bảng tổng hợp | Chưa tách riêng |
-| Diarization theo lượt | 83,5% | 97,1% |
-
-WER và CER lấy tổng số phép thay, xóa, chèn chia cho tổng số từ hoặc ký tự chuẩn. Pipeline đưa số về dạng đọc bằng chữ để so với bản chép lời. Bộ chấm chuyển chữ thường, chuẩn Unicode NFC, bỏ dấu câu, gộp khoảng trắng và bỏ khoảng trắng khi tính CER. Số tiền và số điện thoại được xét khớp chính xác sau chuẩn hóa. [Chuẩn hóa](../speech/normalize.py) · [Chấm ASR và thực thể](../speech/evaluate.py)
-
-## 4. Hiệu năng theo mục C.2 đã điều chỉnh
-
-| Chỉ số | Full | Baseline | Yêu cầu BTC | Đối chiếu lần đo |
-|---|---:|---:|---|---|
-| Từ lúc nhận lượt chat đến phần trả lời đầu tiên (TTFT), p50 / p95 | 3.355 / 6.399 ms | 3.380 / 6.405 ms | M1: p95 ≤ 3.000 ms | **Chưa đạt** (cả hai vượt ngưỡng) |
-| Từ lúc nhận lượt chat đến hết câu trả lời (Total), p50 / p95 | 3.355 / 6.399 ms | 3.380 / 6.405 ms | M1: p95 ≤ 8.000 ms | Đạt (cả hai dưới ngưỡng) |
-| Từ nhận diện khách đến khi tóm tắt phiên sẵn sàng (Call Brief), p50 / p95 | 182 / 287 ms (69 phiên quay lại) | Không áp dụng | M1: ≤ 5 giây · M2: ≤ 3 giây | Đạt cả hai mốc |
-| Từ khi khách ngừng nói đến âm thanh trả lời đầu tiên (TTFA), p95 | Chưa đo | Chưa đo | M2: ≤ 2,5 giây | Cần đo trên luồng thoại |
-| Số phiên xử lý đồng thời khi demo | 1 phiên độc lập trên stack | 1 phiên độc lập trên stack | M1: 1 · M2: ≥ 2 | Đạt M1; M2 chưa xác minh |
-
-p50 là trung vị, p95 là phân vị thứ 95. Phép đo đạt yêu cầu tối thiểu 100 lượt của BTC (323 lượt mỗi cấu hình, bỏ 3 lượt warm-up), đo tại ranh giới harness qua chat streaming (TTFT đến delta trả lời đầu tiên đã qua kiểm tra, Total đến delta cuối).
-
-TTFT bằng Total vì câu trả lời chỉ được phát sau khi qua kiểm tra toàn câu (không phát từng phần rồi sửa). Phần lớn độ trễ đến từ các lần gọi model nối tiếp: mỗi lần gọi `gemma4:31b` qua Ollama Cloud mất p50 ~1 s, p95 ~1,8 s; một lượt thường cần 2–3 lần gọi (chọn công cụ, trả lời, sửa bản nháp nếu bị chặn) cộng bước LLM semantic review (~0,8 s). Thử nghiệm tắt semantic review (run `124247Z`) ước tính giảm TTFT p50 xuống ~2,5 s và p95 xuống ~5,8 s (vẫn trên 3 s) nhưng TSR Full giảm còn 77,1% và phát sinh 1 lỗi over-escalation; chi tiết ở [tài liệu bàn giao](BAN-GIAO-khoi_fix_ttft-20261127.md). Bộ tự kiểm `call_brief_max` báo 69/70 vì `TEAM-48` call_2 là khách mới định danh, chưa có phiên trước; `reference_eval.py` chỉ tính các giá trị có đo. [Quy tắc đo](../../BTC-Data-Vong1-TEAMS/eval/huong-dan-do-latency.md)
-
-## 5. Trước và sau cải tiến trên cùng bộ mẫu
-
-Ba run Full trên cùng bộ 48 kịch bản (`eval/scenario_final`), cùng model `gemma4:31b` và cùng máy:
-
-| Chỉ số Full | Code ngày 26/11 (`065208Z`) | Code 27/11 trước cải tiến latency (`084346Z`) | Sau cải tiến (`113656Z`) |
+| Chỉ số BTC | Baseline không bộ nhớ (mốc đối chiếu) | Full K0 | Full + Knowledge Gap Loop K1 |
 |---|---:|---:|---:|
-| Execution | degraded (1 `GraphRecursionError`) | healthy | healthy |
-| RQR ↓ | 4,5% | 1,5% | 3,0% |
-| CCR ↑ | 49,0% | 61,5% | 65,6% |
-| TSR ↑ | 77,1% | 81,2% | 81,2% |
-| HR tổng ↓ (giá/KM) | 2,1% (2,8%) | 0,9% (0,0%) | 3,8% (0,0%) |
-| TTFT p50 / p95 | 2,6 / 6,5 s | 3,6 / 7,4 s | 3,4 / 6,4 s |
-| Tổng số lần gọi model | — | 703 | 597 |
-| Lượt phải trả lời câu xin lỗi chung | 62 | 70 | 52 |
+| Tỷ lệ hỏi lại (RQR) ↓ | 26,6% (21/79) | 1,9% (1/53) | 2,1% (1/48) |
+| Tỷ lệ giữ ngữ cảnh (CCR) ↑ | 13,5% (13/96) | 69,8% (67/96) | 63,5% (61/96) |
+| Tỷ lệ hoàn thành tác vụ (TSR) ↑ | 62,5% (30/48) | 79,2% (38/48) | 81,2% (39/48) |
+| TSR riêng ca khó ↑ | 55,3% (21/38) | 76,3% (29/38) | 78,9% (30/38) |
+| Tỷ lệ mệnh đề sai (HR) tổng ↓ | 0,0% (0/71) | 8,2% (8/98) | 0,0% (0/86) |
+| HR giá và khuyến mãi ↓ | 0,0% (0/49) | 0,0% (0/65) | 0,0% (0/62) |
+| Vi phạm guardrail theo scorer | 0 | 0 | 0 |
+| Số lượt trung bình mỗi kịch bản | 6,73 | 6,73 | 6,73 |
+| Số lượt trung bình mỗi cuộc gọi | 2,74 | 2,74 | 2,74 |
+| Calls-to-Close | 1,93 | 1,94 (35 kịch bản có chốt) | 1,94 (35 kịch bản có chốt) |
+| TTFT p50 / p95 (ms) ↓ | 3.380 / 6.405 | 2.591 / 5.126 | 2.590 / 5.046 |
+| Total latency p50 / p95 (ms) ↓ | 3.380 / 6.405 | 2.591 / 5.126 | 2.590 / 5.046 |
+| Call Brief p50 / p95 (ms) ↓ | Không áp dụng | 167 / 285 (69 phiên) | 159 / 261 (69 phiên) |
 
-Các cải tiến giữa `084346Z` và `113656Z`:
+### Đối chiếu có kiểm soát theo Phụ lục A.6
 
-1. Guardrail nhận biên nhận `order.create` và kết quả `order.status` (kể cả của lượt trước trong phiên) làm bằng chứng, giảm lượt bị chặn `order_creation_unverified` từ 24 xuống 3.
-2. Khi bản nháp bị chặn vì thiếu báo giá hoặc tồn kho, harness tự tra bổ sung rồi kiểm tra lại bản nháp trước khi gọi model viết lại.
-3. Xác nhận đơn trực tiếp từ biên nhận `order.create` mà không gọi thêm model.
-4. Khi `catalog.search` trả về đúng một sản phẩm không biến thể, hệ thống tra kèm giá và tồn kho trong cùng bước.
+Cặp Baseline–Full dưới đây đến từ cùng một run, dùng cùng 48 kịch bản, model, tham số, seed và release tri thức. Baseline chỉ tắt bộ nhớ từ các phiên trước. Cột Baseline ở bảng trên dùng lại kết quả này làm mốc tham khảo cho hai lượt Full mới. [Nguồn cặp Baseline–Full](btc-m1-evaluation-report.md#kết-quả-full-so-với-baseline)
 
-Kết quả: số lần gọi model giảm 15% (703 → 597), TTFT p95 giảm 7,4 → 6,4 s, lượt xin lỗi chung giảm 70 → 52, TSR giữ 81,2% và CCR tăng lên 65,6%. [Lịch sử cải tiến](../REPORT.md)
+| Chỉ số A.6 | Baseline không bộ nhớ | Full cùng run đối chứng | Chênh lệch |
+|---|---:|---:|---|
+| RQR ↓ | 26,6% | 3,0% | Giảm 88,7% tương đối |
+| CCR ↑ | 13,5% | 65,6% | Tăng 52,1 điểm phần trăm |
+| TSR ↑ | 62,5% | 81,2% | Tăng 18,7 điểm phần trăm |
+| HR giá và khuyến mãi ↓ | 0,0% | 0,0% | 0 điểm phần trăm |
+| Số lượt trung bình mỗi kịch bản | 6,73 | 6,73 | 0 |
 
-## 6. Phân tích lỗi trên 14 trường hợp (run `113656Z`, cấu hình Full)
+Extractor đọc câu trả lời cuối của agent để gán câu hỏi vào các trường thông tin và đánh dấu câu hỏi xác nhận trong `questions`. Với `claims`, extractor nhận diện mệnh đề thương mại và ghi cặp trường–giá trị để scorer đối chiếu với dữ kiện chuẩn của kịch bản. [Bộ trích xuất](../ai-services/eval_harness/extractor.py)
 
-| # | Vị trí | Lỗi quan sát | Nguyên nhân | Hướng xử lý |
+**Đối chiếu ngưỡng M1.** Cặp đối chứng đạt mức giảm RQR ≥ 40%. Hai lượt Full K0 và K1 đạt ngưỡng TSR ≥ 70%, HR giá và khuyến mãi ≤ 5%, Total p95 ≤ 8.000 ms và Call Brief p95 ≤ 5.000 ms. TTFT p95 vẫn vượt ngưỡng 3.000 ms.
+
+## 2. Trước và sau cải tiến Knowledge Gap Loop
+
+Quy trình gồm chạy Full K0, trích gap từ trace, duyệt đề xuất có nguồn trên giao diện, phát hành K1 và chạy lại Full trên cùng bộ test. Sau phát hành, TSR tăng thêm một kịch bản, HR tổng giảm 8,2 điểm phần trăm và TTFT p95 giảm 80 ms. CCR giảm 6,3 điểm phần trăm. Số câu hỏi thừa vẫn là một, nhưng mẫu số giảm từ 53 xuống 48 nên RQR tăng nhẹ.
+
+| Quan sát từ artifact | Full K0 | Full + Knowledge Gap Loop K1 |
+|---|---:|---:|
+| Gap được ghi nhận | 82 | 77 |
+| Phân loại lỗi sinh câu trả lời (`generation`) | 42 | 45 |
+| Phân loại chưa đủ bằng chứng (`insufficient_evidence`) | 40 | 32 |
+| Gap có bản nháp | 40 | 32 |
+| Số lần gọi `policy.search` trong trace | 34 | 34 |
+| Lượt tra cứu trả về đoạn FAQ có mã `KG-` | 0 | 0 |
+
+K1 đạt thêm `TEAM-25` và `TEAM-43`, còn `TEAM-35` chuyển sang trượt. Đây là một lượt đo cho mỗi release, nên chênh lệch phản ánh kết quả quan sát được. Trace K1 xác nhận release đang dùng và các đoạn truy xuất, còn ảnh hưởng của alias bổ sung lên từng câu trả lời chưa được đo riêng.
+
+## 3. Phân tích 10 trường hợp hệ thống làm sai
+
+Các vị trí dưới đây tra được bằng `scenario_id`, `call` và `turn` trong trace. Những lỗi thuộc tiêu chí TSR được đối chiếu với kịch bản và tệp điểm BTC.
+
+| # | Kịch bản và vị trí | Lỗi và bằng chứng quan sát | Hướng xử lý |
+|---:|---|---|---|
+| 1 | `TEAM-02`, `call_2`, lượt 3 | Cả K0 và K1 đã tra đơn ở lượt trước nhưng dừng ở yêu cầu xác minh bổ sung khi khách đồng ý đổi size. Trace thiếu `order.update` với thao tác `exchange_size` cho size L màu navy. | Kiểm tra điều kiện xác minh để cập nhật đơn. Khi đủ quyền và khách đã xác nhận, gửi đúng thao tác đổi size và thông báo kết quả từ biên nhận. |
+| 2 | `TEAM-07`, `call_1`, lượt 2 | Khách hỏi thời hạn và phí đổi size. Truy vấn của cả hai lượt Full làm mất ý hỏi thời hạn. Kết quả có `DT-03` và `CL-01`, thiếu `DT-01` trực tiếp. Cả hai câu trả lời đều bỏ qua thời hạn và phí. | Giữ cả hai ý khi tra chính sách và kiểm tra câu trả lời đã nêu đủ thời hạn lẫn phí trước khi chuyển chủ đề. |
+| 3 | `TEAM-13`, `call_2`, lượt 1 ở K0 và lượt 2 ở K1 | Khách nâng ngân sách lên 5,5 triệu. Cả hai lượt Full gọi `catalog.search` bằng từ khóa chung, thiếu bộ lọc `max_price_vnd` mà scorer kiểm tra. | Đưa ngân sách mới nhất vào tham số bộ lọc khi tìm sản phẩm. |
+| 4 | `TEAM-20`, `call_2`, lượt 3 | Khách chọn size XL màu navy. Cả K0 và K1 truyền đúng mã biến thể nhưng gọi `order.update` với `exchange_product`. Kịch bản yêu cầu `exchange_size`. | Phân biệt đổi biến thể cùng sản phẩm với đổi sang sản phẩm khác trước khi gọi tool. |
+| 5 | `TEAM-22`, `call_2`, lượt 2–3 | K0 dừng ở `order.preview_update`. K1 từ chối vì cho rằng đơn đã quá hạn. Cả hai thiếu thao tác `return` mà kịch bản yêu cầu và thiếu hướng dẫn dùng biểu mẫu hoàn tiền. | Đối chiếu mốc nhận hàng trước khi kết luận về thời hạn. Khi đủ điều kiện và khách đã xác nhận, gửi yêu cầu trả hàng và chỉ rõ kênh nhập thông tin hoàn tiền. |
+| 6 | `TEAM-25`, `call_2`, lượt 3 | K0 ghi nhận khách chốt đơn COD nhưng trace thiếu `order.create`. K1 gọi đúng tool và đạt kịch bản. | Sau khi khách chốt, thực hiện thao tác tạo đơn rồi dùng biên nhận để xác nhận. |
+| 7 | `TEAM-33`, `call_2`, lượt 1–3 | K0 gọi báo giá theo Cần Thơ sau khi khách đổi địa chỉ sang Hà Nội, rồi nói đơn được miễn phí giao hàng. K1 tra theo Hà Nội nhưng vẫn chưa báo được phí. Toàn bộ 8 mệnh đề sai của Full K0 trong báo cáo HR thuộc trường `freeship` của kịch bản này. | Ràng buộc báo giá với địa chỉ mới nhất và dùng báo giá tương ứng để trả lời về phí. |
+| 8 | `TEAM-35`, `call_1`, lượt 2 | Sau khi tra lịch nghỉ, K1 lặp lại mốc từ báo giá cũ và thiếu ngày giao sớm nhất mà kịch bản yêu cầu. K0 có nêu được mốc đó. | Tính lại thời gian giao khi thông tin lịch nghỉ làm thay đổi mốc trong báo giá ban đầu. |
+| 9 | `TEAM-36`, `call_1`, lượt 1 | Cả hai lượt Full trả lời bảo hành 24 tháng, nhưng `catalog.search` chỉ tìm theo tên và thiếu tham số SKU chính xác. Scorer đánh trượt tiêu chí gọi tool. | Khi đã xác định được SKU, tra bằng tham số mã sản phẩm để lưu đúng bằng chứng. |
+| 10 | `TEAM-43`, `call_2`, lượt 3 | K0 trả lời chung rằng chưa đủ thông tin và không hướng dẫn kênh hoàn tiền. K1 nêu rõ biểu mẫu của hệ thống và đạt tiêu chí. | Khi khách hỏi nơi cung cấp dữ liệu nhạy cảm, hướng dẫn trực tiếp đến biểu mẫu bảo mật. |
+
+## 4. Nguồn số liệu và tái lập
+
+Nguồn là `/home/thanh-phuc/test_final/TeleSale-SudoCode2026/results-submission/btc-eval/`. Hai lượt Full có cùng 323 vị trí lượt và cùng văn bản khách hàng. Cả hai báo `completed`, execution `healthy`, đều dùng chat streaming và loại ba lượt warm-up khỏi điểm. TTFT đo đến phần trả lời đầu tiên đã qua kiểm tra, còn Total đo đến phần cuối. TTFA chưa được đo trong hai lượt này.
+
+| Cấu hình | Run ID | Knowledge release | Trace | Tệp điểm BTC |
 |---|---|---|---|---|
-| 1 | TEAM-33 call_2 lượt 1–2, call_3 lượt 1 | Nói "miễn phí giao hàng" sau khi khách đổi nơi nhận sang Hà Nội (sự thật: không freeship). 4 claim sai, toàn bộ HR của run | Model gọi `pricing.get_quote(address="Cần Thơ")` theo địa chỉ cũ trong bộ nhớ; báo giá Cần Thơ có freeship nên guardrail coi là có bằng chứng | Guardrail đối chiếu địa chỉ báo giá với địa chỉ khách nói gần nhất; ưu tiên lời khách mới hơn fact trong bộ nhớ |
-| 2 | TEAM-02 call_2 lượt 3 | Khách yêu cầu đổi size, agent trả câu xin lỗi chung, không gọi `order.update` | Bản nháp bị chặn, hai lần sửa đều không đạt, rơi về fallback | Khi yêu cầu thao tác rõ và đủ bằng chứng (đã tra tồn kho, chính sách), cho model gọi lại `order.update` thay vì fallback |
-| 3 | TEAM-20 call_2 lượt 2–3 | Đã gọi `order.update` nhưng vẫn trả câu xin lỗi chung; TSR fail vì args không khớp | Câu trả lời về chênh lệch giá/chính sách đổi bị chặn; tham số cập nhật sai biến thể | Kiểm tham số `order.update` với biến thể khách chọn; giữ bằng chứng giá chênh lệch ở lượt trước |
-| 4 | TEAM-12 call_2 | Không gọi `order.status` theo đúng tham số kịch bản (gọi không có `order_id`) | Model tra đơn qua danh tính thay vì mã đơn | Truyền mã đơn từ Call Brief vào lời gọi |
-| 5 | TEAM-13 call_1 lượt 1–2 | Hỏi máy lọc trong ngân sách 3 triệu và khóa trẻ em, cả hai lượt trả câu xin lỗi chung | Bản nháp nêu giá/thông số bị chặn (`price_without_quote`, `unsupported_product_spec`) | Rà guardrail giá cho trường hợp so ngân sách; lưu bản nháp bị chặn để phân loại chặn nhầm |
-| 6 | TEAM-13 call_2–3 | Không gọi `catalog.search` với tham số kịch bản (ngân sách 5,5 triệu, diện tích) | Model tìm theo từ khóa chung, không truyền bộ lọc | Mô tả tool nhấn mạnh truyền ngân sách và diện tích bằng tham số riêng |
-| 7 | TEAM-15 call_1 | Không nói rõ "không có thông tin" về TDS đầu ra | Câu trả lời diễn đạt "không cung cấp thông tin chi tiết", không khớp cụm từ kịch bản | Câu mẫu cho thông số không có trong catalog |
-| 8 | TEAM-25 call_2 lượt 3 | Khách xác nhận tạo đơn thứ hai, agent không gọi `order.create` | Agent xin thêm bước xác nhận dù khách đã đồng ý giá, COD, khu vực | Bổ sung trường hợp "đơn mới cùng sản phẩm" vào bộ duyệt đồng ý nhanh |
-| 9 | TEAM-28 call_1 | Khách dùng số điện thoại chung xin tạo combo, agent từ chối vì chưa xác minh danh tính | Chính sách danh tính chặn đặt hàng với số dùng chung | Kịch bản kỳ vọng tạo đơn sau khi khách tự giới thiệu; cần bước xác minh nhẹ thay vì từ chối |
-| 10 | TEAM-28 call_2 lượt 1, 3 | Câu hỏi chính sách trả riêng món trong combo, trả câu xin lỗi chung | Câu trả lời chính sách bị chặn `unsupported_policy_or_internal_claim` dù đã gọi `policy.search` | Rà khớp nguồn chính sách combo |
-| 11 | TEAM-31 call_1 lượt 3 | Khách chỉ nói "giữ phương án màng cho máy nhà chị", agent trả câu xin lỗi chung | Bản nháp nhắc lại giá bị chặn | Cho phép nhắc lại báo giá cùng phiên còn hiệu lực |
-| 12 | TEAM-36 call_1 | TSR fail vì không gọi `catalog.search` đúng tham số, dù câu trả lời bảo hành 24 tháng đúng | Khác biệt tham số tìm kiếm | Như #6 |
-| 13 | TEAM-06 call_3 lượt 1 | Hỏi lại size dù đã biết (RQR) | Agent hỏi xác nhận "đổi size 42" thay vì làm luôn | Dùng slot đã có để đề xuất thao tác trực tiếp |
-| 14 | TEAM-41 call_2 lượt 2 | Hỏi lại ngân sách đã biết (RQR) | Đề xuất tìm thêm mẫu kèm nhắc ngân sách dưới dạng câu hỏi | Nêu ngân sách như thông tin đã biết, không hỏi lại |
+| Baseline không bộ nhớ | `20261127T113656Z-0cb1b876` | Release của đợt đo trước | Ngoài thư mục kết quả hiện tại | [Bảng điểm M1](btc-m1-evaluation-report.md#kết-quả-full-so-với-baseline) |
+| Full K0 | `704c7426-1d2b-4ca3-b703-50e26675cb77` | `policy-79dd0a921214cb762c5e4514232d9522` | `full-k0.jsonl` | `btc-full-k0.json` |
+| Full + Knowledge Gap Loop K1 | `4b2a6781-cf37-47d0-a584-ae86b198a553` | `policy-0dda84a377d562a2f63c2fc972316929` | `full-k1.jsonl` | `btc-k1.json` |
 
-Ngoài 14 trường hợp trên, 52/323 lượt Full (16%) rơi về câu xin lỗi chung sau khi bản nháp bị chặn hai lần, chủ yếu do `price_without_quote` (21), `unsupported_policy_or_internal_claim` (11) và `unsupported_product_spec` (6). Đây là đánh đổi có chủ đích để giữ HR giá/khuyến mãi ở mức 0,0%, nhưng làm giảm TSR.
+Cả hai bản sao gói BTC có **35/35 tệp khớp manifest** và dùng cùng bản `reference_eval.py`. Hash từng trace khớp với tệp `.report.json` và `.knowledge-gaps.json` tương ứng. Chấm lại hai trace cho kết quả khớp với tệp điểm đã lưu.
 
-## 7. Tái lập điểm hội thoại và phạm vi M2
+Chạy từ thư mục gốc checkout `test_final` để chấm lại trace hiện có. Hai lệnh in kết quả ra terminal và chỉ đọc trace.
 
-Chạy từ thư mục gốc dự án để tái lập run eval 48 kịch bản:
-
-```powershell
-python scripts/compose_up.py
-python seed_btc.py --data-dir ..\BTC-Data-Vong1-TEAMS
-python run_eval.py
+```sh
+python ./results-submission/btc-eval/full-k0.btc-release/eval/reference_eval.py --scenarios ./eval/scenario_final --trace ./results-submission/btc-eval/full-k0.jsonl
+python ./results-submission/btc-eval/full-k0.btc-release/eval/reference_eval.py --scenarios ./eval/scenario_final --trace ./results-submission/btc-eval/full-k1.jsonl
 ```
 
-Kết quả được lưu tại `results-submission/<run-id>/` (`run.json`, `btc_score.json`, `m1_conversation_acceptance.json`, trace) và chấm chéo bằng `reference_eval.py` theo [README](../README.md).
-
-| Phép đo M2 hoặc chi phí | Bằng chứng hiện có |
-|---|---|
-| Truy hồi chính sách, 60 câu (`qa_labeled.json`, 6 loại) | `Recall@3 = 84,7%` (50/59), `Recall@5 = 91,5%` (54/59), `MRR@5 = 0,752`, latency truy hồi p50/p95 = 328 / 544 ms. `multi_hop_full_recall@3/@5 = 41,7% / 50,0%` (12 câu). `by_type_recall@5`: single 96,0%, multi_hop 91,7%, version_conflict 100%, numeric 100%, unanswerable 100%, restricted 40,0% (2/5; trượt Q52, Q54, Q55). |
-| Chất lượng câu trả lời & từ chối RAG (`business_judge` + Ragas 0.4.4, `gemma4:31b`, 60/60 câu) | `correctness = 90,0%` (54/60), `version_accuracy = 100,0%` (6/6), `numeric_accuracy = 75,0%` (3/4; Q57 lệch do `mock_tools.py` cộng dồn `AIR-OCT` và `AIR-2ND-50` thành 10.135.000đ khác `expected_answer` 10.435.000đ), `restricted_leakage = 0,0%` (0/5), `faithfulness = 97,9%` (52/52), `factual_correctness_f1 = 0,436`. Trên scorer BTC (`business_judge`): `abstain_rate_restricted = 100,0%` (5/5), `false_abstain_rate = 4,3%` (2/47: Q26, Q37), `abstain_rate_unanswerable = 12,5%` (1/8 — dù 8/8 câu `unanswerable` được judge chấm `correct=true` và không bịa, model judge gán `action="answer"` cho các câu nói "chưa có thông tin" theo `FAQ-03`/`SP-AIR-03`). |
-| Đối chiếu LLM-judge với người chấm (M2) | Đã chấm mù 30 câu phân tầng đủ 6 loại ([nhãn người chấm](../results-rag/human_labels-e2e-02.json)): tỷ lệ đồng thuận **96,7%** (29/30), **Cohen's kappa = 0,839** (đạt yêu cầu ≥ 20 mẫu). Ca lệch duy nhất là Q25 (judge trừ điểm do thiếu ý phụ về màng lọc và `TRADE-IN-AP`). Chưa có TSR qua 3 seed cho customer simulator. |
-| Vòng cải tiến tri thức (K0 → K1) | Run `113656Z` đã sinh proposals (`results-submission/20261127T113656Z-0cb1b876.knowledge/`), chưa duyệt và phát hành K1. Hai vòng lịch sử ngày 12/11 (K0 `093027Z` → K1 `095815Z`): TSR 79,3% → 82,8%, HR 7,5% → 7,1%, RQR 0% → 7,7%; bộ kiểm đánh dấu `improvement_demonstrated=false`. |
-| Tách người nói (Diarization) | Diarization theo lượt đạt 83,5% trên 120 file của đội và 97,1% trên 4 hội thoại BTC đọc bằng VieNeu. |
-| Độ chính xác gọi công cụ và chi phí mỗi cuộc | Chưa có số đo tách riêng cho cặp Full/Baseline trong báo cáo. |
-
-Các chỉ số truy hồi, chất lượng câu trả lời và calibration của RAG lấy từ phép đo độc lập của kho chính sách (tái lập được bằng `reference_eval.py --rag`). Calls-to-Close trung bình trên run `113656Z` là 1,94 cuộc với Full và 1,93 cuộc với Baseline. [Điểm RAG đầy đủ kèm judge & calibration](../results-rag/e2e-score-03/report.json) · [Phạm vi bộ test riêng](../eval/scenario_final/README.md)
+Bộ 48 kịch bản là bộ test riêng của đội. [Bộ kịch bản](../eval/scenario_final/README.md) · [Quy trình xuất trace và chấm BTC](../README.md#bước-4-xuất-baseline-và-full-k0) · [Kết quả ASR độc lập](../speech/asr-benchmark-report.html) · [Kết quả RAG độc lập](../results-rag/e2e-score-03/report.json)
