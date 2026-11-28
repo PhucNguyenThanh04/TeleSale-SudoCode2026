@@ -38,15 +38,28 @@ Khi seed báo đã sẵn sàng, đăng nhập bằng `demo1` và mật khẩu `D
 
 <a name="bước-4-xuất-baseline-và-full-k0"></a>
 
-Sau khi nạp dữ liệu BTC, giữ server chạy và đóng phiên demo vì runner đặt lại dữ liệu runtime. Từ thư mục gốc repo, dùng Python trong `.venv` để chạy Baseline và Full trên bộ 48 kịch bản của đội.
+Sau khi nạp dữ liệu BTC, giữ server chạy và đóng phiên demo vì runner đặt lại dữ liệu runtime. Chạy từ thư mục gốc repo bằng Python trong `.venv`.
+
+### Xuất trace Baseline và Full
+
+Chạy Baseline không có bộ nhớ liên phiên và Full có bộ nhớ liên phiên trên cùng bộ kịch bản, model, seed và phiên bản tri thức. Nếu chạy lại, chọn tên thư mục mới thay cho `btc-eval` trong cả ba lệnh.
 
 ```sh
-python run_eval.py --scenarios ./dataset/dataset_harness_texttotext --out ./results-submission
+python run_eval.py --scenarios ./dataset/dataset_harness_texttotext --config baseline_no_memory --out ./results-submission/btc-eval/baseline.jsonl
+python run_eval.py --scenarios ./dataset/dataset_harness_texttotext --config full --out ./results-submission/btc-eval/full.jsonl
 ```
 
-Để chạy thử trên 7 kịch bản mẫu BTC, đổi `--scenarios` thành `./BTC-Data-Vong1-TEAMS/test_set/public_sample`.
+### Chấm hai trace bằng scorer BTC
 
-Runner chấm Baseline không có bộ nhớ liên phiên và Full có bộ nhớ liên phiên trên cùng bộ kịch bản, model, seed và phiên bản tri thức. Xem bảng đối chiếu trong terminal hoặc mở `results-submission/<run-id>/btc_score.json` để xem điểm chi tiết.
+Trước khi chấm, kiểm tra `baseline.report.json` và `full.report.json` trong thư mục kết quả. Cả hai cần có `status` là `completed`, `execution_health` là `healthy` và cùng `knowledge_release_id`.
+
+```sh
+python ./BTC-Data-Vong1-TEAMS/eval/reference_eval.py --scenarios ./dataset/dataset_harness_texttotext --trace ./results-submission/btc-eval/full.jsonl --baseline ./results-submission/btc-eval/baseline.jsonl --out ./results-submission/btc-eval/btc_score.json
+```
+
+Scorer in bảng chỉ số trong terminal và lưu chi tiết ở `results-submission/btc-eval/btc_score.json`. Trong JSON, `system` là Full, `baseline` là Baseline và `comparison` là kết quả đối chiếu.
+
+Để chạy thử trên 7 kịch bản mẫu BTC, đổi `--scenarios` thành `./BTC-Data-Vong1-TEAMS/test_set/public_sample` trong cả ba lệnh.
 
 ## 3. Đánh giá ASR và RAG
 
